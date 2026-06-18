@@ -1,23 +1,23 @@
-//! UNIP CLI — Killer Demo Client
+//! FIG CLI — Killer Demo Client
 //!
-//! Connects to the UNIP exchange simulator and demonstrates:
+//! Connects to the FIG exchange simulator and demonstrates:
 //! - Order entry (NewOrderSingle)
 //! - Market data subscription
 //! - Account query
 //! - Session resumption (0-RTT)
 //!
-//! Run with: cargo run -p unip-cli
+//! Run with: cargo run -p fig-cli
 
 use anyhow::Result;
 use quinn::Endpoint;
 use tracing::{info, warn, error};
 
-use unip_core::codec;
-use unip_core::ext::{Extension, ExtensionTag};
-use unip_core::frame::{Frame, FrameDecoder, FrameType};
-use unip_core::transport;
+use fig_core::codec;
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{Frame, FrameDecoder, FrameType};
+use fig_core::transport;
 
-use unip_core::messages::*;
+use fig_core::messages::*;
 
 /// Well-known schema IDs
 mod schema_id {
@@ -28,10 +28,10 @@ mod schema_id {
 async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter("unip_cli=debug,unip_core=info")
+        .with_env_filter("fig_cli=debug,fig_core=info")
         .init();
 
-    info!("UNIP CLI starting...");
+    info!("FIG CLI starting...");
 
     // Create client endpoint
     let client_config = transport::client_config().map_err(|e| anyhow::anyhow!("client config: {}", e))?;
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
 
     info!("Connecting to {}...", server_addr);
     let conn = endpoint.connect(server_addr, server_name)?.await?;
-    info!("Connected to UNIP server!");
+    info!("Connected to FIG server!");
 
     // Open a bidirectional stream for order entry
     info!("Opening order entry channel...");
@@ -227,7 +227,7 @@ async fn main() -> Result<()> {
 
     info!("");
     info!("=== Demo Complete ===");
-    info!("UNIP protocol demonstration finished successfully.");
+    info!("FIG protocol demonstration finished successfully.");
     info!("The client demonstrated:");
     info!("  1. Order entry (NewOrderSingle) → ExecutionReport");
     info!("  2. Market data subscription → MarketDataSnapshot");

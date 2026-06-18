@@ -1,4 +1,4 @@
-//! Extension tags and TLV encoding/decoding for UNIP frames.
+//! Extension tags and TLV encoding/decoding for FIG frames.
 //!
 //! Extensions carry metadata in the variable-length header of each frame.
 //! Each extension is a Tag-Length-Value (TLV) triple.
@@ -9,13 +9,13 @@ use crate::FrameResult;
 // ─── Content-Type Constants ─────────────────────────────────────
 
 pub const CONTENT_TYPE_CBOR: &str = "application/cbor";
-pub const CONTENT_TYPE_SBE: &str = "application/unip+sbe";
+pub const CONTENT_TYPE_SBE: &str = "application/fig+sbe";
 pub const CONTENT_TYPE_JSON: &str = "application/json";
 pub const CONTENT_TYPE_PROTOBUF: &str = "application/x-protobuf";
 
 // ─── Extension Tag ──────────────────────────────────────────────
 
-/// Well-known extension tags for UNIP frames.
+/// Well-known extension tags for FIG frames.
 ///
 /// Each tag identifies the type of metadata carried in the extension.
 /// Tags 0x0001–0x001D are defined by this specification.
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     fn test_content_type_constants() {
         assert_eq!(CONTENT_TYPE_CBOR, "application/cbor");
-        assert_eq!(CONTENT_TYPE_SBE, "application/unip+sbe");
+        assert_eq!(CONTENT_TYPE_SBE, "application/fig+sbe");
         assert_eq!(CONTENT_TYPE_JSON, "application/json");
         assert_eq!(CONTENT_TYPE_PROTOBUF, "application/x-protobuf");
     }

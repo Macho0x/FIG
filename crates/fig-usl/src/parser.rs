@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn test_parse_full_orders_usl() {
-        let orders_path = "/home/redvelvet/Projects/unip/schemas/orders.usl";
+        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.usl";
         let input =
             std::fs::read_to_string(orders_path).expect("failed to read orders.usl");
         let schema = Parser::parse(&input).expect("failed to parse orders.usl");

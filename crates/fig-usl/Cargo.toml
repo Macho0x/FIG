@@ -1,9 +1,9 @@
 [package]
-name = "unip-usl"
+name = "fig-usl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "UNIP Schema Language parser and multi-target codegen"
+description = "FIG Schema Language parser and multi-target codegen"
 
 [dependencies]
 thiserror = { workspace = true }

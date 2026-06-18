@@ -1,5 +1,5 @@
-// UNIP Schema Language — Trading Orders Schema
-// This is the canonical schema for UNIP order entry and execution.
+// FIG Schema Language — Trading Orders Schema
+// This is the canonical schema for FIG order entry and execution.
 // Well-known Schema ID: 0x01
 
 schema trading.orders v1.0.0 {

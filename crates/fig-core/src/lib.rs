@@ -1,4 +1,4 @@
-//! UNIP — Unified Network Interchange Protocol
+//! FIG — Unified Network Interchange Protocol
 //!
 //! A schema-native, multiplexed, zero-RTT protocol for trading systems.
 //! Unifies and supersedes FIX, REST, and WebSocket.
@@ -18,9 +18,9 @@
 //! # Example
 //!
 //! ```ignore
-//! use unip_core::frame::{Frame, FrameType, FrameDecoder};
-//! use unip_core::ext::{Extension, ExtensionTag};
-//! use unip_core::channel::{ChannelManager, ChannelMode};
+//! use fig_core::frame::{Frame, FrameType, FrameDecoder};
+//! use fig_core::ext::{Extension, ExtensionTag};
+//! use fig_core::channel::{ChannelManager, ChannelMode};
 //!
 //! // Create a request frame
 //! let frame = Frame::new(FrameType::Request, 1)
@@ -54,7 +54,7 @@
 //!
 //! | Module | Purpose |
 //! |---|---|
-//! | [`frame`] | UNIP frame wire format, encoding/decoding, streaming parser |
+//! | [`frame`] | FIG frame wire format, encoding/decoding, streaming parser |
 //! | [`ext`] | Extension tags (TLV) for protocol metadata |
 //! | [`channel`] | Channel lifecycle, sequence numbering, QUIC stream ID mapping |
 //! | [`session`] | Durable session model with pluggable storage backends |

@@ -1,13 +1,13 @@
-//! UNIP Exchange Simulator — Killer Demo Server
+//! FIG Exchange Simulator — Killer Demo Server
 //!
-//! A native UNIP exchange simulator that demonstrates:
+//! A native FIG exchange simulator that demonstrates:
 //! - Order entry (NewOrderSingle, Cancel, CancelReplace)
 //! - Execution reports (streaming)
 //! - Market data (streaming)
 //! - Account queries (request-response)
 //! - Session management (0-RTT resumption)
 //!
-//! Run with: cargo run -p unip-exchange-sim
+//! Run with: cargo run -p fig-exchange-sim
 
 use std::sync::Arc;
 
@@ -17,11 +17,11 @@ use tokio::sync::Mutex;
 use tracing::{info, warn, error};
 use uuid::Uuid;
 
-use unip_core::codec;
-use unip_core::ext::{Extension, ExtensionTag};
-use unip_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
-use unip_core::messages::*;
-use unip_core::session::MemorySessionStore;
+use fig_core::codec;
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
+use fig_core::messages::*;
+use fig_core::session::MemorySessionStore;
 
 use matching::MatchingEngine;
 
@@ -51,10 +51,10 @@ struct ExchangeState {
 async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter("unip_exchange_sim=debug,unip_core=info")
+        .with_env_filter("fig_exchange_sim=debug,fig_core=info")
         .init();
 
-    info!("UNIP Exchange Simulator starting...");
+    info!("FIG Exchange Simulator starting...");
 
     // Generate self-signed TLS certificate
     let (cert, key) = generate_self_signed_cert()?;
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     // Bind to UDP socket
     let addr = "127.0.0.1:8443".parse()?;
     let endpoint = Endpoint::server(server_config, addr)?;
-    info!("UNIP server listening on {}", addr);
+    info!("FIG server listening on {}", addr);
 
     let state = Arc::new(ExchangeState {
         engine: Mutex::new(MatchingEngine::new()),
@@ -455,7 +455,7 @@ fn tls_server_config(cert_der: &[u8], key_der: &[u8]) -> Result<rustls::ServerCo
         .with_no_client_auth()
         .with_single_cert(vec![cert], key)?;
 
-    config.alpn_protocols = vec![b"unip/1".to_vec()];
+    config.alpn_protocols = vec![b"fig/1".to_vec()];
 
     Ok(config)
 }

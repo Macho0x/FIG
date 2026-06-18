@@ -1,4 +1,4 @@
-//! Matching engine for the UNIP exchange simulator.
+//! Matching engine for the FIG exchange simulator.
 //!
 //! Processes incoming orders against the order book, producing fills
 //! and execution reports. Supports market and limit orders with
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use unip_core::messages::*;
+use fig_core::messages::*;
 use super::orderbook::{OrderBook, RestingOrder};
 
 /// A fill resulting from matching an order.

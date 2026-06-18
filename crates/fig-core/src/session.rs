@@ -1,6 +1,6 @@
-//! Session model and storage for UNIP.
+//! Session model and storage for FIG.
 //!
-//! A UNIP session is a durable, migratable logical entity identified by
+//! A FIG session is a durable, migratable logical entity identified by
 //! a SESSION_ID (UUID). Sessions survive disconnects and can be resumed
 //! across QUIC 0-RTT reconnections.
 //!

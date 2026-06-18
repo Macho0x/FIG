@@ -1,6 +1,6 @@
-//! UNIP Exchange Simulator
+//! FIG Exchange Simulator
 //!
-//! A native UNIP exchange simulator that demonstrates the protocol's
+//! A native FIG exchange simulator that demonstrates the protocol's
 //! capabilities: order entry, market data streaming, and session management.
 
 pub mod matching;

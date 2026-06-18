@@ -1,7 +1,7 @@
-//! QUIC transport layer for UNIP.
+//! QUIC transport layer for FIG.
 //!
 //! Wraps [quinn] for QUIC transport, providing certificate generation,
-//! ALPN negotiation, and a [`UnipConnection`] that maps UNIP channels
+//! ALPN negotiation, and a [`FigConnection`] that maps FIG channels
 //! to QUIC streams.
 //!
 //! # Security note
@@ -22,8 +22,8 @@ use crate::session::MemorySessionStore;
 
 // ─── Constants ───────────────────────────────────────────────────
 
-/// ALPN identifier for UNIP. Both client and server must advertise this.
-pub const ALPN_UNIP: &[u8] = b"unip/1";
+/// ALPN identifier for FIG. Both client and server must advertise this.
+pub const ALPN_FIG: &[u8] = b"fig/1";
 
 // ─── Certificate Generation ──────────────────────────────────────
 
@@ -57,7 +57,7 @@ pub fn generate_self_signed_cert(
 
 /// Create a QUIC server configuration with a self-signed certificate.
 ///
-/// Sets ALPN to `"unip/1"`. Callers should use
+/// Sets ALPN to `"fig/1"`. Callers should use
 /// [`generate_self_signed_cert`] to obtain the certificate and key,
 /// or provide their own.
 pub fn server_config(
@@ -68,7 +68,7 @@ pub fn server_config(
         .with_no_client_auth()
         .with_single_cert(vec![cert], key)?;
 
-    server_crypto.alpn_protocols = vec![ALPN_UNIP.to_vec()];
+    server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
     let server_config = quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)?;
     let mut transport = quinn::TransportConfig::default();
@@ -86,14 +86,14 @@ pub fn server_config(
 /// Intended for development and testing only. Production deployments
 /// MUST replace this with proper certificate verification.
 ///
-/// Sets ALPN to `"unip/1"`.
+/// Sets ALPN to `"fig/1"`.
 pub fn client_config() -> Result<ClientConfig, Box<dyn std::error::Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoServerVerification))
         .with_no_client_auth();
 
-    client_crypto.alpn_protocols = vec![ALPN_UNIP.to_vec()];
+    client_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
     let client_config = quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)?;
     let mut transport = quinn::TransportConfig::default();
@@ -159,9 +159,9 @@ impl rustls::client::danger::ServerCertVerifier for NoServerVerification {
     }
 }
 
-// ─── UnipConnection ──────────────────────────────────────────────
+// ─── FigConnection ──────────────────────────────────────────────
 
-/// A UNIP connection wrapping a QUIC connection.
+/// A FIG connection wrapping a QUIC connection.
 ///
 /// Manages channels, session state, and frame send/receive over the
 /// underlying QUIC transport.
@@ -172,13 +172,13 @@ impl rustls::client::danger::ServerCertVerifier for NoServerVerification {
 /// - Reuse QUIC streams per channel (not open one per frame).
 /// - Handle bidirectional streams for server-initiated messages.
 /// - Implement proper flow control and backpressure.
-pub struct UnipConnection {
+pub struct FigConnection {
     conn: Connection,
     channels: Arc<Mutex<ChannelManager>>,
     session_store: MemorySessionStore,
 }
 
-impl UnipConnection {
+impl FigConnection {
     /// Wrap an established QUIC connection.
     pub fn from_quic(conn: Connection, is_server: bool) -> Self {
         Self {

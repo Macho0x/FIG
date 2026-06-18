@@ -1,12 +1,12 @@
 [package]
-name = "unip-cli"
+name = "fig-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "UNIP-native trading client (killer demo client)"
+description = "FIG-native trading client (killer demo client)"
 
 [dependencies]
-unip-core = { workspace = true }
+fig-core = { workspace = true }
 tokio = { workspace = true }
 quinn = { workspace = true }
 rustls = { workspace = true }

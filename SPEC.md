@@ -1,4 +1,4 @@
-# UNIP — Protocol Specification
+# FIG — Protocol Specification
 
 **Version:** 0.1.0 (draft)
 **Status:** Experimental — breaking changes expected before 1.0
@@ -7,7 +7,7 @@
 
 ## 1. Introduction
 
-UNIP (Unified Network Interchange Protocol) is a binary, multiplexed,
+FIG (Unified Network Interchange Protocol) is a binary, multiplexed,
 schema-native protocol designed for high-performance trading systems and
 real-time financial applications. It runs over QUIC and unifies the
 interaction patterns of FIX (session-oriented order flow), REST
@@ -43,11 +43,11 @@ streaming) into a single wire format.
 
 ## 2. Transport
 
-UNIP uses **QUIC** as its mandatory native transport.
+FIG uses **QUIC** as its mandatory native transport.
 
-- **ALPN:** `unip/1`
+- **ALPN:** `fig/1`
 - **TLS:** 1.3 mandatory (provided by QUIC)
-- **Stream mapping:** Each UNIP channel maps 1:1 to a QUIC stream.
+- **Stream mapping:** Each FIG channel maps 1:1 to a QUIC stream.
   - Bidirectional channels → bidirectional QUIC streams
   - Unidirectional channels → unidirectional QUIC streams
 - **Channel 0** is reserved for connection-level control frames
@@ -59,8 +59,8 @@ survival), and integrated TLS 1.3.
 
 ### 2.1 TCP Downgrade
 
-For legacy environments without QUIC support, UNIP defines a TCP fallback
-mode using the same binary framing with a magic prefix (`UNIP\x01`) for
+For legacy environments without QUIC support, FIG defines a TCP fallback
+mode using the same binary framing with a magic prefix (`FIG\x01`) for
 first-byte protocol detection. This mode loses multiplexing benefits
 (channels are serialized over one TCP stream) and is intended only for
 gateway use.
@@ -71,7 +71,7 @@ gateway use.
 
 ### 3.1 Frame Layout
 
-Every UNIP frame has a **fixed 16-byte header** followed by an optional
+Every FIG frame has a **fixed 16-byte header** followed by an optional
 **extension block** and an optional **payload**.
 
 ```
@@ -220,7 +220,7 @@ the payload (or in a dedicated extension). Defined sub-types:
 |---|---|---|---|
 | `0x0001` | REQUEST_URI | UTF-8 string | Resource path: `/accounts/12345/orders` |
 | `0x0002` | RESPONSE_URI | UTF-8 string | Effective URI after routing |
-| `0x0003` | CONTENT_TYPE | ASCII string | MIME-like: `application/unip+sbe`, `application/cbor`, `application/json` |
+| `0x0003` | CONTENT_TYPE | ASCII string | MIME-like: `application/fig+sbe`, `application/cbor`, `application/json` |
 | `0x0004` | STATUS_CODE | uint16 | HTTP-compatible status: 200, 404, 500, plus custom |
 | `0x0005` | CORRELATION_ID | 16-byte binary | Links request → response across channels |
 | `0x0006` | SEQUENCE_NUM | uint64 | FIX MsgSeqNum compatibility (distinct from Stream Seq) |
@@ -264,7 +264,7 @@ custom tags rather than erroring.
                     ┌─────────────┐
                     │   CLOSED    │
                     └──────┬──────┘
-                           │ CONNECT (QUIC handshake, ALPN "unip/1")
+                           │ CONNECT (QUIC handshake, ALPN "fig/1")
                     ┌──────▼──────┐
                     │  CONNECTED  │ (Channel 0 active)
                     └──┬───┬───┬──┘
@@ -318,7 +318,7 @@ Negotiated at STREAM_OPEN via the CHANNEL_MODE extension:
 
 ## 8. Session Model
 
-A UNIP session is a **durable, migratable logical entity** identified by
+A FIG session is a **durable, migratable logical entity** identified by
 SESSION_ID (16-byte binary). It is NOT tied to a single connection.
 
 ### 8.1 Session Lifecycle
@@ -351,7 +351,7 @@ database). State includes:
 
 ## 9. Addressing
 
-UNIP uses **unified channel paths** with type annotations:
+FIG uses **unified channel paths** with type annotations:
 
 ```
 channel://broker.example.com:8443/trading/accounts/12345/orders?type=request_response
@@ -388,7 +388,7 @@ Four-layer model, all protocol-native:
 
 ---
 
-## 11. USL — UNIP Schema Language
+## 11. USL — FIG Schema Language
 
 USL is a domain-specific IDL that compiles to multiple targets (Rust, Go,
 Python, TypeScript, Java, C#, C++, Protobuf, SBE, JSON Schema).
@@ -463,12 +463,12 @@ schema trading.orders v1.0.0 {
 
 ## 12. Gateway Mapping
 
-Gateways translate UNIP ↔ legacy protocols. They are migration tools, not
+Gateways translate FIG ↔ legacy protocols. They are migration tools, not
 the protocol's identity.
 
-### 12.1 FIX ↔ UNIP
+### 12.1 FIX ↔ FIG
 
-| FIX concept | UNIP equivalent |
+| FIX concept | FIG equivalent |
 |---|---|
 | MsgSeqNum (34=) | Stream Seq + SEQUENCE_NUM extension |
 | MsgType (35=) | Schema ID |
@@ -480,9 +480,9 @@ the protocol's identity.
 | NewOrderSingle (35=D) | STREAM_ITEM, Schema ID 0x01, SBE payload |
 | ExecutionReport (35=8) | STREAM_ITEM, Schema ID 0x02 |
 
-### 12.2 REST ↔ UNIP
+### 12.2 REST ↔ FIG
 
-| HTTP concept | UNIP equivalent |
+| HTTP concept | FIG equivalent |
 |---|---|
 | Method | METHOD extension |
 | URI | CHANNEL_PATH / REQUEST_URI extension |
@@ -492,9 +492,9 @@ the protocol's identity.
 | Chunked transfer | STREAM_ITEM frames |
 | SSE | STREAM_ITEM with CONTENT_TYPE |
 
-### 12.3 WebSocket ↔ UNIP
+### 12.3 WebSocket ↔ FIG
 
-| WebSocket concept | UNIP equivalent |
+| WebSocket concept | FIG equivalent |
 |---|---|
 | Upgrade handshake | QUIC handshake + ALPN |
 | Text frame | STREAM_ITEM, CONTENT_TYPE "text/plain" |
@@ -519,7 +519,7 @@ Servers advertise their tier during CONNECT via SETTINGS.
 
 ## 14. Performance Characteristics
 
-| Metric | UNIP (native) | FIX ASCII | HTTP/1.1+JSON | WebSocket |
+| Metric | FIG (native) | FIX ASCII | HTTP/1.1+JSON | WebSocket |
 |---|---|---|---|---|
 | Min header overhead | 16 bytes | 200-500 bytes | 200-800 bytes | 2-10 bytes |
 | Parse speed | ~0.5-2μs (SBE zero-copy) | ~5-20μs (ASCII parse) | ~10-50μs (JSON) | N/A |
@@ -531,10 +531,10 @@ Servers advertise their tier during CONNECT via SETTINGS.
 
 ## 15. IANA Considerations
 
-- **ALPN identifier:** `unip/1`
+- **ALPN identifier:** `fig/1`
 - **Well-known Schema IDs:** 0x01–0xEF (registry TBD)
 - **Well-known Extension Tags:** 0x0001–0x001D (this document); future tags via registry
-- **Content Types:** `application/unip+sbe`, `application/unip+protobuf`, `application/cbor`
+- **Content Types:** `application/fig+sbe`, `application/fig+protobuf`, `application/cbor`
 
 ---
 

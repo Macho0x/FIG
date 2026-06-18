@@ -1,14 +1,14 @@
-# UNIP — Unified Network Interchange Protocol
+# FIG — Unified Network Interchange Protocol
 
 > A schema-native, multiplexed, zero-RTT protocol for trading systems.
 > Unifies and supersedes FIX, REST, and WebSocket.
 
-UNIP is a single protocol that combines the strengths of FIX (financial
+FIG is a single protocol that combines the strengths of FIX (financial
 session semantics, sequence numbers, market data), REST (resource-oriented
 request-response), and WebSocket (bidirectional streaming) into one
 wire format over QUIC.
 
-## Why UNIP?
+## Why FIG?
 
 - **One connection, all patterns** — orders, market data, and account queries
   flow over a single QUIC connection with per-stream flow control.
@@ -24,10 +24,10 @@ wire format over QUIC.
 
 | Crate | Description |
 |---|---|
-| `unip-core` | Frame parser, channel manager, session model, QUIC transport |
-| `unip-usl` | USL (UNIP Schema Language) parser and multi-target codegen |
-| `unip-exchange-sim` | Native UNIP exchange simulator (killer demo server) |
-| `unip-cli` | Native UNIP trading client (killer demo client) |
+| `fig-core` | Frame parser, channel manager, session model, QUIC transport |
+| `fig-usl` | USL (FIG Schema Language) parser and multi-target codegen |
+| `fig-exchange-sim` | Native FIG exchange simulator (killer demo server) |
+| `fig-cli` | Native FIG trading client (killer demo client) |
 
 ## Protocol Overview
 

@@ -1,8 +1,8 @@
-//! Error types for the UNIP core library.
+//! Error types for the FIG core library.
 
 use thiserror::Error;
 
-/// Errors that can occur when parsing or encoding UNIP frames.
+/// Errors that can occur when parsing or encoding FIG frames.
 #[derive(Error, Debug)]
 pub enum FrameError {
     #[error("invalid frame header: expected at least 16 bytes, got {0}")]

@@ -1,19 +1,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/unip-core",
-    "crates/unip-usl",
-    "crates/unip-exchange-sim",
-    "crates/unip-cli",
+    "crates/fig-core",
+    "crates/fig-usl",
+    "crates/fig-exchange-sim",
+    "crates/fig-cli",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Macho0x/unip"
-homepage = "https://github.com/Macho0x/unip"
-description = "UNIP — Unified Network Interchange Protocol"
+repository = "https://github.com/Macho0x/fig"
+homepage = "https://github.com/Macho0x/fig"
+description = "FIG — Unified Network Interchange Protocol"
 
 [workspace.dependencies]
 # Async runtime
@@ -41,7 +41,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bitflags = "2"
 # Internal crates
-unip-core = { path = "crates/unip-core" }
+fig-core = { path = "crates/fig-core" }
 
 [profile.release]
 opt-level = 3

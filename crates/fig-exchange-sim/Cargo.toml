@@ -1,12 +1,12 @@
 [package]
-name = "unip-exchange-sim"
+name = "fig-exchange-sim"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "UNIP-native exchange simulator (killer demo server)"
+description = "FIG-native exchange simulator (killer demo server)"
 
 [dependencies]
-unip-core = { workspace = true }
+fig-core = { workspace = true }
 tokio = { workspace = true }
 quinn = { workspace = true }
 rustls = { workspace = true }

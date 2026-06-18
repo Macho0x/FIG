@@ -1,9 +1,9 @@
 [package]
-name = "unip-core"
+name = "fig-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "UNIP core protocol: frame parser, channel manager, session, QUIC transport"
+description = "FIG core protocol: frame parser, channel manager, session, QUIC transport"
 
 [dependencies]
 bytes = { workspace = true }

@@ -1,6 +1,6 @@
-//! UNIP frame wire format: encode, decode, and streaming parsing.
+//! FIG frame wire format: encode, decode, and streaming parsing.
 //!
-//! The frame is the fundamental unit of communication in UNIP. Every frame
+//! The frame is the fundamental unit of communication in FIG. Every frame
 //! has a fixed 16-byte header followed by optional TLV extensions and an
 //! optional payload.
 //!
@@ -200,7 +200,7 @@ impl Flags {
 
 // ─── Frame ───────────────────────────────────────────────────────
 
-/// A UNIP frame — the fundamental unit of communication.
+/// A FIG frame — the fundamental unit of communication.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frame {
     /// Frame type (REQUEST, RESPONSE, STREAM_ITEM, etc.)

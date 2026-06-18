@@ -1,6 +1,6 @@
-//! Channel management for UNIP connections.
+//! Channel management for FIG connections.
 //!
-//! A channel is a logical conversation within a UNIP connection,
+//! A channel is a logical conversation within a FIG connection,
 //! mapped 1:1 to a QUIC stream. Channel 0 is reserved for
 //! connection-level control frames.
 //!
@@ -60,7 +60,7 @@ pub enum ChannelState {
     Closing,
 }
 
-/// A logical channel within a UNIP connection.
+/// A logical channel within a FIG connection.
 #[derive(Debug, Clone)]
 pub struct Channel {
     pub channel_id: u16,
@@ -91,7 +91,7 @@ impl Channel {
 ///
 /// # QUIC Stream ID Mapping
 ///
-/// UNIP channel IDs are mapped to QUIC stream IDs as follows:
+/// FIG channel IDs are mapped to QUIC stream IDs as follows:
 ///
 /// ```text
 /// quic_stream_id = channel_id * 4 + parity_offset
@@ -244,7 +244,7 @@ impl ChannelManager {
         Ok(())
     }
 
-    /// Map a UNIP channel ID to a QUIC stream ID.
+    /// Map a FIG channel ID to a QUIC stream ID.
     ///
     /// Uses bidirectional streams (offset 0 for client, 1 for server).
     /// In a full implementation the direction would be negotiated per

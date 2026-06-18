@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use unip_core::messages::*;
+use fig_core::messages::*;
 
 /// A resting order in the book.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -218,10 +218,10 @@ impl OrderBook {
     }
 
     /// Get the top N levels of the bid side.
-    pub fn bid_depth(&self, n: usize) -> Vec<unip_core::messages::PriceLevel> {
+    pub fn bid_depth(&self, n: usize) -> Vec<fig_core::messages::PriceLevel> {
         self.bids.levels()
             .take(n)
-            .map(|l| unip_core::messages::PriceLevel {
+            .map(|l| fig_core::messages::PriceLevel {
                 price: l.price.clone(),
                 qty: Quantity(l.total_qty),
                 order_count: Some(l.orders.len() as u32),
@@ -230,10 +230,10 @@ impl OrderBook {
     }
 
     /// Get the top N levels of the ask side.
-    pub fn ask_depth(&self, n: usize) -> Vec<unip_core::messages::PriceLevel> {
+    pub fn ask_depth(&self, n: usize) -> Vec<fig_core::messages::PriceLevel> {
         self.asks.levels()
             .take(n)
-            .map(|l| unip_core::messages::PriceLevel {
+            .map(|l| fig_core::messages::PriceLevel {
                 price: l.price.clone(),
                 qty: Quantity(l.total_qty),
                 order_count: Some(l.orders.len() as u32),

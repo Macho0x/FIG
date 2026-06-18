@@ -1,6 +1,6 @@
 //! CBOR encoding/decoding helpers for extension metadata and payloads.
 //!
-//! UNIP uses CBOR (RFC 7049) as its self-describing payload format when
+//! FIG uses CBOR (RFC 7049) as its self-describing payload format when
 //! no well-known schema is available (Schema ID = 0x00 with CONTENT_TYPE
 //! "application/cbor"). This module provides thin wrappers around ciborium
 //! for convenience.
@@ -35,7 +35,7 @@ mod tests {
     use super::*;
     use serde::{Deserialize, Serialize};
 
-    /// Example order message (mirrors unip-exchange-sim OrderRequest).
+    /// Example order message (mirrors fig-exchange-sim OrderRequest).
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct OrderRequest {
         pub cl_ord_id: String,
