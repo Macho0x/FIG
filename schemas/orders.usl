@@ -1,0 +1,192 @@
+// UNIP Schema Language — Trading Orders Schema
+// This is the canonical schema for UNIP order entry and execution.
+// Well-known Schema ID: 0x01
+
+schema trading.orders v1.0.0 {
+    description: "Standard order entry and execution messages"
+    well_known_id: 0x01
+
+    // --- Custom Types ---
+
+    type ClientOrderId: string(max_len: 20, pattern: "[A-Za-z0-9\\-]+")
+    type Price: decimal64(precision: 8, min: 0)
+    type Quantity: decimal64(precision: 0, min: 0, max: 999999999)
+    type Symbol: string(max_len: 8, uppercase: true)
+    type TradeTimestamp: int64  // nanoseconds since Unix epoch
+
+    // --- Messages ---
+
+    message NewOrderSingle {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        side: enum { buy, sell, sell_short, sell_short_exempt } @2
+        order_qty: Quantity @3
+        price: Price @4 optional
+        symbol: Symbol @5
+        order_type: enum { market, limit, stop, stop_limit } @6
+        time_in_force: enum { day, gtc, ioc, fok, gtd } @7
+        expire_time: TradeTimestamp @8 optional
+        account: string(max_len: 32) @9 optional
+        strategy_id: string(max_len: 64) @10 optional
+
+        priority: high
+        idempotent: false
+    }
+
+    message CancelRequest {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        orig_cl_ord_id: ClientOrderId @2
+        symbol: Symbol @3
+        side: enum { buy, sell, sell_short } @4
+        order_qty: Quantity @5 optional
+
+        priority: high
+    }
+
+    message CancelReplaceRequest {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        orig_cl_ord_id: ClientOrderId @2
+        symbol: Symbol @3
+        side: enum { buy, sell, sell_short } @4
+        order_qty: Quantity @5
+        price: Price @6 optional
+
+        priority: high
+    }
+
+    message ExecutionReport {
+        channel_type: stream_item
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        order_id: string(max_len: 32) @2
+        exec_id: string(max_len: 20) @3
+        exec_type: enum {
+            new, partial_fill, fill, done_for_day,
+            canceled, replaced, pending_cancel, stopped,
+            rejected, suspended, pending_new, expired
+        } @4
+        ord_status: enum {
+            new, partially_filled, filled, done_for_day,
+            canceled, pending_cancel, stopped, rejected,
+            suspended, pending_new, expired, replaced
+        } @5
+        side: enum { buy, sell, sell_short } @6
+        last_qty: Quantity @7 optional
+        last_price: Price @8 optional
+        leaves_qty: Quantity @9
+        cum_qty: Quantity @10
+        avg_price: Price @11
+        symbol: Symbol @12
+        transact_time: TradeTimestamp @13
+
+        priority: high
+    }
+
+    message CancelReject {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        orig_cl_ord_id: ClientOrderId @2
+        reject_reason: enum { order_not_found, already_canceled, already_filled, too_late_to_cancel } @3
+        symbol: Symbol @4
+    }
+
+    message MarketDataSnapshot {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        exchange: string(max_len: 16) @2
+        bids: list<PriceLevel> @3
+        asks: list<PriceLevel> @4
+        timestamp: TradeTimestamp @5
+    }
+
+    message MarketDataIncrementalRefresh {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        updates: list<MarketDataUpdate> @2
+        timestamp: TradeTimestamp @3
+    }
+
+    // --- Nested Types ---
+
+    type PriceLevel {
+        price: Price
+        qty: Quantity
+        order_count: uint32 optional
+    }
+
+    type MarketDataUpdate {
+        side: enum { buy, sell } 
+        action: enum { new, change, delete }
+        price: Price
+        qty: Quantity
+    }
+
+    message AccountSummary {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        balance: decimal64(precision: 2) @2
+        buying_power: decimal64(precision: 2) @3
+        currency: string(max_len: 3) @4
+    }
+
+    // --- Gateway Mappings (optional, for legacy compatibility) ---
+
+    gateway fix {
+        message NewOrderSingle -> MsgType: "D" {
+            cl_ord_id -> tag: 11
+            side -> tag: 54 values: { buy: "1", sell: "2", sell_short: "5", sell_short_exempt: "6" }
+            order_qty -> tag: 38
+            price -> tag: 44
+            symbol -> tag: 55
+            order_type -> tag: 40 values: { market: "1", limit: "2", stop: "3", stop_limit: "4" }
+            time_in_force -> tag: 59 values: { day: "0", gtc: "1", ioc: "3", fok: "4", gtd: "6" }
+            account -> tag: 1
+        }
+
+        message CancelRequest -> MsgType: "F" {
+            cl_ord_id -> tag: 41
+            orig_cl_ord_id -> tag: 37
+            symbol -> tag: 55
+            side -> tag: 54
+        }
+
+        message ExecutionReport -> MsgType: "8" {
+            cl_ord_id -> tag: 11
+            order_id -> tag: 37
+            exec_id -> tag: 17
+            exec_type -> tag: 150
+            ord_status -> tag: 39
+            side -> tag: 54
+            last_qty -> tag: 32
+            last_price -> tag: 31
+            leaves_qty -> tag: 151
+            cum_qty -> tag: 14
+            avg_price -> tag: 6
+            symbol -> tag: 55
+            transact_time -> tag: 60
+        }
+    }
+
+    gateway rest {
+        message NewOrderSingle -> method: POST path: "/accounts/{account}/orders"
+        message CancelRequest -> method: DELETE path: "/orders/{orig_cl_ord_id}"
+        message CancelReplaceRequest -> method: PUT path: "/orders/{orig_cl_ord_id}"
+        message ExecutionReport -> method: SSE path: "/accounts/{account}/executions"
+        message AccountSummary -> method: GET path: "/accounts/{account}"
+        message MarketDataSnapshot -> method: GET path: "/marketdata/{symbol}"
+    }
+}

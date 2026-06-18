@@ -1,0 +1,19 @@
+[package]
+name = "unip-exchange-sim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UNIP-native exchange simulator (killer demo server)"
+
+[dependencies]
+unip-core = { workspace = true }
+tokio = { workspace = true }
+quinn = { workspace = true }
+rustls = { workspace = true }
+rcgen = { workspace = true }
+ciborium = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }

@@ -1,0 +1,20 @@
+[package]
+name = "unip-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UNIP core protocol: frame parser, channel manager, session, QUIC transport"
+
+[dependencies]
+bytes = { workspace = true }
+byteorder = { workspace = true }
+thiserror = { workspace = true }
+ciborium = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+quinn = { workspace = true }
+rustls = { workspace = true }
+rcgen = { workspace = true }
+uuid = { workspace = true }
+bitflags = { workspace = true }

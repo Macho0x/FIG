@@ -1,0 +1,19 @@
+[package]
+name = "unip-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "UNIP-native trading client (killer demo client)"
+
+[dependencies]
+unip-core = { workspace = true }
+tokio = { workspace = true }
+quinn = { workspace = true }
+rustls = { workspace = true }
+ciborium = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+uuid = { workspace = true }
