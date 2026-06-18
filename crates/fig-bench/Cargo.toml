@@ -1,0 +1,30 @@
+[package]
+name = "fig-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FIG protocol benchmarks"
+
+[dependencies]
+fig-core = { workspace = true }
+fig-gateways = { workspace = true }
+fig-exchange-sim = { path = "../fig-exchange-sim" }
+criterion = { version = "0.5", features = ["html_reports"] }
+serde = { workspace = true }
+ciborium = { workspace = true }
+
+[[bench]]
+name = "frame_bench"
+harness = false
+
+[[bench]]
+name = "codec_bench"
+harness = false
+
+[[bench]]
+name = "gateway_bench"
+harness = false
+
+[[bench]]
+name = "matching_bench"
+harness = false

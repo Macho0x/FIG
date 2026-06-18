@@ -6,6 +6,7 @@ license.workspace = true
 description = "FIG Schema Language parser and multi-target codegen"
 
 [dependencies]
+clap = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

@@ -2,9 +2,11 @@
 resolver = "2"
 members = [
     "crates/fig-core",
+    "crates/fig-gateways",
     "crates/fig-usl",
     "crates/fig-exchange-sim",
     "crates/fig-cli",
+    "crates/fig-bench",
 ]
 
 [workspace.package]
@@ -13,7 +15,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Macho0x/fig"
 homepage = "https://github.com/Macho0x/fig"
-description = "FIG — Unified Network Interchange Protocol"
+description = "FIG — Fast Interchange Gateway"
 
 [workspace.dependencies]
 # Async runtime
@@ -36,12 +38,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 # Misc
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 bitflags = "2"
 # Internal crates
 fig-core = { path = "crates/fig-core" }
+fig-gateways = { path = "crates/fig-gateways" }
 
 [profile.release]
 opt-level = 3

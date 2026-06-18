@@ -5,6 +5,8 @@
 
 pub mod matching;
 pub mod orderbook;
+pub mod server;
 
 pub use matching::MatchingEngine;
 pub use orderbook::OrderBook;
+pub use server::*;

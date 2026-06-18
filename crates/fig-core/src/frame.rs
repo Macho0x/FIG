@@ -29,7 +29,7 @@ use std::io;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::error::FrameError;
-use crate::ext::{self, Extension};
+use crate::ext::{self, Extension, ExtensionTag};
 use crate::FrameResult;
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -299,6 +299,12 @@ impl Frame {
     pub fn with_ack_requested(mut self) -> Self {
         self.flags |= Flags::ACK_REQUESTED;
         self
+    }
+
+    /// Create a FLOW_CONTROL frame granting credits for a channel.
+    pub fn flow_credit(channel_id: u16, credits: u32) -> Self {
+        Self::new(FrameType::FlowControl, channel_id)
+            .with_extension(Extension::u32(ExtensionTag::FlowControlCredit, credits))
     }
 
     /// Get the total encoded size of this frame in bytes.

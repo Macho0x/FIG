@@ -10,18 +10,31 @@
 //! etcd, or a durable database.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::SessionError;
+
+/// Internal struct for resumption token serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ResumptionTokenData {
+    session_id: Uuid,
+    auth_token: Option<Vec<u8>>,
+    channel_ids: Vec<u16>,
+    last_seq_sent: u32,
+    last_seq_recv: u32,
+    created_at: u64,
+}
 
 /// A durable, migratable session identified by SESSION_ID.
 ///
 /// Sessions track active channels, sequence numbers, and
 /// authentication state across connections.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     /// Unique session identifier (UUID v4).
     pub session_id: Uuid,
@@ -96,6 +109,52 @@ impl Session {
     pub fn record_recv_seq(&mut self, seq: u32) {
         self.last_seq_recv = self.last_seq_recv.max(seq);
         self.touch();
+    }
+
+    /// Create a resumption token for 0-RTT reconnection.
+    ///
+    /// The token contains the session ID, auth token, and channel state,
+    /// encoded as CBOR. This allows re-establishing a session without
+    /// a full handshake.
+    pub fn resumption_token(&self) -> Result<Vec<u8>, SessionError> {
+        let data = ResumptionTokenData {
+            session_id: self.session_id,
+            auth_token: self.auth_token.clone(),
+            channel_ids: self.channels.clone(),
+            last_seq_sent: self.last_seq_sent,
+            last_seq_recv: self.last_seq_recv,
+            created_at: self.created_at,
+        };
+        crate::codec::encode_cbor(&data)
+            .map_err(|e| SessionError::SerializationError(e.to_string()))
+    }
+
+    /// Restore a session from a resumption token.
+    ///
+    /// The token must have been created by [`Session::resumption_token`].
+    pub fn from_resumption_token(token: &[u8]) -> Result<Session, SessionError> {
+        let data: ResumptionTokenData = crate::codec::decode_cbor(token)
+            .map_err(|_| SessionError::InvalidResumptionToken)?;
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Ok(Session {
+            session_id: data.session_id,
+            auth_token: data.auth_token,
+            channels: data.channel_ids,
+            last_seq_sent: data.last_seq_sent,
+            last_seq_recv: data.last_seq_recv,
+            created_at: data.created_at,
+            last_active_at: now,
+        })
+    }
+
+    /// Check if this session can be resumed (has active channels).
+    pub fn can_resume(&self) -> bool {
+        !self.channels.is_empty()
     }
 }
 
@@ -193,6 +252,73 @@ impl SessionStore for MemorySessionStore {
         } else {
             Err(SessionError::SessionNotFound(session.session_id))
         }
+    }
+}
+
+/// Persistent file-based session store.
+///
+/// Each session is stored as a JSON file at `<dir>/<session-id>.json`.
+/// Suitable for single-node deployments. For multi-node deployments,
+/// use a shared Redis or database-backed store instead.
+pub struct FileSessionStore {
+    dir: PathBuf,
+}
+
+impl FileSessionStore {
+    /// Create a new file-based session store.
+    ///
+    /// Creates the directory if it doesn't exist.
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        let dir = dir.into();
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            tracing::warn!("Failed to create session directory {:?}: {}", dir, e);
+        }
+        FileSessionStore { dir }
+    }
+
+    /// Return the file path for a given session ID.
+    fn file_path(&self, id: &Uuid) -> PathBuf {
+        self.dir.join(format!("{}.json", id))
+    }
+}
+
+impl SessionStore for FileSessionStore {
+    fn get(&self, id: &Uuid) -> Result<Option<Session>, SessionError> {
+        let path = self.file_path(id);
+        if !path.exists() {
+            return Ok(None);
+        }
+        let data = std::fs::read(&path).map_err(SessionError::IoError)?;
+        let session: Session = serde_json::from_slice(&data)
+            .map_err(|e| SessionError::SerializationError(e.to_string()))?;
+        Ok(Some(session))
+    }
+
+    fn put(&self, session: &Session) -> Result<(), SessionError> {
+        let path = self.file_path(&session.session_id);
+        let data = serde_json::to_vec(session)
+            .map_err(|e| SessionError::SerializationError(e.to_string()))?;
+        std::fs::write(&path, &data).map_err(SessionError::IoError)?;
+        Ok(())
+    }
+
+    fn delete(&self, id: &Uuid) -> Result<(), SessionError> {
+        let path = self.file_path(id);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(SessionError::IoError)?;
+        }
+        Ok(())
+    }
+
+    fn update(&self, session: &Session) -> Result<(), SessionError> {
+        let path = self.file_path(&session.session_id);
+        if !path.exists() {
+            return Err(SessionError::SessionNotFound(session.session_id));
+        }
+        let data = serde_json::to_vec(session)
+            .map_err(|e| SessionError::SerializationError(e.to_string()))?;
+        std::fs::write(&path, &data).map_err(SessionError::IoError)?;
+        Ok(())
     }
 }
 
@@ -350,5 +476,202 @@ mod tests {
         let s = Session::default();
         assert!(s.auth_token.is_none());
         assert!(s.channels.is_empty());
+    }
+
+    // ── Resumption tokens ─────────────────────────────────────
+
+    #[test]
+    fn test_resumption_token_round_trip() {
+        let mut s = Session::new();
+        s.add_channel(1);
+        s.add_channel(2);
+        s.record_sent_seq(42);
+        s.record_recv_seq(99);
+        s.auth_token = Some(b"test-token".to_vec());
+
+        let token = s.resumption_token().unwrap();
+        assert!(!token.is_empty());
+
+        let restored = Session::from_resumption_token(&token).unwrap();
+        assert_eq!(restored.session_id, s.session_id);
+        assert_eq!(restored.auth_token, s.auth_token);
+        assert_eq!(restored.channels, s.channels);
+        assert_eq!(restored.last_seq_sent, s.last_seq_sent);
+        assert_eq!(restored.last_seq_recv, s.last_seq_recv);
+        assert_eq!(restored.created_at, s.created_at);
+    }
+
+    #[test]
+    fn test_resumption_token_no_channels() {
+        let s = Session::new();
+        let token = s.resumption_token().unwrap();
+        let restored = Session::from_resumption_token(&token).unwrap();
+        assert_eq!(restored.channels, Vec::<u16>::new());
+    }
+
+    #[test]
+    fn test_can_resume() {
+        let mut s = Session::new();
+        assert!(!s.can_resume());
+
+        s.add_channel(5);
+        assert!(s.can_resume());
+
+        s.remove_channel(5);
+        assert!(!s.can_resume());
+    }
+
+    #[test]
+    fn test_from_resumption_token_invalid() {
+        let garbage = b"this is not a valid resumption token";
+        let result = Session::from_resumption_token(garbage);
+        assert!(result.is_err());
+    }
+
+    // ── FileSessionStore CRUD ────────────────────────────────
+
+    fn temp_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("fig-test-{}", Uuid::new_v4()));
+        dir
+    }
+
+    #[test]
+    fn test_file_store_create_and_retrieve() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let session = Session::new();
+
+        store.put(&session).unwrap();
+        assert!(dir.join(format!("{}.json", session.session_id)).exists());
+
+        let retrieved = store.get(&session.session_id).unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().session_id, session.session_id);
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_update() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let mut session = Session::new();
+        store.put(&session).unwrap();
+
+        session.add_channel(42);
+        store.update(&session).unwrap();
+
+        let retrieved = store.get(&session.session_id).unwrap().unwrap();
+        assert_eq!(retrieved.channels, vec![42]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_update_nonexistent() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let session = Session::new();
+        let result = store.update(&session);
+        assert!(result.is_err());
+        match result {
+            Err(SessionError::SessionNotFound(_)) => {} // expected
+            _ => panic!("expected SessionNotFound"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_delete() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let session = Session::new();
+        let id = session.session_id;
+
+        store.put(&session).unwrap();
+        assert!(dir.join(format!("{}.json", id)).exists());
+
+        store.delete(&id).unwrap();
+        assert!(!dir.join(format!("{}.json", id)).exists());
+        assert!(store.get(&id).unwrap().is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_get_nonexistent() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let fake_id = Uuid::new_v4();
+        let result = store.get(&fake_id).unwrap();
+        assert!(result.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_multiple_sessions() {
+        let dir = temp_dir();
+        let store = FileSessionStore::new(&dir);
+        let s1 = Session::new();
+        let s2 = Session::new();
+        let s3 = Session::new();
+
+        store.put(&s1).unwrap();
+        store.put(&s2).unwrap();
+        store.put(&s3).unwrap();
+
+        // All files should exist
+        assert!(dir.join(format!("{}.json", s1.session_id)).exists());
+        assert!(dir.join(format!("{}.json", s2.session_id)).exists());
+        assert!(dir.join(format!("{}.json", s3.session_id)).exists());
+
+        store.delete(&s2.session_id).unwrap();
+
+        assert!(store.get(&s1.session_id).unwrap().is_some());
+        assert!(store.get(&s2.session_id).unwrap().is_none());
+        assert!(store.get(&s3.session_id).unwrap().is_some());
+
+        // File for s2 should be gone
+        assert!(!dir.join(format!("{}.json", s2.session_id)).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_persistence() {
+        let dir = temp_dir();
+        let session = Session::new();
+        let id = session.session_id;
+
+        {
+            let store = FileSessionStore::new(&dir);
+            store.put(&session).unwrap();
+        }
+
+        // Create a new store pointing to the same directory
+        {
+            let store = FileSessionStore::new(&dir);
+            let retrieved = store.get(&id).unwrap();
+            assert!(retrieved.is_some());
+            assert_eq!(retrieved.unwrap().session_id, id);
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_creates_dir() {
+        let dir = temp_dir();
+        // Ensure the directory does not exist yet
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+        assert!(!dir.exists());
+
+        let _store = FileSessionStore::new(&dir);
+        assert!(dir.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

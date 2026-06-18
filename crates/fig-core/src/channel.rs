@@ -69,10 +69,19 @@ pub struct Channel {
     pub last_sent_seq: u32,
     pub last_recv_seq: u32,
     pub schema_id: Option<u8>,
+    /// Credits remaining for sending frames on this channel.
+    pub credits_available: u32,
+    /// Total credits granted by the peer.
+    pub credits_granted: u32,
+    /// Initial credit window size.
+    pub initial_credits: u32,
 }
 
 impl Channel {
     /// Create a new channel with the given ID and mode.
+    ///
+    /// New channels start with no credits granted. Credits are
+    /// granted via FLOW_CONTROL frames from the peer.
     pub fn new(channel_id: u16, mode: ChannelMode, schema_id: Option<u8>) -> Self {
         Self {
             channel_id,
@@ -81,7 +90,46 @@ impl Channel {
             last_sent_seq: 0,
             last_recv_seq: 0,
             schema_id,
+            credits_available: 0,
+            credits_granted: 0,
+            initial_credits: 0,
         }
+    }
+
+    /// Check if the channel has enough credits to send a frame.
+    pub fn has_credits(&self) -> bool {
+        self.credits_available > 0
+    }
+
+    /// Consume one credit for sending a frame.
+    ///
+    /// Returns `Err(CreditExhausted)` if no credits are available.
+    pub fn consume_credit(&mut self) -> Result<(), ChannelError> {
+        if self.credits_available == 0 {
+            return Err(ChannelError::CreditExhausted(self.channel_id));
+        }
+        self.credits_available -= 1;
+        Ok(())
+    }
+
+    /// Grant credits from the peer (called when receiving a FLOW_CONTROL frame).
+    pub fn grant_credits(&mut self, count: u32) {
+        self.credits_available = self.credits_available.saturating_add(count);
+        self.credits_granted = self.credits_granted.saturating_add(count);
+        if self.initial_credits == 0 {
+            self.initial_credits = count;
+        }
+    }
+
+    /// Get the number of credits to advertise to the peer.
+    ///
+    /// Returns the number of credits needed to refill the window
+    /// to the initial credit window size.
+    pub fn credits_to_advertise(&self) -> u32 {
+        if self.initial_credits == 0 || self.credits_available >= self.initial_credits {
+            return 0;
+        }
+        self.initial_credits.saturating_sub(self.credits_available)
     }
 }
 
@@ -475,5 +523,108 @@ mod tests {
         // Since we've opened every possible channel, the next attempt
         // should wrap to an already-occupied ID and be skipped, ultimately
         // failing when wrapping to 0.
+    }
+
+    // ── Flow control (credits) ────────────────────────────────
+
+    #[test]
+    fn test_channel_no_credits_by_default() {
+        let ch = Channel::new(1, ChannelMode::Stateless, None);
+        assert!(!ch.has_credits());
+        assert_eq!(ch.credits_available, 0);
+        assert_eq!(ch.credits_granted, 0);
+        assert_eq!(ch.initial_credits, 0);
+    }
+
+    #[test]
+    fn test_grant_credits() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+        ch.grant_credits(10);
+        assert!(ch.has_credits());
+        assert_eq!(ch.credits_available, 10);
+        assert_eq!(ch.credits_granted, 10);
+        assert_eq!(ch.initial_credits, 10);
+    }
+
+    #[test]
+    fn test_consume_credit_success() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+        ch.grant_credits(5);
+
+        for _ in 0..5 {
+            assert!(ch.consume_credit().is_ok());
+        }
+
+        // No more credits
+        assert!(!ch.has_credits());
+        assert_eq!(ch.credits_available, 0);
+        assert_eq!(ch.credits_granted, 5);
+    }
+
+    #[test]
+    fn test_consume_credit_exhausted() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+        assert!(!ch.has_credits());
+
+        let result = ch.consume_credit();
+        assert!(result.is_err());
+        match result {
+            Err(ChannelError::CreditExhausted(1)) => {} // expected
+            _ => panic!("expected CreditExhausted"),
+        }
+    }
+
+    #[test]
+    fn test_multiple_credit_grants() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+        ch.grant_credits(5);
+        assert_eq!(ch.initial_credits, 5);
+
+        // Consume some
+        ch.consume_credit().unwrap();
+        ch.consume_credit().unwrap();
+
+        // Grant more
+        ch.grant_credits(3);
+        assert_eq!(ch.credits_available, 6); // 5 - 2 + 3 = 6
+        assert_eq!(ch.credits_granted, 8); // 5 + 3 = 8
+    }
+
+    #[test]
+    fn test_credits_to_advertise() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+
+        // No initial credits set — nothing to advertise
+        assert_eq!(ch.credits_to_advertise(), 0);
+
+        ch.grant_credits(10);
+        // Full window — nothing to advertise
+        assert_eq!(ch.credits_to_advertise(), 0);
+
+        // Consume 3
+        for _ in 0..3 {
+            ch.consume_credit().unwrap();
+        }
+        assert_eq!(ch.credits_to_advertise(), 3); // refill 3
+
+        // Consume all
+        for _ in 0..7 {
+            ch.consume_credit().unwrap();
+        }
+        assert_eq!(ch.credits_to_advertise(), 10); // refill to initial window
+
+        // Grant more to increase window
+        ch.grant_credits(5);
+        // initial_credits stays at 10 (first grant), available is 5
+        assert_eq!(ch.credits_to_advertise(), 5);
+    }
+
+    #[test]
+    fn test_credits_to_advertise_exceeds_window() {
+        let mut ch = Channel::new(1, ChannelMode::Session, None);
+        ch.grant_credits(10);
+        // credits already exceed initial window — nothing to advertise
+        ch.grant_credits(5);
+        assert_eq!(ch.credits_to_advertise(), 0);
     }
 }

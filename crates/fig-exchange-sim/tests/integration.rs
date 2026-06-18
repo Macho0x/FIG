@@ -1,0 +1,409 @@
+//! Integration tests for the FIG Exchange Simulator.
+//!
+//! Each test:
+//! 1. Starts the server on a random port
+//! 2. Creates a client QUIC endpoint
+//! 3. Connects to the server
+//! 4. Opens a bidirectional stream
+//! 5. Sends FIG frames
+//! 6. Reads response frames
+//! 7. Verifies the response
+
+use std::sync::Arc;
+
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
+use fig_core::messages::*;
+use fig_core::{client_config, codec};
+
+use fig_exchange_sim::server::run_server;
+
+/// Helper: read all frames from a receive stream.
+async fn read_all_frames(recv: &mut quinn::RecvStream) -> anyhow::Result<Vec<Frame>> {
+    let mut decoder = FrameDecoder::new();
+    let mut buf = vec![0u8; 4096];
+    loop {
+        match recv.read(&mut buf).await? {
+            Some(n) => {
+                decoder.feed(&buf[..n]);
+            }
+            None => break,
+        }
+    }
+    // Decode all complete frames remaining in the buffer
+    let frames: Result<Vec<Frame>, _> = decoder.decode_all().into_iter().collect();
+    Ok(frames?)
+}
+
+/// Helper: setup a client connection to the given server address.
+async fn connect_client(
+    server_addr: std::net::SocketAddr,
+) -> anyhow::Result<quinn::Connection> {
+    let mut client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
+    let client_cfg = client_config().map_err(|e| anyhow::anyhow!("client_config: {}", e))?;
+    let conn = client_ep
+        .connect_with(client_cfg, server_addr, "localhost")?
+        .await?;
+    Ok(conn)
+}
+
+/// Helper: send a frame on a bidirectional stream and get the responses.
+async fn send_and_receive(
+    conn: &quinn::Connection,
+    frame: Frame,
+) -> anyhow::Result<Vec<Frame>> {
+    let (mut send, mut recv) = conn.open_bi().await?;
+    let encoded = frame.encode()?;
+    send.write_all(&encoded).await?;
+    send.finish()?;
+    let responses = read_all_frames(&mut recv).await?;
+    Ok(responses)
+}
+
+/// Helper: send multiple frames on a single bidirectional stream and get all responses.
+async fn send_multiple_and_receive(
+    conn: &quinn::Connection,
+    frames: Vec<Frame>,
+) -> anyhow::Result<Vec<Frame>> {
+    let (mut send, mut recv) = conn.open_bi().await?;
+    for frame in &frames {
+        let encoded = frame.encode()?;
+        send.write_all(&encoded).await?;
+    }
+    send.finish()?;
+    let responses = read_all_frames(&mut recv).await?;
+    Ok(responses)
+}
+
+/// Build a NewOrderSingle message.
+fn make_order(
+    cl_ord_id: &str,
+    side: Side,
+    symbol: &str,
+    order_type: OrderType,
+    price: Option<f64>,
+    qty: f64,
+) -> NewOrderSingle {
+    NewOrderSingle {
+        cl_ord_id: cl_ord_id.to_string(),
+        side,
+        order_qty: Quantity(qty),
+        price: price.map(Price),
+        symbol: symbol.to_string(),
+        order_type,
+        time_in_force: TimeInForce::Day,
+        expire_time: None,
+        account: Some("TEST".to_string()),
+        strategy_id: None,
+    }
+}
+
+/// Helper: build a request frame for a trading order.
+fn make_order_frame(channel_id: u16, order: &NewOrderSingle) -> anyhow::Result<Frame> {
+    let payload = codec::encode_cbor(order)?;
+    Ok(Frame::new(FrameType::Request, channel_id)
+        .with_seq(1)
+        .with_schema_id(1) // TRADING_ORDERS
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/TEST/orders",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+        .with_payload(payload))
+}
+
+/// Helper: build a subscribe frame.
+fn make_subscribe_frame(channel_id: u16, routing_key: &str) -> Frame {
+    Frame::new(FrameType::Subscribe, channel_id)
+        .with_seq(1)
+        .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
+}
+
+/// Helper: build an account query request frame.
+fn make_account_query_frame(channel_id: u16, account: &str) -> Frame {
+    Frame::new(FrameType::Request, channel_id)
+        .with_seq(1)
+        .with_schema_id(1) // TRADING_ORDERS — required for routing to handle_trading_request
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            &format!("accounts/{}", account),
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════
+
+/// Test 1: Order entry produces an ExecutionReport on a fill.
+#[tokio::test]
+async fn test_order_entry_execution_report() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    // Start server on random port
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    // Connect client
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    // Set up: place a sell limit order to provide liquidity, then a market buy
+    let sell = make_order("SELL-1", Side::Sell, "AAPL", OrderType::Limit, Some(100.00), 10.0);
+    let buy = make_order("BUY-1", Side::Buy, "AAPL", OrderType::Market, None, 10.0);
+
+    let sell_frame = make_order_frame(1, &sell).unwrap();
+    let buy_frame = make_order_frame(1, &buy).unwrap();
+
+    let responses = send_multiple_and_receive(&conn, vec![sell_frame, buy_frame])
+        .await
+        .expect("send/receive");
+
+    // The sell order rests (no fill), the buy market order fills.
+    // Find the fill response (StreamItem with ExecutionReport)
+    let fill_response = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem)
+        .expect("should have a StreamItem (fill) response");
+
+    let report: ExecutionReport =
+        codec::decode_cbor(&fill_response.payload).expect("decode ExecutionReport");
+
+    assert_eq!(report.exec_type, ExecType::Fill);
+    assert_eq!(report.ord_status, OrdStatus::Filled);
+    assert_eq!(report.symbol, "AAPL");
+    assert!(report.last_qty.is_some());
+    assert!(report.last_price.is_some());
+
+    drop(conn);
+    drop(endpoint);
+}
+
+/// Test 2: Market data subscription returns a MarketDataSnapshot.
+#[tokio::test]
+async fn test_market_data_subscription() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let sub_frame = make_subscribe_frame(1, "marketdata.AAPL.quotes");
+    let responses = send_and_receive(&conn, sub_frame)
+        .await
+        .expect("send/receive");
+
+    // Should get a StreamItem with MarketDataSnapshot
+    let snapshot_response = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem || f.frame_type == FrameType::Response)
+        .expect("should have a response");
+
+    // It could be a StreamItem with the snapshot, or just a Response (ack) if book not found
+    if snapshot_response.frame_type == FrameType::StreamItem && !snapshot_response.payload.is_empty() {
+        let snapshot: MarketDataSnapshot =
+            codec::decode_cbor(&snapshot_response.payload).expect("decode MarketDataSnapshot");
+        assert_eq!(snapshot.symbol, "AAPL");
+    }
+    // If it's just a Response ack, that's fine too — no book exists yet
+
+    drop(conn);
+    drop(endpoint);
+}
+
+/// Test 3: Account query returns an AccountSummary.
+#[tokio::test]
+async fn test_account_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let query_frame = make_account_query_frame(1, "TEST-ACCT");
+    let responses = send_and_receive(&conn, query_frame)
+        .await
+        .expect("send/receive");
+
+    assert!(!responses.is_empty(), "should have at least one response");
+
+    // Look for a Response frame with AccountSummary
+    for resp in &responses {
+        if resp.frame_type == FrameType::Response && !resp.payload.is_empty() {
+            if let Ok(summary) = codec::decode_cbor::<AccountSummary>(&resp.payload) {
+                assert_eq!(summary.account, "TEST-ACCT");
+                return; // Success
+            }
+        }
+    }
+
+    // If no Response with payload, check for StreamError (server might not handle this path correctly)
+    panic!(
+        "Expected AccountSummary response, got {} frames: {:?}",
+        responses.len(),
+        responses.iter().map(|f| format!("{}", f.frame_type)).collect::<Vec<_>>()
+    );
+}
+
+/// Test 4: Ping-Pong control exchange.
+#[tokio::test]
+async fn test_ping_pong() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let ping = Frame::ping();
+    let responses = send_and_receive(&conn, ping)
+        .await
+        .expect("send/receive");
+
+    assert!(!responses.is_empty(), "should have a PONG response");
+
+    let pong = &responses[0];
+    assert_eq!(
+        pong.frame_type,
+        FrameType::Control,
+        "response should be a Control frame"
+    );
+
+    // Verify it's a PONG (first payload byte is Pong subtype)
+    if !pong.payload.is_empty() {
+        assert_eq!(
+            pong.payload[0],
+            ControlSubtype::Pong.code(),
+            "control subtype should be Pong"
+        );
+    }
+
+    drop(conn);
+    drop(endpoint);
+}
+
+/// Test 5: Multiple orders match and produce fills.
+#[tokio::test]
+async fn test_multiple_orders_matching() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    // Sell limit order at 100.00 qty 50
+    let sell = make_order("SELL-M-1", Side::Sell, "AAPL", OrderType::Limit, Some(100.00), 50.0);
+    // Buy limit order at 100.00 qty 50 (crosses the spread)
+    let buy = make_order("BUY-M-1", Side::Buy, "AAPL", OrderType::Limit, Some(100.00), 50.0);
+
+    let sell_frame = make_order_frame(1, &sell).unwrap();
+    let buy_frame = make_order_frame(1, &buy).unwrap();
+
+    let responses = send_multiple_and_receive(&conn, vec![sell_frame, buy_frame])
+        .await
+        .expect("send/receive");
+
+    // The sell rests (no fill), the buy should fill
+    // Find the fill response (StreamItem with ExecutionReport)
+    let fill_response = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem)
+        .expect("should have a StreamItem (fill) response");
+
+    let report: ExecutionReport =
+        codec::decode_cbor(&fill_response.payload).expect("decode ExecutionReport");
+
+    assert_eq!(
+        report.exec_type, ExecType::Fill,
+        "buy order should be fully filled"
+    );
+    assert_eq!(report.ord_status, OrdStatus::Filled);
+
+    let fill_price = report
+        .last_price
+        .as_ref()
+        .expect("should have last_price");
+    assert!(
+        (fill_price.0 - 100.00).abs() < 0.001,
+        "fill price should be 100.00, got {}",
+        fill_price.0
+    );
+
+    let fill_qty = report
+        .last_qty
+        .as_ref()
+        .expect("should have last_qty");
+    assert!(
+        (fill_qty.0 - 50.0).abs() < 0.001,
+        "fill qty should be 50.0, got {}",
+        fill_qty.0
+    );
+
+    drop(conn);
+    drop(endpoint);
+}
+
+/// Test 6: Channel isolation — responses come back on the correct streams.
+#[tokio::test]
+async fn test_channel_isolation() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+
+    let conn = Arc::new(connect_client(server_addr).await.expect("client connect"));
+
+    // Open two separate bidirectional streams
+    let (mut send1, mut recv1) = conn.open_bi().await.expect("open stream 1");
+    let (mut send2, mut recv2) = conn.open_bi().await.expect("open stream 2");
+
+    // Stream 1: send a market order (will likely get "No liquidity" → StreamError)
+    let buy = make_order("ISO-BUY", Side::Buy, "AAPL", OrderType::Market, None, 10.0);
+    let order_frame = make_order_frame(1, &buy).unwrap();
+    let encoded1 = order_frame.encode().unwrap();
+    send1.write_all(&encoded1).await.unwrap();
+    send1.finish().unwrap();
+
+    // Stream 2: send an account query
+    let query_frame = make_account_query_frame(2, "ISO-ACCT");
+    let encoded2 = query_frame.encode().unwrap();
+    send2.write_all(&encoded2).await.unwrap();
+    send2.finish().unwrap();
+
+    // Read responses from both streams concurrently
+    let (resp1, resp2) = tokio::join!(
+        read_all_frames(&mut recv1),
+        read_all_frames(&mut recv2),
+    );
+
+    let resp1 = resp1.expect("read stream 1");
+    let resp2 = resp2.expect("read stream 2");
+
+    // Stream 1 response should NOT contain account data
+    // Stream 2 response should contain AccountSummary
+    let has_account_on_stream2 = resp2.iter().any(|f| {
+        f.frame_type == FrameType::Response
+            && !f.payload.is_empty()
+            && codec::decode_cbor::<AccountSummary>(&f.payload).is_ok()
+    });
+    assert!(
+        has_account_on_stream2,
+        "stream 2 should have AccountSummary response"
+    );
+
+    // Verify stream 1 does NOT have account data
+    let has_account_on_stream1 = resp1.iter().any(|f| {
+        f.frame_type == FrameType::Response
+            && !f.payload.is_empty()
+            && codec::decode_cbor::<AccountSummary>(&f.payload).is_ok()
+    });
+    assert!(
+        !has_account_on_stream1,
+        "stream 1 should NOT have AccountSummary (channel isolation)"
+    );
+
+    drop(conn);
+    drop(endpoint);
+}

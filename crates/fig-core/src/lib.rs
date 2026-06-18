@@ -13,6 +13,7 @@
 //! - **Session** model with pluggable storage backends
 //! - **QUIC Transport** wrapper with TLS certificate generation
 //! - **CBOR Codec** for self-describing payload encoding
+//! - **SBE Codec** for zero-alloc binary encoding of trading messages
 //! - **Error types** for frame, channel, and session operations
 //!
 //! # Example
@@ -60,21 +61,30 @@
 //! | [`session`] | Durable session model with pluggable storage backends |
 //! | [`transport`] | QUIC transport wrapper, TLS cert generation, ALPN |
 //! | [`codec`] | CBOR encode/decode helpers for self-describing payloads |
+//! | [`sbe`] | SBE binary encoder/decoder for trading messages (zero-alloc) |
 //! | [`error`] | Error types: `FrameError`, `ChannelError`, `SessionError` |
+//! | [`auth`] | Authentication methods: token-based and mTLS |
+//! | [`observability`] | Tracing spans and atomic metrics counters |
 
+pub mod auth;
 pub mod channel;
 pub mod codec;
 pub mod error;
 pub mod ext;
 pub mod frame;
 pub mod messages;
+pub mod observability;
+pub mod sbe;
 pub mod session;
 pub mod transport;
 
+pub use auth::*;
 pub use channel::*;
 pub use codec::*;
 pub use error::*;
 pub use ext::*;
 pub use frame::*;
+pub use observability::*;
+pub use sbe::*;
 pub use session::*;
 pub use transport::*;

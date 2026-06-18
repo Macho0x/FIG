@@ -63,6 +63,9 @@ pub enum ChannelError {
 
     #[error("channel ID exhausted: no available channel IDs")]
     ChannelIdExhausted,
+
+    #[error("no credits available on channel {0}")]
+    CreditExhausted(u16),
 }
 
 /// Errors related to session management.
@@ -79,6 +82,15 @@ pub enum SessionError {
 
     #[error("authentication failed: {0}")]
     AuthFailed(String),
+
+    #[error("session I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("session serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("invalid resumption token")]
+    InvalidResumptionToken,
 }
 
 /// Convenience type alias for frame operations.

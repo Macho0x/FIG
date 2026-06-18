@@ -80,12 +80,14 @@ pub enum ExtensionTag {
     FlowControlCredit,
     /// Authorization scope: `trading:orders:write`
     Scope,
+    /// Authentication method identifier
+    AuthMethod,
     /// Unknown/custom extension tag
     Unknown(u16),
 }
 
 /// Mapping from ExtensionTag variants to their numeric codes.
-const TAG_CODES: [(ExtensionTag, u16); 29] = [
+const TAG_CODES: [(ExtensionTag, u16); 30] = [
     (ExtensionTag::RequestUri, 0x0001),
     (ExtensionTag::ResponseUri, 0x0002),
     (ExtensionTag::ContentType, 0x0003),
@@ -115,6 +117,7 @@ const TAG_CODES: [(ExtensionTag, u16); 29] = [
     (ExtensionTag::AckRangeEnd, 0x001B),
     (ExtensionTag::FlowControlCredit, 0x001C),
     (ExtensionTag::Scope, 0x001D),
+    (ExtensionTag::AuthMethod, 0x001E),
 ];
 
 impl ExtensionTag {
@@ -176,6 +179,7 @@ impl From<u16> for ExtensionTag {
             0x001B => ExtensionTag::AckRangeEnd,
             0x001C => ExtensionTag::FlowControlCredit,
             0x001D => ExtensionTag::Scope,
+            0x001E => ExtensionTag::AuthMethod,
             other => ExtensionTag::Unknown(other),
         }
     }
@@ -409,7 +413,7 @@ fn interpret_extension_value(tag_code: u16, bytes: &[u8]) -> ExtensionValue {
     match tag_code {
         // Text tags
         0x0001 | 0x0002 | 0x0003 | 0x000C | 0x000D | 0x000E | 0x0010 | 0x0011 |
-        0x0014 | 0x0015 | 0x0016 | 0x0017 | 0x0018 => {
+        0x0014 | 0x0015 | 0x0016 | 0x0017 | 0x0018 | 0x001E => {
             ExtensionValue::Text(String::from_utf8_lossy(bytes).into_owned())
         }
         // U16 tags

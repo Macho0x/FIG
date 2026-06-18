@@ -7,7 +7,7 @@
 
 ## 1. Introduction
 
-FIG (Unified Network Interchange Protocol) is a binary, multiplexed,
+FIG (Fast Interchange Gateway) is a binary, multiplexed,
 schema-native protocol designed for high-performance trading systems and
 real-time financial applications. It runs over QUIC and unifies the
 interaction patterns of FIX (session-oriented order flow), REST
