@@ -34,10 +34,18 @@ pub mod paths {
     pub const ACCOUNT: &str = "accounts/{account}";
 }
 
+#[derive(Clone)]
+pub struct MarketSubscription {
+    pub channel_id: u16,
+    pub routing_key: String,
+    pub symbol: String,
+}
+
 pub struct ExchangeState {
     pub engine: Mutex<MatchingEngine>,
     pub sessions: MemorySessionStore,
     pub file_sessions: FileSessionStore,
+    pub market_subscriptions: Mutex<Vec<MarketSubscription>>,
 }
 
 /// Start the FIG exchange server on the given address.
@@ -54,8 +62,13 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
         .map_err(|e| anyhow::anyhow!("Failed to generate cert: {}", e))?;
 
     // Configure TREE server using fig-core transport
-    let server_config = transport::server_config(cert, key)
-        .map_err(|e| anyhow::anyhow!("Failed to create server config: {}", e))?;
+    let server_config = if std::env::var("FIG_MTLS").ok().as_deref() == Some("1") {
+        transport::server_config_mtls(cert, key)
+            .map_err(|e| anyhow::anyhow!("Failed to create mTLS server config: {}", e))?
+    } else {
+        transport::server_config(cert, key)
+            .map_err(|e| anyhow::anyhow!("Failed to create server config: {}", e))?
+    };
 
     // Bind to UDP socket
     let addr: std::net::SocketAddr = addr.parse()?;
@@ -68,6 +81,7 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
         file_sessions: FileSessionStore::new(
             std::env::temp_dir().join("fig-exchange-sessions"),
         ),
+        market_subscriptions: Mutex::new(Vec::new()),
     });
 
     info!("Waiting for connections...");
@@ -333,6 +347,11 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     ));
                 }
 
+                // Push incremental market data to subscribers on trade
+                if !result.fills.is_empty() {
+                    responses.extend(build_market_data_push(state, &order.symbol).await);
+                }
+
                 responses
             }
             Err(e) => {
@@ -453,38 +472,88 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
 
     info!("Subscribe to: {}", routing_key);
 
-    // For the demo, send a market data snapshot immediately
+    // Register subscription for incremental push updates
     if routing_key.contains("marketdata") || routing_key.contains("quotes") {
-        // Extract symbol from routing key
-        let symbol = routing_key.split('.').nth(1).unwrap_or("AAPL");
+        let symbol = routing_key
+            .split('.')
+            .nth(1)
+            .or_else(|| {
+                routing_key
+                    .split('/')
+                    .find(|s| !s.is_empty() && *s != "marketdata" && *s != "quotes")
+            })
+            .unwrap_or("AAPL")
+            .to_string();
 
-        let engine = state.engine.lock().await;
-        if let Some(book) = engine.get_book(&symbol.to_string()) {
-            let snapshot = MarketDataSnapshot {
-                symbol: symbol.to_string(),
-                exchange: "SIM".to_string(),
-                bids: book.bid_depth(5),
-                asks: book.ask_depth(5),
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as i64,
-            };
+        state.market_subscriptions.lock().await.push(MarketSubscription {
+            channel_id: frame.channel_id,
+            routing_key: routing_key.clone(),
+            symbol: symbol.clone(),
+        });
 
-            if let Ok(payload) = codec::encode_cbor(&snapshot) {
-                return vec![Frame::new(FrameType::StreamItem, frame.channel_id)
-                    .with_seq(frame.stream_seq)
-                    .with_schema_id(schema_id::TRADING_ORDERS)
-                    .with_extension(Extension::text(ExtensionTag::RoutingKey, &routing_key))
-                    .with_payload(payload)];
-            }
-        }
+        // Send initial snapshot
+        return build_market_data_push(state, &symbol)
+            .await
+            .into_iter()
+            .filter(|f| f.channel_id == frame.channel_id)
+            .collect::<Vec<_>>();
     }
 
     // Acknowledge subscription
     vec![Frame::new(FrameType::Response, frame.channel_id)
         .with_seq(frame.stream_seq)
         .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))]
+}
+
+/// Build incremental market data STREAM_ITEM frames for all subscribers of a symbol.
+pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) -> Vec<Frame> {
+    let subs: Vec<MarketSubscription> = state
+        .market_subscriptions
+        .lock()
+        .await
+        .iter()
+        .filter(|s| s.symbol == symbol)
+        .cloned()
+        .collect();
+
+    if subs.is_empty() {
+        return Vec::new();
+    }
+
+    let engine = state.engine.lock().await;
+    let Some(book) = engine.get_book(&symbol.to_string()) else {
+        return Vec::new();
+    };
+
+    let snapshot = MarketDataSnapshot {
+        symbol: symbol.to_string(),
+        exchange: "SIM".to_string(),
+        bids: book.bid_depth(5),
+        asks: book.ask_depth(5),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i64,
+    };
+
+    drop(engine);
+
+    let Ok(payload) = codec::encode_cbor(&snapshot) else {
+        return Vec::new();
+    };
+
+    subs.into_iter()
+        .map(|sub| {
+            Frame::new(FrameType::StreamItem, sub.channel_id)
+                .with_schema_id(schema_id::TRADING_ORDERS)
+                .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
+                .with_extension(Extension::text(
+                    ExtensionTag::ContentType,
+                    "application/cbor",
+                ))
+                .with_payload(payload.clone())
+        })
+        .collect()
 }
 
 pub fn make_error_frame(channel_id: u16, stream_seq: u32, message: &str) -> Frame {

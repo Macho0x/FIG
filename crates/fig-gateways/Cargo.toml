@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "Gateway adapters for FIG — translate FIX, REST, and WebSocket to/from FIG frames"
 
+[[bin]]
+name = "fig-gateway"
+path = "src/bin/fig-gateway.rs"
+
 [dependencies]
 fig-core = { workspace = true }
 serde = { workspace = true }
@@ -12,3 +16,9 @@ serde_json = { workspace = true }
 ciborium = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

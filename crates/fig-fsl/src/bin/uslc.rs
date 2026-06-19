@@ -16,7 +16,7 @@ enum Commands {
     Compile {
         /// The .usl file to compile
         file: PathBuf,
-        /// Target language ("rust" for serde structs, "sbe" for SBE binary codec)
+        /// Target language: rust, sbe, go, proto, sbe-xml, cpp, csharp
         #[arg(long)]
         lang: String,
         /// Output directory for generated code
@@ -55,8 +55,13 @@ fn main() -> anyhow::Result<()> {
             let code = match lang.as_str() {
                 "rust" => fig_fsl::RustCodegen::generate(&schema),
                 "sbe" => fig_fsl::sbe_codegen::generate_sbe(&schema),
+                "go" => fig_fsl::GoCodegen::generate(&schema),
+                "proto" => fig_fsl::ProtoCodegen::generate(&schema),
+                "sbe-xml" => fig_fsl::SbeXmlCodegen::generate(&schema),
+                "cpp" => fig_fsl::CppCodegen::generate(&schema),
+                "csharp" => fig_fsl::CsharpCodegen::generate(&schema),
                 other => anyhow::bail!(
-                    "Unsupported language '{}'. Supported: 'rust' (serde structs), 'sbe' (SBE codec).",
+                    "Unsupported language '{}'. Supported: rust, sbe, go, proto, sbe-xml, cpp, csharp.",
                     other
                 ),
             };
@@ -65,10 +70,16 @@ fn main() -> anyhow::Result<()> {
             std::fs::create_dir_all(&out)
                 .with_context(|| format!("Failed to create output directory: {}", out.display()))?;
 
-            let output_path = out.join(match lang.as_str() {
-                "sbe" => "sbe_generated.rs",
-                _ => "generated.rs",
-            });
+            let output_filename: String = match lang.as_str() {
+                "sbe" => "sbe_generated.rs".to_string(),
+                "go" => "generated.go".to_string(),
+                "proto" => format!("{}.proto", schema.name.replace('.', "_")),
+                "sbe-xml" => format!("{}.sbe.xml", schema.name.replace('.', "_")),
+                "cpp" => "generated.hpp".to_string(),
+                "csharp" => "Generated.cs".to_string(),
+                _ => "generated.rs".to_string(),
+            };
+            let output_path = out.join(output_filename);
             std::fs::write(&output_path, &code)
                 .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
 
