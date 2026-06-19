@@ -1,7 +1,7 @@
 # FIG — Fast Interchange Gateway
 
 > A schema-native, multiplexed, zero-RTT binary protocol for trading systems.
-> Unifies and supersedes FIX, REST, and WebSocket over QUIC.
+> Unifies and supersedes FIX, REST, and WebSocket over TREE.
 
 [![CI](https://github.com/Macho0x/fig/actions/workflows/ci.yml/badge.svg)](https://github.com/Macho0x/fig/actions/workflows/ci.yml)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
@@ -9,7 +9,7 @@
 FIG is a single binary protocol that combines the strengths of FIX (financial
 session semantics, sequence numbers, market data), REST (resource-oriented
 request-response), and WebSocket (bidirectional streaming) into one wire format
-over QUIC. It is designed to compete with FIX/REST/WebSocket as a new standard
+over TREE. It is designed to compete with FIX/REST/WebSocket as a new standard
 on its own merits — with gateway adapters providing backwards compatibility as
 a migration path, not as the protocol's identity.
 
@@ -35,18 +35,18 @@ a migration path, not as the protocol's identity.
 
 | Problem with status quo | FIG solution |
 |---|---|
-| FIX needs 4 RTTs to connect (TCP + TLS + Logon) | QUIC 0-RTT session resumption — 1 RTT new, 0 RTT resumed |
+| FIX needs 4 RTTs to connect (TCP + TLS + Logon) | TREE 0-RTT session resumption — 1 RTT new, 0 RTT resumed |
 | FIX is ASCII, 200-500 bytes header overhead | Binary 16-byte fixed header + compact TLV extensions |
 | REST is stateless — no session, no sequencing | Three channel modes: stateless, session, affinity |
 | WebSocket has no built-in schema or semantics | Schema-native framing — every frame carries a Schema ID |
 | Each protocol needs its own auth, error, observability | One auth model, one error model, one tracing pipeline |
-| No multiplexing — one session per FIX/TCP connection | 65,535 concurrent channels per QUIC connection |
+| No multiplexing — one session per FIX/TCP connection | 65,535 concurrent channels per TREE connection |
 | JSON parsing is 10-50μs; FIX ASCII parsing is 5-20μs | SBE zero-copy decode: ~205ns (25-250x faster) |
 
 ### Key Features
 
 - **One connection, all patterns** — orders, market data, and account queries
-  flow over a single QUIC connection with per-stream flow control.
+  flow over a single TREE connection with per-stream flow control.
 - **Schema-native** — every frame carries a Schema ID; messages are validated
   at the protocol layer, not in application code.
 - **Free observability** — Trace ID, Correlation ID, and nanosecond timestamps
@@ -70,7 +70,7 @@ a migration path, not as the protocol's identity.
 │                        FIG Client                            │
 │  (fig-cli or native app using fig-core)                      │
 └────────────────────────┬────────────────────────────────────┘
-                         │ QUIC (ALPN: fig/1)
+                         │ TREE (ALPN: fig/1)
                          │ 65,535 channels, 0-RTT, TLS 1.3
                          │
 ┌────────────────────────▼────────────────────────────────────┐
@@ -106,7 +106,7 @@ a migration path, not as the protocol's identity.
 
 | Crate | Description | Tests | Key Modules |
 |---|---|---|---|
-| [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, QUIC transport, SBE/CBOR codec, auth, flow control, observability | 118 | `frame`, `ext`, `channel`, `session`, `codec`, `transport`, `sbe`, `auth`, `observability` |
+| [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, flow control, observability | 118 | `frame`, `ext`, `channel`, `session`, `codec`, `transport`, `sbe`, `auth`, `observability` |
 | [`fig-usl`](crates/fig-usl/) | USL (FIG Schema Language) parser, Rust codegen, and `uslc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
 | [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket ↔ FIG translation | 29 | `fix`, `rest`, `ws` |
 | [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 16 | `orderbook`, `matching`, `server` |
@@ -145,7 +145,7 @@ The CLI demonstrates:
 3. **Account query** — queries account balance and buying power
 4. **PING/PONG** — control frame heartbeat
 
-All over a single QUIC connection with per-stream multiplexing.
+All over a single TREE connection with per-stream multiplexing.
 
 ### Schema Compilation
 
@@ -282,7 +282,7 @@ Translates between WebSocket frames (RFC 6455) and FIG stream items:
 
 | WebSocket concept | FIG equivalent |
 |---|---|
-| Upgrade handshake | QUIC handshake + ALPN |
+| Upgrade handshake | TREE handshake + ALPN |
 | Text frame | STREAM_ITEM, CONTENT_TYPE "text/plain" |
 | Binary frame | STREAM_ITEM, CONTENT_TYPE "application/octet-stream" |
 | Close frame | STREAM_CLOSE |
@@ -408,7 +408,7 @@ and 25-100x faster than FIX ASCII parsing (5-20μs).
 |---|---|---|---|---|
 | Min header overhead | 16 bytes | 200-500 bytes | 200-800 bytes | 2-10 bytes |
 | Decode speed | ~205 ns | ~5-20 μs | ~10-50 μs | N/A |
-| Handshake RTTs | 1 (QUIC) / 0 (resumed) | 4 (TCP+TLS+Logon) | 3-5 (DNS+TCP+TLS+HTTP) | 2-3 (upgrade+TLS) |
+| Handshake RTTs | 1 (TREE) / 0 (resumed) | 4 (TCP+TLS+Logon) | 3-5 (DNS+TCP+TLS+HTTP) | 2-3 (upgrade+TLS) |
 | Multiplexing | 65,535 channels/conn | 1 session/conn | 6 (browser) / HTTP/2 | 1/conn |
 | Session resumption | 0-RTT | Full reconnect | N/A (stateless) | Full reconnect |
 
@@ -426,7 +426,7 @@ cargo test -p fig-usl         # 27 tests
 cargo test -p fig-gateways    # 29 tests
 cargo test -p fig-exchange-sim # 16 tests
 
-# Run integration tests (end-to-end over QUIC)
+# Run integration tests (end-to-end over TREE)
 cargo test -p fig-exchange-sim --test integration
 
 # Run benchmarks
@@ -438,7 +438,7 @@ cargo bench -p fig-bench
 | Area | Tests | What's covered |
 |---|---|---|
 | Frame encode/decode | 29 | All 13 frame types, all flags, all extension tags, streaming decoder |
-| Channel management | 15 | Open/close, sequence numbers, QUIC stream mapping, credit exhaustion |
+| Channel management | 15 | Open/close, sequence numbers, TREE stream mapping, credit exhaustion |
 | Session management | 14 | UUID, auth token, seq tracking, memory + file store CRUD |
 | SBE codec | 79 | Encode/decode round-trips for all trading message types |
 | CBOR codec | 6 | Round-trips, empty values, invalid data, nested structures |
@@ -452,7 +452,7 @@ cargo bench -p fig-bench
 | USL CLI | 10 | Compile, validate, output formats |
 | Order book | 8 | Add/cancel/reduce, price-time priority, depth |
 | Matching engine | 8 | Market/limit fills, partial fills, cancel |
-| Integration | 6 | End-to-end sim+cli over QUIC |
+| Integration | 6 | End-to-end sim+cli over TREE |
 
 ---
 
@@ -465,10 +465,10 @@ cargo bench -p fig-bench
 | Tests | 190 passing |
 | Benchmarks | 21 |
 | Dependencies | quinn 0.11, rustls 0.23, ciborium, criterion, rcgen, uuid, serde, tokio, tracing |
-| Transport | QUIC (ALPN: `fig/1`) |
+| Transport | TREE (ALPN: `fig/1`) |
 | Wire format | 16-byte header + TLV extensions + SBE/CBOR payload |
 | Max channels | 65,535 per connection |
-| Session resumption | 0-RTT via QUIC + FileSessionStore |
+| Session resumption | 0-RTT via TREE + FileSessionStore |
 
 ---
 
@@ -479,3 +479,4 @@ Dual-licensed under MIT or Apache-2.0.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+

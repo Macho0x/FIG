@@ -264,6 +264,27 @@ impl Frame {
         Self::control(ControlSubtype::Settings)
     }
 
+    /// Create an AUTH_REFRESH control frame with a new auth token.
+    pub fn auth_refresh(token: Vec<u8>) -> Self {
+        let mut frame = Self::control(ControlSubtype::AuthRefresh);
+        frame.payload.extend_from_slice(&token);
+        frame
+    }
+
+    /// Create a SEQ_RESET control frame to reset sequence numbers for a channel.
+    ///
+    /// Payload layout (after subtype byte):
+    /// - channel_id: 2 bytes BE
+    /// - new_send_seq: 4 bytes BE
+    /// - new_recv_seq: 4 bytes BE
+    pub fn seq_reset(channel_id: u16, new_send_seq: u32, new_recv_seq: u32) -> Self {
+        let mut frame = Self::control(ControlSubtype::SeqReset);
+        frame.payload.extend_from_slice(&channel_id.to_be_bytes());
+        frame.payload.extend_from_slice(&new_send_seq.to_be_bytes());
+        frame.payload.extend_from_slice(&new_recv_seq.to_be_bytes());
+        frame
+    }
+
     /// Set the stream sequence number.
     pub fn with_seq(mut self, seq: u32) -> Self {
         self.stream_seq = seq;
@@ -299,6 +320,33 @@ impl Frame {
     pub fn with_ack_requested(mut self) -> Self {
         self.flags |= Flags::ACK_REQUESTED;
         self
+    }
+
+    /// Get the control subtype if this is a Control frame.
+    ///
+    /// Returns `None` if the frame is not a Control frame or the payload
+    /// does not contain a valid control subtype.
+    pub fn control_subtype(&self) -> Option<ControlSubtype> {
+        if self.frame_type != FrameType::Control {
+            return None;
+        }
+        if self.payload.is_empty() {
+            return None;
+        }
+        ControlSubtype::from_code(self.payload[0])
+    }
+
+    /// Extract the auth refresh token from an AUTH_REFRESH control frame.
+    ///
+    /// Returns the token bytes after the subtype byte. Returns `None` if
+    /// this is not an AUTH_REFRESH frame or the payload has no token.
+    pub fn auth_refresh_token(&self) -> Option<&[u8]> {
+        if let Some(ControlSubtype::AuthRefresh) = self.control_subtype() {
+            if self.payload.len() > 1 {
+                return Some(&self.payload[1..]);
+            }
+        }
+        None
     }
 
     /// Create a FLOW_CONTROL frame granting credits for a channel.
@@ -485,9 +533,9 @@ impl std::fmt::Display for Frame {
 
 // ─── FrameDecoder (Streaming) ────────────────────────────────────
 
-/// A streaming frame decoder that handles partial QUIC stream reads.
+/// A streaming frame decoder that handles partial TREE stream reads.
 ///
-/// QUIC stream reads return variable-length chunks. A frame may arrive
+/// TREE stream reads return variable-length chunks. A frame may arrive
 /// split across multiple reads. The decoder buffers incoming bytes and
 /// yields complete frames when enough data is available.
 ///

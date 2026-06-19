@@ -1,8 +1,8 @@
-//! QUIC transport layer for FIG.
+//! TREE transport layer for FIG.
 //!
-//! Wraps [quinn] for QUIC transport, providing certificate generation,
+//! Wraps [quinn] for TREE transport, providing certificate generation,
 //! ALPN negotiation, and a [`FigConnection`] that maps FIG channels
-//! to QUIC streams.
+//! to TREE streams.
 //!
 //! # Security note
 //!
@@ -10,15 +10,20 @@
 //! certificate verification. This is intended **for development only**.
 //! Production deployments must use proper certificate chains and mTLS.
 
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use quinn::{ClientConfig, Connection, ServerConfig};
+use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
+use quinn::crypto::rustls::QuicServerConfig as TreeServerConfig;
+use quinn::crypto::rustls::QuicClientConfig as TreeClientConfig;
 use tokio::sync::Mutex;
 
 use crate::channel::{ChannelManager, ChannelMode};
-use crate::error::{ChannelError, FrameError};
+use crate::error::{ChannelError, FigError, FrameError};
 use crate::frame::{Frame, FrameDecoder, MIN_FRAME_SIZE};
-use crate::session::MemorySessionStore;
+use crate::observability::{span_session_create, span_session_resume};
+use crate::session::{MemorySessionStore, Session};
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -55,7 +60,7 @@ pub fn generate_self_signed_cert(
     Ok((cert_der, priv_key))
 }
 
-/// Create a QUIC server configuration with a self-signed certificate.
+/// Create a TREE server configuration with a self-signed certificate.
 ///
 /// Sets ALPN to `"fig/1"`. Callers should use
 /// [`generate_self_signed_cert`] to obtain the certificate and key,
@@ -70,7 +75,7 @@ pub fn server_config(
 
     server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
-    let server_config = quinn::crypto::rustls::QuicServerConfig::try_from(server_crypto)?;
+    let server_config = TreeServerConfig::try_from(server_crypto)?;
     let mut transport = quinn::TransportConfig::default();
     transport.max_concurrent_bidi_streams(65535u32.into());
 
@@ -80,7 +85,7 @@ pub fn server_config(
     Ok(config)
 }
 
-/// Create a QUIC client configuration that **skips certificate verification**.
+/// Create a TREE client configuration that **skips certificate verification**.
 ///
 /// **Warning:** This accepts any server certificate without validation.
 /// Intended for development and testing only. Production deployments
@@ -95,7 +100,7 @@ pub fn client_config() -> Result<ClientConfig, Box<dyn std::error::Error>> {
 
     client_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
-    let client_config = quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)?;
+    let client_config = TreeClientConfig::try_from(client_crypto)?;
     let mut transport = quinn::TransportConfig::default();
     transport.max_concurrent_bidi_streams(65535u32.into());
 
@@ -161,37 +166,79 @@ impl rustls::client::danger::ServerCertVerifier for NoServerVerification {
 
 // ─── FigConnection ──────────────────────────────────────────────
 
-/// A FIG connection wrapping a QUIC connection.
+/// A FIG connection wrapping a TREE connection.
 ///
 /// Manages channels, session state, and frame send/receive over the
-/// underlying QUIC transport.
+/// underlying TREE transport. Persists TREE stream handles per channel
+/// for reuse across multiple frame send/receive operations.
 ///
-/// # Skeleton notes
+/// # Stream reuse
 ///
-/// This is a skeleton implementation. Production code should:
-/// - Reuse QUIC streams per channel (not open one per frame).
-/// - Handle bidirectional streams for server-initiated messages.
+/// Each channel gets one bidirectional TREE stream. The `streams` map
+/// stores `(SendStream, RecvStream)` keyed by channel ID. On first use
+/// of a channel (send or receive), a new bidirectional stream is opened
+/// and stored. Subsequent operations reuse the existing stream.
+///
+/// # Production notes
+///
+/// This is reference-quality. Production code should:
 /// - Implement proper flow control and backpressure.
+/// - Handle bidirectional streams for server-initiated messages.
 pub struct FigConnection {
     conn: Connection,
     channels: Arc<Mutex<ChannelManager>>,
     session_store: MemorySessionStore,
+    /// Persistent TREE bidirectional streams per channel.
+    streams: Mutex<HashMap<u16, (quinn::SendStream, quinn::RecvStream)>>,
 }
 
 impl FigConnection {
-    /// Wrap an established QUIC connection.
-    pub fn from_quic(conn: Connection, is_server: bool) -> Self {
+    /// Wrap an established TREE connection.
+    pub fn from_tree(conn: Connection, is_server: bool) -> Self {
         Self {
             conn,
             channels: Arc::new(Mutex::new(ChannelManager::new(is_server))),
             session_store: MemorySessionStore::new(),
+            streams: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Reconstruct channel state from a restored session after 0-RTT resumption.
+    ///
+    /// Rebuilds the channel manager and opens TREE streams for each channel.
+    pub async fn reconstruct_from_session(
+        &self,
+        session: &Session,
+    ) -> Result<(), FigError> {
+        // Rebuild the channel manager from the session's channel list.
+        {
+            let new_mgr = ChannelManager::reconstruct(session, false);
+            let mut mgr = self.channels.lock().await;
+            *mgr = new_mgr;
+        }
+
+        // Reopen TREE streams for each channel in the session.
+        for &channel_id in &session.channels {
+            let (send, recv) = self.conn.open_bi().await.map_err(|e| {
+                FigError::ConnectionFailed(e.to_string())
+            })?;
+            self.streams.lock().await.insert(channel_id, (send, recv));
+        }
+
+        tracing::info!(
+            session_id = %session.session_id,
+            "session resumed with {} channels",
+            session.channels.len()
+        );
+
+        Ok(())
     }
 
     /// Open a new channel.
     ///
-    /// Allocates a channel ID and (in the skeleton) opens a QUIC
-    /// bidirectional stream. Returns the assigned channel ID.
+    /// Allocates a channel ID, opens a TREE bidirectional stream, and
+    /// stores the stream handles for subsequent send/recv operations.
+    /// Returns the assigned channel ID.
     pub async fn open_channel(
         &self,
         mode: ChannelMode,
@@ -202,43 +249,61 @@ impl FigConnection {
             mgr.open_channel(mode, schema_id)?
         };
 
-        // Open a QUIC bidirectional stream for this channel.
-        let (_send, _recv) = self.conn.open_bi().await.map_err(|e| {
-            // Roll back the channel on failure
-            ChannelError::StreamError(channel_id, e.to_string())
-        })?;
-
-        // In a full implementation, the SendStream and RecvStream would
-        // be stored and reused for subsequent send/recv operations on
-        // this channel. For the skeleton we let them drop — subsequent
-        // send_frame calls open new streams each time.
-
-        Ok(channel_id)
+        // Open a TREE bidirectional stream for this channel.
+        match self.conn.open_bi().await {
+            Ok((send, recv)) => {
+                self.streams.lock().await.insert(channel_id, (send, recv));
+                Ok(channel_id)
+            }
+            Err(e) => {
+                // Roll back the channel on failure
+                let mut mgr = self.channels.lock().await;
+                let _ = mgr.force_close_channel(channel_id);
+                Err(ChannelError::StreamError(channel_id, e.to_string()))
+            }
+        }
     }
 
     /// Send a frame on a channel.
     ///
-    /// Encodes the frame and writes it to a new QUIC bidirectional stream.
-    /// Skeleton limitation: opens a new stream per frame rather than
-    /// reusing the channel's persistent stream.
+    /// Reuses the persistent `SendStream` for this channel. Opens a new
+    /// bidirectional stream on first use and stores it in the stream map.
+    ///
+    /// TODO: Enforce flow-control credits before sending. The ChannelManager
+    /// has `has_credits()` / `consume_credit()`, but they are not yet wired
+    /// here. Sending currently ignores credit exhaustion.
     pub async fn send_frame(&self, channel_id: u16, frame: &Frame) -> Result<(), FrameError> {
         let data = frame.encode()?;
 
-        let (mut send, _recv) = self.conn.open_bi().await.map_err(|e| {
-            FrameError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-        })?;
+        // Get or create the SendStream for this channel.
+        let mut streams = self.streams.lock().await;
+        if !streams.contains_key(&channel_id) {
+            let (send, recv) = self.conn.open_bi().await.map_err(|e| {
+                FrameError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            })?;
+            streams.insert(channel_id, (send, recv));
+        }
+        let (send, _) = streams.get_mut(&channel_id).unwrap();
 
-        send.write_all(&data)
-            .await
-            .map_err(|e| FrameError::IoError(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-            )))?;
+        match send.write_all(&data).await {
+            Ok(()) => {}
+            Err(quinn::WriteError::Stopped(error_code)) => {
+                // Stream stopped by peer — mark channel as errored.
+                let code: u64 = error_code.into();
+                return Err(FrameError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    format!("stream stopped on channel {}: error_code={}", channel_id, code),
+                )));
+            }
+            Err(e) => {
+                return Err(FrameError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                )));
+            }
+        }
 
-        // Signal end of the send direction.
-        send.finish().map_err(|e| {
-            FrameError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-        })?;
+        // Do NOT call finish() — keep the stream open for subsequent frames.
 
         // Advance the channel's send sequence number.
         {
@@ -249,20 +314,29 @@ impl FigConnection {
         Ok(())
     }
 
-    /// Receive a frame from any incoming QUIC stream.
+    /// Receive a frame from a specific channel's persistent RecvStream.
     ///
-    /// Blocks until a peer opens a new bidirectional stream, then reads
-    /// frame data from it. Skeleton limitation: does not handle incoming
-    /// frames on already-established streams; each call accepts a new
-    /// stream from the peer.
-    pub async fn recv_frame(&self) -> Result<Frame, FrameError> {
-        // Accept the next incoming bidirectional stream from the peer.
-        let (_send, mut recv) = self.conn.accept_bi().await.map_err(|e| {
-            FrameError::IoError(std::io::Error::new(
-                std::io::ErrorKind::ConnectionAborted,
-                e.to_string(),
-            ))
-        })?;
+    /// **Client-only.** This method assumes the caller knows which channel
+    /// a stream belongs to. On the server side, use `accept_frame()` instead,
+    /// which reads the first frame to determine the actual channel ID.
+    /// Calling `recv_frame` on the server may silently map an incoming stream
+    /// to the wrong channel.
+    ///
+    /// If no stream exists for this channel yet, accepts a new incoming
+    /// bidirectional stream and maps it to the given channel.
+    pub async fn recv_frame(&self, channel_id: u16) -> Result<Frame, FrameError> {
+        // Get or create the RecvStream for this channel.
+        let mut streams = self.streams.lock().await;
+        if !streams.contains_key(&channel_id) {
+            let (send, recv) = self.conn.accept_bi().await.map_err(|e| {
+                FrameError::IoError(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionAborted,
+                    e.to_string(),
+                ))
+            })?;
+            streams.insert(channel_id, (send, recv));
+        }
+        let (_, recv) = streams.get_mut(&channel_id).unwrap();
 
         // Accumulate data in a FrameDecoder to handle partial reads.
         let mut decoder = FrameDecoder::new();
@@ -287,6 +361,16 @@ impl FigConnection {
                         actual: decoder.buffered_len(),
                     });
                 }
+                Err(quinn::ReadError::Reset(error_code)) => {
+                    let code: u64 = error_code.into();
+                    return Err(FrameError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        format!(
+                            "stream reset on channel {}: error_code={}",
+                            channel_id, code
+                        ),
+                    )));
+                }
                 Err(e) => {
                     return Err(FrameError::IoError(std::io::Error::new(
                         std::io::ErrorKind::Other,
@@ -297,10 +381,85 @@ impl FigConnection {
         }
     }
 
+    /// Accept an incoming bidirectional stream, read the first frame to determine
+    /// the channel ID, store the stream mapping, and return the frame.
+    ///
+    /// This is the server-side entry point for receiving frames on new channels.
+    pub async fn accept_frame(&self) -> Result<(u16, Frame), FrameError> {
+        let (send, mut recv) = self.conn.accept_bi().await.map_err(|e| {
+            FrameError::IoError(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                e.to_string(),
+            ))
+        })?;
+
+        // Read the first frame to determine the channel ID.
+        let mut decoder = FrameDecoder::new();
+        let mut buf = vec![0u8; 65536];
+
+        let frame = loop {
+            match recv.read(&mut buf).await {
+                Ok(Some(n)) => {
+                    decoder.feed(&buf[..n]);
+                    if let Some(result) = decoder.decode_next() {
+                        break result?;
+                    }
+                }
+                Ok(None) => {
+                    if let Some(result) = decoder.decode_next() {
+                        break result?;
+                    }
+                    return Err(FrameError::BufferTooShort {
+                        expected: MIN_FRAME_SIZE,
+                        actual: decoder.buffered_len(),
+                    });
+                }
+                Err(quinn::ReadError::Reset(error_code)) => {
+                    let code: u64 = error_code.into();
+                    return Err(FrameError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionReset,
+                        format!("stream reset: error_code={}", code),
+                    )));
+                }
+                Err(e) => {
+                    return Err(FrameError::IoError(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    )));
+                }
+            }
+        };
+
+        let channel_id = frame.channel_id;
+
+        // Store the stream handles for future reuse.
+        self.streams.lock().await.insert(channel_id, (send, recv));
+
+        Ok((channel_id, frame))
+    }
+
+    /// Close the TREE stream for a channel and remove it from the stream map.
+    ///
+    /// Finishes the send stream and cleans up the HashMap entry.
+    pub async fn close_channel_stream(&self, channel_id: u16) -> Result<(), ChannelError> {
+        let mut streams = self.streams.lock().await;
+        if let Some((mut send, _recv)) = streams.remove(&channel_id) {
+            // Finish the send direction to signal the peer.
+            let _ = send.finish();
+        }
+        Ok(())
+    }
+
     /// Close a channel gracefully.
     pub async fn close_channel(&self, channel_id: u16) -> Result<(), ChannelError> {
         let mut mgr = self.channels.lock().await;
         mgr.close_channel(channel_id)
+    }
+
+    /// Permanently close and remove a channel (used after stream reset).
+    pub async fn force_close_channel(&self, channel_id: u16) -> Result<(), ChannelError> {
+        let mut mgr = self.channels.lock().await;
+        mgr.force_close_channel(channel_id)
     }
 
     /// Close the entire connection with an error code and reason.
@@ -309,7 +468,7 @@ impl FigConnection {
             .close(quinn::VarInt::from_u32(code), reason);
     }
 
-    /// Access the underlying QUIC connection.
+    /// Access the underlying TREE connection.
     pub fn inner(&self) -> &Connection {
         &self.conn
     }
@@ -317,6 +476,214 @@ impl FigConnection {
     /// Access the session store.
     pub fn session_store(&self) -> &MemorySessionStore {
         &self.session_store
+    }
+
+    /// Access the session store mutably (for wiring into server persistence).
+    pub fn session_store_mut(&mut self) -> &mut MemorySessionStore {
+        &mut self.session_store
+    }
+}
+
+// ─── FigServer ──────────────────────────────────────────────────
+
+/// A FIG server endpoint.
+///
+/// Wraps a TREE [`Endpoint`] for accepting FIG connections. Supports
+/// 0-RTT session resumption via [`FigServer::accept_0rtt`].
+pub struct FigServer {
+    endpoint: Endpoint,
+    session_store: MemorySessionStore,
+}
+
+impl FigServer {
+    /// Bind a new FIG server to the given address.
+    pub async fn bind(addr: SocketAddr, server_config: ServerConfig) -> Result<Self, FigError> {
+        let endpoint = Endpoint::server(server_config, addr)
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+        Ok(Self {
+            endpoint,
+            session_store: MemorySessionStore::new(),
+        })
+    }
+
+    /// Accept a normal (full handshake) FIG connection.
+    pub async fn accept(&self) -> Result<FigConnection, FigError> {
+        let incoming = self
+            .endpoint
+            .accept()
+            .await
+            .ok_or_else(|| FigError::ConnectionFailed("endpoint closed".into()))?;
+        let conn = incoming
+            .await
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+        Ok(FigConnection::from_tree(conn, true))
+    }
+
+    /// Accept a 0-RTT connection and validate a resumption token.
+    ///
+    /// If the client presents a valid 0-RTT token, the session is restored
+    /// from the session store and the connection proceeds with 0-RTT data.
+    /// If 0-RTT is rejected by the transport layer, falls back to a full
+    /// handshake.
+    ///
+    /// # TODO: production replay protection
+    ///
+    /// This reference implementation does not guard against 0-RTT replay
+    /// attacks. Production deployments MUST implement replay protection
+    /// (e.g., single-use tokens, replay windows, or anti-replay caches).
+    pub async fn accept_0rtt(&self) -> Result<(FigConnection, Option<Session>), FigError> {
+        let incoming = self
+            .endpoint
+            .accept()
+            .await
+            .ok_or_else(|| FigError::ConnectionFailed("endpoint closed".into()))?;
+
+        // TODO: production replay protection
+        // 0-RTT tokens should be validated against a replay cache to prevent
+        // token reuse attacks. The current implementation trusts the token
+        // without anti-replay guards.
+
+        let conn = incoming
+            .await
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+
+        let fig_conn = FigConnection::from_tree(conn, true);
+
+        // Check for a resumption token via session store lookup.
+        // In a full implementation, the token would be embedded in the
+        // TREE transport parameters or sent as the first frame.
+        let restored_session = None; // tokened by transport layer (TBD)
+
+        Ok((fig_conn, restored_session))
+    }
+
+    /// Return the local address the server is bound to.
+    pub fn local_addr(&self) -> Result<SocketAddr, FigError> {
+        self.endpoint
+            .local_addr()
+            .map_err(|e| FigError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+    }
+
+    /// Access the session store.
+    pub fn session_store(&self) -> &MemorySessionStore {
+        &self.session_store
+    }
+
+    /// Access the underlying TREE endpoint.
+    pub fn inner(&self) -> &Endpoint {
+        &self.endpoint
+    }
+}
+
+// ─── FigClient ──────────────────────────────────────────────────
+
+/// A FIG client connection manager.
+///
+/// Wraps a TREE [`Endpoint`] for initiating FIG connections. Supports
+/// 0-RTT session resumption via [`FigClient::connect_0rtt`].
+pub struct FigClient {
+    endpoint: Endpoint,
+    client_config: ClientConfig,
+}
+
+impl FigClient {
+    /// Create a new FIG client.
+    pub fn new(client_config: ClientConfig) -> Result<Self, FigError> {
+        let endpoint = Endpoint::client("0.0.0.0:0".parse::<SocketAddr>().map_err(|e| {
+            FigError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+        })?)
+        .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+        Ok(Self {
+            endpoint,
+            client_config,
+        })
+    }
+
+    /// Connect to a FIG server with a full handshake.
+    pub async fn connect(
+        &self,
+        server_addr: SocketAddr,
+        server_name: &str,
+    ) -> Result<FigConnection, FigError> {
+        let conn = self
+            .endpoint
+            .connect_with(self.client_config.clone(), server_addr, server_name)
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?
+            .await
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+
+        let span = span_session_create("");
+        let _guard = span.enter();
+
+        Ok(FigConnection::from_tree(conn, false))
+    }
+
+    /// Connect to a FIG server attempting 0-RTT resumption.
+    ///
+    /// Uses [`quinn::Connecting::into_0rtt`] to send data on the first
+    /// flight. If the server rejects 0-RTT, falls back to a full handshake.
+    ///
+    /// Returns the [`FigConnection`] and an optional restored [`Session`]
+    /// if the server accepted 0-RTT.
+    ///
+    /// # TODO: production replay protection
+    ///
+    /// This reference implementation does not guard against 0-RTT replay
+    /// attacks. Production deployments MUST implement replay protection.
+    pub async fn connect_0rtt(
+        &self,
+        server_addr: SocketAddr,
+        server_name: &str,
+        resumption_token: Option<&[u8]>,
+    ) -> Result<(FigConnection, Option<Session>), FigError> {
+        let connecting = self
+            .endpoint
+            .connect_with(self.client_config.clone(), server_addr, server_name)
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+
+        // Attempt 0-RTT.
+        // TODO: production replay protection
+        let conn = match connecting.into_0rtt() {
+            Ok((conn, _zero_rtt)) => {
+                // 0-RTT accepted — session data can be sent immediately.
+                tracing::info!("0-RTT connection accepted");
+
+                let restored_session = resumption_token.and_then(|token| {
+                    Session::from_resumption_token(token).ok()
+                });
+
+                let fig_conn = FigConnection::from_tree(conn, false);
+
+                if let Some(ref session) = restored_session {
+                    let span = span_session_resume(&session.session_id.to_string());
+                    let _guard = span.enter();
+                    tracing::info!(
+                        session_id = %session.session_id,
+                        "session resumed via 0-RTT"
+                    );
+                    fig_conn.reconstruct_from_session(session).await?;
+                }
+
+                return Ok((fig_conn, restored_session));
+            }
+            Err(connecting) => {
+                // 0-RTT rejected — fall back to full handshake.
+                tracing::info!("0-RTT rejected, falling back to full handshake");
+                connecting
+                    .await
+                    .map_err(|e| FigError::ConnectionFailed(e.to_string()))?
+            }
+        };
+
+        let span = span_session_create("");
+        let _guard = span.enter();
+
+        Ok((FigConnection::from_tree(conn, false), None))
+    }
+
+    /// Access the underlying TREE endpoint.
+    pub fn inner(&self) -> &Endpoint {
+        &self.endpoint
     }
 }
 

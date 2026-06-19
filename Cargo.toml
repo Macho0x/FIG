@@ -20,7 +20,7 @@ description = "FIG — Fast Interchange Gateway"
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-# QUIC transport
+# TREE transport
 quinn = "0.11"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rcgen = "0.13"
@@ -50,3 +50,4 @@ fig-gateways = { path = "crates/fig-gateways" }
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+

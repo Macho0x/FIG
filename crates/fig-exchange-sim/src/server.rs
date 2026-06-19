@@ -15,7 +15,7 @@ use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
 use fig_core::messages::*;
-use fig_core::session::MemorySessionStore;
+use fig_core::session::{FileSessionStore, MemorySessionStore, Session, SessionStore};
 use fig_core::transport;
 
 use crate::matching::MatchingEngine;
@@ -37,6 +37,7 @@ pub mod paths {
 pub struct ExchangeState {
     pub engine: Mutex<MatchingEngine>,
     pub sessions: MemorySessionStore,
+    pub file_sessions: FileSessionStore,
 }
 
 /// Start the FIG exchange server on the given address.
@@ -52,7 +53,7 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
     let (cert, key) = transport::generate_self_signed_cert()
         .map_err(|e| anyhow::anyhow!("Failed to generate cert: {}", e))?;
 
-    // Configure QUIC server using fig-core transport
+    // Configure TREE server using fig-core transport
     let server_config = transport::server_config(cert, key)
         .map_err(|e| anyhow::anyhow!("Failed to create server config: {}", e))?;
 
@@ -64,6 +65,9 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
     let state = Arc::new(ExchangeState {
         engine: Mutex::new(MatchingEngine::new()),
         sessions: MemorySessionStore::new(),
+        file_sessions: FileSessionStore::new(
+            std::env::temp_dir().join("fig-exchange-sessions"),
+        ),
     });
 
     info!("Waiting for connections...");
@@ -95,6 +99,18 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
 }
 
 pub async fn handle_connection(conn: quinn::Connection, state: Arc<ExchangeState>) -> Result<()> {
+    // Create or restore a session for this connection.
+    // TODO: extract resumption token from TREE transport parameters
+    // when the transport layer supports token embedding.
+    let session = Session::new();
+    let session_id = session.session_id;
+    info!("Session created: {}", session_id);
+
+    // Persist the session to the file store.
+    if let Err(e) = state.file_sessions.put(&session) {
+        warn!("Failed to persist session {}: {}", session_id, e);
+    }
+
     // Accept bidirectional streams
     loop {
         let (send, recv) = match conn.accept_bi().await {
@@ -115,6 +131,14 @@ pub async fn handle_connection(conn: quinn::Connection, state: Arc<ExchangeState
                 error!("Stream error: {}", e);
             }
         });
+    }
+
+    // Persist the session before disconnecting.
+    info!("Connection ended, persisting session {}", session_id);
+    let mut final_session = session;
+    final_session.touch();
+    if let Err(e) = state.file_sessions.update(&final_session) {
+        warn!("Failed to update session {}: {}", session_id, e);
     }
 
     Ok(())

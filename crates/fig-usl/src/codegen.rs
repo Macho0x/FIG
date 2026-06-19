@@ -45,13 +45,47 @@ impl RustCodegen {
             }
         }
 
-        // Collect all inline enums from messages for forward generation
+        // Collect all inline enums for forward generation
+        // From messages: name = MessageName + FieldName (e.g., NewOrderSingleSide)
         let mut enum_names = std::collections::HashMap::new();
         for msg in &schema.messages {
             for field in &msg.fields {
                 if let FieldType::Enum(enum_def) = &field.field_type {
                     let enum_name = format!("{}{}", msg.name, pascal_case(&field.name));
-                    enum_names.insert(enum_name.clone(), enum_def.clone());
+                    enum_names.entry(enum_name).or_insert_with(|| enum_def.clone());
+                }
+            }
+        }
+
+        // From struct type definitions: name = TypeName + FieldName
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                for field in fields {
+                    if let FieldType::Enum(enum_def) = &field.field_type {
+                        let enum_name = format!("{}{}", td.name, pascal_case(&field.name));
+                        enum_names.entry(enum_name).or_insert_with(|| enum_def.clone());
+                    }
+                }
+            }
+        }
+
+        // Collect inline structs from messages and type defs
+        let mut inline_struct_names = std::collections::HashMap::new();
+        for msg in &schema.messages {
+            for field in &msg.fields {
+                if let FieldType::InlineStruct(fields) = &field.field_type {
+                    let struct_name = format!("{}{}", msg.name, pascal_case(&field.name));
+                    inline_struct_names.entry(struct_name).or_insert_with(|| fields.clone());
+                }
+            }
+        }
+        for td in &schema.type_defs {
+            if let Some(td_fields) = &td.fields {
+                for field in td_fields {
+                    if let FieldType::InlineStruct(fields) = &field.field_type {
+                        let struct_name = format!("{}{}", td.name, pascal_case(&field.name));
+                        inline_struct_names.entry(struct_name).or_insert_with(|| fields.clone());
+                    }
                 }
             }
         }
@@ -62,9 +96,18 @@ impl RustCodegen {
             out.push('\n');
         }
 
+        // Generate inline structs
+        for (name, fields) in &inline_struct_names {
+            out.push_str(&Self::generate_inline_struct(name, fields));
+            out.push('\n');
+        }
+
+        // Build a combined lookup for field type resolution
+        let named_types = enum_names.clone();
+
         // Generate message structs
         for msg in &schema.messages {
-            out.push_str(&Self::generate_message(msg, &enum_names));
+            out.push_str(&Self::generate_message(msg, &named_types));
             out.push('\n');
         }
 
@@ -109,7 +152,7 @@ impl RustCodegen {
         out.push_str(&format!("pub struct {} {{\n", td.name));
 
         for field in fields {
-            out.push_str(&Self::generate_field_decl(field, "    "));
+            out.push_str(&Self::generate_field_decl(field, &td.name, "    "));
         }
 
         out.push_str("}\n");
@@ -165,9 +208,17 @@ impl RustCodegen {
         out
     }
 
-    fn generate_field_decl(field: &Field, indent: &str) -> String {
+    fn generate_field_decl(field: &Field, parent_name: &str, indent: &str) -> String {
         let mut out = String::new();
-        let rust_type = Self::field_type_to_rust(&field.field_type);
+        let rust_type = match &field.field_type {
+            FieldType::Enum(_) => {
+                format!("{}{}", parent_name, pascal_case(&field.name))
+            }
+            FieldType::InlineStruct(_) => {
+                format!("{}{}", parent_name, pascal_case(&field.name))
+            }
+            _ => Self::field_type_to_rust(&field.field_type),
+        };
 
         if field.optional {
             out.push_str(&format!(
@@ -189,7 +240,7 @@ impl RustCodegen {
     ) -> String {
         let mut out = String::new();
 
-        // For inline enums, the generated name is based on message + field
+        // For inline enums and inline structs, the generated name is based on message + field
         let rust_type = match &field.field_type {
             FieldType::Enum(_) => {
                 let enum_name = format!("{}{}", msg.name, pascal_case(&field.name));
@@ -198,6 +249,10 @@ impl RustCodegen {
                 } else {
                     Self::field_type_to_rust(&field.field_type)
                 }
+            }
+            FieldType::InlineStruct(_) => {
+                let struct_name = format!("{}{}", msg.name, pascal_case(&field.name));
+                struct_name
             }
             _ => Self::field_type_to_rust(&field.field_type),
         };
@@ -216,14 +271,56 @@ impl RustCodegen {
 
     fn generate_enum(name: &str, variants: &[String]) -> String {
         let mut out = String::new();
-        out.push_str("#[derive(Debug, Clone, Serialize, Deserialize)]\n");
+        out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]\n");
         out.push_str("#[serde(rename_all = \"snake_case\")]\n");
         out.push_str(&format!("pub enum {} {{\n", name));
-        for v in variants {
+        for (i, v) in variants.iter().enumerate() {
             let pascal = pascal_case(v);
-            out.push_str(&format!("    {},\n", pascal));
+            out.push_str(&format!("    {} = {},\n", pascal, i + 1));
         }
+        out.push_str("}\n\n");
+
+        // from_value / to_value impl
+        out.push_str(&format!("impl {} {{\n", name));
+        out.push_str(&format!("    pub fn from_value(v: u8) -> Option<Self> {{\n"));
+        out.push_str(        "        match v {\n");
+        for (i, v) in variants.iter().enumerate() {
+            let pascal = pascal_case(v);
+            out.push_str(&format!("            {} => Some({}::{}),\n", i + 1, name, pascal));
+        }
+        out.push_str(        "            _ => None,\n");
+        out.push_str(        "        }\n");
+        out.push_str(        "    }\n\n");
+        out.push_str(&format!("    pub fn to_value(self) -> u8 {{\n"));
+        out.push_str(        "        self as u8\n");
+        out.push_str(        "    }}\n");
         out.push_str("}\n");
+        out
+    }
+
+    fn generate_inline_struct(name: &str, fields: &[Field]) -> String {
+        let mut out = String::new();
+        out.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
+        out.push_str(&format!("pub struct {} {{\n", name));
+        for field in fields {
+            let rust_type = Self::field_type_to_rust(&field.field_type);
+            if field.optional {
+                out.push_str(&format!("    pub {}: Option<{}>,\n", field.name, rust_type));
+            } else {
+                out.push_str(&format!("    pub {}: {},\n", field.name, rust_type));
+            }
+        }
+        out.push_str("}\n\n");
+
+        // ENCODED_LEN constant
+        let encoded_len: usize = fields.iter().map(|f| Self::field_encoded_size(&f.field_type)).sum();
+        out.push_str(&format!("impl {} {{\n", name));
+        out.push_str(&format!("    pub const ENCODED_LEN: usize = {}; // ", encoded_len));
+        let sizes: Vec<String> = fields.iter()
+            .map(|f| format!("{}", Self::field_encoded_size(&f.field_type)))
+            .collect();
+        out.push_str(&sizes.join(" + "));
+        out.push_str("\n}\n");
         out
     }
 
@@ -252,12 +349,45 @@ impl RustCodegen {
     fn field_type_to_rust(ft: &FieldType) -> String {
         match ft {
             FieldType::Named(name) => name.clone(),
-            FieldType::Enum(_) => "TODO_enum".to_string(), // placeholder, replaced in context
+            FieldType::Enum(_) => "u8".to_string(), // fallback; resolved in context
             FieldType::List(inner) => {
                 format!("Vec<{}>", Self::field_type_to_rust(inner))
             }
-            FieldType::InlineStruct(_) => "TODO_inline_struct".to_string(),
+            FieldType::InlineStruct(_) => "()".to_string(), // fallback; resolved in context
             FieldType::InlineBase(bt, _) => Self::base_type_to_rust(bt),
+        }
+    }
+
+    /// Return the encoded byte size of a field type (for SBE block length).
+    fn field_encoded_size(ft: &FieldType) -> usize {
+        match ft {
+            FieldType::Named(name) => {
+                match name.as_str() {
+                    "String" | "Vec<u8>" | "ClientOrderId" | "Symbol" => 0, // variable-length
+                    "Price" | "Quantity" => 8, // f64
+                    "TradeTimestamp" | "i64" | "u64" => 8,
+                    "i32" | "u32" | "f32" => 4,
+                    "i16" | "u16" => 2,
+                    "i8" | "u8" | "bool" => 1,
+                    "f64" => 8,
+                    _ => 0, // unknown, assume variable
+                }
+            }
+            FieldType::Enum(_) => 1, // u8 enum
+            FieldType::List(_) => 0, // variable-length group
+            FieldType::InlineStruct(fields) => {
+                fields.iter().map(|f| Self::field_encoded_size(&f.field_type)).sum()
+            }
+            FieldType::InlineBase(bt, _) => {
+                match bt {
+                    BaseType::String | BaseType::Bytes => 0,
+                    BaseType::Int8 | BaseType::UInt8 | BaseType::Bool => 1,
+                    BaseType::Int16 | BaseType::UInt16 => 2,
+                    BaseType::Int32 | BaseType::UInt32 | BaseType::Float32 => 4,
+                    BaseType::Int64 | BaseType::UInt64 | BaseType::Float64 | BaseType::Decimal64 => 8,
+                    BaseType::List(_) => 0,
+                }
+            }
         }
     }
 
@@ -340,9 +470,9 @@ mod tests {
         assert!(code.contains("pub name: Name,"));
         assert!(code.contains("pub language: GreetingLanguage,"));
         assert!(code.contains("pub enum GreetingLanguage"));
-        assert!(code.contains("    En,"));
-        assert!(code.contains("    Fr,"));
-        assert!(code.contains("    De,"));
+        assert!(code.contains("    En = 1,"));
+        assert!(code.contains("    Fr = 2,"));
+        assert!(code.contains("    De = 3,"));
         assert!(code.contains("#[serde(rename_all = \"snake_case\")]"));
         assert!(code.contains("pub const SCHEMA_ID: u8 = 0x01;"));
         assert!(code.contains("pub const CHANNEL_TYPE: &str = \"request_response\";"));

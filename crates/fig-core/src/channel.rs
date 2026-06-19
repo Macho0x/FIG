@@ -1,7 +1,7 @@
 //! Channel management for FIG connections.
 //!
 //! A channel is a logical conversation within a FIG connection,
-//! mapped 1:1 to a QUIC stream. Channel 0 is reserved for
+//! mapped 1:1 to a TREE stream. Channel 0 is reserved for
 //! connection-level control frames.
 //!
 //! Each channel has a mode (stateless, session, or affinity) and
@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use crate::error::ChannelError;
+use crate::session::Session;
 
 /// Channel mode negotiated at STREAM_OPEN.
 ///
@@ -137,12 +138,12 @@ impl Channel {
 ///
 /// Channel 0 is reserved for control frames.
 ///
-/// # QUIC Stream ID Mapping
+/// # TREE Stream ID Mapping
 ///
-/// FIG channel IDs are mapped to QUIC stream IDs as follows:
+/// FIG channel IDs are mapped to TREE stream IDs as follows:
 ///
 /// ```text
-/// quic_stream_id = channel_id * 4 + parity_offset
+/// tree_stream_id = channel_id * 4 + parity_offset
 /// ```
 ///
 /// Where `parity_offset` depends on the initiator and direction:
@@ -154,7 +155,7 @@ impl Channel {
 /// | Client    | Unidirectional  | 2      |
 /// | Server    | Unidirectional  | 3      |
 ///
-/// This results in QUIC stream IDs: 0, 4, 8, 12, … (client bidi),
+/// This results in TREE stream IDs: 0, 4, 8, 12, … (client bidi),
 /// 1, 5, 9, 13, … (server bidi), 2, 6, 10, 14, … (client uni),
 /// 3, 7, 11, 15, … (server uni).
 pub struct ChannelManager {
@@ -166,7 +167,7 @@ pub struct ChannelManager {
 impl ChannelManager {
     /// Create a new channel manager.
     ///
-    /// `is_server` determines the QUIC stream ID parity offset used
+    /// `is_server` determines the TREE stream ID parity offset used
     /// when the manager opens new streams. The client starts at ID 1
     /// and the server at ID… but since channel 0 is reserved, both
     /// sides start allocating from channel 1.
@@ -233,6 +234,69 @@ impl ChannelManager {
         }
     }
 
+    /// Permanently close and remove a channel (used after stream reset).
+    ///
+    /// Transitions the channel to `ChannelState::Closed` and removes it from
+    /// the manager. This is called when the underlying TREE stream is reset
+    /// or stopped by the peer.
+    pub fn force_close_channel(&mut self, channel_id: u16) -> Result<(), ChannelError> {
+        let channel = self
+            .channels
+            .get_mut(&channel_id)
+            .ok_or(ChannelError::ChannelNotFound(channel_id))?;
+        channel.state = ChannelState::Closed;
+        self.channels.remove(&channel_id);
+        Ok(())
+    }
+
+    /// Reset sequence numbers for a channel (called by SEQ_RESET handler).
+    ///
+    /// Lane C calls this from the CONTROL(SEQ_RESET) frame handler to
+    /// re-synchronize sequence numbers after a stream reset or reconnect.
+    pub fn reset_seq(
+        &mut self,
+        channel_id: u16,
+        new_send_seq: u32,
+        new_recv_seq: u32,
+    ) -> Result<(), ChannelError> {
+        let channel = self
+            .channels
+            .get_mut(&channel_id)
+            .ok_or(ChannelError::ChannelNotFound(channel_id))?;
+        channel.last_sent_seq = new_send_seq;
+        channel.last_recv_seq = new_recv_seq;
+        Ok(())
+    }
+
+    /// Reconstruct a ChannelManager from a stored session.
+    ///
+    /// For each channel in the session, creates a new `Channel` in `Open` state
+    /// with the stored sequence numbers. This is used after 0-RTT session
+    /// resumption to rebuild the channel→stream mapping.
+    pub fn reconstruct(session: &Session, is_server: bool) -> Self {
+        let mut channels = HashMap::new();
+        let mut max_id: u16 = 0;
+        for &channel_id in &session.channels {
+            let mut ch = Channel::new(channel_id, crate::channel::ChannelMode::Session, None);
+            ch.last_sent_seq = session.last_seq_sent;
+            ch.last_recv_seq = session.last_seq_recv;
+            channels.insert(channel_id, ch);
+            if channel_id > max_id {
+                max_id = channel_id;
+            }
+        }
+        let next_channel_id = if max_id == u16::MAX {
+            1
+        } else {
+            max_id.wrapping_add(1)
+        };
+        Self {
+            channels,
+            next_channel_id: if next_channel_id == 0 { 1 } else { next_channel_id },
+            is_server,
+        }
+    }
+
     /// Permanently remove a channel (after CLOSE completes).
     pub fn remove_channel(&mut self, channel_id: u16) -> Option<Channel> {
         self.channels.remove(&channel_id)
@@ -292,12 +356,12 @@ impl ChannelManager {
         Ok(())
     }
 
-    /// Map a FIG channel ID to a QUIC stream ID.
+    /// Map a FIG channel ID to a TREE stream ID.
     ///
     /// Uses bidirectional streams (offset 0 for client, 1 for server).
     /// In a full implementation the direction would be negotiated per
     /// channel.
-    pub fn quic_stream_id(&self, channel_id: u16) -> u64 {
+    pub fn tree_stream_id(&self, channel_id: u16) -> u64 {
         let parity_offset: u64 = if self.is_server { 1 } else { 0 };
         channel_id as u64 * 4 + parity_offset
     }
@@ -483,26 +547,26 @@ mod tests {
         assert_eq!(ch.last_recv_seq, 10);
     }
 
-    // ── QUIC stream ID mapping ────────────────────────────────
+    // ── TREE stream ID mapping ────────────────────────────────
 
     #[test]
-    fn test_quic_stream_id_client() {
+    fn test_tree_stream_id_client() {
         let mgr = ChannelManager::new(false); // client
         // Client bidi: offset = 0
-        assert_eq!(mgr.quic_stream_id(0), 0);
-        assert_eq!(mgr.quic_stream_id(1), 4);
-        assert_eq!(mgr.quic_stream_id(2), 8);
-        assert_eq!(mgr.quic_stream_id(10), 40);
+        assert_eq!(mgr.tree_stream_id(0), 0);
+        assert_eq!(mgr.tree_stream_id(1), 4);
+        assert_eq!(mgr.tree_stream_id(2), 8);
+        assert_eq!(mgr.tree_stream_id(10), 40);
     }
 
     #[test]
-    fn test_quic_stream_id_server() {
+    fn test_tree_stream_id_server() {
         let mgr = ChannelManager::new(true); // server
         // Server bidi: offset = 1
-        assert_eq!(mgr.quic_stream_id(0), 1);
-        assert_eq!(mgr.quic_stream_id(1), 5);
-        assert_eq!(mgr.quic_stream_id(2), 9);
-        assert_eq!(mgr.quic_stream_id(10), 41);
+        assert_eq!(mgr.tree_stream_id(0), 1);
+        assert_eq!(mgr.tree_stream_id(1), 5);
+        assert_eq!(mgr.tree_stream_id(2), 9);
+        assert_eq!(mgr.tree_stream_id(10), 41);
     }
 
     // ── Channel ID exhaustion ─────────────────────────────────
@@ -626,5 +690,115 @@ mod tests {
         // credits already exceed initial window — nothing to advertise
         ch.grant_credits(5);
         assert_eq!(ch.credits_to_advertise(), 0);
+    }
+
+    // ── ChannelManager::reset_seq ───────────────────────────────
+
+    #[test]
+    fn test_reset_seq() {
+        let mut mgr = ChannelManager::new(false);
+        let id = mgr.open_channel(ChannelMode::Session, None).unwrap();
+
+        // Set some initial sequence numbers
+        mgr.next_send_seq(id).unwrap();
+        mgr.next_send_seq(id).unwrap();
+        mgr.record_recv_seq(id, 5).unwrap();
+
+        let ch = mgr.get_channel(id).unwrap();
+        assert_eq!(ch.last_sent_seq, 2);
+        assert_eq!(ch.last_recv_seq, 5);
+
+        // Reset to new values
+        mgr.reset_seq(id, 100, 200).unwrap();
+
+        let ch = mgr.get_channel(id).unwrap();
+        assert_eq!(ch.last_sent_seq, 100);
+        assert_eq!(ch.last_recv_seq, 200);
+    }
+
+    #[test]
+    fn test_reset_seq_nonexistent_channel() {
+        let mut mgr = ChannelManager::new(false);
+        let result = mgr.reset_seq(999, 0, 0);
+        assert!(result.is_err());
+    }
+
+    // ── ChannelManager::reconstruct ─────────────────────────────
+
+    #[test]
+    fn test_reconstruct_from_session() {
+        use crate::session::Session;
+
+        // Create a session with channels
+        let mut session = Session::new();
+        session.add_channel(1);
+        session.add_channel(2);
+        session.add_channel(5);
+        session.record_sent_seq(42);
+        session.record_recv_seq(99);
+
+        // Reconstruct the channel manager
+        let mgr = ChannelManager::reconstruct(&session, false);
+
+        assert_eq!(mgr.len(), 3);
+
+        // Verify channel 1 is in Open state with correct seq numbers
+        let ch1 = mgr.get_channel(1).expect("channel 1 should exist");
+        assert_eq!(ch1.state, ChannelState::Open);
+        assert_eq!(ch1.last_sent_seq, 42);
+        assert_eq!(ch1.last_recv_seq, 99);
+
+        // Verify channel 2
+        let ch2 = mgr.get_channel(2).expect("channel 2 should exist");
+        assert_eq!(ch2.state, ChannelState::Open);
+
+        // Verify channel 5
+        let ch5 = mgr.get_channel(5).expect("channel 5 should exist");
+        assert_eq!(ch5.state, ChannelState::Open);
+    }
+
+    #[test]
+    fn test_reconstruct_empty_session() {
+        use crate::session::Session;
+
+        let session = Session::new();
+        let mgr = ChannelManager::reconstruct(&session, true);
+
+        assert!(mgr.is_empty());
+        assert_eq!(mgr.len(), 0);
+    }
+
+    #[test]
+    fn test_reconstruct_server_mode() {
+        use crate::session::Session;
+
+        let mut session = Session::new();
+        session.add_channel(1);
+
+        let mgr = ChannelManager::reconstruct(&session, true);
+        // Server mode: offset = 1
+        assert_eq!(mgr.tree_stream_id(1), 5);
+    }
+
+    // ── ChannelManager::force_close_channel ─────────────────────
+
+    #[test]
+    fn test_force_close_channel() {
+        let mut mgr = ChannelManager::new(false);
+        let id = mgr.open_channel(ChannelMode::Session, None).unwrap();
+        assert_eq!(mgr.len(), 1);
+
+        mgr.force_close_channel(id).unwrap();
+
+        // Channel should be removed from the manager
+        assert!(mgr.get_channel(id).is_none());
+        assert!(mgr.is_empty());
+    }
+
+    #[test]
+    fn test_force_close_channel_nonexistent() {
+        let mut mgr = ChannelManager::new(false);
+        let result = mgr.force_close_channel(99);
+        assert!(result.is_err());
     }
 }

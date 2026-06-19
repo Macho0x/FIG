@@ -15,6 +15,8 @@
 
 use thiserror::Error;
 
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     CancelRequest, ExecType, ExecutionReport, NewOrderSingle,
     OrderType, OrdStatus, Price, Quantity, Side, TimeInForce,
@@ -22,6 +24,50 @@ use fig_core::messages::{
 
 /// SOH separator character (ASCII 0x01).
 const SOH: u8 = 0x01;
+
+// ─── FixMessage ──────────────────────────────────────────────────
+
+/// A parsed FIX message containing tag-value pairs.
+///
+/// This wraps the output of [`parse_fix_message`] and provides
+/// convenience accessors for common operations. It can also be
+/// serialized back to wire format via [`FixMessage::to_bytes`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct FixMessage {
+    /// Parsed tag-value pairs (tag, value).
+    pub tags: Vec<(u32, String)>,
+}
+
+impl FixMessage {
+    /// Create a `FixMessage` from pre-parsed tag-value pairs.
+    pub fn new(tags: Vec<(u32, String)>) -> Self {
+        Self { tags }
+    }
+
+    /// Parse a `FixMessage` from raw FIX wire-format bytes.
+    pub fn from_bytes(bytes: &[u8]) -> FixResult<Self> {
+        let tags = parse_fix_message(bytes)?;
+        Ok(Self { tags })
+    }
+
+    /// Serialize this message to FIX wire-format bytes (including checksum).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        serialize_fix_message(&self.tags)
+    }
+
+    /// Get the value for a specific tag, if present.
+    pub fn get_tag(&self, tag: u32) -> Option<&str> {
+        self.tags
+            .iter()
+            .find(|(t, _)| *t == tag)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Get the MsgType (tag 35) for this message.
+    pub fn msg_type(&self) -> Option<&str> {
+        self.get_tag(35)
+    }
+}
 
 // ─── Error ───────────────────────────────────────────────────────
 
@@ -73,6 +119,22 @@ pub enum FixError {
 
 /// Convenience type alias for FIX operations.
 pub type FixResult<T> = Result<T, FixError>;
+
+/// Errors that can occur when converting between FIX messages and FIG frames.
+#[derive(Error, Debug)]
+pub enum FixConvertError {
+    #[error("missing required FIX tag {tag} in logon message")]
+    MissingTag { tag: u32 },
+
+    #[error("missing AUTH_TOKEN extension in frame")]
+    MissingAuthToken,
+
+    #[error("unsupported FIX MsgType for conversion: {0}")]
+    UnsupportedMsgType(String),
+}
+
+/// Convenience type alias for FIX↔FIG conversion operations.
+pub type FixConvertResult<T> = Result<T, FixConvertError>;
 
 // ─── Parsing ─────────────────────────────────────────────────────
 
@@ -385,6 +447,94 @@ pub fn fig_to_fix_execution_report(report: &ExecutionReport) -> Vec<u8> {
     final_buf.push(SOH);
 
     final_buf
+}
+
+// ─── FIX Logon ↔ FIG STREAM_OPEN ─────────────────────────────────
+
+/// Convert a FIX Logon (35=A) message to a FIG STREAM_OPEN frame with
+/// an AUTH_TOKEN extension.
+///
+/// Extracts `SenderCompID` (tag 49), `TargetCompID` (tag 56),
+/// `Username` (tag 553), and `Password` (tag 554) from the Logon.
+/// If username/password are present, they are used as the auth token
+/// in `user:pass` format. Otherwise, `SenderCompID:TargetCompID` is
+/// used as the token.
+pub fn logon_to_stream_open(logon: &FixMessage) -> FixConvertResult<Frame> {
+    // Validate MsgType
+    let msg_type = logon.msg_type().unwrap_or("");
+    if msg_type != "A" {
+        return Err(FixConvertError::UnsupportedMsgType(msg_type.to_string()));
+    }
+
+    let sender_comp_id = logon
+        .get_tag(49)
+        .ok_or(FixConvertError::MissingTag { tag: 49 })?
+        .to_string();
+    let target_comp_id = logon
+        .get_tag(56)
+        .ok_or(FixConvertError::MissingTag { tag: 56 })?
+        .to_string();
+
+    let username = logon.get_tag(553);
+    let password = logon.get_tag(554);
+
+    let auth_token = if let (Some(user), Some(pass)) = (username, password) {
+        format!("{}:{}", user, pass)
+    } else {
+        format!("{}:{}", sender_comp_id, target_comp_id)
+    };
+
+    let frame = Frame::new(FrameType::StreamOpen, 0)
+        .with_extension(Extension::binary(
+            ExtensionTag::AuthToken,
+            auth_token.into_bytes(),
+        ));
+
+    Ok(frame)
+}
+
+/// Convert a FIG STREAM_OPEN frame with an AUTH_TOKEN extension to a
+/// FIX Logon (35=A) message.
+///
+/// The auth token is expected to be in `user:pass` or `sender:target`
+/// format. The first component is used as `SenderCompID` (tag 49) and
+/// the second as `TargetCompID` (tag 56).
+pub fn stream_open_to_logon(frame: &Frame) -> FixConvertResult<FixMessage> {
+    if frame.frame_type != FrameType::StreamOpen {
+        return Err(FixConvertError::UnsupportedMsgType(format!(
+            "{}",
+            frame.frame_type
+        )));
+    }
+
+    let auth_bytes = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::AuthToken)
+        .map(|e| e.value.as_bytes())
+        .ok_or(FixConvertError::MissingAuthToken)?;
+
+    let auth_str = String::from_utf8_lossy(&auth_bytes);
+    let (sender_comp_id, target_comp_id) = if let Some(pos) = auth_str.find(':') {
+        (
+            auth_str[..pos].to_string(),
+            auth_str[pos + 1..].to_string(),
+        )
+    } else {
+        (auth_str.to_string(), String::new())
+    };
+
+    let mut tags: Vec<(u32, String)> = Vec::new();
+    tags.push((8, "FIX.4.4".to_string()));
+    tags.push((35, "A".to_string()));
+    tags.push((49, sender_comp_id));
+    tags.push((56, target_comp_id));
+    tags.push((34, "1".to_string())); // MsgSeqNum
+    tags.push((98, "0".to_string())); // EncryptMethod = None
+    tags.push((108, "30".to_string())); // HeartBtInt
+    tags.push((141, "Y".to_string())); // ResetSeqNumFlag
+
+    Ok(FixMessage::new(tags))
 }
 
 // ─── FIX Value Converters ─────────────────────────────────────────
@@ -700,5 +850,121 @@ mod tests {
         assert_eq!(find(6), "50.25");
         assert_eq!(find(55), "AAPL");
         assert_eq!(find(60), "1700000000000000000");
+    }
+
+    // ── Logon ↔ STREAM_OPEN Conversion ────────────────────────
+
+    #[test]
+    fn test_logon_with_credentials_to_stream_open() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "A".to_string()),
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+            (553, "trader1".to_string()),
+            (554, "secret123".to_string()),
+            (34, "1".to_string()),
+        ];
+        let logon = FixMessage::new(tags);
+        let frame = logon_to_stream_open(&logon).unwrap();
+
+        assert_eq!(frame.frame_type, FrameType::StreamOpen);
+        assert_eq!(frame.channel_id, 0);
+        assert_eq!(frame.extensions.len(), 1);
+        assert_eq!(frame.extensions[0].tag, ExtensionTag::AuthToken);
+        let auth_bytes = frame.extensions[0].value.as_bytes();
+        let auth = String::from_utf8_lossy(&auth_bytes);
+        assert_eq!(auth, "trader1:secret123");
+    }
+
+    #[test]
+    fn test_logon_without_credentials_to_stream_open() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "A".to_string()),
+            (49, "SENDER".to_string()),
+            (56, "TARGET".to_string()),
+            (34, "1".to_string()),
+        ];
+        let logon = FixMessage::new(tags);
+        let frame = logon_to_stream_open(&logon).unwrap();
+
+        assert_eq!(frame.frame_type, FrameType::StreamOpen);
+        assert_eq!(frame.channel_id, 0);
+        assert_eq!(frame.extensions.len(), 1);
+        assert_eq!(frame.extensions[0].tag, ExtensionTag::AuthToken);
+        let auth_bytes = frame.extensions[0].value.as_bytes();
+        let auth = String::from_utf8_lossy(&auth_bytes);
+        assert_eq!(auth, "SENDER:TARGET");
+    }
+
+    #[test]
+    fn test_logon_to_stream_open_round_trip() {
+        // Logon with credentials → Frame → back to Logon
+        let original_tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "A".to_string()),
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+            (553, "trader1".to_string()),
+            (554, "secret123".to_string()),
+            (34, "2".to_string()),
+        ];
+        let logon = FixMessage::new(original_tags);
+
+        let frame = logon_to_stream_open(&logon).unwrap();
+        let logon2 = stream_open_to_logon(&frame).unwrap();
+
+        // Verify key fields are preserved
+        assert_eq!(logon2.msg_type(), Some("A"));
+        assert_eq!(logon2.get_tag(49), Some("trader1"));
+        assert_eq!(logon2.get_tag(56), Some("secret123"));
+    }
+
+    #[test]
+    fn test_stream_open_to_logon() {
+        let frame = Frame::new(FrameType::StreamOpen, 0).with_extension(
+            Extension::binary(ExtensionTag::AuthToken, b"alice:password1".to_vec()),
+        );
+
+        let logon = stream_open_to_logon(&frame).unwrap();
+        assert_eq!(logon.msg_type(), Some("A"));
+        assert_eq!(logon.get_tag(49), Some("alice"));
+        assert_eq!(logon.get_tag(56), Some("password1"));
+        assert_eq!(logon.get_tag(98), Some("0")); // EncryptMethod
+        assert_eq!(logon.get_tag(141), Some("Y")); // ResetSeqNumFlag
+    }
+
+    #[test]
+    fn test_logon_to_stream_open_rejects_non_logon() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "D".to_string()), // NewOrderSingle, not Logon
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+        ];
+        let msg = FixMessage::new(tags);
+        let result = logon_to_stream_open(&msg);
+        assert!(matches!(
+            result,
+            Err(FixConvertError::UnsupportedMsgType(_))
+        ));
+    }
+
+    #[test]
+    fn test_stream_open_to_logon_rejects_non_stream_open() {
+        let frame = Frame::ping();
+        let result = stream_open_to_logon(&frame);
+        assert!(matches!(
+            result,
+            Err(FixConvertError::UnsupportedMsgType(_))
+        ));
+    }
+
+    #[test]
+    fn test_stream_open_to_logon_missing_auth_token() {
+        let frame = Frame::new(FrameType::StreamOpen, 0);
+        let result = stream_open_to_logon(&frame);
+        assert!(matches!(result, Err(FixConvertError::MissingAuthToken)));
     }
 }

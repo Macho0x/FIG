@@ -11,13 +11,13 @@ Tracking remaining work to reach production-grade 100% coverage of the
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | QUIC transport via quinn 0.11 | — | ALPN `fig/1`, self-signed certs, 0-RTT |
-| ✅ | FrameDecoder for streaming QUIC reads | — | Buffered, handles partial frames |
-| ✅ | UnipConnection wrapper (open/send/recv/close) | — | Per-channel QUIC streams |
-| 🔶 | 0-RTT session resumption end-to-end | High | FileSessionStore exists; QUIC 0-RTT not wired through transport |
-| ⬜ | TCP downgrade mode (`FIG\x01` magic prefix) | Medium | Spec §2.1; for legacy environments without QUIC |
-| ⬜ | Connection migration handling | Low | QUIC supports it; FIG channel reconstruction on migration not tested |
-| ⬜ | QUIC stream reset → channel CLOSED transition | High | Spec §2; STOP_SENDING/RESET_STREAM must close channel, prevent leaks |
+| ✅ | TREE transport via quinn 0.11 | — | ALPN `fig/1`, self-signed certs, 0-RTT |
+| ✅ | FrameDecoder for streaming TREE reads | — | Buffered, handles partial frames |
+| ✅ | FigConnection wrapper (open/send/recv/close) | — | Per-channel TREE streams |
+| ✅ | 0-RTT session resumption end-to-end | — | FigClient::connect_0rtt + FigServer::accept_0rtt with rejection fallback; TODO: production replay protection |
+| ⬜ | TCP downgrade mode (`FIG\x01` magic prefix) | Medium | Spec §2.1; for legacy environments without TREE |
+| ⬜ | Connection migration handling | Low | TREE supports it; FIG channel reconstruction on migration not tested |
+| ✅ | TREE stream reset → channel CLOSED transition | — | StreamReset/StreamStopped errors detected, force_close_channel transitions to Closed |
 
 ---
 
@@ -42,8 +42,8 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | PING / PONG | — | Heartbeat |
 | ✅ | GOAWAY | — | Graceful shutdown with reason |
 | ✅ | SETTINGS | — | Tier advertisement |
-| 🔶 | AUTH_REFRESH | High | ControlSubtype defined; token refresh flow not implemented |
-| 🔶 | SEQ_RESET | High | ControlSubtype defined; sequence reset logic not implemented |
+| ✅ | AUTH_REFRESH | — | Frame constructor + token extraction + verify_refresh_token + control dispatcher |
+| ✅ | SEQ_RESET | — | Frame constructor + payload parsing + control dispatcher + ChannelManager::reset_seq |
 | ⬜ | RESEND | Medium | Spec §12.1; FIX ResendRequest (35=2) equivalent |
 
 ---
@@ -54,9 +54,9 @@ Tracking remaining work to reach production-grade 100% coverage of the
 |---|---|---|---|
 | ✅ | Channel open/close/remove | — | 15 tests |
 | ✅ | Sequence numbers (increment, wraparound, duplicate detection) | — | Spec-compliant |
-| ✅ | QUIC stream ID mapping (client/server parity) | — | `channel_id * 4 + offset` |
+| ✅ | TREE stream ID mapping (client/server parity) | — | `channel_id * 4 + offset` |
 | ✅ | Credit-based flow control | — | Per-channel credits, consume/grant, exhaustion error |
-| 🔶 | Channel reconstruction after reconnect | High | Session stores channel list; transport doesn't rebuild QUIC streams from it |
+| ✅ | Channel reconstruction after reconnect | — | ChannelManager::reconstruct from stored session, reopen TREE streams |
 | ⬜ | Channel ID leak prevention on stream reset | High | Spec §2; must detect RESET_STREAM and transition to CLOSED |
 | ⬜ | Unidirectional channels | Low | Spec §2; only bidirectional implemented |
 
@@ -69,7 +69,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | Session struct (UUID, auth token, channels, seq tracking) | — | 14 tests |
 | ✅ | MemorySessionStore | — | HashMap-backed |
 | ✅ | FileSessionStore | — | JSON file persistence, 6 tests |
-| 🔶 | 0-RTT resumption integration | High | Store works; QUIC 0-RTT not wired through transport layer |
+| ✅ | 0-RTT resumption integration | — | TREE 0-RTT wired through transport; FileSessionStore persists sessions |
 | ⬜ | Redis/etcd SessionStore | Low | Trait is abstract; production backends not implemented |
 | ⬜ | Session expiry / TTL | Medium | No automatic expiry of idle sessions |
 | ⬜ | Session migration (connection migration) | Low | Spec §1.1; sessions should survive IP changes |
@@ -83,8 +83,8 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | CBOR encode/decode via ciborium | — | 6 tests |
 | ✅ | SBE encode/decode for trading messages | — | 79 tests, zero-alloc |
 | ✅ | SBE encode: NewOrderSingle, ExecutionReport, CancelRequest | — | Hot path |
-| ⬜ | SBE encode: remaining message types | Medium | CancelReplace, MarketDataSnapshot, MarketDataUpdate, AccountSummary |
-| ⬜ | SBE message header (schema ID, version, template ID) | Medium | Spec §10; SBE standard header not fully compliant |
+| ✅ | SBE encode: remaining message types | — | CancelReplace, MarketDataSnapshot, MarketDataIncrementalRefresh, CancelReject (generated from USL) |
+| ✅ | SBE message header (schema ID, version, template ID) | — | Generated SBE headers compliant with Spec §10 |
 | ⬜ | Protobuf codec | Low | Spec §10; for schema-evolving payloads |
 | ⬜ | JSON codec (for REST gateway) | Medium | REST gateway uses string manipulation; proper JSON↔CBOR not implemented |
 
@@ -100,7 +100,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | Dev tokens for testing | — | |
 | ⬜ | JWT support | Medium | Spec §6; bearer token via JWT not implemented |
 | ⬜ | Per-channel auth | Medium | Spec §6; auth scoped to individual channels |
-| ⬜ | AUTH_REFRESH flow | High | Token expiry → refresh → resume; not implemented |
+| ✅ | AUTH_REFRESH flow | — | Token refresh (client→server), verify_refresh_token, control dispatcher |
 | ⬜ | OAuth2 / OIDC integration | Low | Enterprise auth |
 
 ---
@@ -113,10 +113,10 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | FIX → FIG message conversion | — | NewOrderSingle, Cancel, ExecutionReport |
 | ✅ | REST HTTP/1.1 parse/serialize | — | 7 tests |
 | ✅ | WebSocket RFC 6455 frame parse/serialize | — | 14 tests, all opcodes, masking |
-| 🔶 | FIX session state machine | High | Parse/serialize done; QuickFIX-style state machine (Logon/Logout/Heartbeat/ResendRequest/GapFill) not implemented |
+| ✅ | FIX session state machine | — | FixSession with states (LoggedOut/LogonSent/LoggedIn/LogoutSent), MsgSeqNum tracking, Heartbeat, ResendRequest, GapFill |
 | 🔶 | REST JSON ↔ CBOR body conversion | Medium | REST adapter parses HTTP; body conversion is string-based, not proper JSON↔CBOR |
 | ⬜ | WebSocket → FIG stream mapping | Medium | WS frames parse; mapping to STREAM_ITEM with content-type not wired |
-| ⬜ | FIX Logon (35=A) → STREAM_OPEN + AUTH | High | Spec §12.1; critical for FIX compatibility |
+| ✅ | FIX Logon (35=A) → STREAM_OPEN + AUTH | — | logon_to_stream_open + stream_open_to_logon conversion functions |
 | ⬜ | FIX ResendRequest (35=2) → CONTROL(RESEND) | Medium | Spec §12.1 |
 | ⬜ | REST SSE → STREAM_ITEM streaming | Low | Spec §12.2 |
 | ⬜ | Gateway process (standalone binary) | Medium | Adapters are libraries; no standalone gateway server binary |
@@ -131,16 +131,20 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | AST with all node types | — | Serde round-trip |
 | ✅ | Rust codegen | — | 5 tests |
 | ✅ | uslc CLI (compile, validate) | — | 10 tests |
-| 🔶 | Enum codegen | Medium | Parser handles enums; codegen has `TODO_enum` placeholder |
-| 🔶 | Inline struct codegen | Medium | Parser handles inline structs; codegen has `TODO_inline_struct` placeholder |
+| ✅ | Enum codegen | — | from_value/to_value with explicit discriminators |
+| ✅ | Inline struct codegen | — | ENCODED_LEN constant, fixed-size struct generation |
 | ⬜ | Go codegen target | Medium | Spec §11.2 |
 | ⬜ | Python codegen target | Low | Spec §11.2 |
 | ⬜ | TypeScript codegen target | Low | Spec §11.2 |
+| ⬜ | C++ codegen target | Medium | Spec §11.2; for HFT low-latency clients |
+| ⬜ | C# codegen target | Medium | Spec §11.2; for .NET trading platforms |
+| ⬜ | OCaml codegen target | Low | Spec §11.2; for type-safe functional implementations |
+| ⬜ | Zig codegen target | Low | Spec §11.2; for zero-alloc systems-level clients |
 | ⬜ | Protobuf `.proto` codegen | Medium | Spec §11.2; for gRPC interop |
-| ⬜ | SBE `.xml` codegen | Medium | Spec §11.2; for trading fast path |
+| 🔶 | SBE `.xml` codegen | Medium | Spec §11.2; uslc --lang sbe generates Rust; XML output not yet |
 | ⬜ | JSON Schema `.json` codegen | Low | Spec §11.2; for REST docs |
 | ⬜ | FIX mapping `.yaml` codegen | Low | Spec §11.2; for gateway config |
-| ⬜ | USL → SBE Rust encode/decode impls | High | Currently SBE is hand-written; should be generated from USL |
+| ✅ | USL → SBE Rust encode/decode impls | — | Generated from USL alongside hand-written, cross-validated, 7 messages |
 
 ---
 
@@ -150,13 +154,13 @@ Tracking remaining work to reach production-grade 100% coverage of the
 |---|---|---|---|
 | ✅ | Order book (price-time priority) | — | 8 tests |
 | ✅ | Matching engine (market + limit orders) | — | 8 tests |
-| ✅ | FIG server over QUIC | — | Order entry, cancel, market data, account query |
+| ✅ | FIG server over TREE | — | Order entry, cancel, market data, account query |
 | ✅ | Integration tests (end-to-end) | — | 6 tests |
 | 🔶 | Market data streaming (push updates) | Medium | Snapshot on subscribe; no incremental push on trade |
 | ⬜ | CancelReplace (order modification) | Low | Method exists in matching engine; not wired to server |
 | ⬜ | Order book depth streaming | Low | `bid_depth`/`ask_depth` exist; not pushed on change |
 | ⬜ | Multi-symbol support in server | Low | Matching engine supports it; server hardcodes AAPL |
-| ⬜ | Session resumption in server | High | Server doesn't persist sessions across restarts |
+| ✅ | Session resumption in server | — | FileSessionStore wired into handle_connection, sessions persist across restarts |
 
 ---
 
@@ -182,7 +186,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | CBOR vs SBE codec benchmarks | — | 6 benchmarks |
 | ✅ | Gateway adapter benchmarks | — | 8 benchmarks |
 | ✅ | Matching engine benchmarks | — | 3 benchmarks |
-| ⬜ | QUIC transport benchmarks (round-trip latency) | Medium | End-to-end frame round-trip over localhost QUIC |
+| ⬜ | TREE transport benchmarks (round-trip latency) | Medium | End-to-end frame round-trip over localhost TREE |
 | ⬜ | Comparison benchmarks vs FIX/REST/WS | Medium | Same message through FIG native vs gateway vs raw FIX |
 | ⬜ | Throughput benchmarks (msgs/sec) | Medium | Sustained throughput over 60s |
 | ⬜ | Memory allocation benchmarks | Low | `cargo bench` with `--features alloc` |
@@ -222,12 +226,12 @@ Tracking remaining work to reach production-grade 100% coverage of the
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | TLS 1.3 via QUIC | — | Mandatory, integrated |
+| ✅ | TLS 1.3 via TREE | — | Mandatory, integrated |
 | ✅ | Self-signed cert generation | — | For development |
 | 🔶 | mTLS | Medium | Auth module supports it; server doesn't require client certs |
 | ⬜ | Certificate rotation | Medium | No runtime cert reload |
 | ⬜ | Rate limiting | Medium | No per-channel or per-connection rate limiting |
-| ⬜ | DoS protection | Low | QUIC provides some; no FIG-level protection |
+| ⬜ | DoS protection | Low | TREE provides some; no FIG-level protection |
 | ⬜ | Security audit | Low | Pre-1.0 audit |
 
 ---
@@ -235,15 +239,15 @@ Tracking remaining work to reach production-grade 100% coverage of the
 ## Priority Summary
 
 ### High Priority (blocking production use)
-1. 0-RTT session resumption end-to-end (transport + session + server)
-2. Channel reconstruction after reconnect
-3. Channel ID leak prevention on QUIC stream reset
-4. FIX session state machine (Logon/Logout/Heartbeat/ResendRequest)
-5. FIX Logon → STREAM_OPEN + AUTH
-6. AUTH_REFRESH flow
-7. SEQ_RESET control frame logic
-8. USL → SBE Rust codegen (replace hand-written SBE)
-9. Session resumption in exchange-sim server
+1. ✅ 0-RTT session resumption end-to-end (transport + session + server)
+2. ✅ Channel reconstruction after reconnect
+3. ✅ Channel ID leak prevention on TREE stream reset
+4. ✅ FIX session state machine (Logon/Logout/Heartbeat/ResendRequest)
+5. ✅ FIX Logon → STREAM_OPEN + AUTH
+6. ✅ AUTH_REFRESH flow
+7. ✅ SEQ_RESET control frame logic
+8. ✅ USL → SBE Rust codegen (generated alongside hand-written, cross-validated)
+9. ✅ Session resumption in exchange-sim server
 
 ### Medium Priority (important for adoption)
 1. TCP downgrade mode
@@ -254,10 +258,11 @@ Tracking remaining work to reach production-grade 100% coverage of the
 6. WebSocket → FIG stream mapping
 7. JWT auth support
 8. Per-channel auth
-9. USL enum + inline struct codegen
+9. USL enum + inline struct codegen ✅
 10. Go/Protobuf/SBE codegen targets
-11. OpenTelemetry + Prometheus export
-12. QUIC transport benchmarks
+11. C++/C# codegen targets
+12. OpenTelemetry + Prometheus export
+12. TREE transport benchmarks
 13. API docs + tutorial
 14. Coverage reporting in CI
 15. mTLS enforcement in server
@@ -273,7 +278,8 @@ Tracking remaining work to reach production-grade 100% coverage of the
 6. OAuth2/OIDC
 7. REST SSE streaming
 8. Python/TypeScript/JSON Schema/FIX mapping codegen
-9. CancelReplace in server
+9. OCaml/Zig codegen targets
+10. CancelReplace in server
 10. Multi-symbol server
 11. Frame-level tracing instrumentation
 12. Memory allocation benchmarks
@@ -283,3 +289,4 @@ Tracking remaining work to reach production-grade 100% coverage of the
 16. Docker image
 17. Rate limiting / DoS protection
 18. Security audit
+

@@ -50,7 +50,7 @@ pub fn span_session_resume(session_id: &str) -> Span {
     info_span!("fig.session.resume", session_id = session_id)
 }
 
-/// Create a tracing span for QUIC connection.
+/// Create a tracing span for TREE connection.
 pub fn span_connection(remote: &str) -> Span {
     info_span!("fig.connection", remote = remote)
 }

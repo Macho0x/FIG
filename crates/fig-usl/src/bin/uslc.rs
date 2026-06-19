@@ -16,7 +16,7 @@ enum Commands {
     Compile {
         /// The .usl file to compile
         file: PathBuf,
-        /// Target language (currently only "rust" is supported)
+        /// Target language ("rust" for serde structs, "sbe" for SBE binary codec)
         #[arg(long)]
         lang: String,
         /// Output directory for generated code
@@ -52,21 +52,27 @@ fn main() -> anyhow::Result<()> {
             let schema = fig_usl::Parser::parse(&input)
                 .with_context(|| format!("Failed to parse {}", file.display()))?;
 
-            if lang != "rust" {
-                anyhow::bail!("Unsupported language '{}'. Currently only 'rust' is supported.", lang);
-            }
-
-            let code = fig_usl::codegen::RustCodegen::generate(&schema);
+            let code = match lang.as_str() {
+                "rust" => fig_usl::RustCodegen::generate(&schema),
+                "sbe" => fig_usl::sbe_codegen::generate_sbe(&schema),
+                other => anyhow::bail!(
+                    "Unsupported language '{}'. Supported: 'rust' (serde structs), 'sbe' (SBE codec).",
+                    other
+                ),
+            };
 
             // Ensure output directory exists
             std::fs::create_dir_all(&out)
                 .with_context(|| format!("Failed to create output directory: {}", out.display()))?;
 
-            let output_path = out.join("generated.rs");
+            let output_path = out.join(match lang.as_str() {
+                "sbe" => "sbe_generated.rs",
+                _ => "generated.rs",
+            });
             std::fs::write(&output_path, &code)
                 .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
 
-            println!("Generated Rust code: {}", output_path.display());
+            println!("Generated {} code: {}", lang, output_path.display());
             println!("  Schema: {} {}", schema.name, schema.version);
             println!("  Messages: {}", schema.messages.len());
             println!("  Type definitions: {}", schema.type_defs.len());

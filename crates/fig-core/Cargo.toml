@@ -3,7 +3,7 @@ name = "fig-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "FIG core protocol: frame parser, channel manager, session, QUIC transport"
+description = "FIG core protocol: frame parser, channel manager, session, TREE transport"
 
 [dependencies]
 bytes = { workspace = true }
@@ -19,3 +19,4 @@ rcgen = { workspace = true }
 uuid = { workspace = true }
 bitflags = { workspace = true }
 serde_json = { workspace = true }
+

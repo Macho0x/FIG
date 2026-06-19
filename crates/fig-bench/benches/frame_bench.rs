@@ -54,7 +54,7 @@ fn bench_frame_decoder_streaming(c: &mut Criterion) {
     c.bench_function("frame_decoder_streaming", |b| {
         b.iter(|| {
             let mut decoder = FrameDecoder::new();
-            // Feed in 1KB chunks (simulating QUIC stream reads)
+            // Feed in 1KB chunks (simulating TREE stream reads)
             for chunk in encoded.chunks(1024) {
                 decoder.feed(chunk);
             }

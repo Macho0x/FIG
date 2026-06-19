@@ -233,7 +233,7 @@ async fn main() -> Result<()> {
     info!("  2. Market data subscription → MarketDataSnapshot");
     info!("  3. Account query → AccountSummary");
     info!("  4. PING/PONG control frames");
-    info!("  All over a single QUIC connection with per-stream flow control.");
+    info!("  All over a single TREE connection with per-stream flow control.");
 
     // Close the connection
     conn.close(0u32.into(), b"done");

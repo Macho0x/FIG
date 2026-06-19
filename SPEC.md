@@ -9,7 +9,7 @@
 
 FIG (Fast Interchange Gateway) is a binary, multiplexed,
 schema-native protocol designed for high-performance trading systems and
-real-time financial applications. It runs over QUIC and unifies the
+real-time financial applications. It runs over TREE and unifies the
 interaction patterns of FIX (session-oriented order flow), REST
 (resource-oriented request-response), and WebSocket (bidirectional
 streaming) into a single wire format.
@@ -17,14 +17,14 @@ streaming) into a single wire format.
 ### 1.1 Goals
 
 - **One connection, all patterns.** Request-response, streaming, pub/sub,
-  and session-oriented messaging over a single QUIC connection with
+  and session-oriented messaging over a single TREE connection with
   per-stream flow control.
 - **Schema-native.** Every frame carries a Schema ID. Messages are
   validated at the protocol layer.
 - **Free observability.** Trace IDs, correlation IDs, and nanosecond
   timestamps are protocol-level header fields.
 - **Zero-RTT session continuity.** Sessions survive disconnects and
-  resume with QUIC 0-RTT.
+  resume with TREE 0-RTT.
 - **Backwards compatible.** Gateways translate to/from FIX, REST, and
   WebSocket for migration.
 
@@ -32,8 +32,8 @@ streaming) into a single wire format.
 
 | Term | Definition |
 |---|---|
-| **Connection** | A QUIC connection between a client and server. |
-| **Channel** | A logical conversation within a connection, mapped 1:1 to a QUIC stream. |
+| **Connection** | A TREE connection between a client and server. |
+| **Channel** | A logical conversation within a connection, mapped 1:1 to a TREE stream. |
 | **Frame** | The unit of communication — a typed binary message on a channel. |
 | **Session** | A durable, migratable logical entity identified by SESSION_ID. |
 | **Extension** | A typed key-value pair in the extension header (TLV). |
@@ -43,23 +43,23 @@ streaming) into a single wire format.
 
 ## 2. Transport
 
-FIG uses **QUIC** as its mandatory native transport.
+FIG uses **TREE** as its mandatory native transport.
 
 - **ALPN:** `fig/1`
-- **TLS:** 1.3 mandatory (provided by QUIC)
-- **Stream mapping:** Each FIG channel maps 1:1 to a QUIC stream.
-  - Bidirectional channels → bidirectional QUIC streams
-  - Unidirectional channels → unidirectional QUIC streams
+- **TLS:** 1.3 mandatory (provided by TREE)
+- **Stream mapping:** Each FIG channel maps 1:1 to a TREE stream.
+  - Bidirectional channels → bidirectional TREE streams
+  - Unidirectional channels → unidirectional TREE streams
 - **Channel 0** is reserved for connection-level control frames
   (PING, PONG, GOAWAY, SETTINGS, AUTH_REFRESH).
 
-QUIC provides per-stream multiplexing (no head-of-line blocking across
+TREE provides per-stream multiplexing (no head-of-line blocking across
 channels), 0-RTT session resumption, connection migration (NAT rebinding
 survival), and integrated TLS 1.3.
 
 ### 2.1 TCP Downgrade
 
-For legacy environments without QUIC support, FIG defines a TCP fallback
+For legacy environments without TREE support, FIG defines a TCP fallback
 mode using the same binary framing with a magic prefix (`FIG\x01`) for
 first-byte protocol detection. This mode loses multiplexing benefits
 (channels are serialized over one TCP stream) and is intended only for
@@ -264,7 +264,7 @@ custom tags rather than erroring.
                     ┌─────────────┐
                     │   CLOSED    │
                     └──────┬──────┘
-                           │ CONNECT (QUIC handshake, ALPN "fig/1")
+                           │ CONNECT (TREE handshake, ALPN "fig/1")
                     ┌──────▼──────┐
                     │  CONNECTED  │ (Channel 0 active)
                     └──┬───┬───┬──┘
@@ -330,7 +330,7 @@ SESSION_ID (16-byte binary). It is NOT tied to a single connection.
    ordering.
 3. **Suspend:** Connection drops. Session state persists on the server
    (in a durable store).
-4. **Resume:** Client reconnects (QUIC 0-RTT), sends STREAM_OPEN with the
+4. **Resume:** Client reconnects (TREE 0-RTT), sends STREAM_OPEN with the
    same SESSION_ID and a start-seq extension. Server restores channel
    state. Outstanding orders remain alive. Subscriptions resume.
 5. **Migrate:** Server sends REDIRECT with REDIRECT_TARGET and
@@ -381,7 +381,7 @@ Four-layer model, all protocol-native:
 
 | Layer | Mechanism | Scope | Required |
 |---|---|---|---|
-| **Transport** | QUIC mandatory TLS 1.3; mTLS for server-to-server | Connection | Yes |
+| **Transport** | TREE mandatory TLS 1.3; mTLS for server-to-server | Connection | Yes |
 | **Session** | AUTH_TOKEN (JWT/OAuth2) in STREAM_OPEN; refresh via CONTROL(AUTH_REFRESH) | Session | Yes |
 | **Channel** | SCOPE extension in STREAM_OPEN: `trading:orders:write` | Channel | Optional |
 | **Message** | ENCRYPTED flag + per-message symmetric key (E2E through gateways) | Payload | Optional |
@@ -496,7 +496,7 @@ the protocol's identity.
 
 | WebSocket concept | FIG equivalent |
 |---|---|
-| Upgrade handshake | QUIC handshake + ALPN |
+| Upgrade handshake | TREE handshake + ALPN |
 | Text frame | STREAM_ITEM, CONTENT_TYPE "text/plain" |
 | Binary frame | STREAM_ITEM, CONTENT_TYPE "application/octet-stream" |
 | Close frame | STREAM_CLOSE |
@@ -523,7 +523,7 @@ Servers advertise their tier during CONNECT via SETTINGS.
 |---|---|---|---|---|
 | Min header overhead | 16 bytes | 200-500 bytes | 200-800 bytes | 2-10 bytes |
 | Parse speed | ~0.5-2μs (SBE zero-copy) | ~5-20μs (ASCII parse) | ~10-50μs (JSON) | N/A |
-| Handshake RTTs | 1 (QUIC) / 0 (resumed) | 4 (TCP+TLS+Logon) | 3-5 (DNS+TCP+TLS+HTTP) | 2-3 (upgrade+TLS) |
+| Handshake RTTs | 1 (TREE) / 0 (resumed) | 4 (TCP+TLS+Logon) | 3-5 (DNS+TCP+TLS+HTTP) | 2-3 (upgrade+TLS) |
 | Multiplexing | 65535 channels/conn | 1 session/conn | 6 (browser) / HTTP/2 | 1/conn |
 | Session resumption | 0-RTT | Full reconnect | N/A (stateless) | Full reconnect |
 
@@ -540,8 +540,8 @@ Servers advertise their tier during CONNECT via SETTINGS.
 
 ## References
 
-- RFC 9000 — QUIC: A UDP-Based Multiplexed and Secure Transport
-- RFC 9001 — Using TLS to Secure QUIC
+- RFC 9000 — QUIC transport (the foundation TREE builds upon)
+- RFC 9001 — Using TLS to secure QUIC (TREE's encryption layer)
 - RFC 9114 — HTTP/3
 - RFC 7049 — Concise Binary Object Representation (CBOR)
 - FIX Protocol 4.4 / 5.0 SP2 / FIXT.1.1
@@ -551,3 +551,4 @@ Servers advertise their tier during CONNECT via SETTINGS.
 ---
 
 *End of specification.*
+

@@ -1,4 +1,4 @@
-//! FIG — Unified Network Interchange Protocol
+//! FIG — Fast Interchange Gateway
 //!
 //! A schema-native, multiplexed, zero-RTT protocol for trading systems.
 //! Unifies and supersedes FIX, REST, and WebSocket.
@@ -8,10 +8,10 @@
 //! The core library provides:
 //! - **Frame** encoding/decoding with the 16-byte fixed header + TLV extensions
 //! - **Extension tags** for protocol-level metadata (URIs, status codes, timestamps, etc.)
-//! - **FrameDecoder** for streaming frame parsing over QUIC connections
-//! - **Channel** management with QUIC stream ID mapping and sequence numbering
+//! - **FrameDecoder** for streaming frame parsing over TREE connections
+//! - **Channel** management with TREE stream ID mapping and sequence numbering
 //! - **Session** model with pluggable storage backends
-//! - **QUIC Transport** wrapper with TLS certificate generation
+//! - **TREE Transport** wrapper with TLS certificate generation
 //! - **CBOR Codec** for self-describing payload encoding
 //! - **SBE Codec** for zero-alloc binary encoding of trading messages
 //! - **Error types** for frame, channel, and session operations
@@ -38,7 +38,7 @@
 //! let (decoded, _) = Frame::decode(&encoded).unwrap();
 //! assert_eq!(decoded.frame_type, FrameType::Request);
 //!
-//! // Streaming decode (for QUIC reads)
+//! // Streaming decode (for TREE reads)
 //! let mut decoder = FrameDecoder::new();
 //! decoder.feed(&partial_chunk);
 //! if let Some(result) = decoder.decode_next() {
@@ -48,7 +48,7 @@
 //! // Channel management
 //! let mut mgr = ChannelManager::new(false); // client
 //! let ch = mgr.open_channel(ChannelMode::Stateless, None).unwrap();
-//! assert_eq!(mgr.quic_stream_id(ch), 4);
+//! assert_eq!(mgr.tree_stream_id(ch), 4);
 //! ```
 //!
 //! # Module Index
@@ -57,30 +57,34 @@
 //! |---|---|
 //! | [`frame`] | FIG frame wire format, encoding/decoding, streaming parser |
 //! | [`ext`] | Extension tags (TLV) for protocol metadata |
-//! | [`channel`] | Channel lifecycle, sequence numbering, QUIC stream ID mapping |
+//! | [`channel`] | Channel lifecycle, sequence numbering, TREE stream ID mapping |
 //! | [`session`] | Durable session model with pluggable storage backends |
-//! | [`transport`] | QUIC transport wrapper, TLS cert generation, ALPN |
+//! | [`transport`] | TREE transport wrapper, TLS cert generation, ALPN |
 //! | [`codec`] | CBOR encode/decode helpers for self-describing payloads |
 //! | [`sbe`] | SBE binary encoder/decoder for trading messages (zero-alloc) |
 //! | [`error`] | Error types: `FrameError`, `ChannelError`, `SessionError` |
 //! | [`auth`] | Authentication methods: token-based and mTLS |
+//! | [`control`] | Control frame dispatcher: PING/PONG, AUTH_REFRESH, SEQ_RESET |
 //! | [`observability`] | Tracing spans and atomic metrics counters |
 
 pub mod auth;
 pub mod channel;
 pub mod codec;
+pub mod control;
 pub mod error;
 pub mod ext;
 pub mod frame;
 pub mod messages;
 pub mod observability;
 pub mod sbe;
+pub mod sbe_generated;
 pub mod session;
 pub mod transport;
 
 pub use auth::*;
 pub use channel::*;
 pub use codec::*;
+pub use control::*;
 pub use error::*;
 pub use ext::*;
 pub use frame::*;

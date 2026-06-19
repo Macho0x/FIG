@@ -101,3 +101,27 @@ pub type ChannelResult<T> = Result<T, ChannelError>;
 
 /// Convenience type alias for session operations.
 pub type SessionResult<T> = Result<T, SessionError>;
+
+/// Top-level FIG transport/protocol errors.
+///
+/// Covers connection-level, stream-level, and handshake failures.
+#[derive(Error, Debug)]
+pub enum FigError {
+    #[error("TREE stream reset on channel {channel_id}: error_code={error_code}")]
+    StreamReset { channel_id: u16, error_code: u64 },
+
+    #[error("TREE stream stopped on channel {channel_id}: error_code={error_code}")]
+    StreamStopped { channel_id: u16, error_code: u64 },
+
+    #[error("connection failed: {0}")]
+    ConnectionFailed(String),
+
+    #[error("handshake failed: {0}")]
+    HandshakeFailed(String),
+
+    #[error("0-RTT rejected by server")]
+    ZeroRttRejected,
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}

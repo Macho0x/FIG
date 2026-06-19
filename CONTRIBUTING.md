@@ -28,7 +28,7 @@ cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out 
 ## Architecture
 
 ```
-fig-core          — Wire format, channels, sessions, QUIC transport, SBE codec
+fig-core          — Wire format, channels, sessions, TREE transport, SBE codec
 fig-usl           — USL schema language parser, codegen, and uslc CLI
 fig-gateways      — FIX, REST, and WebSocket gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
@@ -38,7 +38,7 @@ fig-cli           — Trading client demo
 ## Protocol Design Principles
 
 1. **Schema-native** — Every frame carries a Schema ID. Messages are validated at the protocol layer.
-2. **Multiplexed** — Channels are QUIC streams. Up to 65535 per connection.
+2. **Multiplexed** — Channels are TREE streams. Up to 65535 per connection.
 3. **Backwards compatible** — Gateway adapters translate to/from FIX, REST, and WebSocket.
 4. **Zero-RTT** — Sessions survive disconnects. Reconnect with 0-RTT and resume channels.
 5. **Observable** — Trace ID, Correlation ID, and timestamps in the fixed header.
@@ -108,3 +108,4 @@ GitHub Actions runs on every push:
 ## License
 
 Dual-licensed under MIT or Apache-2.0. All contributions must be dual-licensed.
+
