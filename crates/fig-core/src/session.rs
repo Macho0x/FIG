@@ -19,6 +19,9 @@ use uuid::Uuid;
 
 use crate::error::SessionError;
 
+/// Default idle TTL for sessions (1 hour). A TTL of 0 disables expiry checks.
+pub const DEFAULT_SESSION_TTL_SECS: u64 = 3600;
+
 /// Internal struct for resumption token serialization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResumptionTokenData {
@@ -156,6 +159,25 @@ impl Session {
     pub fn can_resume(&self) -> bool {
         !self.channels.is_empty()
     }
+
+    /// Seconds since last activity on this session.
+    pub fn idle_secs(&self) -> u64 {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        now.saturating_sub(self.last_active_at)
+    }
+
+    /// Returns true if the session has been idle longer than `ttl_secs`.
+    ///
+    /// A `ttl_secs` of 0 disables expiry (always returns false).
+    pub fn is_expired(&self, ttl_secs: u64) -> bool {
+        if ttl_secs == 0 {
+            return false;
+        }
+        self.idle_secs() > ttl_secs
+    }
 }
 
 impl Default for Session {
@@ -187,14 +209,39 @@ pub trait SessionStore: Send + Sync {
 /// **Production use:** replace with a durable store (Redis, etcd, …).
 pub struct MemorySessionStore {
     sessions: Mutex<HashMap<Uuid, Session>>,
+    /// Idle TTL in seconds. None or 0 disables automatic expiry.
+    ttl_secs: Option<u64>,
 }
 
 impl MemorySessionStore {
-    /// Create a new empty in-memory store.
+    /// Create a new empty in-memory store (no TTL expiry).
     pub fn new() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),
+            ttl_secs: None,
         }
+    }
+
+    /// Create a store that expires idle sessions after `ttl_secs`.
+    pub fn with_ttl(ttl_secs: u64) -> Self {
+        Self {
+            sessions: Mutex::new(HashMap::new()),
+            ttl_secs: if ttl_secs == 0 { None } else { Some(ttl_secs) },
+        }
+    }
+
+    /// Remove all expired sessions. Returns the number purged.
+    pub fn purge_expired(&self) -> Result<usize, SessionError> {
+        let Some(ttl) = self.ttl_secs else {
+            return Ok(0);
+        };
+        let mut guard = self
+            .sessions
+            .lock()
+            .map_err(|_| SessionError::SerializationError("lock poisoned".into()))?;
+        let before = guard.len();
+        guard.retain(|_, session| !session.is_expired(ttl));
+        Ok(before - guard.len())
     }
 
     /// Returns the number of sessions currently stored.
@@ -216,11 +263,20 @@ impl Default for MemorySessionStore {
 
 impl SessionStore for MemorySessionStore {
     fn get(&self, id: &Uuid) -> Result<Option<Session>, SessionError> {
-        let guard = self
+        let mut guard = self
             .sessions
             .lock()
             .map_err(|_| SessionError::SessionNotFound(*id))?;
-        Ok(guard.get(id).cloned())
+        if let Some(session) = guard.get(id) {
+            if let Some(ttl) = self.ttl_secs {
+                if session.is_expired(ttl) {
+                    guard.remove(id);
+                    return Err(SessionError::SessionExpired(*id));
+                }
+            }
+            return Ok(Some(session.clone()));
+        }
+        Ok(None)
     }
 
     fn put(&self, session: &Session) -> Result<(), SessionError> {
@@ -262,10 +318,12 @@ impl SessionStore for MemorySessionStore {
 /// use a shared Redis or database-backed store instead.
 pub struct FileSessionStore {
     dir: PathBuf,
+    /// Idle TTL in seconds. None or 0 disables automatic expiry.
+    ttl_secs: Option<u64>,
 }
 
 impl FileSessionStore {
-    /// Create a new file-based session store.
+    /// Create a new file-based session store (no TTL expiry).
     ///
     /// Creates the directory if it doesn't exist.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
@@ -273,7 +331,40 @@ impl FileSessionStore {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             tracing::warn!("Failed to create session directory {:?}: {}", dir, e);
         }
-        FileSessionStore { dir }
+        FileSessionStore {
+            dir,
+            ttl_secs: None,
+        }
+    }
+
+    /// Create a store that expires idle sessions after `ttl_secs`.
+    pub fn with_ttl(dir: impl Into<PathBuf>, ttl_secs: u64) -> Self {
+        let mut store = Self::new(dir);
+        store.ttl_secs = if ttl_secs == 0 { None } else { Some(ttl_secs) };
+        store
+    }
+
+    /// Remove all expired session files. Returns the number purged.
+    pub fn purge_expired(&self) -> Result<usize, SessionError> {
+        let Some(ttl) = self.ttl_secs else {
+            return Ok(0);
+        };
+        let mut purged = 0;
+        for entry in std::fs::read_dir(&self.dir).map_err(SessionError::IoError)? {
+            let entry = entry.map_err(SessionError::IoError)?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let data = std::fs::read(&path).map_err(SessionError::IoError)?;
+            let session: Session = serde_json::from_slice(&data)
+                .map_err(|e| SessionError::SerializationError(e.to_string()))?;
+            if session.is_expired(ttl) {
+                std::fs::remove_file(&path).map_err(SessionError::IoError)?;
+                purged += 1;
+            }
+        }
+        Ok(purged)
     }
 
     /// Return the file path for a given session ID.
@@ -291,6 +382,12 @@ impl SessionStore for FileSessionStore {
         let data = std::fs::read(&path).map_err(SessionError::IoError)?;
         let session: Session = serde_json::from_slice(&data)
             .map_err(|e| SessionError::SerializationError(e.to_string()))?;
+        if let Some(ttl) = self.ttl_secs {
+            if session.is_expired(ttl) {
+                std::fs::remove_file(&path).map_err(SessionError::IoError)?;
+                return Err(SessionError::SessionExpired(*id));
+            }
+        }
         Ok(Some(session))
     }
 
@@ -671,6 +768,82 @@ mod tests {
 
         let _store = FileSessionStore::new(&dir);
         assert!(dir.exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── Session TTL / expiry ────────────────────────────────────
+
+    #[test]
+    fn test_session_is_expired() {
+        let mut session = Session::new();
+        assert!(!session.is_expired(60));
+        session.last_active_at = session.last_active_at.saturating_sub(120);
+        assert!(session.is_expired(60));
+        assert!(!session.is_expired(0)); // TTL 0 disables expiry
+    }
+
+    #[test]
+    fn test_memory_store_expires_on_get() {
+        let store = MemorySessionStore::with_ttl(30);
+        let mut session = Session::new();
+        let id = session.session_id;
+        session.last_active_at = session.last_active_at.saturating_sub(60);
+        store.put(&session).unwrap();
+
+        let result = store.get(&id);
+        assert!(matches!(result, Err(SessionError::SessionExpired(_))));
+        assert!(store.get(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_memory_store_purge_expired() {
+        let store = MemorySessionStore::with_ttl(10);
+        let mut expired = Session::new();
+        expired.last_active_at = expired.last_active_at.saturating_sub(100);
+        let active = Session::new();
+
+        store.put(&expired).unwrap();
+        store.put(&active).unwrap();
+        assert_eq!(store.len(), 2);
+
+        let purged = store.purge_expired().unwrap();
+        assert_eq!(purged, 1);
+        assert_eq!(store.len(), 1);
+        assert!(store.get(&active.session_id).unwrap().is_some());
+    }
+
+    #[test]
+    fn test_file_store_expires_on_get() {
+        let dir = temp_dir();
+        let store = FileSessionStore::with_ttl(&dir, 30);
+        let mut session = Session::new();
+        let id = session.session_id;
+        session.last_active_at = session.last_active_at.saturating_sub(60);
+        store.put(&session).unwrap();
+
+        let result = store.get(&id);
+        assert!(matches!(result, Err(SessionError::SessionExpired(_))));
+        assert!(!dir.join(format!("{}.json", id)).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_store_purge_expired() {
+        let dir = temp_dir();
+        let store = FileSessionStore::with_ttl(&dir, 10);
+        let mut expired = Session::new();
+        expired.last_active_at = expired.last_active_at.saturating_sub(100);
+        let active = Session::new();
+
+        store.put(&expired).unwrap();
+        store.put(&active).unwrap();
+
+        let purged = store.purge_expired().unwrap();
+        assert_eq!(purged, 1);
+        assert!(store.get(&active.session_id).unwrap().is_some());
+        assert!(store.get(&expired.session_id).unwrap().is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -71,7 +71,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | FileSessionStore | — | JSON file persistence, 6 tests |
 | ✅ | 0-RTT resumption integration | — | TREE 0-RTT wired through transport; FileSessionStore persists sessions |
 | ⬜ | Redis/etcd SessionStore | Low | Trait is abstract; production backends not implemented |
-| ⬜ | Session expiry / TTL | Medium | No automatic expiry of idle sessions |
+| ✅ | Session expiry / TTL | Medium | Session::is_expired + store TTL on get/purge_expired |
 | ⬜ | Session migration (connection migration) | Low | Spec §1.1; sessions should survive IP changes |
 
 ---
