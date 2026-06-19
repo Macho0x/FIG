@@ -1,6 +1,6 @@
 use crate::ast::*;
 
-/// Rust code generator from FTL AST
+/// Rust code generator from FSL AST
 pub struct RustCodegen;
 
 impl RustCodegen {

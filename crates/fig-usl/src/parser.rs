@@ -1,7 +1,7 @@
 use crate::ast::*;
 use anyhow::{anyhow, Context, Result};
 
-/// Hand-written recursive descent parser for FTL
+/// Hand-written recursive descent parser for FSL
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,

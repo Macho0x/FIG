@@ -21,7 +21,7 @@ cargo run -p fig-exchange-sim
 # Run the trading client (in another terminal)
 cargo run -p fig-cli
 
-# Compile an FTL schema
+# Compile an FSL schema
 cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out src/generated/
 ```
 
@@ -29,7 +29,7 @@ cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out 
 
 ```
 fig-core          — Wire format, channels, sessions, TREE transport, SBE codec
-fig-usl           — FTL (Fig Tree Language) schema language parser, codegen, and ftlc CLI
+fig-usl           — FSL (Fig Schema Language) schema language parser, codegen, and ftlc CLI
 fig-gateways      — FIX, REST, and WebSocket gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
 fig-cli           — Trading client demo
@@ -55,7 +55,7 @@ fig-cli           — Trading client demo
 
 ## Adding a New Message Type
 
-1. Define the message in an FTL schema (`.usl` file):
+1. Define the message in an FSL schema (`.usl` file):
 ```
 message MyMessage {
     @number 1  field1: string(max_len: 32)
