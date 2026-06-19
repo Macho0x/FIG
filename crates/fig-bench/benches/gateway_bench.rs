@@ -175,6 +175,56 @@ fn bench_ws_serialize_text_frame(c: &mut Criterion) {
     });
 }
 
+// ─── Protocol comparison benchmarks ─────────────────────────────
+
+fn bench_protocol_comparison_new_order(c: &mut Criterion) {
+    use fig_core::ext::{Extension, ExtensionTag};
+    use fig_core::frame::{Frame, FrameType};
+    use fig_gateways::rest::{http_to_fig_frame, parse_http_request};
+
+    let fix_msg = make_fix_new_order_single_bytes();
+    let fix_tags = parse_fix_message(&fix_msg).unwrap();
+    let http_bytes = b"POST /trading/orders HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"cl_ord_id\":\"ORD-1\",\"symbol\":\"AAPL\",\"side\":\"Buy\",\"order_qty\":100,\"price\":150.25}";
+
+    let fig_frame = Frame::new(FrameType::Request, 1)
+        .with_extension(Extension::text(ExtensionTag::ChannelPath, "trading/orders"))
+        .with_payload(vec![]);
+
+    let mut group = c.benchmark_group("protocol_comparison_new_order");
+    group.bench_function("fix_parse", |b| {
+        b.iter(|| {
+            let tags = parse_fix_message(black_box(&fix_msg)).unwrap();
+            black_box(tags);
+        })
+    });
+    group.bench_function("fig_native_encode", |b| {
+        b.iter(|| {
+            let encoded = black_box(&fig_frame).encode().unwrap();
+            black_box(encoded);
+        })
+    });
+    group.bench_function("rest_parse", |b| {
+        b.iter(|| {
+            let req = parse_http_request(black_box(http_bytes)).unwrap();
+            black_box(req);
+        })
+    });
+    group.bench_function("fix_to_fig_order", |b| {
+        b.iter(|| {
+            let order = fix_to_fig_order(black_box(&fix_tags)).unwrap();
+            black_box(order);
+        })
+    });
+    group.bench_function("rest_to_fig", |b| {
+        b.iter(|| {
+            let req = parse_http_request(http_bytes).unwrap();
+            let frame = http_to_fig_frame(&req).unwrap();
+            black_box(frame);
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_fix_parse,
@@ -185,5 +235,6 @@ criterion_group!(
     bench_rest_serialize_response,
     bench_ws_parse_text_frame,
     bench_ws_serialize_text_frame,
+    bench_protocol_comparison_new_order,
 );
 criterion_main!(benches);

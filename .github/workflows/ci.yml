@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt, clippy, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --workspace --all-features
@@ -27,3 +27,31 @@ jobs:
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Format check
         run: cargo fmt --all -- --check
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+      - name: Generate coverage report
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: Show coverage summary
+        run: cargo llvm-cov --workspace --all-features --summary-only
+
+  benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run frame benchmarks (smoke)
+        run: cargo bench -p fig-bench --bench frame_bench -- --sample-size 10
+      - name: Run transport benchmarks (smoke)
+        run: cargo bench -p fig-bench --bench transport_bench -- --sample-size 10
+      - name: Run gateway comparison benchmarks (smoke)
+        run: cargo bench -p fig-bench --bench gateway_bench -- protocol_comparison --sample-size 10

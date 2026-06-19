@@ -12,9 +12,10 @@ fig-exchange-sim = { path = "../fig-exchange-sim" }
 criterion = { version = "0.5", features = ["html_reports"] }
 serde = { workspace = true }
 ciborium = { workspace = true }
+tokio = { workspace = true }
 
 [[bench]]
-name = "frame_bench"
+name = "transport_bench"
 harness = false
 
 [[bench]]

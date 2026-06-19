@@ -153,6 +153,33 @@ impl Metrics {
         map.insert("gateway_translations", Self::get(&self.gateway_translations));
         map
     }
+
+    /// Render metrics in Prometheus text exposition format.
+    pub fn render_prometheus(&self) -> String {
+        let snap = self.snapshot();
+        let mut out = String::new();
+        for (name, value) in snap {
+            out.push_str(&format!("# TYPE fig_{name} counter\n"));
+            out.push_str(&format!("fig_{name} {value}\n"));
+        }
+        out
+    }
+}
+
+/// Initialize a tracing subscriber with env-filter (OpenTelemetry-compatible).
+///
+/// Wire an OTel exporter by installing `tracing-opentelemetry` in the
+/// application binary before calling this, or use the default fmt layer.
+pub fn init_tracing(default_filter: &str) {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default_filter));
+
+    let _ = fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .try_init();
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +253,17 @@ mod tests {
         assert_eq!(Metrics::get(&m.bytes_sent), 0);
         assert_eq!(Metrics::get(&m.frames_encoded), 0);
         assert_eq!(Metrics::get(&m.gateway_translations), 0);
+    }
+
+    #[test]
+    fn test_render_prometheus_format() {
+        let m = new_metrics();
+        Metrics::inc(&m.frames_encoded);
+        Metrics::add(&m.bytes_sent, 100);
+        let text = m.render_prometheus();
+        assert!(text.contains("# TYPE fig_frames_encoded counter"));
+        assert!(text.contains("fig_frames_encoded 1"));
+        assert!(text.contains("fig_bytes_sent 100"));
     }
 
     #[test]
