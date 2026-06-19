@@ -70,6 +70,7 @@
 pub mod auth;
 pub mod channel;
 pub mod codec;
+pub mod compression;
 pub mod control;
 pub mod error;
 pub mod ext;
@@ -86,6 +87,7 @@ pub mod transport;
 pub use auth::*;
 pub use channel::*;
 pub use codec::*;
+pub use compression::*;
 pub use control::*;
 pub use error::*;
 pub use ext::*;

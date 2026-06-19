@@ -19,4 +19,5 @@ rcgen = { workspace = true }
 uuid = { workspace = true }
 bitflags = { workspace = true }
 serde_json = { workspace = true }
+zstd = { workspace = true }
 

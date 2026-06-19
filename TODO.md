@@ -30,7 +30,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | All 13 frame types | — | CONTROL through REDIRECT |
 | ✅ | Frame flags (ACK_REQUESTED, COMPRESSED, FRAGMENTED, LAST_FRAGMENT) | — | Defined and tested |
 | ✅ | Payload fragmentation | Medium | FRAGMENTED + LAST_FRAGMENT split/reassembly via FragmentReassembler |
-| ⬜ | Payload compression | Medium | COMPRESSED flag defined; no compression algorithm wired (zstd/zlib) |
+| ✅ | Payload compression | Medium | zstd compression via compression module; COMPRESSED flag wired |
 | ✅ | Reserved field validation (must be 0) | Low | Spec §3.1; decoder rejects non-zero reserved and flag bit 7 |
 
 ---
