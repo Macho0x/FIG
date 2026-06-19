@@ -29,7 +29,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | TLV extension encode/decode | — | All 29 extension tags |
 | ✅ | All 13 frame types | — | CONTROL through REDIRECT |
 | ✅ | Frame flags (ACK_REQUESTED, COMPRESSED, FRAGMENTED, LAST_FRAGMENT) | — | Defined and tested |
-| 🔶 | Payload fragmentation | Medium | FRAGMENTED + LAST_FRAGMENT flags defined; reassembly logic not implemented |
+| ✅ | Payload fragmentation | Medium | FRAGMENTED + LAST_FRAGMENT split/reassembly via FragmentReassembler |
 | ⬜ | Payload compression | Medium | COMPRESSED flag defined; no compression algorithm wired (zstd/zlib) |
 | ⬜ | Reserved field validation (must be 0) | Low | Spec §3.1; decoder should reject non-zero reserved |
 
