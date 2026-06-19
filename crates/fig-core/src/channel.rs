@@ -29,6 +29,45 @@ pub enum ChannelMode {
     Affinity,
 }
 
+/// Channel stream direction (Spec §2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ChannelDirection {
+    /// Bidirectional TREE stream (default).
+    #[default]
+    Bidirectional,
+    /// Client → server only (unidirectional send).
+    SendOnly,
+    /// Server → client only (unidirectional receive).
+    RecvOnly,
+}
+
+impl ChannelDirection {
+    pub fn from_str(s: &str) -> Result<Self, ChannelError> {
+        match s {
+            "bidirectional" => Ok(Self::Bidirectional),
+            "send" | "send_only" => Ok(Self::SendOnly),
+            "recv" | "recv_only" => Ok(Self::RecvOnly),
+            other => Err(ChannelError::InvalidChannelMode(other.to_string())),
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Bidirectional => "bidirectional",
+            Self::SendOnly => "send_only",
+            Self::RecvOnly => "recv_only",
+        }
+    }
+
+    pub fn is_send_allowed(&self) -> bool {
+        matches!(self, Self::Bidirectional | Self::SendOnly)
+    }
+
+    pub fn is_recv_allowed(&self) -> bool {
+        matches!(self, Self::Bidirectional | Self::RecvOnly)
+    }
+}
+
 impl ChannelMode {
     /// Parse from the string representation used in the CHANNEL_MODE extension.
     pub fn from_str(s: &str) -> Result<Self, ChannelError> {
@@ -66,6 +105,7 @@ pub enum ChannelState {
 pub struct Channel {
     pub channel_id: u16,
     pub mode: ChannelMode,
+    pub direction: ChannelDirection,
     pub state: ChannelState,
     pub last_sent_seq: u32,
     pub last_recv_seq: u32,
@@ -84,9 +124,20 @@ impl Channel {
     /// New channels start with no credits granted. Credits are
     /// granted via FLOW_CONTROL frames from the peer.
     pub fn new(channel_id: u16, mode: ChannelMode, schema_id: Option<u8>) -> Self {
+        Self::with_direction(channel_id, mode, ChannelDirection::Bidirectional, schema_id)
+    }
+
+    /// Create a channel with explicit direction (unidirectional or bidirectional).
+    pub fn with_direction(
+        channel_id: u16,
+        mode: ChannelMode,
+        direction: ChannelDirection,
+        schema_id: Option<u8>,
+    ) -> Self {
         Self {
             channel_id,
             mode,
+            direction,
             state: ChannelState::Open,
             last_sent_seq: 0,
             last_recv_seq: 0,
@@ -217,6 +268,46 @@ impl ChannelManager {
         Ok(channel_id)
     }
 
+    /// Open a unidirectional channel (send-only or recv-only).
+    pub fn open_unidirectional_channel(
+        &mut self,
+        mode: ChannelMode,
+        direction: ChannelDirection,
+        schema_id: Option<u8>,
+    ) -> Result<u16, ChannelError> {
+        if direction == ChannelDirection::Bidirectional {
+            return Err(ChannelError::InvalidChannelMode(
+                "use open_channel for bidirectional channels".into(),
+            ));
+        }
+
+        if self.next_channel_id == 0 {
+            return Err(ChannelError::ChannelIdExhausted);
+        }
+
+        loop {
+            let candidate = self.next_channel_id;
+            if candidate == 0 {
+                return Err(ChannelError::ChannelIdExhausted);
+            }
+            if !self.channels.contains_key(&candidate) {
+                break;
+            }
+            self.next_channel_id = candidate.wrapping_add(1);
+        }
+
+        let channel_id = self.next_channel_id;
+        let channel = Channel::with_direction(channel_id, mode, direction, schema_id);
+        self.channels.insert(channel_id, channel);
+
+        self.next_channel_id = channel_id.wrapping_add(1);
+        if self.next_channel_id == 0 {
+            self.next_channel_id = 1;
+        }
+
+        Ok(channel_id)
+    }
+
     /// Close an open channel.
     pub fn close_channel(&mut self, channel_id: u16) -> Result<(), ChannelError> {
         let channel = self
@@ -319,6 +410,13 @@ impl ChannelManager {
             .get_mut(&channel_id)
             .ok_or(ChannelError::ChannelNotFound(channel_id))?;
 
+        if !channel.direction.is_send_allowed() {
+            return Err(ChannelError::DirectionNotAllowed(
+                channel_id,
+                "send".into(),
+            ));
+        }
+
         // Underflow-safe: wrapping_add panics on none but we use a plain
         // increment here — wrapping is acceptable because the spec says
         // seq wraps at 2^32 and is reset via CONTROL(SEQ_RESET).
@@ -339,6 +437,13 @@ impl ChannelManager {
             .channels
             .get_mut(&channel_id)
             .ok_or(ChannelError::ChannelNotFound(channel_id))?;
+
+        if !channel.direction.is_recv_allowed() {
+            return Err(ChannelError::DirectionNotAllowed(
+                channel_id,
+                "recv".into(),
+            ));
+        }
 
         // Allow wraparound: a received seq of 0 is "newer" than the
         // last-received of u32::MAX only when wrapping forward.
@@ -362,7 +467,19 @@ impl ChannelManager {
     /// In a full implementation the direction would be negotiated per
     /// channel.
     pub fn tree_stream_id(&self, channel_id: u16) -> u64 {
-        let parity_offset: u64 = if self.is_server { 1 } else { 0 };
+        let direction = self
+            .channels
+            .get(&channel_id)
+            .map(|c| c.direction)
+            .unwrap_or(ChannelDirection::Bidirectional);
+        let parity_offset: u64 = match (self.is_server, direction) {
+            (false, ChannelDirection::Bidirectional) => 0,
+            (true, ChannelDirection::Bidirectional) => 1,
+            (false, ChannelDirection::SendOnly) => 2,
+            (true, ChannelDirection::SendOnly) => 3,
+            (false, ChannelDirection::RecvOnly) => 3,
+            (true, ChannelDirection::RecvOnly) => 2,
+        };
         channel_id as u64 * 4 + parity_offset
     }
 
@@ -800,5 +917,38 @@ mod tests {
         let mut mgr = ChannelManager::new(false);
         let result = mgr.force_close_channel(99);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unidirectional_send_only_channel() {
+        let mut mgr = ChannelManager::new(false);
+        let id = mgr
+            .open_unidirectional_channel(ChannelMode::Stateless, ChannelDirection::SendOnly, None)
+            .unwrap();
+        let ch = mgr.get_channel(id).unwrap();
+        assert_eq!(ch.direction, ChannelDirection::SendOnly);
+        assert!(mgr.next_send_seq(id).is_ok());
+        assert!(mgr.record_recv_seq(id, 1).is_err());
+        assert_eq!(mgr.tree_stream_id(id), id as u64 * 4 + 2);
+    }
+
+    #[test]
+    fn test_unidirectional_recv_only_channel() {
+        let mut mgr = ChannelManager::new(true);
+        let id = mgr
+            .open_unidirectional_channel(ChannelMode::Stateless, ChannelDirection::RecvOnly, None)
+            .unwrap();
+        assert!(mgr.next_send_seq(id).is_err());
+        assert!(mgr.record_recv_seq(id, 1).is_ok());
+        assert_eq!(mgr.tree_stream_id(id), id as u64 * 4 + 2);
+    }
+
+    #[test]
+    fn test_channel_direction_from_str() {
+        assert_eq!(
+            ChannelDirection::from_str("send_only").unwrap(),
+            ChannelDirection::SendOnly
+        );
+        assert!(ChannelDirection::from_str("invalid").is_err());
     }
 }

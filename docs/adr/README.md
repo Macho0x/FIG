@@ -1,0 +1,67 @@
+# ADR 0001: TREE as Primary Transport
+
+## Status
+
+Accepted
+
+## Context
+
+FIG needs multiplexed, encrypted, low-latency transport with connection migration
+and 0-RTT resumption. Candidates: raw TCP+TLS, HTTP/3, custom QUIC wrapper.
+
+## Decision
+
+Use QUIC via the `quinn` crate with ALPN `fig/1`. Map FIG channels to TREE
+streams using `channel_id × 4 + direction_offset`.
+
+## Consequences
+
+- Built-in TLS 1.3, migration, and stream multiplexing.
+- Plain TCP downgrade available for constrained environments (`FIG\x01` magic).
+- Requires UDP reachability; TCP-only networks use downgrade mode.
+
+---
+
+# ADR 0002: Dual Codec Strategy (CBOR + SBE)
+
+## Status
+
+Accepted
+
+## Context
+
+Trading systems need both schema evolution (REST/gateway) and zero-allocation
+hot paths (order entry).
+
+## Decision
+
+CBOR for self-describing gateway payloads; SBE generated from FSL for production
+trading messages. Protobuf supported for enterprise integrations.
+
+## Consequences
+
+- Two encode/decode paths to maintain, cross-validated in tests.
+- Gateways translate JSON↔CBOR; clients choose SBE or CBOR per channel schema ID.
+
+---
+
+# ADR 0003: Channel-Based Multiplexing
+
+## Status
+
+Accepted
+
+## Context
+
+FIX uses separate sessions per asset class; REST uses HTTP/1.1 keep-alive;
+WebSocket uses single stream. FIG must unify these.
+
+## Decision
+
+Logical channels with independent sequence numbers, credit-based flow control,
+and optional unidirectional direction. Control channel ID 0 for heartbeat/settings.
+
+## Consequences
+
+- Channel manager complexity but clean separation of concerns.
+- Gateway adapters map FIX session / REST request / WS stream to channel semantics.

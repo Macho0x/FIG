@@ -19,9 +19,12 @@ use quinn::crypto::rustls::QuicServerConfig as TreeServerConfig;
 use quinn::crypto::rustls::QuicClientConfig as TreeClientConfig;
 use tokio::sync::Mutex;
 
-use crate::channel::{ChannelManager, ChannelMode};
+use crate::channel::{ChannelDirection, ChannelManager, ChannelMode};
 use crate::error::{ChannelError, FigError, FrameError};
 use crate::frame::{Frame, FrameDecoder, MIN_FRAME_SIZE};
+use crate::migration::{
+    apply_migration, prepare_migration, reconstruct_channels, validate_migration, MigrationToken,
+};
 use crate::observability::{span_session_create, span_session_resume};
 use crate::session::{MemorySessionStore, Session};
 
@@ -356,6 +359,70 @@ impl FigConnection {
         );
 
         Ok(())
+    }
+
+    /// Capture migratable state before a TREE connection migration.
+    pub async fn prepare_migration(&self, session: &Session) -> MigrationToken {
+        let mgr = self.channels.lock().await;
+        prepare_migration(session, &mgr)
+    }
+
+    /// Apply migration state after reconnecting on a new network path.
+    pub async fn apply_migration(
+        &self,
+        token: &MigrationToken,
+        session: &mut Session,
+        is_server: bool,
+    ) -> Result<(), FigError> {
+        validate_migration(token, &session.session_id)?;
+        apply_migration(token, session).map_err(|e| FigError::HandshakeFailed(e.to_string()))?;
+
+        {
+            let mut mgr = self.channels.lock().await;
+            *mgr = reconstruct_channels(token, is_server);
+        }
+        self.streams.lock().await.clear();
+
+        for &channel_id in &session.channels {
+            let (send, recv) = self
+                .conn
+                .open_bi()
+                .await
+                .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+            self.streams.lock().await.insert(channel_id, (send, recv));
+        }
+
+        tracing::info!(
+            session_id = %session.session_id,
+            channels = session.channels.len(),
+            "connection migration applied"
+        );
+        Ok(())
+    }
+
+    /// Open a unidirectional channel with a dedicated TREE stream.
+    pub async fn open_unidirectional_channel(
+        &self,
+        mode: ChannelMode,
+        direction: ChannelDirection,
+        schema_id: Option<u8>,
+    ) -> Result<u16, ChannelError> {
+        let channel_id = {
+            let mut mgr = self.channels.lock().await;
+            mgr.open_unidirectional_channel(mode, direction, schema_id)?
+        };
+
+        match self.conn.open_bi().await {
+            Ok((send, recv)) => {
+                self.streams.lock().await.insert(channel_id, (send, recv));
+                Ok(channel_id)
+            }
+            Err(e) => {
+                let mut mgr = self.channels.lock().await;
+                let _ = mgr.force_close_channel(channel_id);
+                Err(ChannelError::StreamError(channel_id, e.to_string()))
+            }
+        }
     }
 
     /// Open a new channel.

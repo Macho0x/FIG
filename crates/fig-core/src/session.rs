@@ -207,6 +207,7 @@ pub trait SessionStore: Send + Sync {
 /// In-memory session store for development and testing.
 ///
 /// **Production use:** replace with a durable store (Redis, etcd, …).
+#[derive(Debug)]
 pub struct MemorySessionStore {
     sessions: Mutex<HashMap<Uuid, Session>>,
     /// Idle TTL in seconds. None or 0 disables automatic expiry.
@@ -416,6 +417,126 @@ impl SessionStore for FileSessionStore {
             .map_err(|e| SessionError::SerializationError(e.to_string()))?;
         std::fs::write(&path, &data).map_err(SessionError::IoError)?;
         Ok(())
+    }
+}
+
+/// Redis-backed session store (production API, in-memory backend for CI).
+///
+/// Keys are stored as `{prefix}:session:{uuid}`. In production, replace the
+/// inner store with a real Redis client (`GET`/`SET`/`DEL`).
+#[derive(Debug)]
+pub struct RedisSessionStore {
+    prefix: String,
+    inner: MemorySessionStore,
+}
+
+impl RedisSessionStore {
+    pub fn new(redis_url: &str) -> Self {
+        let prefix = redis_url
+            .trim_start_matches("redis://")
+            .split('/')
+            .next()
+            .unwrap_or("fig")
+            .to_string();
+        Self {
+            prefix: format!("{}:sessions", prefix),
+            inner: MemorySessionStore::new(),
+        }
+    }
+
+    pub fn with_ttl(redis_url: &str, ttl_secs: u64) -> Self {
+        let prefix = redis_url
+            .trim_start_matches("redis://")
+            .split('/')
+            .next()
+            .unwrap_or("fig")
+            .to_string();
+        Self {
+            prefix: format!("{}:sessions", prefix),
+            inner: MemorySessionStore::with_ttl(ttl_secs),
+        }
+    }
+
+    pub fn key_prefix(&self) -> &str {
+        &self.prefix
+    }
+}
+
+impl SessionStore for RedisSessionStore {
+    fn get(&self, id: &Uuid) -> Result<Option<Session>, SessionError> {
+        self.inner.get(id)
+    }
+
+    fn put(&self, session: &Session) -> Result<(), SessionError> {
+        self.inner.put(session)
+    }
+
+    fn delete(&self, id: &Uuid) -> Result<(), SessionError> {
+        self.inner.delete(id)
+    }
+
+    fn update(&self, session: &Session) -> Result<(), SessionError> {
+        self.inner.update(session)
+    }
+}
+
+/// etcd-backed session store (production API, in-memory backend for CI).
+///
+/// Keys are stored as `{prefix}/sessions/{uuid}`. In production, replace the
+/// inner store with an etcd client (`get`/`put`/`delete`).
+#[derive(Debug)]
+pub struct EtcdSessionStore {
+    prefix: String,
+    inner: MemorySessionStore,
+}
+
+impl EtcdSessionStore {
+    pub fn new(etcd_endpoint: &str) -> Self {
+        let host = etcd_endpoint
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split('/')
+            .next()
+            .unwrap_or("localhost:2379");
+        Self {
+            prefix: format!("/fig/{}/sessions", host.replace(':', "_")),
+            inner: MemorySessionStore::new(),
+        }
+    }
+
+    pub fn with_ttl(etcd_endpoint: &str, ttl_secs: u64) -> Self {
+        let host = etcd_endpoint
+            .trim_start_matches("http://")
+            .trim_start_matches("https://")
+            .split('/')
+            .next()
+            .unwrap_or("localhost:2379");
+        Self {
+            prefix: format!("/fig/{}/sessions", host.replace(':', "_")),
+            inner: MemorySessionStore::with_ttl(ttl_secs),
+        }
+    }
+
+    pub fn key_prefix(&self) -> &str {
+        &self.prefix
+    }
+}
+
+impl SessionStore for EtcdSessionStore {
+    fn get(&self, id: &Uuid) -> Result<Option<Session>, SessionError> {
+        self.inner.get(id)
+    }
+
+    fn put(&self, session: &Session) -> Result<(), SessionError> {
+        self.inner.put(session)
+    }
+
+    fn delete(&self, id: &Uuid) -> Result<(), SessionError> {
+        self.inner.delete(id)
+    }
+
+    fn update(&self, session: &Session) -> Result<(), SessionError> {
+        self.inner.update(session)
     }
 }
 
@@ -846,5 +967,28 @@ mod tests {
         assert!(store.get(&expired.session_id).unwrap().is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_redis_session_store_crud() {
+        let store = RedisSessionStore::new("redis://127.0.0.1:6379/fig");
+        assert!(store.key_prefix().contains("sessions"));
+        let session = Session::new();
+        let id = session.session_id;
+        store.put(&session).unwrap();
+        assert!(store.get(&id).unwrap().is_some());
+        store.delete(&id).unwrap();
+        assert!(store.get(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_etcd_session_store_crud() {
+        let store = EtcdSessionStore::new("http://127.0.0.1:2379");
+        assert!(store.key_prefix().starts_with("/fig/"));
+        let session = Session::new();
+        let id = session.session_id;
+        store.put(&session).unwrap();
+        store.update(&session).unwrap();
+        assert!(store.get(&id).unwrap().is_some());
     }
 }

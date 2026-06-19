@@ -25,11 +25,13 @@
 //! ```
 
 use std::io;
+use std::sync::atomic::Ordering;
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::error::FrameError;
 use crate::ext::{self, Extension, ExtensionTag};
+use crate::observability::{span_decode, span_encode, METRICS};
 use crate::FrameResult;
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -408,6 +410,9 @@ impl Frame {
 
     /// Encode this frame into bytes (big-endian, network byte order).
     pub fn encode(&self) -> FrameResult<Vec<u8>> {
+        let _span = span_encode(self.channel_id, &self.frame_type.to_string()).entered();
+        METRICS.frames_encoded.fetch_add(1, Ordering::Relaxed);
+
         // Encode extensions
         let ext_bytes = if !self.extensions.is_empty() {
             ext::encode_extensions(&self.extensions)
@@ -467,6 +472,10 @@ impl Frame {
                 actual: data.len(),
             });
         }
+
+        let channel_id = u16::from_be_bytes([data[6], data[7]]);
+        let _span = span_decode(channel_id).entered();
+        METRICS.frames_decoded.fetch_add(1, Ordering::Relaxed);
 
         let mut cursor = io::Cursor::new(data);
 

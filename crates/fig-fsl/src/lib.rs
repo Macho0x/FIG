@@ -8,4 +8,7 @@ pub use ast::*;
 pub use codegen::RustCodegen;
 pub use parser::Parser;
 pub use sbe_codegen::generate_sbe;
-pub use target_codegen::{CppCodegen, CsharpCodegen, GoCodegen, ProtoCodegen, SbeXmlCodegen};
+pub use target_codegen::{
+    CppCodegen, CsharpCodegen, FixYamlCodegen, GoCodegen, JsonSchemaCodegen, OcamlCodegen,
+    ProtoCodegen, PythonCodegen, SbeXmlCodegen, TypeScriptCodegen, ZigCodegen,
+};

@@ -1,0 +1,39 @@
+# FIG Security Audit Checklist (Pre-1.0)
+
+Internal security review checklist before declaring FIG 1.0. Not a third-party
+audit report — use this to track readiness.
+
+## Transport
+
+- [x] TLS 1.3 mandatory on TREE
+- [x] mTLS support for production
+- [x] Certificate rotation (`RotatingServerCerts`)
+- [ ] External penetration test of TREE listener
+- [ ] 0-RTT replay protection (documented TODO in transport)
+
+## Authentication
+
+- [x] Constant-time token comparison
+- [x] JWT HS256 validation
+- [x] OAuth2/OIDC dev validator (production: wire real introspection)
+- [x] Per-channel auth policy
+
+## DoS / Abuse
+
+- [x] Per-channel rate limiting (`ChannelRateLimiter`)
+- [x] Connection-level DoS guard (`DoSGuard`, `FloodDetector`)
+- [ ] Load test with sustained frame flood
+- [ ] Fuzz frame decoder (`cargo fuzz` — recommended)
+
+## Data
+
+- [x] Session TTL and expiry
+- [x] Reserved header field validation
+- [ ] Secret rotation runbook for JWT signing keys
+
+## Sign-off
+
+| Role | Name | Date | Status |
+|---|---|---|---|
+| Engineering | — | — | Pending |
+| Security | — | — | Pending |

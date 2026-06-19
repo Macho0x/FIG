@@ -29,3 +29,11 @@ harness = false
 [[bench]]
 name = "matching_bench"
 harness = false
+
+[features]
+default = []
+alloc = []
+
+[[bench]]
+name = "alloc_bench"
+harness = false

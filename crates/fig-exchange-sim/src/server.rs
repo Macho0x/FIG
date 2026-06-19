@@ -29,6 +29,7 @@ pub mod schema_id {
 pub mod paths {
     pub const ORDERS: &str = "trading/accounts/{account}/orders";
     pub const CANCEL: &str = "trading/accounts/{account}/orders/{order_id}/cancel";
+    pub const REPLACE: &str = "trading/accounts/{account}/orders/{order_id}/replace";
     pub const EXECUTIONS: &str = "trading/accounts/{account}/executions";
     pub const MARKET_DATA: &str = "marketdata/{symbol}/quotes";
     pub const ACCOUNT: &str = "accounts/{account}";
@@ -347,10 +348,8 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     ));
                 }
 
-                // Push incremental market data to subscribers on trade
-                if !result.fills.is_empty() {
-                    responses.extend(build_market_data_push(state, &order.symbol).await);
-                }
+                // Push book depth updates to subscribers
+                responses.extend(push_book_depth(state, &order.symbol).await);
 
                 responses
             }
@@ -402,10 +401,72 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 } else {
                     make_error_frame(frame.channel_id, frame.stream_seq, "ORDER_NOT_FOUND")
                 };
-                vec![response]
+                let mut responses = vec![response];
+                responses.extend(push_book_depth(state, &cancel.symbol).await);
+                responses
             }
             Err(e) => {
                 error!("Failed to decode CancelRequest: {}", e);
+                vec![make_error_frame(
+                    frame.channel_id,
+                    frame.stream_seq,
+                    "DECODE_ERROR",
+                )]
+            }
+        }
+    } else if channel_path.contains("/replace") {
+        match codec::decode_cbor::<CancelReplaceRequest>(&frame.payload) {
+            Ok(replace) => {
+                info!("CancelReplaceRequest: {} -> {}", replace.orig_cl_ord_id, replace.cl_ord_id);
+                let mut engine = state.engine.lock().await;
+                let result = engine.process_replace(&replace);
+                drop(engine);
+
+                let mut responses = Vec::new();
+                for fill in &result.fills {
+                    let report = ExecutionReport {
+                        cl_ord_id: replace.cl_ord_id.clone(),
+                        order_id: fill.fill_id.clone(),
+                        exec_id: format!("EX-{}", Uuid::new_v4()),
+                        exec_type: fill.exec_type.clone(),
+                        ord_status: fill.ord_status.clone(),
+                        side: fill.side.clone(),
+                        last_qty: Some(fill.fill_qty.clone()),
+                        last_price: Some(fill.fill_price.clone()),
+                        leaves_qty: fill.leaves_qty.clone(),
+                        cum_qty: fill.cum_qty.clone(),
+                        avg_price: fill.avg_price.clone(),
+                        symbol: fill.symbol.clone(),
+                        transact_time: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_nanos() as i64,
+                    };
+                    if let Ok(payload) = codec::encode_cbor(&report) {
+                        responses.push(
+                            Frame::new(FrameType::StreamItem, frame.channel_id)
+                                .with_seq(frame.stream_seq)
+                                .with_schema_id(schema_id::TRADING_ORDERS)
+                                .with_extension(Extension::text(
+                                    ExtensionTag::ChannelPath,
+                                    paths::EXECUTIONS,
+                                ))
+                                .with_payload(payload),
+                        );
+                    }
+                }
+                if let Some(reject) = &result.reject_reason {
+                    responses.push(make_error_frame(
+                        frame.channel_id,
+                        frame.stream_seq,
+                        reject,
+                    ));
+                }
+                responses.extend(push_book_depth(state, &replace.symbol).await);
+                responses
+            }
+            Err(e) => {
+                error!("Failed to decode CancelReplaceRequest: {}", e);
                 vec![make_error_frame(
                     frame.channel_id,
                     frame.stream_seq,
@@ -482,8 +543,16 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
                     .split('/')
                     .find(|s| !s.is_empty() && *s != "marketdata" && *s != "quotes")
             })
-            .unwrap_or("AAPL")
+            .unwrap_or("")
             .to_string();
+
+        if symbol.is_empty() {
+            return vec![make_error_frame(
+                frame.channel_id,
+                frame.stream_seq,
+                "MISSING_SYMBOL",
+            )];
+        }
 
         state.market_subscriptions.lock().await.push(MarketSubscription {
             channel_id: frame.channel_id,
@@ -554,6 +623,11 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
                 .with_payload(payload.clone())
         })
         .collect()
+}
+
+/// Push order book depth snapshots to all subscribers when the book changes.
+pub async fn push_book_depth(state: &Arc<ExchangeState>, symbol: &str) -> Vec<Frame> {
+    build_market_data_push(state, symbol).await
 }
 
 pub fn make_error_frame(channel_id: u16, stream_seq: u32, message: &str) -> Frame {

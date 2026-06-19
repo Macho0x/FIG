@@ -173,7 +173,7 @@ fn test_ftlc_compile_unsupported_lang() {
         .arg("compile")
         .arg(orders_path())
         .arg("--lang")
-        .arg("python")
+        .arg("ruby")
         .arg("--out")
         .arg(out_dir.to_str().unwrap())
         .output()

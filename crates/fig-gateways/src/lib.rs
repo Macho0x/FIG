@@ -17,4 +17,5 @@
 pub mod fix;
 pub mod fix_session;
 pub mod rest;
+pub mod sse;
 pub mod ws;

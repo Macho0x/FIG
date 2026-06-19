@@ -69,6 +69,9 @@ pub enum ChannelError {
 
     #[error("no credits available on channel {0}")]
     CreditExhausted(u16),
+
+    #[error("direction not allowed on channel {0}: {1}")]
+    DirectionNotAllowed(u16, String),
 }
 
 /// Errors related to session management.

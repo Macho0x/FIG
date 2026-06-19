@@ -55,3 +55,17 @@ jobs:
         run: cargo bench -p fig-bench --bench transport_bench -- --sample-size 10
       - name: Run gateway comparison benchmarks (smoke)
         run: cargo bench -p fig-bench --bench gateway_bench -- protocol_comparison --sample-size 10
+      - name: Run allocation benchmarks (smoke)
+        run: cargo bench -p fig-bench --features alloc --bench alloc_bench -- --sample-size 10
+
+  cross-platform:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and test
+        run: cargo test --workspace --all-features
