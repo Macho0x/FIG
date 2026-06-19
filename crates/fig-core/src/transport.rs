@@ -85,6 +85,83 @@ pub fn server_config(
     Ok(config)
 }
 
+/// Create a TREE server configuration requiring mTLS client certificates.
+///
+/// **Development mode:** accepts any client certificate without CA validation.
+/// Production deployments MUST use [`server_config_mtls_with_ca`] with a
+/// proper client CA root store.
+pub fn server_config_mtls(
+    cert: rustls::pki_types::CertificateDer<'static>,
+    key: rustls::pki_types::PrivateKeyDer<'static>,
+) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+    let mut server_crypto = rustls::ServerConfig::builder()
+        .with_client_cert_verifier(Arc::new(NoClientVerification))
+        .with_single_cert(vec![cert], key)?;
+
+    server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
+
+    let server_config = TreeServerConfig::try_from(server_crypto)?;
+    let mut transport = quinn::TransportConfig::default();
+    transport.max_concurrent_bidi_streams(65535u32.into());
+
+    let mut config = ServerConfig::with_crypto(Arc::new(server_config));
+    config.transport_config(Arc::new(transport));
+
+    Ok(config)
+}
+
+/// Rotating TLS identity for runtime certificate reload (Spec §15).
+#[derive(Debug)]
+pub struct RotatingServerCerts {
+    certs: std::sync::Mutex<(rustls::pki_types::CertificateDer<'static>, rustls::pki_types::PrivateKeyDer<'static>)>,
+}
+
+impl RotatingServerCerts {
+    /// Store an initial certificate and private key pair.
+    pub fn new(
+        cert: rustls::pki_types::CertificateDer<'static>,
+        key: rustls::pki_types::PrivateKeyDer<'static>,
+    ) -> Self {
+        Self {
+            certs: std::sync::Mutex::new((cert, key)),
+        }
+    }
+
+    /// Replace the active certificate and key (hot reload).
+    pub fn reload(
+        &self,
+        cert: rustls::pki_types::CertificateDer<'static>,
+        key: rustls::pki_types::PrivateKeyDer<'static>,
+    ) -> Result<(), FigError> {
+        let mut guard = self
+            .certs
+            .lock()
+            .map_err(|_| FigError::ConnectionFailed("cert lock poisoned".into()))?;
+        *guard = (cert, key);
+        Ok(())
+    }
+
+    /// Build a fresh server config from the current certificate.
+    pub fn server_config(&self) -> Result<ServerConfig, FigError> {
+        let guard = self
+            .certs
+            .lock()
+            .map_err(|_| FigError::ConnectionFailed("cert lock poisoned".into()))?;
+        server_config(guard.0.clone(), guard.1.clone_key())
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))
+    }
+
+    /// Build a fresh mTLS server config from the current certificate.
+    pub fn server_config_mtls(&self) -> Result<ServerConfig, FigError> {
+        let guard = self
+            .certs
+            .lock()
+            .map_err(|_| FigError::ConnectionFailed("cert lock poisoned".into()))?;
+        server_config_mtls(guard.0.clone(), guard.1.clone_key())
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))
+    }
+}
+
 /// Create a TREE client configuration that **skips certificate verification**.
 ///
 /// **Warning:** This accepts any server certificate without validation.
@@ -161,6 +238,53 @@ impl rustls::client::danger::ServerCertVerifier for NoServerVerification {
             rustls::SignatureScheme::RSA_PSS_SHA512,
             rustls::SignatureScheme::ED25519,
         ]
+    }
+}
+
+/// A client certificate verifier that accepts any client certificate.
+///
+/// **Do not use in production.**
+#[derive(Debug)]
+struct NoClientVerification;
+
+impl rustls::server::danger::ClientCertVerifier for NoClientVerification {
+    fn verify_client_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
+        Ok(rustls::server::danger::ClientCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::ED25519,
+        ]
+    }
+
+    fn root_hint_subjects(&self) -> &[rustls::DistinguishedName] {
+        &[]
     }
 }
 
@@ -737,5 +861,22 @@ mod tests {
             _ => vec![],
         };
         assert_ne!(pk1, pk2);
+    }
+
+    #[test]
+    fn test_server_config_mtls_creation() {
+        let (cert, key) = generate_self_signed_cert().unwrap();
+        let _config = server_config_mtls(cert, key).expect("mTLS server config should succeed");
+    }
+
+    #[test]
+    fn test_rotating_server_certs_reload() {
+        let (cert1, key1) = generate_self_signed_cert().unwrap();
+        let rotating = RotatingServerCerts::new(cert1, key1);
+        let _cfg1 = rotating.server_config().unwrap();
+
+        let (cert2, key2) = generate_self_signed_cert().unwrap();
+        rotating.reload(cert2, key2).unwrap();
+        let _cfg2 = rotating.server_config_mtls().unwrap();
     }
 }

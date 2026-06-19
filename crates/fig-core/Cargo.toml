@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 ciborium = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 tokio = { workspace = true }
 quinn = { workspace = true }
 rustls = { workspace = true }
@@ -20,4 +21,17 @@ uuid = { workspace = true }
 bitflags = { workspace = true }
 serde_json = { workspace = true }
 zstd = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+base64 = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
 
+[features]
+default = []
+observability-bin = []
+
+[[bin]]
+name = "fig-observability"
+path = "src/bin/fig_observability.rs"
+required-features = ["observability-bin"]
