@@ -49,12 +49,12 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Compile { file, lang, out } => {
             let input = read_file(&file)?;
-            let schema = fig_usl::Parser::parse(&input)
+            let schema = fig_fsl::Parser::parse(&input)
                 .with_context(|| format!("Failed to parse {}", file.display()))?;
 
             let code = match lang.as_str() {
-                "rust" => fig_usl::RustCodegen::generate(&schema),
-                "sbe" => fig_usl::sbe_codegen::generate_sbe(&schema),
+                "rust" => fig_fsl::RustCodegen::generate(&schema),
+                "sbe" => fig_fsl::sbe_codegen::generate_sbe(&schema),
                 other => anyhow::bail!(
                     "Unsupported language '{}'. Supported: 'rust' (serde structs), 'sbe' (SBE codec).",
                     other
@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
 
         Commands::Validate { file } => {
             let input = read_file(&file)?;
-            match fig_usl::Parser::parse(&input) {
+            match fig_fsl::Parser::parse(&input) {
                 Ok(schema) => {
                     let msg_count = schema.messages.len();
                     println!("Valid: {}", file.display());
@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
 
         Commands::Parse { file, format } => {
             let input = read_file(&file)?;
-            let schema = fig_usl::Parser::parse(&input)
+            let schema = fig_fsl::Parser::parse(&input)
                 .with_context(|| format!("Failed to parse {}", file.display()))?;
 
             match format.as_str() {

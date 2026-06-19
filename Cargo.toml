@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/fig-core",
     "crates/fig-gateways",
-    "crates/fig-usl",
+    "crates/fig-fsl",
     "crates/fig-exchange-sim",
     "crates/fig-cli",
     "crates/fig-bench",

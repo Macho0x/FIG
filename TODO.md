@@ -123,7 +123,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 
 ---
 
-## 9. FSL Schema Language (fig-usl)
+## 9. FSL Schema Language (fig-fsl)
 
 | Status | Item | Priority | Notes |
 |---|----|----|----|

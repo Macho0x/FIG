@@ -17,7 +17,7 @@ fn ftlc_cmd() -> Command {
         c.arg("run")
             .arg("--quiet")
             .arg("-p")
-            .arg("fig-usl")
+            .arg("fig-fsl")
             .arg("--bin")
             .arg("ftlc")
             .arg("--");

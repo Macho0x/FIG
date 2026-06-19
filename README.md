@@ -117,7 +117,7 @@ a migration path, not as the protocol's identity.
 | Crate | Description | Tests | Key Modules |
 |---|---|---|---|
 | [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, flow control, observability | 118 | `frame`, `ext`, `channel`, `session`, `codec`, `transport`, `sbe`, `auth`, `observability` |
-| [`fig-usl`](crates/fig-usl/) | FSL (Fig Schema Language) parser, Rust codegen, and `ftlc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
+| [`fig-fsl`](crates/fig-fsl/) | FSL (Fig Schema Language) parser, Rust codegen, and `ftlc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
 | [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket ↔ FIG translation | 29 | `fix`, `rest`, `ws` |
 | [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 16 | `orderbook`, `matching`, `server` |
 | [`fig-cli`](crates/fig-cli/) | Native FIG trading client demo | — | `main` |
@@ -432,7 +432,7 @@ cargo test --workspace
 
 # Run tests for a specific crate
 cargo test -p fig-core       # 118 tests
-cargo test -p fig-usl         # 27 tests
+cargo test -p fig-fsl         # 27 tests
 cargo test -p fig-gateways    # 29 tests
 cargo test -p fig-exchange-sim # 16 tests
 

@@ -22,14 +22,14 @@ cargo run -p fig-exchange-sim
 cargo run -p fig-cli
 
 # Compile an FSL schema
-cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out src/generated/
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out src/generated/
 ```
 
 ## Architecture
 
 ```
 fig-core          — Wire format, channels, sessions, TREE transport, SBE codec
-fig-usl           — FSL (Fig Schema Language) schema language parser, codegen, and ftlc CLI
+fig-fsl           — FSL (Fig Schema Language) schema language parser, codegen, and ftlc CLI
 fig-gateways      — FIX, REST, and WebSocket gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
 fig-cli           — Trading client demo
@@ -67,7 +67,7 @@ message MyMessage {
 
 2. Compile to Rust:
 ```bash
-cargo run -p fig-usl --bin uslc -- compile schemas/my_schema.usl --lang rust --out src/generated/
+cargo run -p fig-fsl --bin ftlc -- compile schemas/my_schema.usl --lang rust --out src/generated/
 ```
 
 3. Add gateway mappings if needed:

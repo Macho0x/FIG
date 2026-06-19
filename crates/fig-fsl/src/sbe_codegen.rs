@@ -17,7 +17,7 @@ pub fn generate_sbe(schema: &Schema) -> String {
         .unwrap_or(&schema.name);
 
     out.push_str(&format!(
-        "// Auto-generated SBE encode/decode by fig-usl from schema '{}' v{}\n",
+        "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n",
         schema.name, schema.version
     ));
     out.push_str(&format!("// {}\n\n", desc));

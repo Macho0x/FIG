@@ -1,6 +1,6 @@
 //! Auto-generated SBE encode/decode for FIG trading messages.
 //!
-//! Generated from schemas/orders.usl by fig-usl SBE codegen.
+//! Generated from schemas/orders.usl by fig-fsl SBE codegen.
 //! Uses the message types from crate::messages.
 //!
 //! # Format
