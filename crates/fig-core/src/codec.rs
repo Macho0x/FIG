@@ -28,6 +28,34 @@ pub fn decode_cbor<T: serde::de::DeserializeOwned>(data: &[u8]) -> Result<T, Fra
     ciborium::de::from_reader(data).map_err(|e| FrameError::CborDecodeError(e.to_string()))
 }
 
+// ─── JSON Codec ──────────────────────────────────────────────────
+
+/// Parse JSON bytes into a `serde_json::Value`.
+pub fn decode_json(data: &[u8]) -> Result<serde_json::Value, FrameError> {
+    serde_json::from_slice(data).map_err(|e| FrameError::CborDecodeError(e.to_string()))
+}
+
+/// Serialize a `serde_json::Value` to JSON bytes.
+pub fn encode_json(value: &serde_json::Value) -> Result<Vec<u8>, FrameError> {
+    serde_json::to_vec(value).map_err(|e| FrameError::CborEncodeError(e.to_string()))
+}
+
+/// Convert a JSON string to CBOR bytes (REST gateway hot path).
+///
+/// Parses JSON into a generic value, then encodes as CBOR. Invalid JSON
+/// is rejected before CBOR encoding begins.
+pub fn json_to_cbor(json: &str) -> Result<Vec<u8>, FrameError> {
+    let value: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| FrameError::CborDecodeError(e.to_string()))?;
+    encode_cbor(&value)
+}
+
+/// Convert CBOR bytes to a JSON string (REST gateway hot path).
+pub fn cbor_to_json(cbor: &[u8]) -> Result<String, FrameError> {
+    let value: serde_json::Value = decode_cbor(cbor)?;
+    serde_json::to_string(&value).map_err(|e| FrameError::CborEncodeError(e.to_string()))
+}
+
 // ─── Unit Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -129,13 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_invalid_cbor() {
-        let garbage = b"this is not valid cbor";
-        let result: Result<OrderRequest, _> = decode_cbor(garbage);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_round_trip_nested() {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         struct OrderBook {
@@ -165,5 +186,56 @@ mod tests {
         let encoded = encode_cbor(&book).unwrap();
         let decoded: OrderBook = decode_cbor(&encoded).unwrap();
         assert_eq!(decoded, book);
+    }
+
+    #[test]
+    fn test_decode_invalid_cbor() {
+        let garbage = b"this is not valid cbor";
+        let result: Result<OrderRequest, _> = decode_cbor(garbage);
+        assert!(result.is_err());
+    }
+
+    // ── JSON codec ────────────────────────────────────────────
+
+    #[test]
+    fn test_json_cbor_round_trip() {
+        let json = r#"{"symbol":"AAPL","side":"buy","qty":100,"price":150.25}"#;
+        let cbor = json_to_cbor(json).unwrap();
+        assert!(!cbor.is_empty());
+
+        let json_back = cbor_to_json(&cbor).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_back).unwrap();
+        assert_eq!(parsed["symbol"], "AAPL");
+        assert_eq!(parsed["qty"], 100);
+    }
+
+    #[test]
+    fn test_json_cbor_nested() {
+        let json = r#"{"order":{"id":"123","items":[{"symbol":"AAPL","qty":10}]}}"#;
+        let cbor = json_to_cbor(json).unwrap();
+        let json_back = cbor_to_json(&cbor).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_back).unwrap();
+        assert_eq!(parsed["order"]["id"], "123");
+        assert_eq!(parsed["order"]["items"][0]["symbol"], "AAPL");
+    }
+
+    #[test]
+    fn test_decode_json_invalid() {
+        let result = decode_json(b"{not valid json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_encode_decode_json_value() {
+        let value = serde_json::json!({"status": "ok", "count": 42});
+        let bytes = encode_json(&value).unwrap();
+        let decoded = decode_json(&bytes).unwrap();
+        assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn test_json_to_cbor_rejects_invalid_json() {
+        let result = json_to_cbor("{broken");
+        assert!(result.is_err());
     }
 }

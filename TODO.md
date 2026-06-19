@@ -86,7 +86,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | SBE encode: remaining message types | — | CancelReplace, MarketDataSnapshot, MarketDataIncrementalRefresh, CancelReject (generated from FSL) |
 | ✅ | SBE message header (schema ID, version, template ID) | — | Generated SBE headers compliant with Spec §10 |
 | ⬜ | Protobuf codec | Low | Spec §10; for schema-evolving payloads |
-| ⬜ | JSON codec (for REST gateway) | Medium | REST gateway uses string manipulation; proper JSON↔CBOR not implemented |
+| ✅ | JSON codec (for REST gateway) | Medium | json_to_cbor/cbor_to_json in fig-core codec module |
 
 ---
 
@@ -114,7 +114,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | REST HTTP/1.1 parse/serialize | — | 7 tests |
 | ✅ | WebSocket RFC 6455 frame parse/serialize | — | 14 tests, all opcodes, masking |
 | ✅ | FIX session state machine | — | FixSession with states (LoggedOut/LogonSent/LoggedIn/LogoutSent), MsgSeqNum tracking, Heartbeat, ResendRequest, GapFill |
-| 🔶 | REST JSON ↔ CBOR body conversion | Medium | REST adapter parses HTTP; body conversion is string-based, not proper JSON↔CBOR |
+| ✅ | REST JSON ↔ CBOR body conversion | Medium | Delegates to fig_core::codec json_to_cbor/cbor_to_json |
 | ⬜ | WebSocket → FIG stream mapping | Medium | WS frames parse; mapping to STREAM_ITEM with content-type not wired |
 | ✅ | FIX Logon (35=A) → STREAM_OPEN + AUTH | — | logon_to_stream_open + stream_open_to_logon conversion functions |
 | ✅ | FIX ResendRequest (35=2) → CONTROL(RESEND) | Medium | resend_request_to_control + control_to_resend_request |

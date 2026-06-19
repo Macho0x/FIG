@@ -333,24 +333,16 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
 
 /// Convert a JSON string to CBOR bytes.
 ///
-/// First parses the JSON into a `serde_json::Value`, then encodes it as CBOR
-/// using `ciborium`. This ensures the JSON is valid before conversion.
+/// Delegates to [`fig_core::codec::json_to_cbor`].
 pub fn json_to_cbor(json: &str) -> RestResult<Vec<u8>> {
-    let value: serde_json::Value = serde_json::from_str(json)?;
-    let mut buf = Vec::new();
-    ciborium::ser::into_writer(&value, &mut buf)
-        .map_err(|e| RestError::CborEncodeError(e.to_string()))?;
-    Ok(buf)
+    fig_core::codec::json_to_cbor(json).map_err(|e| RestError::CborEncodeError(e.to_string()))
 }
 
 /// Convert CBOR bytes to a JSON string.
 ///
-/// Decodes the CBOR into a `serde_json::Value` and then serializes it as JSON.
+/// Delegates to [`fig_core::codec::cbor_to_json`].
 pub fn cbor_to_json(cbor: &[u8]) -> RestResult<String> {
-    let value: serde_json::Value = ciborium::de::from_reader(cbor)
-        .map_err(|e| RestError::CborDecodeError(e.to_string()))?;
-    let json = serde_json::to_string(&value)?;
-    Ok(json)
+    fig_core::codec::cbor_to_json(cbor).map_err(|e| RestError::CborDecodeError(e.to_string()))
 }
 
 // ─── Tests ────────────────────────────────────────────────────────
