@@ -487,8 +487,11 @@ impl Frame {
         let frame_type = FrameType::from_code(type_code)
             .ok_or_else(|| FrameError::InvalidFrameType(type_code))?;
 
-        // Flags (1 byte)
+        // Flags (1 byte) — bit 7 is reserved and must be 0 (Spec §5)
         let flags_bits = cursor.read_u8()?;
+        if flags_bits & 0x80 != 0 {
+            return Err(FrameError::InvalidFlags(flags_bits));
+        }
         let flags = Flags::from_bits_truncate(flags_bits);
 
         // Channel ID (2 bytes, big-endian)
@@ -503,8 +506,11 @@ impl Frame {
         // SchemaID (1 byte)
         let schema_id = cursor.read_u8()?;
 
-        // Reserved (2 bytes)
-        let _reserved = cursor.read_u16::<BigEndian>()?;
+        // Reserved (2 bytes) — must be 0 (Spec §3.1)
+        let reserved = cursor.read_u16::<BigEndian>()?;
+        if reserved != 0 {
+            return Err(FrameError::NonZeroReserved(reserved));
+        }
 
         // Extensions: parse the extension block to find where payload starts
         // We walk through the TLV entries to determine the extension block size,
@@ -1023,6 +1029,29 @@ mod tests {
         let size = frame.encoded_size();
         let encoded = frame.encode().unwrap();
         assert_eq!(size, encoded.len());
+    }
+
+    #[test]
+    fn test_decode_rejects_non_zero_reserved() {
+        let frame = Frame::new(FrameType::Request, 1).with_payload(b"test".to_vec());
+        let mut encoded = frame.encode().unwrap();
+        // Set reserved field (bytes 14-15) to non-zero.
+        encoded[14] = 0x00;
+        encoded[15] = 0x01;
+
+        let result = Frame::decode(&encoded);
+        assert!(matches!(result, Err(FrameError::NonZeroReserved(1))));
+    }
+
+    #[test]
+    fn test_decode_rejects_reserved_flag_bit() {
+        let frame = Frame::new(FrameType::Request, 1).with_payload(b"test".to_vec());
+        let mut encoded = frame.encode().unwrap();
+        // Set reserved flag bit 7 in the flags byte (offset 5).
+        encoded[5] |= 0x80;
+
+        let result = Frame::decode(&encoded);
+        assert!(matches!(result, Err(FrameError::InvalidFlags(0x80))));
     }
 
     #[test]

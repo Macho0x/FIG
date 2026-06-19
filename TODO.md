@@ -31,7 +31,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | Frame flags (ACK_REQUESTED, COMPRESSED, FRAGMENTED, LAST_FRAGMENT) | — | Defined and tested |
 | ✅ | Payload fragmentation | Medium | FRAGMENTED + LAST_FRAGMENT split/reassembly via FragmentReassembler |
 | ⬜ | Payload compression | Medium | COMPRESSED flag defined; no compression algorithm wired (zstd/zlib) |
-| ⬜ | Reserved field validation (must be 0) | Low | Spec §3.1; decoder should reject non-zero reserved |
+| ✅ | Reserved field validation (must be 0) | Low | Spec §3.1; decoder rejects non-zero reserved and flag bit 7 |
 
 ---
 
@@ -57,7 +57,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | TREE stream ID mapping (client/server parity) | — | `channel_id * 4 + offset` |
 | ✅ | Credit-based flow control | — | Per-channel credits, consume/grant, exhaustion error |
 | ✅ | Channel reconstruction after reconnect | — | ChannelManager::reconstruct from stored session, reopen TREE streams |
-| ⬜ | Channel ID leak prevention on stream reset | High | Spec §2; must detect RESET_STREAM and transition to CLOSED |
+| ✅ | Channel ID leak prevention on stream reset | High | force_close_channel on StreamReset/StreamStopped in FigConnection |
 | ⬜ | Unidirectional channels | Low | Spec §2; only bidirectional implemented |
 
 ---
