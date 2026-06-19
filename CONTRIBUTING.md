@@ -22,7 +22,7 @@ cargo run -p fig-exchange-sim
 cargo run -p fig-cli
 
 # Compile an FSL schema
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out src/generated/
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out src/generated/
 ```
 
 ## Architecture
@@ -58,7 +58,7 @@ See [docs/API.md](docs/API.md) for the full module index.
 
 ## Adding a New Message Type
 
-1. Define the message in an FSL schema (`.usl` file):
+1. Define the message in an FSL schema (`.fsl` file):
 ```
 message MyMessage {
     @number 1  field1: string(max_len: 32)
@@ -70,7 +70,7 @@ message MyMessage {
 
 2. Compile to Rust:
 ```bash
-cargo run -p fig-fsl --bin ftlc -- compile schemas/my_schema.usl --lang rust --out src/generated/
+cargo run -p fig-fsl --bin ftlc -- compile schemas/my_schema.fsl --lang rust --out src/generated/
 ```
 
 3. Add gateway mappings if needed:

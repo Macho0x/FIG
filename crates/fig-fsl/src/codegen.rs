@@ -517,7 +517,7 @@ mod tests {
 
     #[test]
     fn test_generate_full_orders() {
-        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.usl";
+        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.fsl";
         let input = std::fs::read_to_string(orders_path).unwrap();
         let schema = Parser::parse(&input).unwrap();
         let code = RustCodegen::generate(&schema);

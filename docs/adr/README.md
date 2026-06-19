@@ -7,12 +7,12 @@ Accepted
 ## Context
 
 FIG needs multiplexed, encrypted, low-latency transport with connection migration
-and 0-RTT resumption. Candidates: raw TCP+TLS, HTTP/3, custom QUIC wrapper.
+and 0-RTT resumption. Candidates: raw TCP+TLS, HTTP/3, custom transport wrapper.
 
 ## Decision
 
-Use QUIC via the `quinn` crate with ALPN `fig/1`. Map FIG channels to TREE
-streams using `channel_id × 4 + direction_offset`.
+Use TREE via the `quinn` crate (RFC 9000 foundation) with ALPN `fig/1`.
+Map FIG channels to TREE streams using `channel_id × 4 + direction_offset`.
 
 ## Consequences
 

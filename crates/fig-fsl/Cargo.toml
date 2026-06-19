@@ -7,7 +7,7 @@ description = "FIG Schema Language parser and multi-target codegen"
 
 [[bin]]
 name = "ftlc"
-path = "src/bin/uslc.rs"
+path = "src/bin/ftlc.rs"
 
 [dependencies]
 clap = { workspace = true }

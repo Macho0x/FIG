@@ -2,9 +2,9 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-/// FIG FSL (Fig Schema Language) Schema Language Compiler
+/// FIG FSL (Fig Schema Language) compiler
 #[derive(Parser)]
-#[command(name = "ftlc", version, about = "FIG FSL (Fig Schema Language) Schema Language Compiler")]
+#[command(name = "ftlc", version, about = "FIG FSL (Fig Schema Language) compiler")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -14,7 +14,7 @@ struct Cli {
 enum Commands {
     /// Compile an FSL schema to target language
     Compile {
-        /// The .usl file to compile
+        /// The .fsl file to compile
         file: PathBuf,
         /// Target language: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, json-schema, fix-yaml
         #[arg(long)]
@@ -25,12 +25,12 @@ enum Commands {
     },
     /// Validate an FSL schema file
     Validate {
-        /// The .usl file to validate
+        /// The .fsl file to validate
         file: PathBuf,
     },
     /// Parse an FSL schema and output the AST
     Parse {
-        /// The .usl file to parse
+        /// The .fsl file to parse
         file: PathBuf,
         /// Output format: "json" or "debug"
         #[arg(long, default_value = "json")]

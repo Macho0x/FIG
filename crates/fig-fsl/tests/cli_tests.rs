@@ -1,9 +1,9 @@
 use std::process::Command;
 
-/// Helper: get the path to the orders.usl schema file
+/// Helper: get the path to the orders.fsl schema file
 fn orders_path() -> String {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    format!("{}/../../schemas/orders.usl", manifest_dir)
+    format!("{}/../../schemas/orders.fsl", manifest_dir)
 }
 
 /// Helper: return a Command to run the ftlc binary.
@@ -26,16 +26,16 @@ fn ftlc_cmd() -> Command {
 }
 
 #[test]
-fn test_ftlc_validate_orders_usl() {
+fn test_ftlc_validate_orders_fsl() {
     let output = ftlc_cmd()
         .arg("validate")
         .arg(orders_path())
         .output()
-        .expect("Failed to run uslc validate");
+        .expect("Failed to run ftlc validate");
 
     assert!(
         output.status.success(),
-        "uslc validate should succeed\nstderr: {}",
+        "ftlc validate should succeed\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -55,20 +55,20 @@ fn test_ftlc_validate_orders_usl() {
 #[test]
 fn test_ftlc_validate_invalid_file() {
     let dir = std::env::temp_dir();
-    let invalid_path = dir.join("__test_invalid.usl");
+    let invalid_path = dir.join("__test_invalid.fsl");
     std::fs::write(&invalid_path, "schema broken {").unwrap();
 
     let output = ftlc_cmd()
         .arg("validate")
         .arg(invalid_path.to_str().unwrap())
         .output()
-        .expect("Failed to run uslc validate");
+        .expect("Failed to run ftlc validate");
 
     let _ = std::fs::remove_file(&invalid_path);
 
     assert!(
         !output.status.success(),
-        "uslc validate should fail for invalid schema\nstdout: {}",
+        "ftlc validate should fail for invalid schema\nstdout: {}",
         String::from_utf8_lossy(&output.stdout)
     );
 
@@ -81,7 +81,7 @@ fn test_ftlc_validate_invalid_file() {
 
 #[test]
 fn test_ftlc_compile_generates_file() {
-    let out_dir = std::env::temp_dir().join("__test_uslc_out");
+    let out_dir = std::env::temp_dir().join("__test_ftlc_out");
     let _ = std::fs::remove_dir_all(&out_dir);
 
     let output = ftlc_cmd()
@@ -92,11 +92,11 @@ fn test_ftlc_compile_generates_file() {
         .arg("--out")
         .arg(out_dir.to_str().unwrap())
         .output()
-        .expect("Failed to run uslc compile");
+        .expect("Failed to run ftlc compile");
 
     assert!(
         output.status.success(),
-        "uslc compile should succeed\nstderr: {}",
+        "ftlc compile should succeed\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -120,11 +120,11 @@ fn test_ftlc_parse_json_output() {
         .arg("--format")
         .arg("json")
         .output()
-        .expect("Failed to run uslc parse");
+        .expect("Failed to run ftlc parse");
 
     assert!(
         output.status.success(),
-        "uslc parse should succeed\nstderr: {}",
+        "ftlc parse should succeed\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -147,11 +147,11 @@ fn test_ftlc_parse_debug_output() {
         .arg("--format")
         .arg("debug")
         .output()
-        .expect("Failed to run uslc parse --debug");
+        .expect("Failed to run ftlc parse --debug");
 
     assert!(
         output.status.success(),
-        "uslc parse --debug should succeed\nstderr: {}",
+        "ftlc parse --debug should succeed\nstderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -166,7 +166,7 @@ fn test_ftlc_parse_debug_output() {
 
 #[test]
 fn test_ftlc_compile_unsupported_lang() {
-    let out_dir = std::env::temp_dir().join("__test_uslc_out_bad");
+    let out_dir = std::env::temp_dir().join("__test_ftlc_out_bad");
     let _ = std::fs::remove_dir_all(&out_dir);
 
     let output = ftlc_cmd()
@@ -177,12 +177,12 @@ fn test_ftlc_compile_unsupported_lang() {
         .arg("--out")
         .arg(out_dir.to_str().unwrap())
         .output()
-        .expect("Failed to run uslc compile");
+        .expect("Failed to run ftlc compile");
 
     let _ = std::fs::remove_dir_all(&out_dir);
 
     assert!(
         !output.status.success(),
-        "uslc compile with unsupported lang should fail"
+        "ftlc compile with unsupported lang should fail"
     );
 }

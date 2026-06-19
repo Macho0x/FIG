@@ -1055,11 +1055,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_full_orders_usl() {
-        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.usl";
+    fn test_parse_full_orders_fsl() {
+        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.fsl";
         let input =
-            std::fs::read_to_string(orders_path).expect("failed to read orders.usl");
-        let schema = Parser::parse(&input).expect("failed to parse orders.usl");
+            std::fs::read_to_string(orders_path).expect("failed to read orders.fsl");
+        let schema = Parser::parse(&input).expect("failed to parse orders.fsl");
         assert_eq!(schema.name, "trading.orders");
         assert_eq!(schema.version, "v1.0.0");
         assert_eq!(schema.well_known_id, Some(0x01));

@@ -89,8 +89,8 @@ cargo doc --workspace --no-deps --open
 ### CLI (`ftlc`)
 
 ```bash
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang go --out /tmp/out
-cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.usl
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang go --out /tmp/out
+cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 ```
 
 Supported `--lang` values: `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `json-schema`, `fix-yaml`.

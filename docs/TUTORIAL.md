@@ -75,10 +75,10 @@ curl http://127.0.0.1:9090/metrics
 ## 5. Compile FSL schemas
 
 ```bash
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out /tmp/fig-gen
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang go --out /tmp/fig-gen
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang proto --out /tmp/fig-gen
-cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.usl
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out /tmp/fig-gen
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang go --out /tmp/fig-gen
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang proto --out /tmp/fig-gen
+cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 ```
 
 Supported `--lang` values:
@@ -87,7 +87,7 @@ Supported `--lang` values:
 
 ## 6. TCP downgrade mode
 
-For environments without TREE/QUIC:
+For environments without TREE support:
 
 ```rust
 use fig_core::tcp::{FigTcpConnection, FigTcpServer};

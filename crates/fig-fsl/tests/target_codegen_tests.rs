@@ -4,7 +4,7 @@ use fig_fsl::{
 };
 
 fn orders_schema() -> fig_fsl::Schema {
-    let orders_path = format!("{}/../../schemas/orders.usl", env!("CARGO_MANIFEST_DIR"));
+    let orders_path = format!("{}/../../schemas/orders.fsl", env!("CARGO_MANIFEST_DIR"));
     let input = std::fs::read_to_string(orders_path).unwrap();
     Parser::parse(&input).unwrap()
 }

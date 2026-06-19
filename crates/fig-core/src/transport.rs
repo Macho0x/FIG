@@ -1,8 +1,8 @@
 //! TREE transport layer for FIG.
 //!
-//! Wraps [quinn] for TREE transport, providing certificate generation,
-//! ALPN negotiation, and a [`FigConnection`] that maps FIG channels
-//! to TREE streams.
+//! Wraps [quinn] (RFC 9000) as the TREE transport implementation, providing
+//! certificate generation, ALPN negotiation, and a [`FigConnection`] that
+//! maps FIG channels to TREE streams.
 //!
 //! # Security note
 //!

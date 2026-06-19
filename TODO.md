@@ -128,7 +128,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 
 | Status | Item | Priority | Notes |
 |---|----|----|----|
-| ✅ | FSL parser (tokenizer + recursive descent) | — | 12 tests, full orders.usl |
+| ✅ | FSL parser (tokenizer + recursive descent) | — | 12 tests, full orders.fsl |
 | ✅ | AST with all node types | — | Serde round-trip |
 | ✅ | Rust codegen | — | 5 tests |
 | ✅ | ftlc CLI (compile, validate) | — | 10 tests |
@@ -201,7 +201,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | README.md | — | Full description, benchmarks, architecture |
 | ✅ | SPEC.md | — | RFC-style protocol specification (553 lines) |
 | ✅ | CONTRIBUTING.md | — | Development guidelines |
-| ✅ | schemas/orders.usl | — | Complete example schema |
+| ✅ | schemas/orders.fsl | — | Complete example schema |
 | ✅ | API docs (rustdoc) | Medium | docs/API.md + module index; cargo doc --workspace |
 | ✅ | Tutorial / getting started guide | Medium | docs/TUTORIAL.md step-by-step guide |
 | ✅ | Protocol guide (deep dive) | Low | docs/PROTOCOL.md |

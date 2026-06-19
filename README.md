@@ -165,10 +165,10 @@ All over a single TREE connection with per-stream multiplexing.
 
 ```bash
 # Compile an FSL schema to Rust
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out /tmp/fig-gen
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out /tmp/fig-gen
 
 # Validate an FSL schema
-cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.usl
+cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 ```
 
 ### Run Benchmarks
@@ -372,7 +372,7 @@ schema trading.orders v1 {
 | FIX mapping | ✅ | `.fix.yaml` gateway config | `fix-yaml` |
 
 See [SPEC.md](SPEC.md) for the full protocol specification,
-[schemas/orders.usl](schemas/orders.usl) for a complete example, and
+[schemas/orders.fsl](schemas/orders.fsl) for a complete example, and
 [docs/TUTORIAL.md](docs/TUTORIAL.md) for codegen walkthroughs.
 
 ---
