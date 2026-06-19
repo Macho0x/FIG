@@ -131,6 +131,9 @@ pub enum FixConvertError {
 
     #[error("unsupported FIX MsgType for conversion: {0}")]
     UnsupportedMsgType(String),
+
+    #[error("invalid sequence number in tag {tag}: {value}")]
+    InvalidSeqNumber { tag: u32, value: String },
 }
 
 /// Convenience type alias for FIX↔FIG conversion operations.
@@ -533,6 +536,74 @@ pub fn stream_open_to_logon(frame: &Frame) -> FixConvertResult<FixMessage> {
     tags.push((98, "0".to_string())); // EncryptMethod = None
     tags.push((108, "30".to_string())); // HeartBtInt
     tags.push((141, "Y".to_string())); // ResetSeqNumFlag
+
+    Ok(FixMessage::new(tags))
+}
+
+// ─── FIX ResendRequest ↔ FIG CONTROL(RESEND) ───────────────────
+
+/// Default channel ID for FIX session traffic mapped to FIG.
+pub const FIX_SESSION_CHANNEL_ID: u16 = 1;
+
+/// Convert a FIX ResendRequest (35=2) to a FIG CONTROL(RESEND) frame.
+///
+/// Maps FIX BeginSeqNo (tag 7) and EndSeqNo (tag 16, default 0) to the
+/// RESEND payload. The target FIG channel defaults to
+/// [`FIX_SESSION_CHANNEL_ID`] unless overridden.
+pub fn resend_request_to_control(
+    msg: &FixMessage,
+    channel_id: u16,
+) -> FixConvertResult<Frame> {
+    let msg_type = msg.msg_type().unwrap_or("");
+    if msg_type != "2" {
+        return Err(FixConvertError::UnsupportedMsgType(msg_type.to_string()));
+    }
+
+    let begin_seq: u32 = msg
+        .get_tag(7)
+        .ok_or(FixConvertError::MissingTag { tag: 7 })?
+        .parse()
+        .map_err(|_| FixConvertError::InvalidSeqNumber {
+            tag: 7,
+            value: msg.get_tag(7).unwrap_or("").to_string(),
+        })?;
+
+    let end_seq: u32 = match msg.get_tag(16) {
+        Some(v) => v.parse().map_err(|_| FixConvertError::InvalidSeqNumber {
+            tag: 16,
+            value: v.to_string(),
+        })?,
+        None => 0,
+    };
+
+    Ok(Frame::resend(channel_id, begin_seq, end_seq))
+}
+
+/// Convert a FIG CONTROL(RESEND) frame to a FIX ResendRequest (35=2).
+pub fn control_to_resend_request(
+    frame: &Frame,
+    sender_comp_id: &str,
+    target_comp_id: &str,
+    msg_seq_num: u32,
+) -> FixConvertResult<FixMessage> {
+    let (channel_id, begin_seq, end_seq) = frame
+        .resend_range()
+        .ok_or(FixConvertError::UnsupportedMsgType(format!(
+            "{}",
+            frame.frame_type
+        )))?;
+    let _ = channel_id; // FIX session-level; channel encoded in FIG payload only
+
+    let mut tags: Vec<(u32, String)> = Vec::new();
+    tags.push((8, "FIX.4.4".to_string()));
+    tags.push((35, "2".to_string()));
+    tags.push((49, sender_comp_id.to_string()));
+    tags.push((56, target_comp_id.to_string()));
+    tags.push((34, msg_seq_num.to_string()));
+    tags.push((7, begin_seq.to_string()));
+    if end_seq != 0 {
+        tags.push((16, end_seq.to_string()));
+    }
 
     Ok(FixMessage::new(tags))
 }
@@ -966,5 +1037,99 @@ mod tests {
         let frame = Frame::new(FrameType::StreamOpen, 0);
         let result = stream_open_to_logon(&frame);
         assert!(matches!(result, Err(FixConvertError::MissingAuthToken)));
+    }
+
+    // ── ResendRequest ↔ CONTROL(RESEND) ────────────────────────
+
+    #[test]
+    fn test_resend_request_to_control() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "2".to_string()),
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+            (34, "5".to_string()),
+            (7, "10".to_string()),
+            (16, "25".to_string()),
+        ];
+        let msg = FixMessage::new(tags);
+        let frame = resend_request_to_control(&msg, FIX_SESSION_CHANNEL_ID).unwrap();
+
+        assert_eq!(frame.control_subtype(), Some(fig_core::frame::ControlSubtype::Resend));
+        assert_eq!(frame.resend_range(), Some((FIX_SESSION_CHANNEL_ID, 10, 25)));
+    }
+
+    #[test]
+    fn test_resend_request_to_control_default_end_seq() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "2".to_string()),
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+            (34, "5".to_string()),
+            (7, "3".to_string()),
+        ];
+        let msg = FixMessage::new(tags);
+        let frame = resend_request_to_control(&msg, 2).unwrap();
+        assert_eq!(frame.resend_range(), Some((2, 3, 0)));
+    }
+
+    #[test]
+    fn test_resend_request_to_control_missing_begin_seq() {
+        let tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "2".to_string()),
+            (49, "CLIENT".to_string()),
+            (56, "BROKER".to_string()),
+        ];
+        let msg = FixMessage::new(tags);
+        let result = resend_request_to_control(&msg, 1);
+        assert!(matches!(result, Err(FixConvertError::MissingTag { tag: 7 })));
+    }
+
+    #[test]
+    fn test_control_to_resend_request() {
+        let frame = Frame::resend(FIX_SESSION_CHANNEL_ID, 10, 25);
+        let fix_msg = control_to_resend_request(&frame, "CLIENT", "BROKER", 5).unwrap();
+
+        assert_eq!(fix_msg.msg_type(), Some("2"));
+        assert_eq!(fix_msg.get_tag(7), Some("10"));
+        assert_eq!(fix_msg.get_tag(16), Some("25"));
+        assert_eq!(fix_msg.get_tag(49), Some("CLIENT"));
+        assert_eq!(fix_msg.get_tag(56), Some("BROKER"));
+        assert_eq!(fix_msg.get_tag(34), Some("5"));
+    }
+
+    #[test]
+    fn test_resend_round_trip() {
+        let original_tags = vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "2".to_string()),
+            (49, "SENDER".to_string()),
+            (56, "TARGET".to_string()),
+            (34, "8".to_string()),
+            (7, "100".to_string()),
+            (16, "150".to_string()),
+        ];
+        let original = FixMessage::new(original_tags);
+
+        let frame = resend_request_to_control(&original, FIX_SESSION_CHANNEL_ID).unwrap();
+        let converted = control_to_resend_request(&frame, "SENDER", "TARGET", 8).unwrap();
+
+        assert_eq!(converted.msg_type(), original.msg_type());
+        assert_eq!(converted.get_tag(7), original.get_tag(7));
+        assert_eq!(converted.get_tag(16), original.get_tag(16));
+        assert_eq!(converted.get_tag(49), original.get_tag(49));
+        assert_eq!(converted.get_tag(56), original.get_tag(56));
+    }
+
+    #[test]
+    fn test_control_to_resend_request_rejects_non_resend() {
+        let frame = Frame::ping();
+        let result = control_to_resend_request(&frame, "A", "B", 1);
+        assert!(matches!(
+            result,
+            Err(FixConvertError::UnsupportedMsgType(_))
+        ));
     }
 }

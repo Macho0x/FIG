@@ -44,7 +44,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | SETTINGS | — | Tier advertisement |
 | ✅ | AUTH_REFRESH | — | Frame constructor + token extraction + verify_refresh_token + control dispatcher |
 | ✅ | SEQ_RESET | — | Frame constructor + payload parsing + control dispatcher + ChannelManager::reset_seq |
-| ⬜ | RESEND | Medium | Spec §12.1; FIX ResendRequest (35=2) equivalent |
+| ✅ | RESEND | Medium | Frame::resend + control dispatcher + FIX ResendRequest conversion |
 
 ---
 
@@ -117,7 +117,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | 🔶 | REST JSON ↔ CBOR body conversion | Medium | REST adapter parses HTTP; body conversion is string-based, not proper JSON↔CBOR |
 | ⬜ | WebSocket → FIG stream mapping | Medium | WS frames parse; mapping to STREAM_ITEM with content-type not wired |
 | ✅ | FIX Logon (35=A) → STREAM_OPEN + AUTH | — | logon_to_stream_open + stream_open_to_logon conversion functions |
-| ⬜ | FIX ResendRequest (35=2) → CONTROL(RESEND) | Medium | Spec §12.1 |
+| ✅ | FIX ResendRequest (35=2) → CONTROL(RESEND) | Medium | resend_request_to_control + control_to_resend_request |
 | ⬜ | REST SSE → STREAM_ITEM streaming | Low | Spec §12.2 |
 | ⬜ | Gateway process (standalone binary) | Medium | Adapters are libraries; no standalone gateway server binary |
 

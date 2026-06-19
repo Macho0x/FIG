@@ -285,6 +285,47 @@ impl Frame {
         frame
     }
 
+    /// Create a RESEND control frame requesting retransmission of a seq range.
+    ///
+    /// Payload layout (after subtype byte):
+    /// - channel_id: 2 bytes BE
+    /// - begin_seq: 4 bytes BE
+    /// - end_seq: 4 bytes BE (0 = all messages to current)
+    pub fn resend(channel_id: u16, begin_seq: u32, end_seq: u32) -> Self {
+        let mut frame = Self::control(ControlSubtype::Resend);
+        frame.payload.extend_from_slice(&channel_id.to_be_bytes());
+        frame.payload.extend_from_slice(&begin_seq.to_be_bytes());
+        frame.payload.extend_from_slice(&end_seq.to_be_bytes());
+        frame
+    }
+
+    /// Extract the resend range from a RESEND control frame.
+    ///
+    /// Returns `(channel_id, begin_seq, end_seq)` if this is a valid RESEND
+    /// frame with a complete payload.
+    pub fn resend_range(&self) -> Option<(u16, u32, u32)> {
+        if self.control_subtype() != Some(ControlSubtype::Resend) {
+            return None;
+        }
+        if self.payload.len() < 11 {
+            return None;
+        }
+        let channel_id = u16::from_be_bytes([self.payload[1], self.payload[2]]);
+        let begin_seq = u32::from_be_bytes([
+            self.payload[3],
+            self.payload[4],
+            self.payload[5],
+            self.payload[6],
+        ]);
+        let end_seq = u32::from_be_bytes([
+            self.payload[7],
+            self.payload[8],
+            self.payload[9],
+            self.payload[10],
+        ]);
+        Some((channel_id, begin_seq, end_seq))
+    }
+
     /// Set the stream sequence number.
     pub fn with_seq(mut self, seq: u32) -> Self {
         self.stream_seq = seq;

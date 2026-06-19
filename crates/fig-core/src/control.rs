@@ -30,6 +30,12 @@ pub enum ControlAction {
         new_send_seq: u32,
         new_recv_seq: u32,
     },
+    /// Request retransmission of a sequence range on a channel.
+    ResendRange {
+        channel_id: u16,
+        begin_seq: u32,
+        end_seq: u32,
+    },
     /// No action required (acknowledgement frames, etc.).
     NoAction,
 }
@@ -94,7 +100,15 @@ pub fn handle_control_frame(
                 new_recv_seq,
             })
         }
-        Some(ControlSubtype::Resend) => Ok(ControlAction::NoAction), // TODO: implement RESEND
+        Some(ControlSubtype::Resend) => {
+            let (channel_id, begin_seq, end_seq) =
+                parse_resend_payload(&frame.payload[1..])?;
+            Ok(ControlAction::ResendRange {
+                channel_id,
+                begin_seq,
+                end_seq,
+            })
+        }
         None => Err(ControlError::UnknownSubtype),
     }
 }
@@ -115,6 +129,22 @@ fn parse_seq_reset_payload(payload: &[u8]) -> Result<(u16, u32, u32), ControlErr
     let new_send_seq = u32::from_be_bytes([payload[2], payload[3], payload[4], payload[5]]);
     let new_recv_seq = u32::from_be_bytes([payload[6], payload[7], payload[8], payload[9]]);
     Ok((channel_id, new_send_seq, new_recv_seq))
+}
+
+/// Parse the data portion of a RESEND payload.
+///
+/// Payload format (10 bytes, after the subtype byte):
+/// - channel_id: 2 bytes BE
+/// - begin_seq: 4 bytes BE
+/// - end_seq: 4 bytes BE (0 = all messages to current)
+fn parse_resend_payload(payload: &[u8]) -> Result<(u16, u32, u32), ControlError> {
+    if payload.len() < 10 {
+        return Err(ControlError::InvalidPayload);
+    }
+    let channel_id = u16::from_be_bytes([payload[0], payload[1]]);
+    let begin_seq = u32::from_be_bytes([payload[2], payload[3], payload[4], payload[5]]);
+    let end_seq = u32::from_be_bytes([payload[6], payload[7], payload[8], payload[9]]);
+    Ok((channel_id, begin_seq, end_seq))
 }
 
 // ─── Observability ──────────────────────────────────────────────
@@ -255,13 +285,50 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_resend_returns_no_action() {
-        // Create a RESEND control frame manually
-        let frame = Frame::control(ControlSubtype::Resend);
+    fn test_resend_constructor() {
+        let frame = Frame::resend(42, 100, 200);
+
+        assert_eq!(frame.control_subtype(), Some(ControlSubtype::Resend));
+        assert_eq!(frame.payload.len(), 11);
+        assert_eq!(frame.payload[0], ControlSubtype::Resend.code());
+
+        let (ch_id, begin, end) = parse_resend_payload(&frame.payload[1..]).unwrap();
+        assert_eq!(ch_id, 42);
+        assert_eq!(begin, 100);
+        assert_eq!(end, 200);
+        assert_eq!(frame.resend_range(), Some((42, 100, 200)));
+    }
+
+    #[test]
+    fn test_parse_resend_payload_too_short() {
+        let payload = vec![0u8; 5];
+        let result = parse_resend_payload(&payload);
+        assert!(matches!(result, Err(ControlError::InvalidPayload)));
+    }
+
+    #[test]
+    fn test_handle_resend_returns_resend_range() {
+        let frame = Frame::resend(7, 10, 50);
         let auth = AuthMethod::None;
         let mut mgr = ChannelManager::new(false);
         let action = handle_control_frame(&frame, &auth, &mut mgr, &Uuid::nil()).unwrap();
-        assert_eq!(action, ControlAction::NoAction);
+        assert_eq!(
+            action,
+            ControlAction::ResendRange {
+                channel_id: 7,
+                begin_seq: 10,
+                end_seq: 50,
+            }
+        );
+    }
+
+    #[test]
+    fn test_handle_resend_invalid_payload() {
+        let frame = Frame::control(ControlSubtype::Resend);
+        let auth = AuthMethod::None;
+        let mut mgr = ChannelManager::new(false);
+        let result = handle_control_frame(&frame, &auth, &mut mgr, &Uuid::nil());
+        assert!(matches!(result, Err(ControlError::InvalidPayload)));
     }
 
     #[test]
