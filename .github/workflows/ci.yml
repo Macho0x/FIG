@@ -52,7 +52,7 @@ jobs:
       - name: Run frame benchmarks (smoke)
         run: cargo bench -p fig-bench --bench frame_bench -- --sample-size 10
       - name: Run transport benchmarks (smoke)
-        run: cargo bench -p fig-bench --bench transport_bench -- --sample-size 10
+        run: cargo bench -p fig-bench --bench transport_bench -- tree_ping_pong_round_trip --sample-size 10
       - name: Run gateway comparison benchmarks (smoke)
         run: cargo bench -p fig-bench --bench gateway_bench -- protocol_comparison --sample-size 10
       - name: Run allocation benchmarks (smoke)

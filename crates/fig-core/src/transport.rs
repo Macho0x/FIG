@@ -942,4 +942,36 @@ mod tests {
         rotating.reload(cert2, key2).unwrap();
         let _cfg2 = rotating.server_config_mtls().unwrap();
     }
+
+    #[tokio::test]
+    async fn test_tree_ping_pong_round_trip() {
+        let (cert, key) = generate_self_signed_cert().unwrap();
+        let server_cfg = server_config(cert, key).unwrap();
+        let client_cfg = client_config().unwrap();
+
+        let server = FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg)
+            .await
+            .unwrap();
+        let addr = server.local_addr().unwrap();
+
+        let client_handle = tokio::spawn(async move {
+            let client = FigClient::new(client_cfg).unwrap();
+            let conn = client.connect(addr, "localhost").await.unwrap();
+            conn.send_frame(0, &Frame::ping()).await.unwrap();
+            let pong = conn.recv_frame(0).await.unwrap();
+            assert_eq!(
+                pong.control_subtype(),
+                Some(crate::frame::ControlSubtype::Pong)
+            );
+        });
+
+        let conn = server.accept().await.unwrap();
+        let (ch, frame) = conn.accept_frame().await.unwrap();
+        assert_eq!(
+            frame.control_subtype(),
+            Some(crate::frame::ControlSubtype::Ping)
+        );
+        conn.send_frame(ch, &Frame::pong()).await.unwrap();
+        client_handle.await.unwrap();
+    }
 }
