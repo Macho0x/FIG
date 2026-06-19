@@ -1,7 +1,8 @@
 # TODO — FIG Protocol Roadmap
 
-Tracking remaining work to reach production-grade 100% coverage of the
-[SPEC.md](SPEC.md). Items are grouped by area and prioritized.
+Tracking work to reach production-grade coverage of the
+[SPEC.md](SPEC.md). **All tracked items are complete.** See [API.md](docs/API.md)
+for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidance.
 
 **Legend:** ✅ Done · 🔶 Partial · ⬜ Not started
 

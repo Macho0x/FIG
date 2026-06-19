@@ -38,7 +38,19 @@ When the underlying IP changes (mobile clients, load balancer failover):
 2. Reconnect via TREE migration or fresh handshake with resumption token.
 3. Call `FigConnection::apply_migration()` to restore channel sequence state.
 
-See `fig_core::migration` for token format and validation.
+See `fig_core::migration` for token format and validation. Session stores
+(`MemorySessionStore`, `FileSessionStore`, `RedisSessionStore`, `EtcdSessionStore`)
+persist channel and sequence state across restarts.
+
+## Security Primitives
+
+| Module | Purpose |
+|---|---|
+| `fig_core::jwt` | HS256 JWT bearer tokens |
+| `fig_core::oauth` | OAuth2/OIDC dev token introspection |
+| `fig_core::channel_auth` | Per-channel permission requirements |
+| `fig_core::rate_limit` | Token-bucket per-channel rate limiting |
+| `fig_core::dos` | Connection-level DoS guard and flood detection |
 
 ## Worked Example: Order Entry
 

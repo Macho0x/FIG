@@ -28,12 +28,15 @@ cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out 
 ## Architecture
 
 ```
-fig-core          — Wire format, channels, sessions, TREE transport, SBE codec
-fig-fsl           — FSL (Fig Schema Language) schema language parser, codegen, and ftlc CLI
-fig-gateways      — FIX, REST, and WebSocket gateway adapters
+fig-core          — Wire format, channels, sessions, TREE transport, SBE/CBOR codec
+fig-fsl           — FSL schema language parser, multi-target codegen, ftlc CLI
+fig-gateways      — FIX, REST, WebSocket, and SSE gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
-fig-cli           — Trading client demo
+fig-cli           — Native FIG trading client demo
+fig-bench         — Criterion benchmarks
 ```
+
+See [docs/API.md](docs/API.md) for the full module index.
 
 ## Protocol Design Principles
 
@@ -99,11 +102,16 @@ gateway fix {
 
 ## CI
 
-GitHub Actions runs on every push:
-- `cargo build --workspace`
-- `cargo test --workspace`
-- `cargo clippy --workspace`
-- `cargo fmt --check`
+GitHub Actions runs on every push to `main`:
+
+| Job | What it runs |
+|---|---|
+| `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux) |
+| `coverage` | `cargo llvm-cov` coverage report |
+| `benchmarks` | Smoke-run frame, transport, gateway, and alloc benchmarks |
+| `cross-platform` | `cargo test --workspace --all-features` on Linux, macOS, Windows |
+
+Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
 
 ## License
 

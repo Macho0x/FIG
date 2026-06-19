@@ -60,10 +60,21 @@
 //! | [`channel`] | Channel lifecycle, sequence numbering, TREE stream ID mapping |
 //! | [`session`] | Durable session model with pluggable storage backends |
 //! | [`transport`] | TREE transport wrapper, TLS cert generation, ALPN |
-//! | [`codec`] | CBOR encode/decode helpers for self-describing payloads |
+//! | [`tcp`] | TCP downgrade transport (`FIG\x01` magic prefix) |
+//! | [`migration`] | Connection migration tokens and channel reconstruction |
+//! | [`codec`] | CBOR encode/decode helpers; JSON ↔ CBOR for gateways |
+//! | [`protobuf`] | Protobuf wire encoding for schema-evolving payloads |
+//! | [`compression`] | zstd payload compression |
+//! | [`fragment`] | Payload fragmentation and reassembly |
 //! | [`sbe`] | SBE binary encoder/decoder for trading messages (zero-alloc) |
 //! | [`error`] | Error types: `FrameError`, `ChannelError`, `SessionError` |
 //! | [`auth`] | Authentication methods: token-based and mTLS |
+//! | [`jwt`] | HS256 JWT bearer token encode/decode |
+//! | [`oauth`] | OAuth2/OIDC dev token introspection |
+//! | [`channel_auth`] | Per-channel permission policy |
+//! | [`rate_limit`] | Token-bucket per-channel rate limiting |
+//! | [`dos`] | Connection-level DoS guard and flood detection |
+//! | [`trace`] | W3C traceparent ↔ TRACE_ID extension |
 //! | [`control`] | Control frame dispatcher: PING/PONG, AUTH_REFRESH, SEQ_RESET |
 //! | [`observability`] | Tracing spans and atomic metrics counters |
 

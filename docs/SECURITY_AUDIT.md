@@ -1,7 +1,8 @@
 # FIG Security Audit Checklist (Pre-1.0)
 
 Internal security review checklist before declaring FIG 1.0. Not a third-party
-audit report — use this to track readiness.
+audit report — use this to track readiness. See [API.md](API.md) for module
+references.
 
 ## Transport
 

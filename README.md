@@ -26,6 +26,7 @@ a migration path, not as the protocol's identity.
 - [FSL — Fig Schema Language](#fsl--fig-schema-language)
 - [Benchmarks](#benchmarks)
 - [Testing](#testing)
+- [Documentation](#documentation)
 - [Project Stats](#project-stats)
 - [License](#license)
 
@@ -116,12 +117,12 @@ a migration path, not as the protocol's identity.
 
 | Crate | Description | Tests | Key Modules |
 |---|---|---|---|
-| [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, flow control, observability | 118 | `frame`, `ext`, `channel`, `session`, `codec`, `transport`, `sbe`, `auth`, `observability` |
-| [`fig-fsl`](crates/fig-fsl/) | FSL (Fig Schema Language) parser, Rust codegen, and `ftlc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
-| [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket ↔ FIG translation | 29 | `fix`, `rest`, `ws` |
-| [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 16 | `orderbook`, `matching`, `server` |
+| [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, migration, observability | 233 | `frame`, `ext`, `channel`, `session`, `transport`, `sbe`, `auth`, `migration`, `observability` |
+| [`fig-fsl`](crates/fig-fsl/) | FSL parser, multi-target codegen, and `ftlc` CLI | 43 | `ast`, `parser`, `codegen`, `target_codegen`, `bin/ftlc` |
+| [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket, SSE ↔ FIG translation | 66 | `fix`, `fix_session`, `rest`, `ws`, `sse` |
+| [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 18 | `orderbook`, `matching`, `server` |
 | [`fig-cli`](crates/fig-cli/) | Native FIG trading client demo | — | `main` |
-| [`fig-bench`](crates/fig-bench/) | Criterion benchmarks for all components | 21 benchmarks | `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench` |
+| [`fig-bench`](crates/fig-bench/) | Criterion benchmarks for all components | 6 suites | `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` |
 
 ---
 
@@ -147,6 +148,9 @@ cargo run -p fig-exchange-sim
 
 # In another terminal, run the trading client
 cargo run -p fig-cli
+
+# Optional: run the legacy gateway (REST + FIX translation demo)
+cargo run -p fig-gateways --bin fig-gateway
 ```
 
 The CLI demonstrates:
@@ -161,10 +165,10 @@ All over a single TREE connection with per-stream multiplexing.
 
 ```bash
 # Compile an FSL schema to Rust
-cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out src/generated/
+cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.usl --lang rust --out /tmp/fig-gen
 
 # Validate an FSL schema
-cargo run -p fig-usl --bin uslc -- validate schemas/orders.usl
+cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.usl
 ```
 
 ### Run Benchmarks
@@ -173,8 +177,11 @@ cargo run -p fig-usl --bin uslc -- validate schemas/orders.usl
 # Run all benchmarks
 cargo bench -p fig-bench
 
-# Run a specific benchmark
-cargo bench -p fig-bench -- --bench codec_bench
+# Run a specific benchmark suite
+cargo bench -p fig-bench --bench codec_bench
+
+# Allocation benchmarks (pre-allocated buffer comparison)
+cargo bench -p fig-bench --features alloc --bench alloc_bench
 ```
 
 ---
@@ -284,7 +291,10 @@ Translates between HTTP/1.1 requests and FIG frames:
 | Body | Payload (CBOR ↔ JSON) |
 | Status code | STATUS_CODE extension |
 | Chunked transfer | STREAM_ITEM frames |
-| SSE | STREAM_ITEM with CONTENT_TYPE |
+| SSE | `fig_gateways::sse` → STREAM_ITEM with `text/event-stream` |
+
+The `fig-gateway` binary provides a REST + FIX translation demo. WebSocket and
+SSE adapters are library modules for embedding in custom gateway services.
 
 ### WebSocket Adapter
 
@@ -346,19 +356,24 @@ schema trading.orders v1 {
 
 ### Codegen Targets
 
-| Target | Status | Output |
-|---|---|---|
-| Rust | ✅ Implemented | Structs + serde + encode/decode |
-| Go | ⬜ Planned | Structs + marshal/unmarshal |
-| Python | ⬜ Planned | Dataclasses + serde |
-| TypeScript | ⬜ Planned | Interfaces + encode/decode |
-| Protobuf | ⬜ Planned | `.proto` file (for gRPC interop) |
-| SBE | ⬜ Planned | `.xml` (for trading fast path) |
-| JSON Schema | ⬜ Planned | `.schema.json` (for REST docs) |
-| FIX mapping | ⬜ Planned | `.fix.yaml` (for gateway config) |
+| Target | Status | Output | `ftlc --lang` |
+|---|---|---|---|
+| Rust | ✅ | Structs + serde + encode/decode | `rust`, `sbe` |
+| Go | ✅ | Structs + JSON tags | `go` |
+| Python | ✅ | Dataclasses | `python` |
+| TypeScript | ✅ | Interfaces | `typescript` |
+| OCaml | ✅ | Record types | `ocaml` |
+| Zig | ✅ | Struct definitions | `zig` |
+| C++ | ✅ | Header structs | `cpp` |
+| C# | ✅ | Classes | `csharp` |
+| Protobuf | ✅ | `.proto` file | `proto` |
+| SBE XML | ✅ | `.sbe.xml` schema | `sbe-xml` |
+| JSON Schema | ✅ | `.schema.json` | `json-schema` |
+| FIX mapping | ✅ | `.fix.yaml` gateway config | `fix-yaml` |
 
-See [SPEC.md](SPEC.md) for the full protocol specification and
-[schemas/orders.usl](schemas/orders.usl) for a complete example.
+See [SPEC.md](SPEC.md) for the full protocol specification,
+[schemas/orders.usl](schemas/orders.usl) for a complete example, and
+[docs/TUTORIAL.md](docs/TUTORIAL.md) for codegen walkthroughs.
 
 ---
 
@@ -427,14 +442,14 @@ and 25-100x faster than FIX ASCII parsing (5-20μs).
 ## Testing
 
 ```bash
-# Run all 190 tests
+# Run all tests (~360)
 cargo test --workspace
 
 # Run tests for a specific crate
-cargo test -p fig-core       # 118 tests
-cargo test -p fig-fsl         # 27 tests
-cargo test -p fig-gateways    # 29 tests
-cargo test -p fig-exchange-sim # 16 tests
+cargo test -p fig-core          # 233 tests
+cargo test -p fig-fsl           # 43 tests (lib + CLI + codegen)
+cargo test -p fig-gateways      # 66 tests
+cargo test -p fig-exchange-sim  # 18 tests (lib + integration)
 
 # Run integration tests (end-to-end over TREE)
 cargo test -p fig-exchange-sim --test integration
@@ -445,24 +460,18 @@ cargo bench -p fig-bench
 
 ### Test Coverage by Area
 
-| Area | Tests | What's covered |
-|---|---|---|
-| Frame encode/decode | 29 | All 13 frame types, all flags, all extension tags, streaming decoder |
-| Channel management | 15 | Open/close, sequence numbers, TREE stream mapping, credit exhaustion |
-| Session management | 14 | UUID, auth token, seq tracking, memory + file store CRUD |
-| SBE codec | 79 | Encode/decode round-trips for all trading message types |
-| CBOR codec | 6 | Round-trips, empty values, invalid data, nested structures |
-| Auth | 12 | Token verification, mTLS, dev tokens, expiry |
-| Observability | 8 | Metrics increment/add/reset/snapshot, concurrent, spans |
-| FIX gateway | 8 | Parse/serialize, checksum, convert to/from FIG |
-| REST gateway | 7 | Parse HTTP, serialize HTTP, JSON↔CBOR |
-| WebSocket gateway | 14 | All opcodes, masking, fragmentation, close frames |
-| FSL parser | 12 | Tokenizer, all constructs, full orders.usl |
-| FSL codegen | 5 | Struct generation, enums, associated constants |
-| FSL CLI | 10 | Compile, validate, output formats |
-| Order book | 8 | Add/cancel/reduce, price-time priority, depth |
-| Matching engine | 8 | Market/limit fills, partial fills, cancel |
-| Integration | 6 | End-to-end sim+cli over TREE |
+Run `cargo test --workspace` for the full suite (~360 tests). Key areas:
+
+| Area | What's covered |
+|---|---|
+| Frame encode/decode | All 13 frame types, flags, extensions, streaming decoder, reserved field validation |
+| Channel management | Open/close, unidirectional channels, sequence numbers, TREE stream mapping, credits |
+| Session management | UUID, auth token, seq tracking, memory/file/Redis/etcd stores, TTL expiry |
+| SBE + CBOR codec | Round-trips for all trading message types |
+| Auth & security | Token, mTLS, JWT, OAuth dev validator, per-channel auth, rate limits, DoS guard |
+| Gateway adapters | FIX session machine, REST JSON↔CBOR, WebSocket opcodes, SSE round-trip |
+| FSL | Parser, Rust/SBE codegen, 12 target codegen languages, CLI |
+| Exchange sim | Order book, matching engine, CancelReplace, depth streaming, integration tests |
 
 ---
 
@@ -470,15 +479,28 @@ cargo bench -p fig-bench
 
 | Metric | Value |
 |---|---|
-| Rust source lines | ~11,700 |
+| Rust source lines | ~21,000 |
 | Crates | 6 |
-| Tests | 190 passing |
-| Benchmarks | 21 |
+| Tests | ~360 passing |
+| Benchmark suites | 6 |
 | Dependencies | quinn 0.11, rustls 0.23, ciborium, criterion, rcgen, uuid, serde, tokio, tracing |
-| Transport | TREE (ALPN: `fig/1`) |
+| Transport | TREE (ALPN: `fig/1`) + optional TCP downgrade |
 | Wire format | 16-byte header + TLV extensions + SBE/CBOR payload |
 | Max channels | 65,535 per connection |
-| Session resumption | 0-RTT via TREE + FileSessionStore |
+| Session resumption | 0-RTT via TREE + pluggable session stores |
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [SPEC.md](SPEC.md) | Normative protocol specification |
+| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started guide |
+| [docs/API.md](docs/API.md) | Module index and API reference |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Design rationale and integration patterns |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
+| [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Pre-1.0 security checklist |
+| [docs/adr/README.md](docs/adr/README.md) | Architecture decision records |
+| [TODO.md](TODO.md) | Implementation roadmap (complete) |
 
 ---
 

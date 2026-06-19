@@ -1,16 +1,21 @@
 # Gateway Deployment Guide
 
-How to run FIG alongside legacy FIX, REST, and WebSocket infrastructure.
+How to run FIG alongside legacy FIX and REST infrastructure.
 
 ## Overview
 
-The `fig-gateway` binary translates legacy protocols to FIG frames and forwards
-them to a FIG backend (e.g. `fig-exchange-sim` or your production server).
+The `fig-gateway` binary is a **translation bridge** for migration testing. It
+accepts legacy FIX and REST connections, converts them to FIG frames in-process,
+and returns acknowledgements. It does not yet proxy frames to a remote FIG backend.
+
+Library adapters (`fig_gateways::fix`, `rest`, `ws`, `sse`) can be embedded in
+your own gateway service that forwards to a FIG server.
 
 ```text
 FIX clients ──► :9876 ──┐
-REST clients ──► :8080 ─┼──► fig-gateway ──► FIG/TREE backend
-WS clients  ──► :8081 ──┘
+REST clients ──► :8080 ─┼──► fig-gateway (translate in-process)
+                        │
+WebSocket / SSE         └── use library adapters in custom gateway
 ```
 
 ## Quick Start
@@ -19,17 +24,27 @@ WS clients  ──► :8081 ──┘
 # Terminal 1: FIG exchange simulator
 cargo run -p fig-exchange-sim
 
-# Terminal 2: Gateway (REST + FIX)
+# Terminal 2: Gateway (REST + FIX translation demo)
 cargo run -p fig-gateways --bin fig-gateway
 ```
 
-Environment variables:
+The exchange simulator listens on **`127.0.0.1:8443`** (UDP/TREE). Native FIG
+clients (e.g. `fig-cli`) connect directly to that address.
 
-| Variable | Default | Description |
+## CLI options
+
+| Flag | Default | Description |
 |---|---|---|
-| `FIG_REST_ADDR` | `0.0.0.0:8080` | REST HTTP listener |
-| `FIG_FIX_ADDR` | `0.0.0.0:9876` | FIX TCP listener |
-| `FIG_BACKEND` | `127.0.0.1:4433` | FIG server address |
+| `--rest-addr` | `127.0.0.1:8080` | REST HTTP listener |
+| `--fix-addr` | `127.0.0.1:9876` | FIX TCP listener |
+
+Example:
+
+```bash
+cargo run -p fig-gateways --bin fig-gateway -- \
+  --rest-addr 0.0.0.0:8080 \
+  --fix-addr 0.0.0.0:9876
+```
 
 ## REST Gateway
 
@@ -37,26 +52,44 @@ Environment variables:
 - Responses are converted back with `cbor_to_json`.
 - SSE streaming endpoints map to FIG `STREAM_ITEM` frames via `fig_gateways::sse`.
 
+Example:
+
+```bash
+curl -X POST http://127.0.0.1:8080/trading/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"cl_ord_id":"ORD-1","symbol":"AAPL","side":"Buy","order_qty":100,"price":150.25}'
+```
+
 ## FIX Gateway
 
 - Logon (35=A) maps to STREAM_OPEN + AUTH extension.
-- ResendRequest (35=2) maps to CONTROL(RESEND).
+- ResendRequest (35=2) maps to CONTROL(RESEND) via `fix_session`.
 - Application messages map to FIG Request/StreamItem frames.
 
-## WebSocket Gateway
+Use `fig_gateways::fix_session::FixSession` for production-grade FIX session
+state management (sequence numbers, heartbeats, gap fill).
 
-- Text/binary WS frames map to FIG StreamItem/Request via `ws_to_fig_frame`.
-- Ping/pong maps to CONTROL(PING/PONG).
+## WebSocket & SSE
+
+- **WebSocket**: use `fig_gateways::ws` (`ws_to_fig_frame` / `fig_to_ws_frame`) in a custom HTTP upgrade handler. No standalone WS listener is included in `fig-gateway` today.
+- **SSE**: use `fig_gateways::sse` (`parse_sse_chunk`, `sse_to_fig_stream_item`) for REST streaming endpoints.
 
 ## Production Checklist
 
-- [ ] Replace self-signed certs with proper PKI or mTLS (`FIG_MTLS=1`).
-- [ ] Use Redis/etcd session store for multi-node deployments.
+- [ ] Replace self-signed certs with proper PKI or mTLS (`FIG_MTLS=1` on exchange-sim).
+- [ ] Use Redis/etcd session store for multi-node deployments (`RedisSessionStore`, `EtcdSessionStore`).
 - [ ] Enable rate limiting and DoS guards (`DoSGuard`, `ChannelRateLimiter`).
-- [ ] Export metrics from `fig-observability` (`/metrics` endpoint).
+- [ ] Export metrics from `fig-observability` (`/metrics` on `:9090`).
+- [ ] Wire gateway adapters to forward translated frames to your FIG backend.
 - [ ] Run gateway and backend in separate network zones with firewall rules.
 
 ## Docker
 
-See [Dockerfile](../Dockerfile) for a containerized exchange simulator suitable
-for staging environments.
+Build and run the exchange simulator container:
+
+```bash
+docker build -t fig-exchange-sim .
+docker run --rm -p 8443:8443/udp fig-exchange-sim
+```
+
+See [Dockerfile](../Dockerfile) for the multi-stage build definition.
