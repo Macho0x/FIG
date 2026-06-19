@@ -80,4 +80,4 @@ Client                              Server
 - [SPEC.md](../SPEC.md) — normative wire format
 - [TUTORIAL.md](TUTORIAL.md) — getting started
 - [GATEWAY.md](GATEWAY.md) — legacy protocol deployment
-- [adr/](adr/) — architecture decision records
+- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md))

@@ -56,32 +56,77 @@ See [docs/API.md](docs/API.md) for the full module index.
 | Extension TLV (variable) | Payload (variable) |
 ```
 
-## Adding a New Message Type
+## Schema Changes
 
-1. Define the message in an FSL schema (`.fsl` file):
+**FSL (`.fsl`) is the single source of truth** for message types, enums, field
+numbers, and gateway mappings. See
+[ADR 0004 — FSL as Single Source of Truth](docs/adr/0004-fsl-single-source-of-truth.md).
+
+Do **not** edit Rust enums or message structs in `fig-core/src/messages.rs`
+without updating the matching FSL schema in the same PR. Prefer editing FSL
+only and regenerating outputs.
+
+### Adding or changing a message type
+
+1. Edit the FSL schema (e.g. [`schemas/orders.fsl`](schemas/orders.fsl)):
+
 ```
 message MyMessage {
-    @number 1  field1: string(max_len: 32)
-    @number 2  field2: decimal64
-    channel_type: session
+    channel_type: request_response
+    correlation_field: request_id
+
+    request_id: string(max_len: 32) @1
+    field2: decimal64(precision: 2) @2
+
     priority: medium
 }
 ```
 
-2. Compile to Rust:
-```bash
-cargo run -p fig-fsl --bin ftlc -- compile schemas/my_schema.fsl --lang rust --out src/generated/
+2. Bump the schema version if the wire format changes (see ADR 0004):
+
+```
+schema trading.orders v1.1.0 {   // minor = additive; major = breaking
 ```
 
-3. Add gateway mappings if needed:
+3. Validate and regenerate **all** targets you ship:
+
+```bash
+cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
+
+for lang in rust sbe python cpp csharp go typescript ocaml zig proto sbe-xml json-schema fix-yaml; do
+  cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang "$lang" --out "generated/$lang"
+done
+```
+
+4. Add or update gateway mappings in the same `.fsl` file:
+
 ```
 gateway fix {
     message MyMessage -> MsgType: "X" {
-        field1 -> tag: 100
+        request_id -> tag: 100
         field2 -> tag: 101
     }
 }
+
+gateway rest {
+    message MyMessage -> method: POST path: "/my/messages"
+}
 ```
+
+5. Update tests and conformance vectors if payloads or enums change.
+
+6. Until build-time codegen lands in `fig-core`, manually sync
+   `fig-core/src/messages.rs` with the FSL change (temporary — see ADR 0004).
+
+### Enum and field rules
+
+| Change | Version bump | Notes |
+|---|---|---|
+| Append enum variant | Minor | SBE discriminants are sequential — **never reorder** |
+| Rename/remove enum variant | Major | CBOR uses string names (`"Buy"`) — breaking |
+| Add optional field | Minor | New `@N` field number |
+| Add required field | Major | Old clients cannot decode |
+| Change `@N` field number | Major | Protobuf/SBE wire break |
 
 ## Adding a New Extension Tag
 

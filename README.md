@@ -358,22 +358,28 @@ schema trading.orders v1 {
 
 | Target | Status | Output | `ftlc --lang` |
 |---|---|---|---|
-| Rust | ✅ | Structs + serde + encode/decode | `rust`, `sbe` |
-| Go | ✅ | Structs + JSON tags | `go` |
-| Python | ✅ | Dataclasses | `python` |
-| TypeScript | ✅ | Interfaces | `typescript` |
-| OCaml | ✅ | Record types | `ocaml` |
-| Zig | ✅ | Struct definitions | `zig` |
-| C++ | ✅ | Header structs | `cpp` |
-| C# | ✅ | Classes | `csharp` |
+| Rust | ✅ | Structs + serde (`RustCodegen`) | `rust` |
+| Rust SBE | ✅ | Encode/decode impls | `sbe` |
+| Go | 🔶 | Structs + JSON tags (types only) | `go` |
+| Python | 🔶 | Dataclasses (types only) | `python` |
+| TypeScript | 🔶 | Interfaces (types only) | `typescript` |
+| OCaml | 🔶 | Record types (types only) | `ocaml` |
+| Zig | 🔶 | Struct definitions (types only) | `zig` |
+| C++ | 🔶 | Header structs (types only) | `cpp` |
+| C# | 🔶 | Classes (types only) | `csharp` |
 | Protobuf | ✅ | `.proto` file | `proto` |
 | SBE XML | ✅ | `.sbe.xml` schema | `sbe-xml` |
 | JSON Schema | ✅ | `.schema.json` | `json-schema` |
 | FIX mapping | ✅ | `.fix.yaml` gateway config | `fix-yaml` |
 
+🔶 = message shapes only; full serializers and protocol clients tracked in
+[TODO.md §16](TODO.md) and [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
+
 See [SPEC.md](SPEC.md) for the full protocol specification,
-[schemas/orders.fsl](schemas/orders.fsl) for a complete example, and
-[docs/TUTORIAL.md](docs/TUTORIAL.md) for codegen walkthroughs.
+[schemas/orders.fsl](schemas/orders.fsl) for a complete example,
+[docs/TUTORIAL.md](docs/TUTORIAL.md) for codegen walkthroughs, and
+[docs/adr/0004-fsl-single-source-of-truth.md](docs/adr/0004-fsl-single-source-of-truth.md)
+for schema evolution and multi-language update policy.
 
 ---
 
@@ -500,6 +506,7 @@ Run `cargo test --workspace` for the full suite (~360 tests). Key areas:
 | [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
 | [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Pre-1.0 security checklist |
 | [docs/adr/README.md](docs/adr/README.md) | Architecture decision records |
+| [docs/adr/0004-fsl-single-source-of-truth.md](docs/adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [TODO.md](TODO.md) | Implementation roadmap (complete) |
 
 ---

@@ -396,6 +396,11 @@ Four-layer model, all protocol-native:
 FSL is a domain-specific IDL that compiles to multiple targets (Rust, Go,
 Python, TypeScript, Java, C#, C++, Protobuf, SBE, JSON Schema).
 
+**`schemas/*.fsl` is the single source of truth** for message types, enums,
+field numbers, and gateway mappings. Do not edit language-specific types by
+hand without updating FSL and regenerating all targets. See
+[ADR 0004 — FSL as Single Source of Truth](docs/adr/0004-fsl-single-source-of-truth.md).
+
 ### 11.1 Example
 
 ```
@@ -451,16 +456,20 @@ schema trading.orders v1.0.0 {
 
 ### 11.2 Codegen Targets
 
-| Target | Output |
+| Target | Output (today) |
 |---|---|
-| Rust | Structs + serde + encode/decode |
-| Go | Structs + marshal/unmarshal |
-| Python | Dataclasses + serde |
-| TypeScript | Interfaces + encode/decode |
+| Rust | Structs + serde (`RustCodegen`); SBE encode/decode (`--lang sbe`) |
+| Go | Structs + JSON tags (types only; serializers planned) |
+| Python | Dataclasses (types only; serializers planned) |
+| TypeScript | Interfaces (types only; serializers planned) |
+| C++ / C# / OCaml / Zig | Structs / classes / records (types only) |
 | Protobuf | `.proto` file (for gRPC interop) |
-| SBE | `.xml` (for trading fast path) |
+| SBE | `.xml` (for trading fast path) + Rust encode/decode |
 | JSON Schema | `.schema.json` (for REST docs) |
 | FIX mapping | `.fix.yaml` (for gateway config) |
+
+Full multi-language serializer and SDK parity: [TODO.md §16](TODO.md).
+Schema change policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
 
 ---
 

@@ -85,6 +85,10 @@ Supported `--lang` values:
 
 `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `json-schema`, `fix-yaml`
 
+After changing a schema, regenerate all targets — see
+[ADR 0004 — FSL as Single Source of Truth](adr/0004-fsl-single-source-of-truth.md)
+and [CONTRIBUTING.md](../CONTRIBUTING.md#schema-changes).
+
 ## 6. TCP downgrade mode
 
 For environments without TREE support:

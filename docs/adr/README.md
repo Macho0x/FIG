@@ -1,3 +1,17 @@
+# Architecture Decision Records (ADR)
+
+Index of FIG architecture decisions. Each ADR captures **context, decision,
+and consequences** for choices with long-term impact.
+
+| ADR | Title | Status |
+|---|---|---|
+| 0001 | [TREE as Primary Transport](#adr-0001-tree-as-primary-transport) | Accepted |
+| 0002 | [Dual Codec Strategy (CBOR + SBE)](#adr-0002-dual-codec-strategy-cbor--sbe) | Accepted |
+| 0003 | [Channel-Based Multiplexing](#adr-0003-channel-based-multiplexing) | Accepted |
+| 0004 | [FSL as Single Source of Truth](0004-fsl-single-source-of-truth.md) | Accepted |
+
+---
+
 # ADR 0001: TREE as Primary Transport
 
 ## Status
@@ -65,3 +79,8 @@ and optional unidirectional direction. Control channel ID 0 for heartbeat/settin
 
 - Channel manager complexity but clean separation of concerns.
 - Gateway adapters map FIX session / REST request / WS stream to channel semantics.
+
+---
+
+See also: [ADR 0004 — FSL as Single Source of Truth](0004-fsl-single-source-of-truth.md)
+for schema evolution and multi-language codegen policy.

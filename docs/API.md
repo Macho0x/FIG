@@ -11,6 +11,7 @@ Central reference for FIG crates, modules, and project documentation.
 | [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST gateway deployment |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Pre-1.0 security checklist |
 | [adr/README.md](adr/README.md) | Architecture decision records |
+| [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [../SPEC.md](../SPEC.md) | Normative wire format specification |
 | [../TODO.md](../TODO.md) | Implementation roadmap (complete) |
 
