@@ -15,7 +15,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | FrameDecoder for streaming TREE reads | — | Buffered, handles partial frames |
 | ✅ | FigConnection wrapper (open/send/recv/close) | — | Per-channel TREE streams |
 | ✅ | 0-RTT session resumption end-to-end | — | FigClient::connect_0rtt + FigServer::accept_0rtt with rejection fallback; TODO: production replay protection |
-| ⬜ | TCP downgrade mode (`FIG\x01` magic prefix) | Medium | Spec §2.1; for legacy environments without TREE |
+| ✅ | TCP downgrade mode (`FIG\x01` magic prefix) | Medium | Spec §2.1; FigTcpConnection/FigTcpServer over plain TCP |
 | ⬜ | Connection migration handling | Low | TREE supports it; FIG channel reconstruction on migration not tested |
 | ✅ | TREE stream reset → channel CLOSED transition | — | StreamReset/StreamStopped errors detected, force_close_channel transitions to Closed |
 

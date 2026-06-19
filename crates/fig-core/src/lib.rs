@@ -79,6 +79,7 @@ pub mod observability;
 pub mod sbe;
 pub mod sbe_generated;
 pub mod session;
+pub mod tcp;
 pub mod transport;
 
 pub use auth::*;
@@ -91,4 +92,5 @@ pub use frame::*;
 pub use observability::*;
 pub use sbe::*;
 pub use session::*;
+pub use tcp::*;
 pub use transport::*;
