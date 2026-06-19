@@ -6,10 +6,10 @@ fn orders_path() -> String {
     format!("{}/../../schemas/orders.usl", manifest_dir)
 }
 
-/// Helper: return a Command to run the uslc binary.
-/// When run via `cargo test`, cargo sets `CARGO_BIN_EXE_uslc`.
-fn uslc_cmd() -> Command {
-    if let Ok(path) = std::env::var("CARGO_BIN_EXE_uslc") {
+/// Helper: return a Command to run the ftlc binary.
+/// When run via `cargo test`, cargo sets `CARGO_BIN_EXE_ftlc`.
+fn ftlc_cmd() -> Command {
+    if let Ok(path) = std::env::var("CARGO_BIN_EXE_ftlc") {
         Command::new(path)
     } else {
         // Fallback for manual runs
@@ -19,15 +19,15 @@ fn uslc_cmd() -> Command {
             .arg("-p")
             .arg("fig-usl")
             .arg("--bin")
-            .arg("uslc")
+            .arg("ftlc")
             .arg("--");
         c
     }
 }
 
 #[test]
-fn test_uslc_validate_orders_usl() {
-    let output = uslc_cmd()
+fn test_ftlc_validate_orders_usl() {
+    let output = ftlc_cmd()
         .arg("validate")
         .arg(orders_path())
         .output()
@@ -53,12 +53,12 @@ fn test_uslc_validate_orders_usl() {
 }
 
 #[test]
-fn test_uslc_validate_invalid_file() {
+fn test_ftlc_validate_invalid_file() {
     let dir = std::env::temp_dir();
     let invalid_path = dir.join("__test_invalid.usl");
     std::fs::write(&invalid_path, "schema broken {").unwrap();
 
-    let output = uslc_cmd()
+    let output = ftlc_cmd()
         .arg("validate")
         .arg(invalid_path.to_str().unwrap())
         .output()
@@ -80,11 +80,11 @@ fn test_uslc_validate_invalid_file() {
 }
 
 #[test]
-fn test_uslc_compile_generates_file() {
+fn test_ftlc_compile_generates_file() {
     let out_dir = std::env::temp_dir().join("__test_uslc_out");
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    let output = uslc_cmd()
+    let output = ftlc_cmd()
         .arg("compile")
         .arg(orders_path())
         .arg("--lang")
@@ -113,8 +113,8 @@ fn test_uslc_compile_generates_file() {
 }
 
 #[test]
-fn test_uslc_parse_json_output() {
-    let output = uslc_cmd()
+fn test_ftlc_parse_json_output() {
+    let output = ftlc_cmd()
         .arg("parse")
         .arg(orders_path())
         .arg("--format")
@@ -140,8 +140,8 @@ fn test_uslc_parse_json_output() {
 }
 
 #[test]
-fn test_uslc_parse_debug_output() {
-    let output = uslc_cmd()
+fn test_ftlc_parse_debug_output() {
+    let output = ftlc_cmd()
         .arg("parse")
         .arg(orders_path())
         .arg("--format")
@@ -165,11 +165,11 @@ fn test_uslc_parse_debug_output() {
 }
 
 #[test]
-fn test_uslc_compile_unsupported_lang() {
+fn test_ftlc_compile_unsupported_lang() {
     let out_dir = std::env::temp_dir().join("__test_uslc_out_bad");
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    let output = uslc_cmd()
+    let output = ftlc_cmd()
         .arg("compile")
         .arg(orders_path())
         .arg("--lang")

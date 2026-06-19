@@ -23,7 +23,7 @@ a migration path, not as the protocol's identity.
 - [Quick Start](#quick-start)
 - [Protocol Overview](#protocol-overview)
 - [Gateway Adapters](#gateway-adapters)
-- [USL — FIG Schema Language](#usl--fig-schema-language)
+- [FTL — Fig Tree Language](#ftl--fig-tree-language)
 - [Benchmarks](#benchmarks)
 - [Testing](#testing)
 - [Project Stats](#project-stats)
@@ -32,6 +32,14 @@ a migration path, not as the protocol's identity.
 ---
 
 ## Why FIG?
+
+### Terminology
+
+| Term | Expansion | What it is |
+|------|-----------|------------|
+| **FIG** | Fast Interchange Gateway | The protocol — a schema-native, multiplexed binary protocol for trading systems. Unifies FIX, REST, and WebSocket semantics over a single transport. |
+| **TREE** | Trunked Reliable Encrypted Exchange | FIG's mandatory transport layer (built on QUIC via the quinn crate). Provides 0-RTT resumption, 65,535 concurrent channels per connection, and mandatory TLS 1.3 encryption. |
+| **FTL** | Fig Tree Language | FIG's schema definition language (IDL). Defines messages, channels, and gateway mappings. Compiles to Rust, Go, SBE, Protobuf, JSON Schema, and FIX mappings. |
 
 | Problem with status quo | FIG solution |
 |---|---|
@@ -42,6 +50,8 @@ a migration path, not as the protocol's identity.
 | Each protocol needs its own auth, error, observability | One auth model, one error model, one tracing pipeline |
 | No multiplexing — one session per FIX/TCP connection | 65,535 concurrent channels per TREE connection |
 | JSON parsing is 10-50μs; FIX ASCII parsing is 5-20μs | SBE zero-copy decode: ~205ns (25-250x faster) |
+
+**SBE vs CBOR**: SBE (Simple Binary Encoding) is a zero-copy, fixed-offset binary format used for hot-path trading messages (NewOrderSingle, ExecutionReport, etc.). It requires a pre-shared schema and offers ~25-250× faster decode than JSON. CBOR (Concise Binary Object Representation) is a self-describing binary format used for TLV extensions (AUTH_TOKEN, SCHEMA_FINGERPRINT, etc.) where the receiver may not know the schema in advance. FIG uses both: SBE for immutable exchange schemas on the critical path, CBOR for flexible metadata extensions. |
 
 ### Key Features
 
@@ -107,7 +117,7 @@ a migration path, not as the protocol's identity.
 | Crate | Description | Tests | Key Modules |
 |---|---|---|---|
 | [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, flow control, observability | 118 | `frame`, `ext`, `channel`, `session`, `codec`, `transport`, `sbe`, `auth`, `observability` |
-| [`fig-usl`](crates/fig-usl/) | USL (FIG Schema Language) parser, Rust codegen, and `uslc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
+| [`fig-usl`](crates/fig-usl/) | FTL (Fig Tree Language) parser, Rust codegen, and `ftlc` CLI | 27 | `ast`, `parser`, `codegen`, `bin/uslc` |
 | [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket ↔ FIG translation | 29 | `fix`, `rest`, `ws` |
 | [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 16 | `orderbook`, `matching`, `server` |
 | [`fig-cli`](crates/fig-cli/) | Native FIG trading client demo | — | `main` |
@@ -150,10 +160,10 @@ All over a single TREE connection with per-stream multiplexing.
 ### Schema Compilation
 
 ```bash
-# Compile a USL schema to Rust
+# Compile an FTL schema to Rust
 cargo run -p fig-usl --bin uslc -- compile schemas/orders.usl --lang rust --out src/generated/
 
-# Validate a USL schema
+# Validate an FTL schema
 cargo run -p fig-usl --bin uslc -- validate schemas/orders.usl
 ```
 
@@ -293,9 +303,9 @@ client/server masking, text/binary/close/ping/pong opcodes.
 
 ---
 
-## USL — FIG Schema Language
+## FTL — Fig Tree Language
 
-USL is an IDL that defines messages, channels, and gateway mappings in one
+FTL is an IDL that defines messages, channels, and gateway mappings in one
 schema file:
 
 ```
@@ -447,9 +457,9 @@ cargo bench -p fig-bench
 | FIX gateway | 8 | Parse/serialize, checksum, convert to/from FIG |
 | REST gateway | 7 | Parse HTTP, serialize HTTP, JSON↔CBOR |
 | WebSocket gateway | 14 | All opcodes, masking, fragmentation, close frames |
-| USL parser | 12 | Tokenizer, all constructs, full orders.usl |
-| USL codegen | 5 | Struct generation, enums, associated constants |
-| USL CLI | 10 | Compile, validate, output formats |
+| FTL parser | 12 | Tokenizer, all constructs, full orders.usl |
+| FTL codegen | 5 | Struct generation, enums, associated constants |
+| FTL CLI | 10 | Compile, validate, output formats |
 | Order book | 8 | Add/cancel/reduce, price-time priority, depth |
 | Matching engine | 8 | Market/limit fills, partial fills, cancel |
 | Integration | 6 | End-to-end sim+cli over TREE |

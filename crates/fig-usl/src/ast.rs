@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Top-level USL schema definition
+/// Top-level FTL schema definition
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Schema {
     pub name: String,
@@ -21,7 +21,7 @@ pub struct TypeDef {
     pub fields: Option<Vec<Field>>,
 }
 
-/// Base/scalar types in USL
+/// Base/scalar types in FTL
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BaseType {
     String,

@@ -2,9 +2,9 @@ use anyhow::Context;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-/// FIG USL Schema Language Compiler
+/// FIG FTL (Fig Tree Language) Schema Language Compiler
 #[derive(Parser)]
-#[command(name = "uslc", version, about = "FIG USL Schema Language Compiler")]
+#[command(name = "ftlc", version, about = "FIG FTL (Fig Tree Language) Schema Language Compiler")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -12,7 +12,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compile a USL schema to target language
+    /// Compile an FTL schema to target language
     Compile {
         /// The .usl file to compile
         file: PathBuf,
@@ -23,12 +23,12 @@ enum Commands {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Validate a USL schema file
+    /// Validate an FTL schema file
     Validate {
         /// The .usl file to validate
         file: PathBuf,
     },
-    /// Parse a USL schema and output the AST
+    /// Parse an FTL schema and output the AST
     Parse {
         /// The .usl file to parse
         file: PathBuf,

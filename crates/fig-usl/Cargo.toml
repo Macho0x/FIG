@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "FIG Schema Language parser and multi-target codegen"
 
+[[bin]]
+name = "ftlc"
+path = "src/bin/uslc.rs"
+
 [dependencies]
 clap = { workspace = true }
 thiserror = { workspace = true }

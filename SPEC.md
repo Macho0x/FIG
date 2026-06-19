@@ -30,14 +30,17 @@ streaming) into a single wire format.
 
 ### 1.2 Terminology
 
-| Term | Definition |
-|---|---|
-| **Connection** | A TREE connection between a client and server. |
-| **Channel** | A logical conversation within a connection, mapped 1:1 to a TREE stream. |
-| **Frame** | The unit of communication — a typed binary message on a channel. |
-| **Session** | A durable, migratable logical entity identified by SESSION_ID. |
-| **Extension** | A typed key-value pair in the extension header (TLV). |
-| **Schema** | A versioned message definition in USL, identified by a Schema ID. |
+| Term | Expansion | What it is |
+|------|-----------|------------|
+| **FIG** | Fast Interchange Gateway | The protocol — a schema-native, multiplexed binary protocol for trading systems. Unifies FIX, REST, and WebSocket semantics over a single transport. |
+| **TREE** | Trunked Reliable Encrypted Exchange | FIG's mandatory transport layer (built on QUIC via the quinn crate). Provides 0-RTT resumption, 65,535 concurrent channels per connection, and mandatory TLS 1.3 encryption. |
+| **FTL** | Fig Tree Language | FIG's schema definition language (IDL). Defines messages, channels, and gateway mappings. Compiles to Rust, Go, SBE, Protobuf, JSON Schema, and FIX mappings. |
+| **Connection** | — | A TREE connection between a client and server. |
+| **Channel** | — | A logical conversation within a connection, mapped 1:1 to a TREE stream. |
+| **Frame** | — | The unit of communication — a typed binary message on a channel. |
+| **Session** | — | A durable, migratable logical entity identified by SESSION_ID. |
+| **Extension** | — | A typed key-value pair in the extension header (TLV). |
+| **Schema** | — | A versioned message definition in FTL, identified by a Schema ID. |
 
 ---
 
@@ -388,9 +391,9 @@ Four-layer model, all protocol-native:
 
 ---
 
-## 11. USL — FIG Schema Language
+## 11. FTL — Fig Tree Language
 
-USL is a domain-specific IDL that compiles to multiple targets (Rust, Go,
+FTL is a domain-specific IDL that compiles to multiple targets (Rust, Go,
 Python, TypeScript, Java, C#, C++, Protobuf, SBE, JSON Schema).
 
 ### 11.1 Example

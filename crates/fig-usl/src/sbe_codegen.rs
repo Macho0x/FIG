@@ -1,14 +1,14 @@
-//! SBE (Simple Binary Encoding) code generator from USL AST.
+//! SBE (Simple Binary Encoding) code generator from FTL AST.
 //!
 //! Generates Rust encoder/decoder structs for SBE wire format
-//! from a parsed USL schema.
+//! from a parsed FTL schema.
 
 use crate::ast::*;
 
 /// Schema ID for well-known trading schemas
 const SCHEMA_ID: u16 = 0x01;
 
-/// Generate SBE Rust code from a USL schema
+/// Generate SBE Rust code from an FTL schema
 pub fn generate_sbe(schema: &Schema) -> String {
     let mut out = String::new();
     let desc = schema
@@ -723,7 +723,7 @@ fn sbe_field_type_name_for_message_inner(ft: &FieldType, _msg_name: &str) -> Str
     }
 }
 
-/// Map a named USL type to its SBE wire type
+/// Map a named FTL type to its SBE wire type
 fn sbe_named_type_to_wire_type(name: &str) -> String {
     match name {
         "ClientOrderId" | "Symbol" | "String" => "str".to_string(),

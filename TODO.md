@@ -83,7 +83,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ✅ | CBOR encode/decode via ciborium | — | 6 tests |
 | ✅ | SBE encode/decode for trading messages | — | 79 tests, zero-alloc |
 | ✅ | SBE encode: NewOrderSingle, ExecutionReport, CancelRequest | — | Hot path |
-| ✅ | SBE encode: remaining message types | — | CancelReplace, MarketDataSnapshot, MarketDataIncrementalRefresh, CancelReject (generated from USL) |
+| ✅ | SBE encode: remaining message types | — | CancelReplace, MarketDataSnapshot, MarketDataIncrementalRefresh, CancelReject (generated from FTL) |
 | ✅ | SBE message header (schema ID, version, template ID) | — | Generated SBE headers compliant with Spec §10 |
 | ⬜ | Protobuf codec | Low | Spec §10; for schema-evolving payloads |
 | ⬜ | JSON codec (for REST gateway) | Medium | REST gateway uses string manipulation; proper JSON↔CBOR not implemented |
@@ -123,14 +123,14 @@ Tracking remaining work to reach production-grade 100% coverage of the
 
 ---
 
-## 9. USL Schema Language (fig-usl)
+## 9. FTL Schema Language (fig-usl)
 
 | Status | Item | Priority | Notes |
-|---|---|---|---|
-| ✅ | USL parser (tokenizer + recursive descent) | — | 12 tests, full orders.usl |
+|---|----|----|----|
+| ✅ | FTL parser (tokenizer + recursive descent) | — | 12 tests, full orders.usl |
 | ✅ | AST with all node types | — | Serde round-trip |
 | ✅ | Rust codegen | — | 5 tests |
-| ✅ | uslc CLI (compile, validate) | — | 10 tests |
+| ✅ | ftlc CLI (compile, validate) | — | 10 tests |
 | ✅ | Enum codegen | — | from_value/to_value with explicit discriminators |
 | ✅ | Inline struct codegen | — | ENCODED_LEN constant, fixed-size struct generation |
 | ⬜ | Go codegen target | Medium | Spec §11.2 |
@@ -141,10 +141,10 @@ Tracking remaining work to reach production-grade 100% coverage of the
 | ⬜ | OCaml codegen target | Low | Spec §11.2; for type-safe functional implementations |
 | ⬜ | Zig codegen target | Low | Spec §11.2; for zero-alloc systems-level clients |
 | ⬜ | Protobuf `.proto` codegen | Medium | Spec §11.2; for gRPC interop |
-| 🔶 | SBE `.xml` codegen | Medium | Spec §11.2; uslc --lang sbe generates Rust; XML output not yet |
+| ⬜ | SBE `.xml` codegen | Medium | Spec §11.2; for trading fast path |
 | ⬜ | JSON Schema `.json` codegen | Low | Spec §11.2; for REST docs |
 | ⬜ | FIX mapping `.yaml` codegen | Low | Spec §11.2; for gateway config |
-| ✅ | USL → SBE Rust encode/decode impls | — | Generated from USL alongside hand-written, cross-validated, 7 messages |
+| ✅ | FTL → SBE Rust encode/decode impls | — | Generated from FTL alongside hand-written, cross-validated, 7 messages |
 
 ---
 
@@ -246,7 +246,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 5. ✅ FIX Logon → STREAM_OPEN + AUTH
 6. ✅ AUTH_REFRESH flow
 7. ✅ SEQ_RESET control frame logic
-8. ✅ USL → SBE Rust codegen (generated alongside hand-written, cross-validated)
+8. ✅ FTL → SBE Rust codegen (generated alongside hand-written, cross-validated)
 9. ✅ Session resumption in exchange-sim server
 
 ### Medium Priority (important for adoption)
@@ -258,7 +258,7 @@ Tracking remaining work to reach production-grade 100% coverage of the
 6. WebSocket → FIG stream mapping
 7. JWT auth support
 8. Per-channel auth
-9. USL enum + inline struct codegen ✅
+9. FTL enum + inline struct codegen ✅
 10. Go/Protobuf/SBE codegen targets
 11. C++/C# codegen targets
 12. OpenTelemetry + Prometheus export
