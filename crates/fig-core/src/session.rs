@@ -136,8 +136,8 @@ impl Session {
     ///
     /// The token must have been created by [`Session::resumption_token`].
     pub fn from_resumption_token(token: &[u8]) -> Result<Session, SessionError> {
-        let data: ResumptionTokenData = crate::codec::decode_cbor(token)
-            .map_err(|_| SessionError::InvalidResumptionToken)?;
+        let data: ResumptionTokenData =
+            crate::codec::decode_cbor(token).map_err(|_| SessionError::InvalidResumptionToken)?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -247,12 +247,18 @@ impl MemorySessionStore {
 
     /// Returns the number of sessions currently stored.
     pub fn len(&self) -> usize {
-        self.sessions.lock().unwrap_or_else(|e| e.into_inner()).len()
+        self.sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
     }
 
     /// Returns true if the store is empty.
     pub fn is_empty(&self) -> bool {
-        self.sessions.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
+        self.sessions
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty()
     }
 }
 
@@ -303,8 +309,10 @@ impl SessionStore for MemorySessionStore {
             .sessions
             .lock()
             .map_err(|_| SessionError::SessionNotFound(session.session_id))?;
-        if guard.contains_key(&session.session_id) {
-            guard.insert(session.session_id, session.clone());
+        if let std::collections::hash_map::Entry::Occupied(mut entry) =
+            guard.entry(session.session_id)
+        {
+            entry.insert(session.clone());
             Ok(())
         } else {
             Err(SessionError::SessionNotFound(session.session_id))

@@ -299,19 +299,16 @@ pub fn ws_to_fig_frame(ws: &WsFrame) -> WsResult<Frame> {
         }
         WsOpcode::Binary => {
             let mut frame = Frame::new(FrameType::StreamItem, 1);
-            frame = frame.with_extension(Extension::text(ExtensionTag::ContentType, "application/octet-stream"));
+            frame = frame.with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/octet-stream",
+            ));
             frame = frame.with_payload(ws.payload.clone());
             Ok(frame)
         }
-        WsOpcode::Close => {
-            Ok(Frame::new(FrameType::StreamClose, 1))
-        }
-        WsOpcode::Ping => {
-            Ok(Frame::ping())
-        }
-        WsOpcode::Pong => {
-            Ok(Frame::pong())
-        }
+        WsOpcode::Close => Ok(Frame::new(FrameType::StreamClose, 1)),
+        WsOpcode::Ping => Ok(Frame::ping()),
+        WsOpcode::Pong => Ok(Frame::pong()),
         WsOpcode::Continuation => {
             // Continuation frame: treat as StreamItem with no content type
             let mut frame = Frame::new(FrameType::StreamItem, 1);
@@ -334,7 +331,9 @@ pub fn ws_to_fig_frame(ws: &WsFrame) -> WsResult<Frame> {
 pub fn fig_to_ws_frame(frame: &Frame) -> WsResult<WsFrame> {
     match frame.frame_type {
         FrameType::StreamItem => {
-            let content_type = frame.extensions.iter()
+            let content_type = frame
+                .extensions
+                .iter()
                 .find(|e| e.tag == ExtensionTag::ContentType)
                 .and_then(|e| e.value.as_text());
 
@@ -350,14 +349,12 @@ pub fn fig_to_ws_frame(frame: &Frame) -> WsResult<WsFrame> {
                 payload: frame.payload.clone(),
             })
         }
-        FrameType::StreamClose => {
-            Ok(WsFrame {
-                fin: true,
-                opcode: WsOpcode::Close,
-                masked: false,
-                payload: Vec::new(),
-            })
-        }
+        FrameType::StreamClose => Ok(WsFrame {
+            fin: true,
+            opcode: WsOpcode::Close,
+            masked: false,
+            payload: Vec::new(),
+        }),
         FrameType::Control => {
             // Check the control subtype in the payload
             if frame.channel_id == 0 && !frame.payload.is_empty() {
@@ -375,13 +372,19 @@ pub fn fig_to_ws_frame(frame: &Frame) -> WsResult<WsFrame> {
                         masked: false,
                         payload: Vec::new(),
                     }),
-                    _ => Err(WsError::UnmappableFrameType(format!("Control({:#04x})", subtype))),
+                    _ => Err(WsError::UnmappableFrameType(format!(
+                        "Control({:#04x})",
+                        subtype
+                    ))),
                 }
             } else {
                 Err(WsError::UnmappableFrameType("Control".to_string()))
             }
         }
-        _ => Err(WsError::UnmappableFrameType(format!("{:?}", frame.frame_type))),
+        _ => Err(WsError::UnmappableFrameType(format!(
+            "{:?}",
+            frame.frame_type
+        ))),
     }
 }
 
@@ -449,7 +452,8 @@ mod tests {
         // Build manually with masking
         let payload = b"Hello";
         let mask_key = [0x12, 0x34, 0x56, 0x78];
-        let masked_payload: Vec<u8> = payload.iter()
+        let masked_payload: Vec<u8> = payload
+            .iter()
             .enumerate()
             .map(|(i, b)| b ^ mask_key[i % 4])
             .collect();
@@ -534,7 +538,9 @@ mod tests {
         let fig = ws_to_fig_frame(&ws).unwrap();
         assert_eq!(fig.frame_type, FrameType::StreamItem);
 
-        let ct = fig.extensions.iter()
+        let ct = fig
+            .extensions
+            .iter()
             .find(|e| e.tag == ExtensionTag::ContentType)
             .and_then(|e| e.value.as_text());
         assert_eq!(ct, Some("text/plain"));
@@ -595,7 +601,10 @@ mod tests {
     fn test_fig_to_ws_binary() {
         let binary_data = vec![0x00, 0xFF, 0xAA, 0x55];
         let fig = Frame::new(FrameType::StreamItem, 1)
-            .with_extension(Extension::text(ExtensionTag::ContentType, "application/octet-stream"))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/octet-stream",
+            ))
             .with_payload(binary_data.clone());
 
         let ws = fig_to_ws_frame(&fig).unwrap();
@@ -625,7 +634,9 @@ mod tests {
         assert_eq!(round_trip_fig.frame_type, original_fig.frame_type);
         assert_eq!(round_trip_fig.payload, original_fig.payload);
 
-        let ct = round_trip_fig.extensions.iter()
+        let ct = round_trip_fig
+            .extensions
+            .iter()
             .find(|e| e.tag == ExtensionTag::ContentType)
             .and_then(|e| e.value.as_text());
         assert_eq!(ct, Some("text/plain"));

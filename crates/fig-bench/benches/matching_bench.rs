@@ -1,6 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use fig_core::messages::{CancelRequest, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
+use fig_core::messages::{
+    CancelRequest, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
+};
 
 use fig_exchange_sim::matching::MatchingEngine;
 use fig_exchange_sim::orderbook::{OrderBook, RestingOrder};
@@ -56,13 +58,8 @@ fn bench_order_book_add(c: &mut Criterion) {
             let mut book = OrderBook::new("AAPL".to_string());
             for i in 0..1000 {
                 let price = 100.0 + (i as f64) * 0.01;
-                let order = make_resting_order(
-                    &format!("ORD-{}", i),
-                    Side::Buy,
-                    "AAPL",
-                    price,
-                    10.0,
-                );
+                let order =
+                    make_resting_order(&format!("ORD-{}", i), Side::Buy, "AAPL", price, 10.0);
                 book.add_order(order);
             }
             black_box(book);

@@ -115,7 +115,11 @@ pub fn parse_http_request(input: &[u8]) -> RestResult<HttpRequest> {
             // Try with just \n\n
             match text.find("\n\n") {
                 Some(pos) => (&text[..pos], &text[pos + 2..]),
-                None => return Err(RestError::InvalidRequestLine("missing header/body separator".to_string())),
+                None => {
+                    return Err(RestError::InvalidRequestLine(
+                        "missing header/body separator".to_string(),
+                    ))
+                }
             }
         }
     };
@@ -229,7 +233,10 @@ pub fn http_to_fig_frame(request: &HttpRequest) -> RestResult<Frame> {
                 frame = frame.with_extension(Extension::text(ExtensionTag::Accept, value));
             }
             "authorization" => {
-                frame = frame.with_extension(Extension::binary(ExtensionTag::AuthToken, value.as_bytes().to_vec()));
+                frame = frame.with_extension(Extension::binary(
+                    ExtensionTag::AuthToken,
+                    value.as_bytes().to_vec(),
+                ));
             }
             "cache-control" => {
                 frame = frame.with_extension(Extension::text(ExtensionTag::CacheControl, value));
@@ -259,7 +266,9 @@ pub fn http_to_fig_frame(request: &HttpRequest) -> RestResult<Frame> {
 /// - CBOR payload → JSON body
 /// - extensions → HTTP headers
 pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
-    let status_code = frame.extensions.iter()
+    let status_code = frame
+        .extensions
+        .iter()
         .find(|e| e.tag == ExtensionTag::StatusCode)
         .and_then(|e| e.value.as_u16())
         .ok_or_else(|| RestError::MissingExtension("StatusCode".to_string()))?;
@@ -281,7 +290,8 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
         502 => "Bad Gateway",
         503 => "Service Unavailable",
         _ => "Unknown",
-    }.to_string();
+    }
+    .to_string();
 
     // Convert FIG extensions to HTTP headers
     let mut headers = Vec::new();
@@ -307,7 +317,9 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
     }
 
     // Add Content-Length if not already present
-    let has_content_length = headers.iter().any(|(n, _)| n.to_lowercase() == "content-length");
+    let has_content_length = headers
+        .iter()
+        .any(|(n, _)| n.to_lowercase() == "content-length");
     if !has_content_length && !frame.payload.is_empty() {
         let json_body = cbor_to_json(&frame.payload)?;
         headers.push(("Content-Length".to_string(), json_body.len().to_string()));
@@ -386,9 +398,7 @@ mod tests {
         let resp = HttpResponse {
             status_code: 200,
             reason: "OK".to_string(),
-            headers: vec![
-                ("Content-Type".to_string(), "application/json".to_string()),
-            ],
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
             body: b"{\"status\":\"ok\"}".to_vec(),
         };
 
@@ -444,15 +454,27 @@ mod tests {
         assert_eq!(frame.frame_type, FrameType::Request);
 
         // Check method extension
-        let method_ext = frame.extensions.iter().find(|e| e.tag == ExtensionTag::Method).unwrap();
+        let method_ext = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::Method)
+            .unwrap();
         assert_eq!(method_ext.value.as_text(), Some("POST"));
 
         // Check path extension
-        let path_ext = frame.extensions.iter().find(|e| e.tag == ExtensionTag::ChannelPath).unwrap();
+        let path_ext = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::ChannelPath)
+            .unwrap();
         assert_eq!(path_ext.value.as_text(), Some("/trading/orders"));
 
         // Check content type extension
-        let ct_ext = frame.extensions.iter().find(|e| e.tag == ExtensionTag::ContentType).unwrap();
+        let ct_ext = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::ContentType)
+            .unwrap();
         assert_eq!(ct_ext.value.as_text(), Some("application/json"));
 
         // Payload should be CBOR
@@ -472,7 +494,10 @@ mod tests {
 
         let frame = Frame::new(FrameType::Response, 1)
             .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-            .with_extension(Extension::text(ExtensionTag::ContentType, "application/json"))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/json",
+            ))
             .with_payload(cbor);
 
         let resp = fig_to_http_response(&frame).unwrap();

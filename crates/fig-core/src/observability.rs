@@ -22,7 +22,11 @@ use tracing::{debug_span, info_span, Span};
 
 /// Create a tracing span for frame encoding.
 pub fn span_encode(channel_id: u16, frame_type: &str) -> Span {
-    debug_span!("fig.encode", channel_id = channel_id, frame_type = frame_type)
+    debug_span!(
+        "fig.encode",
+        channel_id = channel_id,
+        frame_type = frame_type
+    )
 }
 
 /// Create a tracing span for frame decoding.
@@ -150,7 +154,10 @@ impl Metrics {
         map.insert("bytes_sent", Self::get(&self.bytes_sent));
         map.insert("bytes_received", Self::get(&self.bytes_received));
         map.insert("errors", Self::get(&self.errors));
-        map.insert("gateway_translations", Self::get(&self.gateway_translations));
+        map.insert(
+            "gateway_translations",
+            Self::get(&self.gateway_translations),
+        );
         map
     }
 
@@ -173,13 +180,10 @@ impl Metrics {
 pub fn init_tracing(default_filter: &str) {
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default_filter));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
 
-    let _ = fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .try_init();
+    let _ = fmt().with_env_filter(filter).with_target(false).try_init();
 }
 
 // ---------------------------------------------------------------------------
@@ -431,10 +435,7 @@ mod tests {
         assert_eq!(*tracker.lock().unwrap(), vec!["executed"]);
 
         // Verify the span's metadata is accessible even after the scope.
-        assert_eq!(
-            span.metadata().map(|m| m.name()),
-            Some("fig.encode")
-        );
+        assert_eq!(span.metadata().map(|m| m.name()), Some("fig.encode"));
 
         // Nested in_scope: verify the closure returns a value through the span.
         let result = span_encode(99, "Heartbeat").in_scope(|| {
@@ -443,9 +444,6 @@ mod tests {
             42u64
         });
         assert_eq!(result, 42);
-        assert_eq!(
-            *tracker.lock().unwrap(),
-            vec!["executed", "nested"]
-        );
+        assert_eq!(*tracker.lock().unwrap(), vec!["executed", "nested"]);
     }
 }

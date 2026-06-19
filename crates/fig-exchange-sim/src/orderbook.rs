@@ -54,13 +54,15 @@ impl Eq for OrderedFloat {}
 
 impl PartialOrd for OrderedFloat {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for OrderedFloat {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.partial_cmp(&other.0).unwrap_or(std::cmp::Ordering::Equal)
+        self.0
+            .partial_cmp(&other.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 
@@ -209,17 +211,22 @@ impl OrderBook {
 
     /// Get the best bid price and quantity.
     pub fn best_bid(&self) -> Option<(&Price, &Quantity)> {
-        self.bids.best_level().map(|l| (&l.price, &l.orders[0].leaves_qty))
+        self.bids
+            .best_level()
+            .map(|l| (&l.price, &l.orders[0].leaves_qty))
     }
 
     /// Get the best ask price and quantity.
     pub fn best_ask(&self) -> Option<(&Price, &Quantity)> {
-        self.asks.best_level().map(|l| (&l.price, &l.orders[0].leaves_qty))
+        self.asks
+            .best_level()
+            .map(|l| (&l.price, &l.orders[0].leaves_qty))
     }
 
     /// Get the top N levels of the bid side.
     pub fn bid_depth(&self, n: usize) -> Vec<fig_core::messages::PriceLevel> {
-        self.bids.levels()
+        self.bids
+            .levels()
             .take(n)
             .map(|l| fig_core::messages::PriceLevel {
                 price: l.price.clone(),
@@ -231,7 +238,8 @@ impl OrderBook {
 
     /// Get the top N levels of the ask side.
     pub fn ask_depth(&self, n: usize) -> Vec<fig_core::messages::PriceLevel> {
-        self.asks.levels()
+        self.asks
+            .levels()
             .take(n)
             .map(|l| fig_core::messages::PriceLevel {
                 price: l.price.clone(),

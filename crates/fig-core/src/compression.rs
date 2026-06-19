@@ -47,7 +47,7 @@ pub fn decompress_frame(frame: &mut Frame) -> Result<(), FrameError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::{FrameType, Flags};
+    use crate::frame::{Flags, FrameType};
 
     #[test]
     fn test_compress_decompress_round_trip() {
@@ -77,10 +77,7 @@ mod tests {
         decompress_frame(&mut frame).unwrap();
 
         assert!(!frame.flags.contains(Flags::COMPRESSED));
-        assert_eq!(
-            frame.payload,
-            b"compressible payload data here".repeat(50)
-        );
+        assert_eq!(frame.payload, b"compressible payload data here".repeat(50));
     }
 
     #[test]

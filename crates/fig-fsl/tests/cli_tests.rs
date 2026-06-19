@@ -104,9 +104,18 @@ fn test_ftlc_compile_generates_file() {
     assert!(generated.exists(), "generated.rs should exist");
 
     let code = std::fs::read_to_string(&generated).unwrap();
-    assert!(code.contains("pub struct NewOrderSingle"), "Should contain NewOrderSingle");
-    assert!(code.contains("pub struct ExecutionReport"), "Should contain ExecutionReport");
-    assert!(code.contains("pub const SCHEMA_ID: u8 = 0x01;"), "Should contain SCHEMA_ID");
+    assert!(
+        code.contains("pub struct NewOrderSingle"),
+        "Should contain NewOrderSingle"
+    );
+    assert!(
+        code.contains("pub struct ExecutionReport"),
+        "Should contain ExecutionReport"
+    );
+    assert!(
+        code.contains("pub const SCHEMA_ID: u8 = 0x01;"),
+        "Should contain SCHEMA_ID"
+    );
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -157,7 +166,10 @@ fn test_ftlc_parse_debug_output() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Debug output should contain the struct representation
-    assert!(stdout.contains("Schema"), "Debug output should contain 'Schema'");
+    assert!(
+        stdout.contains("Schema"),
+        "Debug output should contain 'Schema'"
+    );
     assert!(
         stdout.contains("trading.orders"),
         "Debug output should contain schema name"

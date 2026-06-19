@@ -41,8 +41,10 @@ pub enum ChannelDirection {
     RecvOnly,
 }
 
-impl ChannelDirection {
-    pub fn from_str(s: &str) -> Result<Self, ChannelError> {
+impl std::str::FromStr for ChannelDirection {
+    type Err = ChannelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "bidirectional" => Ok(Self::Bidirectional),
             "send" | "send_only" => Ok(Self::SendOnly),
@@ -50,7 +52,9 @@ impl ChannelDirection {
             other => Err(ChannelError::InvalidChannelMode(other.to_string())),
         }
     }
+}
 
+impl ChannelDirection {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Bidirectional => "bidirectional",
@@ -68,9 +72,10 @@ impl ChannelDirection {
     }
 }
 
-impl ChannelMode {
-    /// Parse from the string representation used in the CHANNEL_MODE extension.
-    pub fn from_str(s: &str) -> Result<Self, ChannelError> {
+impl std::str::FromStr for ChannelMode {
+    type Err = ChannelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "stateless" => Ok(ChannelMode::Stateless),
             "session" => Ok(ChannelMode::Session),
@@ -78,7 +83,9 @@ impl ChannelMode {
             other => Err(ChannelError::InvalidChannelMode(other.to_string())),
         }
     }
+}
 
+impl ChannelMode {
     /// Return the string representation.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -383,7 +390,11 @@ impl ChannelManager {
         };
         Self {
             channels,
-            next_channel_id: if next_channel_id == 0 { 1 } else { next_channel_id },
+            next_channel_id: if next_channel_id == 0 {
+                1
+            } else {
+                next_channel_id
+            },
             is_server,
         }
     }
@@ -411,10 +422,7 @@ impl ChannelManager {
             .ok_or(ChannelError::ChannelNotFound(channel_id))?;
 
         if !channel.direction.is_send_allowed() {
-            return Err(ChannelError::DirectionNotAllowed(
-                channel_id,
-                "send".into(),
-            ));
+            return Err(ChannelError::DirectionNotAllowed(channel_id, "send".into()));
         }
 
         // Underflow-safe: wrapping_add panics on none but we use a plain
@@ -428,21 +436,14 @@ impl ChannelManager {
     ///
     /// Returns `Err` if the seq number is older than the last recorded
     /// (duplicate/out-of-order detection).
-    pub fn record_recv_seq(
-        &mut self,
-        channel_id: u16,
-        seq: u32,
-    ) -> Result<(), ChannelError> {
+    pub fn record_recv_seq(&mut self, channel_id: u16, seq: u32) -> Result<(), ChannelError> {
         let channel = self
             .channels
             .get_mut(&channel_id)
             .ok_or(ChannelError::ChannelNotFound(channel_id))?;
 
         if !channel.direction.is_recv_allowed() {
-            return Err(ChannelError::DirectionNotAllowed(
-                channel_id,
-                "recv".into(),
-            ));
+            return Err(ChannelError::DirectionNotAllowed(channel_id, "recv".into()));
         }
 
         // Allow wraparound: a received seq of 0 is "newer" than the
@@ -521,18 +522,18 @@ mod tests {
     #[test]
     fn test_channel_mode_from_str() {
         assert_eq!(
-            ChannelMode::from_str("stateless").unwrap(),
+            "stateless".parse::<ChannelMode>().unwrap(),
             ChannelMode::Stateless
         );
         assert_eq!(
-            ChannelMode::from_str("session").unwrap(),
+            "session".parse::<ChannelMode>().unwrap(),
             ChannelMode::Session
         );
         assert_eq!(
-            ChannelMode::from_str("affinity").unwrap(),
+            "affinity".parse::<ChannelMode>().unwrap(),
             ChannelMode::Affinity
         );
-        assert!(ChannelMode::from_str("unknown").is_err());
+        assert!("unknown".parse::<ChannelMode>().is_err());
     }
 
     #[test]
@@ -669,7 +670,7 @@ mod tests {
     #[test]
     fn test_tree_stream_id_client() {
         let mgr = ChannelManager::new(false); // client
-        // Client bidi: offset = 0
+                                              // Client bidi: offset = 0
         assert_eq!(mgr.tree_stream_id(0), 0);
         assert_eq!(mgr.tree_stream_id(1), 4);
         assert_eq!(mgr.tree_stream_id(2), 8);
@@ -679,7 +680,7 @@ mod tests {
     #[test]
     fn test_tree_stream_id_server() {
         let mgr = ChannelManager::new(true); // server
-        // Server bidi: offset = 1
+                                             // Server bidi: offset = 1
         assert_eq!(mgr.tree_stream_id(0), 1);
         assert_eq!(mgr.tree_stream_id(1), 5);
         assert_eq!(mgr.tree_stream_id(2), 9);
@@ -946,9 +947,9 @@ mod tests {
     #[test]
     fn test_channel_direction_from_str() {
         assert_eq!(
-            ChannelDirection::from_str("send_only").unwrap(),
+            "send_only".parse::<ChannelDirection>().unwrap(),
             ChannelDirection::SendOnly
         );
-        assert!(ChannelDirection::from_str("invalid").is_err());
+        assert!("invalid".parse::<ChannelDirection>().is_err());
     }
 }

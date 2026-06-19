@@ -73,11 +73,7 @@ impl AuthResult {
 /// JWT signature validation against a trusted issuer.
 pub fn verify_token(token: &str, expected: &str) -> bool {
     // Constant-time comparison to prevent timing attacks
-    token.len() == expected.len()
-        && token
-            .bytes()
-            .zip(expected.bytes())
-            .all(|(a, b)| a == b)
+    token.len() == expected.len() && token.bytes().zip(expected.bytes()).all(|(a, b)| a == b)
 }
 
 /// Generate a simple bearer token (for development only).
@@ -154,8 +150,7 @@ impl AuthMethod {
                 ))
             }
             AuthMethod::Token(expected) => {
-                let token_str = std::str::from_utf8(token)
-                    .map_err(|_| AuthError::InvalidToken)?;
+                let token_str = std::str::from_utf8(token).map_err(|_| AuthError::InvalidToken)?;
                 if verify_token(token_str, expected) {
                     Ok(AuthToken::BearerToken(token_str.to_string()))
                 } else {
@@ -266,11 +261,7 @@ mod tests {
 
     #[test]
     fn test_auth_result_empty_permissions() {
-        let result = AuthResult::new(
-            AuthMethod::None,
-            Uuid::new_v4(),
-            vec![],
-        );
+        let result = AuthResult::new(AuthMethod::None, Uuid::new_v4(), vec![]);
         assert!(!result.has_permission("anything"));
     }
 

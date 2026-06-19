@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::auth::{AuthResult, AuthMethod};
+use crate::auth::{AuthMethod, AuthResult};
 use uuid::Uuid;
 
 /// JWT validation errors.
@@ -68,8 +68,8 @@ pub fn encode_jwt(claims: &FigJwtClaims, secret: &str) -> Result<String, JwtErro
 
     let signing_input = format!("{}.{}", header, payload);
     type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .map_err(|_| JwtError::InvalidFormat)?;
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| JwtError::InvalidFormat)?;
     mac.update(signing_input.as_bytes());
     let signature = base64_url_encode(&mac.finalize().into_bytes());
 
@@ -88,8 +88,8 @@ pub fn decode_jwt(token: &str, secret: &str) -> Result<FigJwtClaims, JwtError> {
 
     let signing_input = format!("{}.{}", parts[0], parts[1]);
     type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .map_err(|_| JwtError::InvalidFormat)?;
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| JwtError::InvalidFormat)?;
     mac.update(signing_input.as_bytes());
     let expected = base64_url_encode(&mac.finalize().into_bytes());
 

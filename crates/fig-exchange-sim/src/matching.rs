@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use fig_core::messages::*;
 use super::orderbook::{OrderBook, RestingOrder};
+use fig_core::messages::*;
 
 /// A fill resulting from matching an order.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -41,6 +41,12 @@ pub struct MatchingEngine {
     books: HashMap<Symbol, OrderBook>,
     order_index: HashMap<ClientOrderId, Symbol>,
     fill_seq: u64,
+}
+
+impl Default for MatchingEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MatchingEngine {
@@ -119,7 +125,11 @@ impl MatchingEngine {
         for (price, level_matches) in &matching_info {
             for (cl_ord_id, fill_qty) in level_matches {
                 let book = self.book_for(&order.symbol);
-                let opposite_side = if is_buy { &mut book.asks } else { &mut book.bids };
+                let opposite_side = if is_buy {
+                    &mut book.asks
+                } else {
+                    &mut book.bids
+                };
                 opposite_side.reduce(cl_ord_id, *fill_qty);
 
                 remaining_qty -= fill_qty;
@@ -128,7 +138,7 @@ impl MatchingEngine {
 
                 let fill_id = self.next_fill_id();
                 fills.push(Fill {
-                    fill_id: fill_id,
+                    fill_id,
                     cl_ord_id: order.cl_ord_id.clone(),
                     contra_cl_ord_id: cl_ord_id.clone(),
                     side: order.side.clone(),
@@ -137,7 +147,11 @@ impl MatchingEngine {
                     fill_qty: Quantity(*fill_qty),
                     leaves_qty: Quantity(remaining_qty),
                     cum_qty: Quantity(cum_qty),
-                    avg_price: Price(if cum_qty > 0.0 { total_value / cum_qty } else { 0.0 }),
+                    avg_price: Price(if cum_qty > 0.0 {
+                        total_value / cum_qty
+                    } else {
+                        0.0
+                    }),
                     exec_type: if remaining_qty <= 0.0 {
                         ExecType::Fill
                     } else {
@@ -166,7 +180,8 @@ impl MatchingEngine {
                 account: order.account.clone(),
                 seq: 0,
             };
-            self.order_index.insert(order.cl_ord_id.clone(), order.symbol.clone());
+            self.order_index
+                .insert(order.cl_ord_id.clone(), order.symbol.clone());
             let book = self.book_for(&order.symbol);
             book.add_order(resting);
             // Return a clone for the caller to inspect
@@ -183,8 +198,6 @@ impl MatchingEngine {
                 seq: 0,
             };
             Some(resting)
-        } else if remaining_qty > 0.0 && order.order_type == OrderType::Market {
-            None
         } else {
             None
         };
@@ -257,7 +270,13 @@ impl MatchingEngine {
 mod tests {
     use super::*;
 
-    fn make_limit_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) -> NewOrderSingle {
+    fn make_limit_order(
+        id: &str,
+        side: Side,
+        symbol: &str,
+        price: f64,
+        qty: f64,
+    ) -> NewOrderSingle {
         NewOrderSingle {
             cl_ord_id: id.to_string(),
             side,

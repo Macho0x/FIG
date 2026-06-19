@@ -12,12 +12,14 @@
 use std::sync::Arc;
 
 use fig_core::channel::ChannelMode;
+use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
 use fig_core::messages::*;
 use fig_core::session::Session;
-use fig_core::transport::{FigClient, FigServer, client_config, server_config, generate_self_signed_cert};
-use fig_core::codec;
+use fig_core::transport::{
+    client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
+};
 
 use fig_exchange_sim::server::run_server;
 
@@ -39,9 +41,7 @@ async fn read_all_frames(recv: &mut quinn::RecvStream) -> anyhow::Result<Vec<Fra
 }
 
 /// Helper: setup a client connection to the given server address.
-async fn connect_client(
-    server_addr: std::net::SocketAddr,
-) -> anyhow::Result<quinn::Connection> {
+async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<quinn::Connection> {
     let mut client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
     let client_cfg = client_config().map_err(|e| anyhow::anyhow!("client_config: {}", e))?;
     let conn = client_ep
@@ -51,10 +51,7 @@ async fn connect_client(
 }
 
 /// Helper: send a frame on a bidirectional stream and get the responses.
-async fn send_and_receive(
-    conn: &quinn::Connection,
-    frame: Frame,
-) -> anyhow::Result<Vec<Frame>> {
+async fn send_and_receive(conn: &quinn::Connection, frame: Frame) -> anyhow::Result<Vec<Frame>> {
     let (mut send, mut recv) = conn.open_bi().await?;
     let encoded = frame.encode()?;
     send.write_all(&encoded).await?;
@@ -151,7 +148,14 @@ async fn test_order_entry_execution_report() {
     let conn = connect_client(server_addr).await.expect("client connect");
 
     // Set up: place a sell limit order to provide liquidity, then a market buy
-    let sell = make_order("SELL-1", Side::Sell, "AAPL", OrderType::Limit, Some(100.00), 10.0);
+    let sell = make_order(
+        "SELL-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.00),
+        10.0,
+    );
     let buy = make_order("BUY-1", Side::Buy, "AAPL", OrderType::Market, None, 10.0);
 
     let sell_frame = make_order_frame(1, &sell).unwrap();
@@ -203,7 +207,9 @@ async fn test_market_data_subscription() {
         .expect("should have a response");
 
     // It could be a StreamItem with the snapshot, or just a Response (ack) if book not found
-    if snapshot_response.frame_type == FrameType::StreamItem && !snapshot_response.payload.is_empty() {
+    if snapshot_response.frame_type == FrameType::StreamItem
+        && !snapshot_response.payload.is_empty()
+    {
         let snapshot: MarketDataSnapshot =
             codec::decode_cbor(&snapshot_response.payload).expect("decode MarketDataSnapshot");
         assert_eq!(snapshot.symbol, "AAPL");
@@ -245,7 +251,10 @@ async fn test_account_query() {
     panic!(
         "Expected AccountSummary response, got {} frames: {:?}",
         responses.len(),
-        responses.iter().map(|f| format!("{}", f.frame_type)).collect::<Vec<_>>()
+        responses
+            .iter()
+            .map(|f| format!("{}", f.frame_type))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -260,9 +269,7 @@ async fn test_ping_pong() {
     let conn = connect_client(server_addr).await.expect("client connect");
 
     let ping = Frame::ping();
-    let responses = send_and_receive(&conn, ping)
-        .await
-        .expect("send/receive");
+    let responses = send_and_receive(&conn, ping).await.expect("send/receive");
 
     assert!(!responses.is_empty(), "should have a PONG response");
 
@@ -297,9 +304,23 @@ async fn test_multiple_orders_matching() {
     let conn = connect_client(server_addr).await.expect("client connect");
 
     // Sell limit order at 100.00 qty 50
-    let sell = make_order("SELL-M-1", Side::Sell, "AAPL", OrderType::Limit, Some(100.00), 50.0);
+    let sell = make_order(
+        "SELL-M-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.00),
+        50.0,
+    );
     // Buy limit order at 100.00 qty 50 (crosses the spread)
-    let buy = make_order("BUY-M-1", Side::Buy, "AAPL", OrderType::Limit, Some(100.00), 50.0);
+    let buy = make_order(
+        "BUY-M-1",
+        Side::Buy,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.00),
+        50.0,
+    );
 
     let sell_frame = make_order_frame(1, &sell).unwrap();
     let buy_frame = make_order_frame(1, &buy).unwrap();
@@ -319,25 +340,20 @@ async fn test_multiple_orders_matching() {
         codec::decode_cbor(&fill_response.payload).expect("decode ExecutionReport");
 
     assert_eq!(
-        report.exec_type, ExecType::Fill,
+        report.exec_type,
+        ExecType::Fill,
         "buy order should be fully filled"
     );
     assert_eq!(report.ord_status, OrdStatus::Filled);
 
-    let fill_price = report
-        .last_price
-        .as_ref()
-        .expect("should have last_price");
+    let fill_price = report.last_price.as_ref().expect("should have last_price");
     assert!(
         (fill_price.0 - 100.00).abs() < 0.001,
         "fill price should be 100.00, got {}",
         fill_price.0
     );
 
-    let fill_qty = report
-        .last_qty
-        .as_ref()
-        .expect("should have last_qty");
+    let fill_qty = report.last_qty.as_ref().expect("should have last_qty");
     assert!(
         (fill_qty.0 - 50.0).abs() < 0.001,
         "fill qty should be 50.0, got {}",
@@ -376,10 +392,7 @@ async fn test_channel_isolation() {
     send2.finish().unwrap();
 
     // Read responses from both streams concurrently
-    let (resp1, resp2) = tokio::join!(
-        read_all_frames(&mut recv1),
-        read_all_frames(&mut recv2),
-    );
+    let (resp1, resp2) = tokio::join!(read_all_frames(&mut recv1), read_all_frames(&mut recv2),);
 
     let resp1 = resp1.expect("read stream 1");
     let resp2 = resp2.expect("read stream 2");
@@ -448,8 +461,7 @@ async fn test_0rtt_round_trip() {
     let original_session_id = session.session_id;
 
     // --- Client connects with 0-RTT ---
-    let client = FigClient::new(client_config().expect("client config"))
-        .expect("client create");
+    let client = FigClient::new(client_config().expect("client config")).expect("client create");
 
     let (fig_conn, restored_session) = client
         .connect_0rtt(server_addr, "localhost", Some(&token))
@@ -503,7 +515,8 @@ async fn test_stream_reset_detection() {
 
     // Client connects
     let client = FigClient::new(client_cfg).expect("client create");
-    let client_conn = client.connect(server_addr, "localhost")
+    let client_conn = client
+        .connect(server_addr, "localhost")
         .await
         .expect("client connect");
 

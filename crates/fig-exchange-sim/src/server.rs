@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use quinn::Endpoint;
 use tokio::sync::Mutex;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use fig_core::codec;
@@ -79,9 +79,7 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
     let state = Arc::new(ExchangeState {
         engine: Mutex::new(MatchingEngine::new()),
         sessions: MemorySessionStore::new(),
-        file_sessions: FileSessionStore::new(
-            std::env::temp_dir().join("fig-exchange-sessions"),
-        ),
+        file_sessions: FileSessionStore::new(std::env::temp_dir().join("fig-exchange-sessions")),
         market_subscriptions: Mutex::new(Vec::new()),
     });
 
@@ -341,11 +339,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 }
 
                 if let Some(reject) = &result.reject_reason {
-                    responses.push(make_error_frame(
-                        frame.channel_id,
-                        frame.stream_seq,
-                        reject,
-                    ));
+                    responses.push(make_error_frame(frame.channel_id, frame.stream_seq, reject));
                 }
 
                 // Push book depth updates to subscribers
@@ -417,7 +411,10 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
     } else if channel_path.contains("/replace") {
         match codec::decode_cbor::<CancelReplaceRequest>(&frame.payload) {
             Ok(replace) => {
-                info!("CancelReplaceRequest: {} -> {}", replace.orig_cl_ord_id, replace.cl_ord_id);
+                info!(
+                    "CancelReplaceRequest: {} -> {}",
+                    replace.orig_cl_ord_id, replace.cl_ord_id
+                );
                 let mut engine = state.engine.lock().await;
                 let result = engine.process_replace(&replace);
                 drop(engine);
@@ -456,11 +453,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     }
                 }
                 if let Some(reject) = &result.reject_reason {
-                    responses.push(make_error_frame(
-                        frame.channel_id,
-                        frame.stream_seq,
-                        reject,
-                    ));
+                    responses.push(make_error_frame(frame.channel_id, frame.stream_seq, reject));
                 }
                 responses.extend(push_book_depth(state, &replace.symbol).await);
                 responses
@@ -554,11 +547,15 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
             )];
         }
 
-        state.market_subscriptions.lock().await.push(MarketSubscription {
-            channel_id: frame.channel_id,
-            routing_key: routing_key.clone(),
-            symbol: symbol.clone(),
-        });
+        state
+            .market_subscriptions
+            .lock()
+            .await
+            .push(MarketSubscription {
+                channel_id: frame.channel_id,
+                routing_key: routing_key.clone(),
+                symbol: symbol.clone(),
+            });
 
         // Send initial snapshot
         return build_market_data_push(state, &symbol)

@@ -493,8 +493,8 @@ impl Frame {
 
         // Type (1 byte)
         let type_code = cursor.read_u8()?;
-        let frame_type = FrameType::from_code(type_code)
-            .ok_or_else(|| FrameError::InvalidFrameType(type_code))?;
+        let frame_type =
+            FrameType::from_code(type_code).ok_or(FrameError::InvalidFrameType(type_code))?;
 
         // Flags (1 byte) — bit 7 is reserved and must be 0 (Spec §5)
         let flags_bits = cursor.read_u8()?;
@@ -617,9 +617,7 @@ pub struct FrameDecoder {
 impl FrameDecoder {
     /// Create a new decoder with an empty buffer.
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     /// Create a decoder with a pre-allocated buffer capacity.
@@ -827,7 +825,9 @@ mod tests {
         ];
 
         for ft in frame_types {
-            let frame = Frame::new(ft, 1).with_seq(100).with_payload(b"test".to_vec());
+            let frame = Frame::new(ft, 1)
+                .with_seq(100)
+                .with_payload(b"test".to_vec());
             let encoded = frame.encode().unwrap();
             let (decoded, consumed) = Frame::decode(&encoded).unwrap();
 
@@ -843,7 +843,10 @@ mod tests {
     fn test_encode_decode_with_extensions() {
         let frame = Frame::new(FrameType::Request, 5)
             .with_seq(1)
-            .with_extension(Extension::text(ExtensionTag::RequestUri, "/accounts/123/orders"))
+            .with_extension(Extension::text(
+                ExtensionTag::RequestUri,
+                "/accounts/123/orders",
+            ))
             .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
             .with_extension(Extension::u64(ExtensionTag::SequenceNum, 9999))
             .with_payload(b"order data".to_vec());
@@ -857,7 +860,10 @@ mod tests {
         assert_eq!(decoded.stream_seq, 1);
         assert_eq!(decoded.extensions.len(), 3);
         assert_eq!(decoded.extensions[0].tag, ExtensionTag::RequestUri);
-        assert_eq!(decoded.extensions[0].value.as_text(), Some("/accounts/123/orders"));
+        assert_eq!(
+            decoded.extensions[0].value.as_text(),
+            Some("/accounts/123/orders")
+        );
         assert_eq!(decoded.extensions[1].tag, ExtensionTag::StatusCode);
         assert_eq!(decoded.extensions[1].value.as_u16(), Some(200));
         assert_eq!(decoded.extensions[2].tag, ExtensionTag::SequenceNum);
@@ -869,7 +875,10 @@ mod tests {
     fn test_encode_decode_with_all_flags() {
         let frame = Frame::new(FrameType::StreamItem, 10)
             .with_seq(42)
-            .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL"))
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/AAPL",
+            ))
             .with_payload(b"market data".to_vec());
 
         let mut frame = frame;
@@ -958,8 +967,12 @@ mod tests {
 
     #[test]
     fn test_frame_decoder_multiple_frames() {
-        let frame1 = Frame::new(FrameType::Request, 1).with_seq(1).with_payload(b"first".to_vec());
-        let frame2 = Frame::new(FrameType::Response, 1).with_seq(2).with_payload(b"second".to_vec());
+        let frame1 = Frame::new(FrameType::Request, 1)
+            .with_seq(1)
+            .with_payload(b"first".to_vec());
+        let frame2 = Frame::new(FrameType::Response, 1)
+            .with_seq(2)
+            .with_payload(b"second".to_vec());
 
         let mut data = Vec::new();
         data.extend_from_slice(&frame1.encode().unwrap());
@@ -994,7 +1007,11 @@ mod tests {
         for i in 0..encoded.len() {
             decoder.feed(&encoded[i..i + 1]);
             if i < encoded.len() - 1 {
-                assert!(decoder.decode_next().is_none(), "Should not have complete frame at byte {}", i);
+                assert!(
+                    decoder.decode_next().is_none(),
+                    "Should not have complete frame at byte {}",
+                    i
+                );
             }
         }
 
@@ -1023,8 +1040,7 @@ mod tests {
 
     #[test]
     fn test_frame_encoded_size() {
-        let frame = Frame::new(FrameType::Request, 1)
-            .with_payload(b"hello".to_vec());
+        let frame = Frame::new(FrameType::Request, 1).with_payload(b"hello".to_vec());
 
         assert_eq!(frame.encoded_size(), HEADER_SIZE + 5); // 16 header + 5 payload
     }

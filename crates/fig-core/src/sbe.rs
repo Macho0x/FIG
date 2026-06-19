@@ -673,7 +673,10 @@ mod tests {
         assert_eq!(u16::from_be_bytes([buf[9], buf[10]]), 0x1234);
 
         // u32 at offset 11-14
-        assert_eq!(u32::from_be_bytes([buf[11], buf[12], buf[13], buf[14]]), 0xDEAD_BEEF);
+        assert_eq!(
+            u32::from_be_bytes([buf[11], buf[12], buf[13], buf[14]]),
+            0xDEAD_BEEF
+        );
 
         // u64 at offset 15-22
         assert_eq!(
@@ -684,7 +687,10 @@ mod tests {
         );
 
         // i32 at offset 23-26
-        assert_eq!(i32::from_be_bytes([buf[23], buf[24], buf[25], buf[26]]), -42);
+        assert_eq!(
+            i32::from_be_bytes([buf[23], buf[24], buf[25], buf[26]]),
+            -42
+        );
 
         // i64 at offset 27-34
         assert_eq!(
@@ -910,7 +916,10 @@ mod tests {
         // Buffer too short
         let short_buf = vec![0u8; 3];
         let result = SbeDecoder::new(&short_buf);
-        assert!(matches!(result, Err(SbeError::BufferTooShort { needed: 8, have: 3 })));
+        assert!(matches!(
+            result,
+            Err(SbeError::BufferTooShort { needed: 8, have: 3 })
+        ));
     }
 
     // ── Enum Encoding / Decoding ────────────────────────────────

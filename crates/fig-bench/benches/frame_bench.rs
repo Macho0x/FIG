@@ -18,10 +18,7 @@ fn make_request_frame() -> Frame {
         ))
         .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
         .with_extension(Extension::u64(ExtensionTag::SequenceNum, 9999))
-        .with_extension(Extension::i64(
-            ExtensionTag::Timestamp,
-            1700000000000000000,
-        ))
+        .with_extension(Extension::i64(ExtensionTag::Timestamp, 1700000000000000000))
         .with_payload(b"order payload data here".to_vec())
         .with_priority()
         .with_ack_requested()
@@ -69,10 +66,7 @@ fn bench_frame_encode_large_payload(c: &mut Criterion) {
     let frame = Frame::new(FrameType::Request, 1)
         .with_seq(42)
         .with_schema_id(0x01)
-        .with_extension(Extension::text(
-            ExtensionTag::RequestUri,
-            "/trading/orders",
-        ))
+        .with_extension(Extension::text(ExtensionTag::RequestUri, "/trading/orders"))
         .with_payload(large_payload);
 
     c.bench_function("frame_encode_large_payload", |b| {

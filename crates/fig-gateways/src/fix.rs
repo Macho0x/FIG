@@ -18,8 +18,8 @@ use thiserror::Error;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CancelRequest, ExecType, ExecutionReport, NewOrderSingle,
-    OrderType, OrdStatus, Price, Quantity, Side, TimeInForce,
+    CancelRequest, ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price,
+    Quantity, Side, TimeInForce,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -182,8 +182,8 @@ pub fn parse_fix_message(input: &[u8]) -> FixResult<Vec<(u32, String)>> {
             .unwrap_or(body.len());
         let expected = compute_checksum(&body[..checksum_pos]);
 
-        let checksum_str = std::str::from_utf8(&last_field[3..])
-            .map_err(|_| FixError::InvalidTagValue {
+        let checksum_str =
+            std::str::from_utf8(&last_field[3..]).map_err(|_| FixError::InvalidTagValue {
                 pos: body.len() - last_field.len(),
                 reason: "checksum not valid UTF-8".to_string(),
             })?;
@@ -210,15 +210,19 @@ pub fn parse_fix_message(input: &[u8]) -> FixResult<Vec<(u32, String)>> {
             reason: "field not valid UTF-8".to_string(),
         })?;
 
-        let eq_pos = field_str.find('=').ok_or_else(|| FixError::InvalidTagValue {
-            pos,
-            reason: "missing '=' in tag-value pair".to_string(),
-        })?;
+        let eq_pos = field_str
+            .find('=')
+            .ok_or_else(|| FixError::InvalidTagValue {
+                pos,
+                reason: "missing '=' in tag-value pair".to_string(),
+            })?;
 
-        let tag: u32 = field_str[..eq_pos].parse().map_err(|_| FixError::InvalidTagValue {
-            pos,
-            reason: format!("invalid tag number: {}", &field_str[..eq_pos]),
-        })?;
+        let tag: u32 = field_str[..eq_pos]
+            .parse()
+            .map_err(|_| FixError::InvalidTagValue {
+                pos,
+                reason: format!("invalid tag number: {}", &field_str[..eq_pos]),
+            })?;
 
         let value = field_str[eq_pos + 1..].to_string();
 
@@ -229,7 +233,7 @@ pub fn parse_fix_message(input: &[u8]) -> FixResult<Vec<(u32, String)>> {
 }
 
 /// Find the value for a specific tag in parsed FIX tag-value pairs.
-fn find_tag<'a>(tags: &'a [(u32, String)], tag: u32) -> Option<&'a str> {
+fn find_tag(tags: &[(u32, String)], tag: u32) -> Option<&str> {
     tags.iter()
         .find(|(t, _)| *t == tag)
         .map(|(_, v)| v.as_str())
@@ -299,21 +303,23 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
     let symbol = require_tag(tags, 55, "D")?.to_string();
 
     let side = parse_fix_side(require_tag(tags, 54, "D")?)?;
-    let order_qty = Quantity(
-        require_tag(tags, 38, "D")?
-            .parse::<f64>()
-            .map_err(|_| FixError::InvalidTagValueData {
-                tag: 38,
-                value: find_tag(tags, 38).unwrap_or("").to_string(),
-            })?,
-    );
+    let order_qty = Quantity(require_tag(tags, 38, "D")?.parse::<f64>().map_err(|_| {
+        FixError::InvalidTagValueData {
+            tag: 38,
+            value: find_tag(tags, 38).unwrap_or("").to_string(),
+        }
+    })?);
 
-    let price = find_tag(tags, 44).map(|v| {
-        v.parse::<f64>().map(Price).map_err(|_| FixError::InvalidTagValueData {
-            tag: 44,
-            value: v.to_string(),
+    let price = find_tag(tags, 44)
+        .map(|v| {
+            v.parse::<f64>()
+                .map(Price)
+                .map_err(|_| FixError::InvalidTagValueData {
+                    tag: 44,
+                    value: v.to_string(),
+                })
         })
-    }).transpose()?;
+        .transpose()?;
 
     let order_type = parse_fix_order_type(require_tag(tags, 40, "D")?)?;
     let time_in_force = parse_fix_time_in_force(find_tag(tags, 59).unwrap_or("0"))?;
@@ -356,12 +362,16 @@ pub fn fix_to_fig_cancel(tags: &[(u32, String)]) -> FixResult<CancelRequest> {
     let side = parse_fix_side(require_tag(tags, 54, "F")?)?;
 
     // OrderQty is optional on cancel
-    let order_qty = find_tag(tags, 38).map(|v| {
-        v.parse::<f64>().map(Quantity).map_err(|_| FixError::InvalidTagValueData {
-            tag: 38,
-            value: v.to_string(),
+    let order_qty = find_tag(tags, 38)
+        .map(|v| {
+            v.parse::<f64>()
+                .map(Quantity)
+                .map_err(|_| FixError::InvalidTagValueData {
+                    tag: 38,
+                    value: v.to_string(),
+                })
         })
-    }).transpose()?;
+        .transpose()?;
 
     Ok(CancelRequest {
         cl_ord_id,
@@ -394,22 +404,17 @@ pub fn fix_to_fig_cancel(tags: &[(u32, String)]) -> FixResult<CancelRequest> {
 /// | 55      | symbol       |
 /// | 60      | transact_time|
 pub fn fig_to_fix_execution_report(report: &ExecutionReport) -> Vec<u8> {
-    let mut tags: Vec<(u32, String)> = Vec::new();
-
-    // Standard FIX header
-    tags.push((8, "FIX.4.4".to_string()));
-    tags.push((9, "0".to_string())); // BodyLength — placeholder, will recalc
-    tags.push((35, "8".to_string())); // MsgType = ExecutionReport
-
-    // Order identification
-    tags.push((11, report.cl_ord_id.clone()));
-    tags.push((37, report.order_id.clone()));
-    tags.push((17, report.exec_id.clone()));
-
-    // Execution details
-    tags.push((150, fix_exec_type(&report.exec_type)));
-    tags.push((39, fix_ord_status(&report.ord_status)));
-    tags.push((54, fix_side(&report.side)));
+    let mut tags: Vec<(u32, String)> = vec![
+        (8, "FIX.4.4".to_string()),
+        (9, "0".to_string()),  // BodyLength — placeholder, will recalc
+        (35, "8".to_string()), // MsgType = ExecutionReport
+        (11, report.cl_ord_id.clone()),
+        (37, report.order_id.clone()),
+        (17, report.exec_id.clone()),
+        (150, fix_exec_type(&report.exec_type)),
+        (39, fix_ord_status(&report.ord_status)),
+        (54, fix_side(&report.side)),
+    ];
 
     // Quantities and prices
     if let Some(ref last_qty) = report.last_qty {
@@ -429,7 +434,10 @@ pub fn fig_to_fix_execution_report(report: &ExecutionReport) -> Vec<u8> {
     // Compute BodyLength (tag 9): length of everything after "9=XXX\x01" to before checksum.
     // Build the body tags (everything except 8=BeginString, 9=BodyLength, 10=CheckSum),
     // compute body length, then prepend header.
-    let body_tags: Vec<&(u32, String)> = tags.iter().filter(|(t, _)| *t != 8 && *t != 9 && *t != 10).collect();
+    let body_tags: Vec<&(u32, String)> = tags
+        .iter()
+        .filter(|(t, _)| *t != 8 && *t != 9 && *t != 10)
+        .collect();
 
     let mut body_buf = Vec::new();
     for (tag, value) in &body_tags {
@@ -487,11 +495,10 @@ pub fn logon_to_stream_open(logon: &FixMessage) -> FixConvertResult<Frame> {
         format!("{}:{}", sender_comp_id, target_comp_id)
     };
 
-    let frame = Frame::new(FrameType::StreamOpen, 0)
-        .with_extension(Extension::binary(
-            ExtensionTag::AuthToken,
-            auth_token.into_bytes(),
-        ));
+    let frame = Frame::new(FrameType::StreamOpen, 0).with_extension(Extension::binary(
+        ExtensionTag::AuthToken,
+        auth_token.into_bytes(),
+    ));
 
     Ok(frame)
 }
@@ -519,23 +526,21 @@ pub fn stream_open_to_logon(frame: &Frame) -> FixConvertResult<FixMessage> {
 
     let auth_str = String::from_utf8_lossy(&auth_bytes);
     let (sender_comp_id, target_comp_id) = if let Some(pos) = auth_str.find(':') {
-        (
-            auth_str[..pos].to_string(),
-            auth_str[pos + 1..].to_string(),
-        )
+        (auth_str[..pos].to_string(), auth_str[pos + 1..].to_string())
     } else {
         (auth_str.to_string(), String::new())
     };
 
-    let mut tags: Vec<(u32, String)> = Vec::new();
-    tags.push((8, "FIX.4.4".to_string()));
-    tags.push((35, "A".to_string()));
-    tags.push((49, sender_comp_id));
-    tags.push((56, target_comp_id));
-    tags.push((34, "1".to_string())); // MsgSeqNum
-    tags.push((98, "0".to_string())); // EncryptMethod = None
-    tags.push((108, "30".to_string())); // HeartBtInt
-    tags.push((141, "Y".to_string())); // ResetSeqNumFlag
+    let tags = vec![
+        (8, "FIX.4.4".to_string()),
+        (35, "A".to_string()),
+        (49, sender_comp_id),
+        (56, target_comp_id),
+        (34, "1".to_string()),   // MsgSeqNum
+        (98, "0".to_string()),   // EncryptMethod = None
+        (108, "30".to_string()), // HeartBtInt
+        (141, "Y".to_string()),  // ResetSeqNumFlag
+    ];
 
     Ok(FixMessage::new(tags))
 }
@@ -550,10 +555,7 @@ pub const FIX_SESSION_CHANNEL_ID: u16 = 1;
 /// Maps FIX BeginSeqNo (tag 7) and EndSeqNo (tag 16, default 0) to the
 /// RESEND payload. The target FIG channel defaults to
 /// [`FIX_SESSION_CHANNEL_ID`] unless overridden.
-pub fn resend_request_to_control(
-    msg: &FixMessage,
-    channel_id: u16,
-) -> FixConvertResult<Frame> {
+pub fn resend_request_to_control(msg: &FixMessage, channel_id: u16) -> FixConvertResult<Frame> {
     let msg_type = msg.msg_type().unwrap_or("");
     if msg_type != "2" {
         return Err(FixConvertError::UnsupportedMsgType(msg_type.to_string()));
@@ -586,21 +588,23 @@ pub fn control_to_resend_request(
     target_comp_id: &str,
     msg_seq_num: u32,
 ) -> FixConvertResult<FixMessage> {
-    let (channel_id, begin_seq, end_seq) = frame
-        .resend_range()
-        .ok_or(FixConvertError::UnsupportedMsgType(format!(
-            "{}",
-            frame.frame_type
-        )))?;
+    let (channel_id, begin_seq, end_seq) =
+        frame
+            .resend_range()
+            .ok_or(FixConvertError::UnsupportedMsgType(format!(
+                "{}",
+                frame.frame_type
+            )))?;
     let _ = channel_id; // FIX session-level; channel encoded in FIG payload only
 
-    let mut tags: Vec<(u32, String)> = Vec::new();
-    tags.push((8, "FIX.4.4".to_string()));
-    tags.push((35, "2".to_string()));
-    tags.push((49, sender_comp_id.to_string()));
-    tags.push((56, target_comp_id.to_string()));
-    tags.push((34, msg_seq_num.to_string()));
-    tags.push((7, begin_seq.to_string()));
+    let mut tags: Vec<(u32, String)> = vec![
+        (8, "FIX.4.4".to_string()),
+        (35, "2".to_string()),
+        (49, sender_comp_id.to_string()),
+        (56, target_comp_id.to_string()),
+        (34, msg_seq_num.to_string()),
+        (7, begin_seq.to_string()),
+    ];
     if end_seq != 0 {
         tags.push((16, end_seq.to_string()));
     }
@@ -669,7 +673,8 @@ fn fix_exec_type(et: &ExecType) -> String {
         ExecType::Suspended => "9",
         ExecType::PendingNew => "A",
         ExecType::Expired => "C",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Convert a FIG OrdStatus to a FIX ord status value (tag 39).
@@ -687,7 +692,8 @@ fn fix_ord_status(status: &OrdStatus) -> String {
         OrdStatus::Suspended => "9",
         OrdStatus::PendingNew => "A",
         OrdStatus::Expired => "C",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Format a Quantity for FIX.
@@ -901,7 +907,8 @@ mod tests {
         let parsed = parse_fix_message(&encoded).unwrap();
 
         let find = |tag: u32| -> String {
-            parsed.iter()
+            parsed
+                .iter()
                 .find(|(t, _)| *t == tag)
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default()
@@ -994,9 +1001,10 @@ mod tests {
 
     #[test]
     fn test_stream_open_to_logon() {
-        let frame = Frame::new(FrameType::StreamOpen, 0).with_extension(
-            Extension::binary(ExtensionTag::AuthToken, b"alice:password1".to_vec()),
-        );
+        let frame = Frame::new(FrameType::StreamOpen, 0).with_extension(Extension::binary(
+            ExtensionTag::AuthToken,
+            b"alice:password1".to_vec(),
+        ));
 
         let logon = stream_open_to_logon(&frame).unwrap();
         assert_eq!(logon.msg_type(), Some("A"));
@@ -1055,7 +1063,10 @@ mod tests {
         let msg = FixMessage::new(tags);
         let frame = resend_request_to_control(&msg, FIX_SESSION_CHANNEL_ID).unwrap();
 
-        assert_eq!(frame.control_subtype(), Some(fig_core::frame::ControlSubtype::Resend));
+        assert_eq!(
+            frame.control_subtype(),
+            Some(fig_core::frame::ControlSubtype::Resend)
+        );
         assert_eq!(frame.resend_range(), Some((FIX_SESSION_CHANNEL_ID, 10, 25)));
     }
 
@@ -1084,7 +1095,10 @@ mod tests {
         ];
         let msg = FixMessage::new(tags);
         let result = resend_request_to_control(&msg, 1);
-        assert!(matches!(result, Err(FixConvertError::MissingTag { tag: 7 })));
+        assert!(matches!(
+            result,
+            Err(FixConvertError::MissingTag { tag: 7 })
+        ));
     }
 
     #[test]

@@ -143,9 +143,7 @@ impl Parser {
             if ch.is_ascii_alphabetic() || ch == '_' {
                 let start = i;
                 while i < len
-                    && (chars[i].is_ascii_alphanumeric()
-                        || chars[i] == '_'
-                        || chars[i] == '.')
+                    && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '.')
                 {
                     i += 1;
                 }
@@ -252,7 +250,12 @@ impl Parser {
         if self.check(&kind) {
             Ok(self.advance())
         } else {
-            Err(self.error(&format!("expected {:?} for {}, got {:?}", kind, ctx, self.peek().kind)))
+            Err(self.error(&format!(
+                "expected {:?} for {}, got {:?}",
+                kind,
+                ctx,
+                self.peek().kind
+            )))
         }
     }
 
@@ -260,7 +263,11 @@ impl Parser {
         if self.peek().kind == TokenKind::Ident {
             Ok(self.advance().text)
         } else {
-            Err(self.error(&format!("expected identifier for {}, got {:?}", ctx, self.peek().kind)))
+            Err(self.error(&format!(
+                "expected identifier for {}, got {:?}",
+                ctx,
+                self.peek().kind
+            )))
         }
     }
 
@@ -318,10 +325,7 @@ impl Parser {
                 self.expect(TokenKind::Colon, "well_known_id colon")?;
                 let hex = self.expect(TokenKind::Number, "well_known_id hex value")?;
                 // Parse hex: "0x01" -> 1
-                let val = hex
-                    .text
-                    .trim_start_matches("0x")
-                    .trim_start_matches("0X");
+                let val = hex.text.trim_start_matches("0x").trim_start_matches("0X");
                 let id = u8::from_str_radix(val, 16)
                     .with_context(|| format!("well_known_id: invalid hex '{}'", hex.text))?;
                 well_known_id = Some(id);
@@ -389,11 +393,14 @@ impl Parser {
                 fields: Some(fields),
             })
         } else {
-            Err(self.error_at(line, &format!(
-                "expected ':' or '{{' after type name '{}', got {:?}",
-                name,
-                self.peek().kind
-            )))
+            Err(self.error_at(
+                line,
+                &format!(
+                    "expected ':' or '{{' after type name '{}', got {:?}",
+                    name,
+                    self.peek().kind
+                ),
+            ))
         }
     }
 
@@ -513,8 +520,9 @@ impl Parser {
             // Parse as number
             let s = &t.text;
             if s.starts_with("0x") || s.starts_with("0X") {
-                let n = u64::from_str_radix(s.trim_start_matches("0x").trim_start_matches("0X"), 16)
-                    .map_err(|_| self.error(&format!("invalid hex literal '{}'", s)))?;
+                let n =
+                    u64::from_str_radix(s.trim_start_matches("0x").trim_start_matches("0X"), 16)
+                        .map_err(|_| self.error(&format!("invalid hex literal '{}'", s)))?;
                 Ok(serde_json::Value::Number(n.into()))
             } else if s.contains('.') {
                 let n: f64 = s
@@ -641,10 +649,7 @@ impl Parser {
             self.advance();
             Ok(false)
         } else {
-            Err(self.error(&format!(
-                "expected true/false, got {:?}",
-                self.peek().kind
-            )))
+            Err(self.error(&format!("expected true/false, got {:?}", self.peek().kind)))
         }
     }
 
@@ -783,11 +788,8 @@ impl Parser {
     fn parse_field_mapping(&mut self) -> Result<FieldMapping> {
         let source_field = self.expect_ident("source field name")?;
         self.expect(TokenKind::Arrow, "-> in field mapping")?;
-        let target = self.collect_until(&[
-            TokenKind::Values,
-            TokenKind::CloseBrace,
-            TokenKind::Eof,
-        ]);
+        let target =
+            self.collect_until(&[TokenKind::Values, TokenKind::CloseBrace, TokenKind::Eof]);
 
         let value_mappings = if self.check_kw(TokenKind::Values) {
             self.advance(); // skip 'values'
@@ -931,7 +933,10 @@ mod tests {
         assert_eq!(msg.fields[0].name, "id");
         assert_eq!(msg.fields[0].number, Some(1));
         assert!(matches!(msg.fields[1].field_type, FieldType::Enum(_)));
-        assert!(matches!(msg.fields[2].field_type, FieldType::InlineBase(_, _)));
+        assert!(matches!(
+            msg.fields[2].field_type,
+            FieldType::InlineBase(_, _)
+        ));
     }
 
     #[test]
@@ -1057,8 +1062,7 @@ mod tests {
     #[test]
     fn test_parse_full_orders_fsl() {
         let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.fsl";
-        let input =
-            std::fs::read_to_string(orders_path).expect("failed to read orders.fsl");
+        let input = std::fs::read_to_string(orders_path).expect("failed to read orders.fsl");
         let schema = Parser::parse(&input).expect("failed to parse orders.fsl");
         assert_eq!(schema.name, "trading.orders");
         assert_eq!(schema.version, "v1.0.0");

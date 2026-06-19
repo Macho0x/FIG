@@ -101,8 +101,7 @@ pub fn handle_control_frame(
             })
         }
         Some(ControlSubtype::Resend) => {
-            let (channel_id, begin_seq, end_seq) =
-                parse_resend_payload(&frame.payload[1..])?;
+            let (channel_id, begin_seq, end_seq) = parse_resend_payload(&frame.payload[1..])?;
             Ok(ControlAction::ResendRange {
                 channel_id,
                 begin_seq,

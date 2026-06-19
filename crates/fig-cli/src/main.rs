@@ -10,7 +10,7 @@
 
 use anyhow::Result;
 use quinn::Endpoint;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
@@ -34,7 +34,8 @@ async fn main() -> Result<()> {
     info!("FIG CLI starting...");
 
     // Create client endpoint
-    let client_config = transport::client_config().map_err(|e| anyhow::anyhow!("client config: {}", e))?;
+    let client_config =
+        transport::client_config().map_err(|e| anyhow::anyhow!("client config: {}", e))?;
 
     let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
     endpoint.set_default_client_config(client_config);
@@ -73,7 +74,10 @@ async fn main() -> Result<()> {
     let frame = Frame::new(FrameType::Request, 1)
         .with_seq(1)
         .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(ExtensionTag::ChannelPath, "trading/accounts/DEMO-ACCT/orders"))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/DEMO-ACCT/orders",
+        ))
         .with_extension(Extension::text(ExtensionTag::Method, "POST"))
         .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
         .with_payload(payload);
@@ -90,11 +94,20 @@ async fn main() -> Result<()> {
 
     let subscribe = Frame::new(FrameType::Subscribe, 2)
         .with_seq(1)
-        .with_extension(Extension::text(ExtensionTag::RoutingKey, "marketdata.AAPL.quotes"))
-        .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL/quotes"));
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            "marketdata.AAPL.quotes",
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/quotes",
+        ));
 
     let encoded = subscribe.encode()?;
-    info!("Sending SUBSCRIBE for AAPL market data ({} bytes)...", encoded.len());
+    info!(
+        "Sending SUBSCRIBE for AAPL market data ({} bytes)...",
+        encoded.len()
+    );
     md_send.write_all(&encoded).await?;
 
     // ─── Demo 3: Account Query ──────────────────────────────────────
@@ -105,7 +118,10 @@ async fn main() -> Result<()> {
 
     let acct_frame = Frame::new(FrameType::Request, 3)
         .with_seq(1)
-        .with_extension(Extension::text(ExtensionTag::ChannelPath, "accounts/DEMO-ACCT"))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "accounts/DEMO-ACCT",
+        ))
         .with_extension(Extension::text(ExtensionTag::Method, "GET"));
 
     let encoded = acct_frame.encode()?;
@@ -129,7 +145,9 @@ async fn main() -> Result<()> {
                     Ok(frame) => {
                         info!("Order response: {}", frame);
                         if !frame.payload.is_empty() {
-                            if let Ok(report) = codec::decode_cbor::<ExecutionReport>(&frame.payload) {
+                            if let Ok(report) =
+                                codec::decode_cbor::<ExecutionReport>(&frame.payload)
+                            {
                                 info!("  ExecutionReport: cl_ord_id={}, exec_type={:?}, ord_status={:?}, symbol={}, last_qty={:?}, avg_price={:?}",
                                     report.cl_ord_id, report.exec_type, report.ord_status, report.symbol,
                                     report.last_qty, report.avg_price);
@@ -154,7 +172,9 @@ async fn main() -> Result<()> {
                     Ok(frame) => {
                         info!("Market data response: {}", frame);
                         if !frame.payload.is_empty() {
-                            if let Ok(snapshot) = codec::decode_cbor::<MarketDataSnapshot>(&frame.payload) {
+                            if let Ok(snapshot) =
+                                codec::decode_cbor::<MarketDataSnapshot>(&frame.payload)
+                            {
                                 info!("  MarketDataSnapshot: symbol={}, exchange={}, bids={}, asks={}",
                                     snapshot.symbol, snapshot.exchange,
                                     snapshot.bids.len(), snapshot.asks.len());
@@ -185,7 +205,9 @@ async fn main() -> Result<()> {
                     Ok(frame) => {
                         info!("Account response: {}", frame);
                         if !frame.payload.is_empty() {
-                            if let Ok(summary) = codec::decode_cbor::<AccountSummary>(&frame.payload) {
+                            if let Ok(summary) =
+                                codec::decode_cbor::<AccountSummary>(&frame.payload)
+                            {
                                 info!("  AccountSummary: account={}, balance={}, buying_power={}, currency={}",
                                     summary.account, summary.balance, summary.buying_power, summary.currency);
                             }

@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
-use quinn::crypto::rustls::QuicServerConfig as TreeServerConfig;
 use quinn::crypto::rustls::QuicClientConfig as TreeClientConfig;
+use quinn::crypto::rustls::QuicServerConfig as TreeServerConfig;
+use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
 use tokio::sync::Mutex;
 
 use crate::channel::{ChannelDirection, ChannelManager, ChannelMode};
@@ -40,8 +40,7 @@ pub const ALPN_FIG: &[u8] = b"fig/1";
 /// The returned certificate and private key are suitable for use with
 /// [`server_config`]. The certificate includes `localhost` in its
 /// subject alternative names.
-pub fn generate_self_signed_cert(
-) -> Result<
+pub fn generate_self_signed_cert() -> Result<
     (
         rustls::pki_types::CertificateDer<'static>,
         rustls::pki_types::PrivateKeyDer<'static>,
@@ -55,10 +54,9 @@ pub fn generate_self_signed_cert(
     let cert_der = cert.cert.der().clone();
     let key_der_vec = cert.key_pair.serialize_der();
 
-    let priv_key =
-        rustls::pki_types::PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(
-            key_der_vec,
-        ));
+    let priv_key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+        rustls::pki_types::PrivatePkcs8KeyDer::from(key_der_vec),
+    );
 
     Ok((cert_der, priv_key))
 }
@@ -116,7 +114,10 @@ pub fn server_config_mtls(
 /// Rotating TLS identity for runtime certificate reload (Spec §15).
 #[derive(Debug)]
 pub struct RotatingServerCerts {
-    certs: std::sync::Mutex<(rustls::pki_types::CertificateDer<'static>, rustls::pki_types::PrivateKeyDer<'static>)>,
+    certs: std::sync::Mutex<(
+        rustls::pki_types::CertificateDer<'static>,
+        rustls::pki_types::PrivateKeyDer<'static>,
+    )>,
 }
 
 impl RotatingServerCerts {
@@ -333,10 +334,7 @@ impl FigConnection {
     /// Reconstruct channel state from a restored session after 0-RTT resumption.
     ///
     /// Rebuilds the channel manager and opens TREE streams for each channel.
-    pub async fn reconstruct_from_session(
-        &self,
-        session: &Session,
-    ) -> Result<(), FigError> {
+    pub async fn reconstruct_from_session(&self, session: &Session) -> Result<(), FigError> {
         // Rebuild the channel manager from the session's channel list.
         {
             let new_mgr = ChannelManager::reconstruct(session, false);
@@ -346,9 +344,11 @@ impl FigConnection {
 
         // Reopen TREE streams for each channel in the session.
         for &channel_id in &session.channels {
-            let (send, recv) = self.conn.open_bi().await.map_err(|e| {
-                FigError::ConnectionFailed(e.to_string())
-            })?;
+            let (send, recv) = self
+                .conn
+                .open_bi()
+                .await
+                .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
             self.streams.lock().await.insert(channel_id, (send, recv));
         }
 
@@ -468,11 +468,13 @@ impl FigConnection {
 
         // Get or create the SendStream for this channel.
         let mut streams = self.streams.lock().await;
-        if !streams.contains_key(&channel_id) {
-            let (send, recv) = self.conn.open_bi().await.map_err(|e| {
-                FrameError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-            })?;
-            streams.insert(channel_id, (send, recv));
+        if let std::collections::hash_map::Entry::Vacant(entry) = streams.entry(channel_id) {
+            let (send, recv) = self
+                .conn
+                .open_bi()
+                .await
+                .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+            entry.insert((send, recv));
         }
         let (send, _) = streams.get_mut(&channel_id).unwrap();
 
@@ -483,14 +485,14 @@ impl FigConnection {
                 let code: u64 = error_code.into();
                 return Err(FrameError::IoError(std::io::Error::new(
                     std::io::ErrorKind::ConnectionReset,
-                    format!("stream stopped on channel {}: error_code={}", channel_id, code),
+                    format!(
+                        "stream stopped on channel {}: error_code={}",
+                        channel_id, code
+                    ),
                 )));
             }
             Err(e) => {
-                return Err(FrameError::IoError(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                )));
+                return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
             }
         }
 
@@ -518,14 +520,14 @@ impl FigConnection {
     pub async fn recv_frame(&self, channel_id: u16) -> Result<Frame, FrameError> {
         // Get or create the RecvStream for this channel.
         let mut streams = self.streams.lock().await;
-        if !streams.contains_key(&channel_id) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = streams.entry(channel_id) {
             let (send, recv) = self.conn.accept_bi().await.map_err(|e| {
                 FrameError::IoError(std::io::Error::new(
                     std::io::ErrorKind::ConnectionAborted,
                     e.to_string(),
                 ))
             })?;
-            streams.insert(channel_id, (send, recv));
+            entry.insert((send, recv));
         }
         let (_, recv) = streams.get_mut(&channel_id).unwrap();
 
@@ -563,10 +565,7 @@ impl FigConnection {
                     )));
                 }
                 Err(e) => {
-                    return Err(FrameError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    )));
+                    return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
                 }
             }
         }
@@ -613,10 +612,7 @@ impl FigConnection {
                     )));
                 }
                 Err(e) => {
-                    return Err(FrameError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        e.to_string(),
-                    )));
+                    return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
                 }
             }
         };
@@ -655,8 +651,7 @@ impl FigConnection {
 
     /// Close the entire connection with an error code and reason.
     pub fn close(&self, code: u32, reason: &[u8]) {
-        self.conn
-            .close(quinn::VarInt::from_u32(code), reason);
+        self.conn.close(quinn::VarInt::from_u32(code), reason);
     }
 
     /// Access the underlying TREE connection.
@@ -752,7 +747,7 @@ impl FigServer {
     pub fn local_addr(&self) -> Result<SocketAddr, FigError> {
         self.endpoint
             .local_addr()
-            .map_err(|e| FigError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))
+            .map_err(|e| FigError::IoError(std::io::Error::other(e.to_string())))
     }
 
     /// Access the session store.
@@ -780,9 +775,11 @@ pub struct FigClient {
 impl FigClient {
     /// Create a new FIG client.
     pub fn new(client_config: ClientConfig) -> Result<Self, FigError> {
-        let endpoint = Endpoint::client("0.0.0.0:0".parse::<SocketAddr>().map_err(|e| {
-            FigError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
-        })?)
+        let endpoint = Endpoint::client(
+            "0.0.0.0:0"
+                .parse::<SocketAddr>()
+                .map_err(|e| FigError::IoError(std::io::Error::other(e.to_string())))?,
+        )
         .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
         Ok(Self {
             endpoint,
@@ -839,9 +836,8 @@ impl FigClient {
                 // 0-RTT accepted — session data can be sent immediately.
                 tracing::info!("0-RTT connection accepted");
 
-                let restored_session = resumption_token.and_then(|token| {
-                    Session::from_resumption_token(token).ok()
-                });
+                let restored_session =
+                    resumption_token.and_then(|token| Session::from_resumption_token(token).ok());
 
                 let fig_conn = FigConnection::from_tree(conn, false);
 

@@ -72,7 +72,9 @@ pub fn reconstruct_channels(token: &MigrationToken, is_server: bool) -> ChannelM
 /// Validate that a migration token matches an expected session.
 pub fn validate_migration(token: &MigrationToken, session_id: &Uuid) -> Result<(), FigError> {
     if &token.session_id != session_id {
-        return Err(FigError::HandshakeFailed("migration session_id mismatch".into()));
+        return Err(FigError::HandshakeFailed(
+            "migration session_id mismatch".into(),
+        ));
     }
     Ok(())
 }

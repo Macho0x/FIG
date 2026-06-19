@@ -412,26 +412,22 @@ pub fn decode_extensions(data: &[u8], count: u8) -> FrameResult<Vec<Extension>> 
 fn interpret_extension_value(tag_code: u16, bytes: &[u8]) -> ExtensionValue {
     match tag_code {
         // Text tags
-        0x0001 | 0x0002 | 0x0003 | 0x000C | 0x000D | 0x000E | 0x0010 | 0x0011 |
-        0x0014 | 0x0015 | 0x0016 | 0x0017 | 0x0018 | 0x001E => {
+        0x0001 | 0x0002 | 0x0003 | 0x000C | 0x000D | 0x000E | 0x0010 | 0x0011 | 0x0014 | 0x0015
+        | 0x0016 | 0x0017 | 0x0018 | 0x001E => {
             ExtensionValue::Text(String::from_utf8_lossy(bytes).into_owned())
         }
         // U16 tags
-        0x0004 => ExtensionValue::U16(u16::from_be_bytes(
-            bytes.try_into().unwrap_or([0, 0]),
-        )),
+        0x0004 => ExtensionValue::U16(u16::from_be_bytes(bytes.try_into().unwrap_or([0, 0]))),
         // U32 tags
-        0x0009 | 0x001A | 0x001B | 0x001C => ExtensionValue::U32(u32::from_be_bytes(
-            bytes.try_into().unwrap_or([0, 0, 0, 0]),
-        )),
+        0x0009 | 0x001A | 0x001B | 0x001C => {
+            ExtensionValue::U32(u32::from_be_bytes(bytes.try_into().unwrap_or([0, 0, 0, 0])))
+        }
         // U64 tags
-        0x0006 | 0x000B => ExtensionValue::U64(u64::from_be_bytes(
-            bytes.try_into().unwrap_or([0; 8]),
-        )),
+        0x0006 | 0x000B => {
+            ExtensionValue::U64(u64::from_be_bytes(bytes.try_into().unwrap_or([0; 8])))
+        }
         // I64 tags (timestamps)
-        0x0008 => ExtensionValue::I64(i64::from_be_bytes(
-            bytes.try_into().unwrap_or([0; 8]),
-        )),
+        0x0008 => ExtensionValue::I64(i64::from_be_bytes(bytes.try_into().unwrap_or([0; 8]))),
         // 128-bit tags (UUIDs, correlation IDs, trace IDs)
         0x0005 | 0x0007 | 0x0012 | 0x0013 | 0x0019 => {
             let mut arr = [0u8; 16];
@@ -464,7 +460,10 @@ mod tests {
     #[test]
     fn test_extension_tag_display() {
         assert_eq!(format!("{}", ExtensionTag::RequestUri), "RequestUri");
-        assert_eq!(format!("{}", ExtensionTag::Unknown(0x8001)), "Unknown(0x8001)");
+        assert_eq!(
+            format!("{}", ExtensionTag::Unknown(0x8001)),
+            "Unknown(0x8001)"
+        );
     }
 
     #[test]

@@ -68,9 +68,10 @@ fn encode_hex(bytes: &[u8]) -> String {
 /// Inject trace context into a frame via TRACE_ID extension.
 pub fn inject_trace_context(frame: &mut Frame, ctx: &TraceContext) {
     frame.extensions.retain(|e| e.tag != ExtensionTag::TraceId);
-    frame
-        .extensions
-        .push(Extension::binary(ExtensionTag::TraceId, ctx.trace_id.to_vec()));
+    frame.extensions.push(Extension::binary(
+        ExtensionTag::TraceId,
+        ctx.trace_id.to_vec(),
+    ));
     frame.flags |= crate::frame::Flags::EXTENSIONS;
 }
 
@@ -116,10 +117,8 @@ mod tests {
 
     #[test]
     fn test_inject_extract_trace_context() {
-        let ctx = TraceContext::parse(
-            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
-        )
-        .unwrap();
+        let ctx =
+            TraceContext::parse("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01").unwrap();
 
         let mut frame = Frame::new(FrameType::Request, 1);
         inject_trace_context(&mut frame, &ctx);

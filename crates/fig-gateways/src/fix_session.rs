@@ -221,10 +221,7 @@ impl FixSession {
         msg: &FixMessage,
     ) -> Result<Vec<FixAction>, FixSessionError> {
         let msg_type = msg.msg_type().unwrap_or("?");
-        let seq_num: u32 = msg
-            .get_tag(34)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+        let seq_num: u32 = msg.get_tag(34).and_then(|s| s.parse().ok()).unwrap_or(0);
 
         let poss_dup = msg.get_tag(43) == Some("Y");
 
@@ -710,9 +707,7 @@ mod tests {
         // Receive seq=4 (gap)
         let actions = session.process_incoming(&fix_msg("D", 4)).unwrap();
         match &actions[0] {
-            FixAction::SendResendRequest {
-                begin_seq_no, ..
-            } => {
+            FixAction::SendResendRequest { begin_seq_no, .. } => {
                 assert_eq!(*begin_seq_no, 3); // We expected 3 but got 4
             }
             _ => panic!("expected SendResendRequest"),
@@ -740,10 +735,7 @@ mod tests {
 
         // seq=1 again without PossDupFlag
         let result = session.process_incoming(&fix_msg("A", 1));
-        assert!(matches!(
-            result,
-            Err(FixSessionError::SeqNumTooLow { .. })
-        ));
+        assert!(matches!(result, Err(FixSessionError::SeqNumTooLow { .. })));
     }
 
     // ── Error Cases ───────────────────────────────────────────

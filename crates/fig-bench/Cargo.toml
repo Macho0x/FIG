@@ -15,6 +15,10 @@ ciborium = { workspace = true }
 tokio = { workspace = true }
 
 [[bench]]
+name = "frame_bench"
+harness = false
+
+[[bench]]
 name = "transport_bench"
 harness = false
 

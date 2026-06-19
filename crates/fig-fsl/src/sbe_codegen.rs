@@ -11,10 +11,7 @@ const SCHEMA_ID: u16 = 0x01;
 /// Generate SBE Rust code from an FSL schema
 pub fn generate_sbe(schema: &Schema) -> String {
     let mut out = String::new();
-    let desc = schema
-        .description
-        .as_deref()
-        .unwrap_or(&schema.name);
+    let desc = schema.description.as_deref().unwrap_or(&schema.name);
 
     out.push_str(&format!(
         "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n",
@@ -113,11 +110,16 @@ fn generate_sbe_enum(name: &str, variants: &[String]) -> String {
     out.push_str("}\n\n");
 
     out.push_str(&format!("impl {} {{\n", name));
-    out.push_str(&format!("    pub fn from_value(v: u8) -> Option<Self> {{\n"));
+    out.push_str("    pub fn from_value(v: u8) -> Option<Self> {\n");
     out.push_str("        match v {\n");
     for (i, v) in variants.iter().enumerate() {
         let pascal = pascal_case(v);
-        out.push_str(&format!("            {} => Some({}::{}),\n", i + 1, name, pascal));
+        out.push_str(&format!(
+            "            {} => Some({}::{}),\n",
+            i + 1,
+            name,
+            pascal
+        ));
     }
     out.push_str("            _ => None,\n");
     out.push_str("        }\n");
@@ -265,20 +267,13 @@ fn generate_sbe_message_decoder(
     // Read header
     out.push_str("        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);\n");
     out.push_str("        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);\n");
-    out.push_str(&format!(
-        "        // version = u16::from_be_bytes([buf[4], buf[5]]);\n"
-    ));
-    out.push_str(&format!(
-        "        // block_length = u16::from_be_bytes([buf[6], buf[7]]);\n\n"
-    ));
+    out.push_str("        // version = u16::from_be_bytes([buf[4], buf[5]]);\n");
+    out.push_str("        // block_length = u16::from_be_bytes([buf[6], buf[7]]);\n\n");
 
     out.push_str(&format!("        if schema_id != {} {{\n", SCHEMA_ID));
     out.push_str("            return Err(format!(\"invalid schema_id: {}\", schema_id));\n");
     out.push_str("        }\n");
-    out.push_str(&format!(
-        "        if tmpl_id != {} {{\n",
-        template_id
-    ));
+    out.push_str(&format!("        if tmpl_id != {} {{\n", template_id));
     out.push_str("            return Err(format!(\"invalid template_id: {}\", tmpl_id));\n");
     out.push_str("        }\n\n");
 
@@ -310,10 +305,7 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
         FieldType::Enum(_enum_def) => {
             let enum_name = format!("{}{}", msg.name, pascal_case(field_name));
             let varname = field_name.clone();
-            out.push_str(&format!(
-                "        let {}_raw = buf[pos];\n",
-                varname
-            ));
+            out.push_str(&format!("        let {}_raw = buf[pos];\n", varname));
             out.push_str("        pos += 1;\n");
             out.push_str(&format!(
                 "        let {} = {}::from_value({}_raw)\n",
@@ -332,7 +324,8 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
             } else {
                 "u8".to_string()
             };
-            let _rust_type = sbe_field_type_name_for_message(&field.field_type, &msg.name, field_name);
+            let _rust_type =
+                sbe_field_type_name_for_message(&field.field_type, &msg.name, field_name);
 
             match bt.as_str() {
                 "str" => {
@@ -359,10 +352,7 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
                         field_name
                     ));
                     for i in 0..8 {
-                        out.push_str(&format!(
-                            "            buf[pos+{}],\n",
-                            i
-                        ));
+                        out.push_str(&format!("            buf[pos+{}],\n", i));
                     }
                     out.push_str("        ]);\n");
                     out.push_str("        pos += 8;\n");
@@ -370,7 +360,10 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
                         out.push_str(&format!("        let {} = if buf[pos] == 1 {{ Some({}_raw) }} else {{ None }};\n", field_name, field_name));
                         out.push_str("        pos += 1;\n");
                     } else {
-                        out.push_str(&format!("        let {} = {}_raw;\n", field_name, field_name));
+                        out.push_str(&format!(
+                            "        let {} = {}_raw;\n",
+                            field_name, field_name
+                        ));
                     }
                 }
                 "i64" => {
@@ -379,19 +372,13 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
                         field_name
                     ));
                     for i in 0..8 {
-                        out.push_str(&format!(
-                            "            buf[pos+{}],\n",
-                            i
-                        ));
+                        out.push_str(&format!("            buf[pos+{}],\n", i));
                     }
                     out.push_str("        ]);\n");
                     out.push_str("        pos += 8;\n");
                 }
                 "u8" => {
-                    out.push_str(&format!(
-                        "        let {} = buf[pos];\n",
-                        field_name
-                    ));
+                    out.push_str(&format!("        let {} = buf[pos];\n", field_name));
                     out.push_str("        pos += 1;\n");
                 }
                 _ => {
@@ -419,39 +406,25 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
             if let FieldType::Named(_) = inner.as_ref() {
                 // Named struct type
                 let inner_decoder = format!("{}Decoder", inner_type);
-                out.push_str(&format!(
-                    "        for _ in 0..{}_count {{\n",
-                    field_name
-                ));
+                out.push_str(&format!("        for _ in 0..{}_count {{\n", field_name));
                 out.push_str(&format!(
                     "            let item = {}::decode(&buf[pos..])?;\n",
                     inner_decoder
                 ));
-                out.push_str(&format!(
-                    "            let item_len = item.encoded_len();\n",
-                ));
+                out.push_str("            let item_len = item.encoded_len();\n");
                 out.push_str("            pos += item_len;\n");
-                out.push_str(&format!(
-                    "            {}.push(item);\n",
-                    field_name
-                ));
+                out.push_str(&format!("            {}.push(item);\n", field_name));
                 out.push_str("        }\n");
             } else {
                 // Inline struct
                 let inner_wire = sbe_field_type_name(inner);
-                out.push_str(&format!(
-                    "        for _ in 0..{}_count {{\n",
-                    field_name
-                ));
+                out.push_str(&format!("        for _ in 0..{}_count {{\n", field_name));
                 out.push_str(&format!(
                     "            let item = {}Decoder::decode(&buf[pos..])?;\n",
                     inner_wire
                 ));
                 out.push_str("            pos += item.encoded_len();\n");
-                out.push_str(&format!(
-                    "            {}.push(item);\n",
-                    field_name
-                ));
+                out.push_str(&format!("            {}.push(item);\n", field_name));
                 out.push_str("        }\n");
             }
         }
@@ -465,53 +438,47 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
                 "        let {} = {}Decoder::decode(&buf[pos..])?;\n",
                 field_name, struct_name
             ));
-            out.push_str(&format!(
-                "        pos += {}.encoded_len();\n",
-                field_name
-            ));
+            out.push_str(&format!("        pos += {}.encoded_len();\n", field_name));
         }
     }
 
     // Handle optional presence flags for string fields
     if optional {
-        match &field.field_type {
-            ft @ (FieldType::Named(_) | FieldType::InlineBase(_, _)) => {
-                let bt = if let FieldType::Named(n) = ft {
-                    sbe_named_type_to_wire_type(n)
-                } else if let FieldType::InlineBase(bt, _) = ft {
-                    sbe_base_type_to_wire_type(bt)
-                } else {
-                    "".to_string()
-                };
-                if bt == "str" {
-                    // Read presence flag and optional string
-                    out.push_str(&format!(
-                        "        let {} = if buf[pos] == 1 {{\n",
-                        field_name
-                    ));
-                    out.push_str("            pos += 1;\n");
-                    out.push_str(&format!(
-                        "            let {}_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;\n",
-                        field_name
-                    ));
-                    out.push_str("            pos += 2;\n");
-                    out.push_str(&format!(
-                        "            let {}_bytes = &buf[pos..pos+{}_len];\n",
-                        field_name, field_name
-                    ));
-                    out.push_str(&format!("            pos += {}_len;\n", field_name));
-                    out.push_str(&format!(
-                        "            Some(std::str::from_utf8({}_bytes)\n",
-                        field_name
-                    ));
-                    out.push_str("                .map_err(|e| format!(\"invalid UTF-8: {}\", e))?.to_string())\n");
-                    out.push_str("        } else {\n");
-                    out.push_str("            pos += 1;\n");
-                    out.push_str("            None\n");
-                    out.push_str("        };\n");
-                }
+        if let ft @ (FieldType::Named(_) | FieldType::InlineBase(_, _)) = &field.field_type {
+            let bt = if let FieldType::Named(n) = ft {
+                sbe_named_type_to_wire_type(n)
+            } else if let FieldType::InlineBase(bt, _) = ft {
+                sbe_base_type_to_wire_type(bt)
+            } else {
+                "".to_string()
+            };
+            if bt == "str" {
+                // Read presence flag and optional string
+                out.push_str(&format!(
+                    "        let {} = if buf[pos] == 1 {{\n",
+                    field_name
+                ));
+                out.push_str("            pos += 1;\n");
+                out.push_str(&format!(
+                    "            let {}_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;\n",
+                    field_name
+                ));
+                out.push_str("            pos += 2;\n");
+                out.push_str(&format!(
+                    "            let {}_bytes = &buf[pos..pos+{}_len];\n",
+                    field_name, field_name
+                ));
+                out.push_str(&format!("            pos += {}_len;\n", field_name));
+                out.push_str(&format!(
+                    "            Some(std::str::from_utf8({}_bytes)\n",
+                    field_name
+                ));
+                out.push_str("                .map_err(|e| format!(\"invalid UTF-8: {}\", e))?.to_string())\n");
+                out.push_str("        } else {\n");
+                out.push_str("            pos += 1;\n");
+                out.push_str("            None\n");
+                out.push_str("        };\n");
             }
-            _ => {}
         }
     }
 
@@ -555,21 +522,13 @@ fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String 
                             "        {}.push(if {}.is_some() {{ 1 }} else {{ 0 }});\n",
                             buf_var, field_name
                         ));
-                        out.push_str(&format!(
-                            "        if let Some(ref s) = {} {{\n",
-                            field_name
-                        ));
-                        out.push_str(&format!(
-                            "            let b = s.as_bytes();\n",
-                        ));
+                        out.push_str(&format!("        if let Some(ref s) = {} {{\n", field_name));
+                        out.push_str("            let b = s.as_bytes();\n");
                         out.push_str(&format!(
                             "            {}.extend_from_slice(&(b.len() as u16).to_be_bytes());\n",
                             buf_var
                         ));
-                        out.push_str(&format!(
-                            "            {}.extend_from_slice(b);\n",
-                            buf_var
-                        ));
+                        out.push_str(&format!("            {}.extend_from_slice(b);\n", buf_var));
                         out.push_str("        }\n");
                     } else {
                         out.push_str(&format!(
@@ -609,10 +568,7 @@ fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String 
                             "        {}.push(if {}.is_some() {{ 1 }} else {{ 0 }});\n",
                             buf_var, field_name
                         ));
-                        out.push_str(&format!(
-                            "        if let Some(v) = {} {{\n",
-                            field_name
-                        ));
+                        out.push_str(&format!("        if let Some(v) = {} {{\n", field_name));
                         out.push_str(&format!(
                             "            {}.extend_from_slice(&v.to_be_bytes());\n",
                             buf_var
@@ -636,10 +592,7 @@ fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String 
                             buf_var, field_name
                         ));
                     } else {
-                        out.push_str(&format!(
-                            "        {}.push({});\n",
-                            buf_var, field_name
-                        ));
+                        out.push_str(&format!("        {}.push({});\n", buf_var, field_name));
                     }
                 }
                 _ => {
@@ -657,10 +610,7 @@ fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String 
                 "        {}.extend_from_slice(&({}.len() as u32).to_be_bytes());\n",
                 buf_var, field_name
             ));
-            out.push_str(&format!(
-                "        for item in &{} {{\n",
-                field_name
-            ));
+            out.push_str(&format!("        for item in &{} {{\n", field_name));
             if let FieldType::Named(_) = inner.as_ref() {
                 out.push_str(&format!(
                     "            {}Encoder::encode(item, {});\n",
@@ -749,7 +699,9 @@ fn sbe_base_type_to_wire_type(bt: &BaseType) -> String {
         BaseType::Int8 | BaseType::UInt8 | BaseType::Bool => "u8".to_string(),
         BaseType::Int16 | BaseType::UInt16 => "u16".to_string(),
         BaseType::Int32 | BaseType::UInt32 | BaseType::Float32 => "u32".to_string(),
-        BaseType::Int64 | BaseType::UInt64 | BaseType::Float64 | BaseType::Decimal64 => "i64".to_string(),
+        BaseType::Int64 | BaseType::UInt64 | BaseType::Float64 | BaseType::Decimal64 => {
+            "i64".to_string()
+        }
         BaseType::Bytes => "bytes".to_string(),
         BaseType::List(_) => "list".to_string(),
     }
@@ -799,9 +751,10 @@ fn sbe_field_encoded_size(ft: &FieldType) -> usize {
         },
         FieldType::Enum(_) => 1,
         FieldType::List(_) => 0,
-        FieldType::InlineStruct(fields) => {
-            fields.iter().map(|f| sbe_field_encoded_size(&f.field_type)).sum()
-        }
+        FieldType::InlineStruct(fields) => fields
+            .iter()
+            .map(|f| sbe_field_encoded_size(&f.field_type))
+            .sum(),
         FieldType::InlineBase(bt, _) => match bt {
             BaseType::String | BaseType::Bytes => 0,
             BaseType::Int8 | BaseType::UInt8 | BaseType::Bool => 1,

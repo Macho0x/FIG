@@ -4,7 +4,11 @@ use std::path::PathBuf;
 
 /// FIG FSL (Fig Schema Language) compiler
 #[derive(Parser)]
-#[command(name = "ftlc", version, about = "FIG FSL (Fig Schema Language) compiler")]
+#[command(
+    name = "ftlc",
+    version,
+    about = "FIG FSL (Fig Schema Language) compiler"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -87,13 +91,16 @@ fn main() -> anyhow::Result<()> {
                 "typescript" | "ts" => "generated.ts".to_string(),
                 "ocaml" => "generated.ml".to_string(),
                 "zig" => "generated.zig".to_string(),
-                "json-schema" | "jsonschema" => format!("{}.schema.json", schema.name.replace('.', "_")),
+                "json-schema" | "jsonschema" => {
+                    format!("{}.schema.json", schema.name.replace('.', "_"))
+                }
                 "fix-yaml" | "fix" => format!("{}.fix.yaml", schema.name.replace('.', "_")),
                 _ => "generated.rs".to_string(),
             };
             let output_path = out.join(output_filename);
-            std::fs::write(&output_path, &code)
-                .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
+            std::fs::write(&output_path, &code).with_context(|| {
+                format!("Failed to write output file: {}", output_path.display())
+            })?;
 
             println!("Generated {} code: {}", lang, output_path.display());
             println!("  Schema: {} {}", schema.name, schema.version);
@@ -132,10 +139,7 @@ fn main() -> anyhow::Result<()> {
                     println!("{:#?}", schema);
                 }
                 other => {
-                    anyhow::bail!(
-                        "Unknown format '{}'. Use 'json' or 'debug'.",
-                        other
-                    );
+                    anyhow::bail!("Unknown format '{}'. Use 'json' or 'debug'.", other);
                 }
             }
         }

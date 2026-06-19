@@ -83,10 +83,8 @@ mod tests {
 
     #[test]
     fn test_channel_specific_requirements() {
-        let policy = ChannelAuthPolicy::new().require_for_channel(
-            5,
-            vec!["marketdata:read".into()],
-        );
+        let policy =
+            ChannelAuthPolicy::new().require_for_channel(5, vec!["marketdata:read".into()]);
 
         let allowed = auth_with(vec!["marketdata:read"]);
         let denied = auth_with(vec!["orders:write"]);

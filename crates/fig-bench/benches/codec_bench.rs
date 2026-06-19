@@ -2,13 +2,10 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::messages::{
-    ExecType, ExecutionReport, NewOrderSingle, OrderType, OrdStatus, Price, Quantity, Side,
+    ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, Side,
     TimeInForce,
 };
-use fig_core::sbe::{
-    decode_new_order_single, encode_execution_report,
-    encode_new_order_single,
-};
+use fig_core::sbe::{decode_new_order_single, encode_execution_report, encode_new_order_single};
 
 fn make_order() -> NewOrderSingle {
     NewOrderSingle {

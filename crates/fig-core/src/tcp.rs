@@ -203,7 +203,10 @@ mod tests {
             let mut conn = server.accept().await.unwrap();
             let frame = conn.recv_frame().await.unwrap();
             assert_eq!(frame.frame_type, FrameType::Control);
-            assert_eq!(frame.control_subtype(), Some(crate::frame::ControlSubtype::Ping));
+            assert_eq!(
+                frame.control_subtype(),
+                Some(crate::frame::ControlSubtype::Ping)
+            );
             assert_eq!(frame.channel_id, CONTROL_CHANNEL);
             conn.send_frame(&Frame::pong()).await.unwrap();
         });
@@ -211,7 +214,10 @@ mod tests {
         let mut client = FigTcpConnection::connect(addr).await.unwrap();
         client.send_frame(&Frame::ping()).await.unwrap();
         let pong = client.recv_frame().await.unwrap();
-        assert_eq!(pong.control_subtype(), Some(crate::frame::ControlSubtype::Pong));
+        assert_eq!(
+            pong.control_subtype(),
+            Some(crate::frame::ControlSubtype::Pong)
+        );
 
         server_handle.await.unwrap();
     }
@@ -234,14 +240,12 @@ mod tests {
             assert_eq!(f2.channel_id, ch2);
 
             conn.send_frame(
-                &Frame::new(FrameType::Response, ch1)
-                    .with_payload(b"ch1-response".to_vec()),
+                &Frame::new(FrameType::Response, ch1).with_payload(b"ch1-response".to_vec()),
             )
             .await
             .unwrap();
             conn.send_frame(
-                &Frame::new(FrameType::Response, ch2)
-                    .with_payload(b"ch2-response".to_vec()),
+                &Frame::new(FrameType::Response, ch2).with_payload(b"ch2-response".to_vec()),
             )
             .await
             .unwrap();
@@ -252,15 +256,11 @@ mod tests {
         let ch2 = client.open_channel(ChannelMode::Stateless, None).unwrap();
 
         client
-            .send_frame(
-                &Frame::new(FrameType::Request, ch1).with_payload(b"ch1-request".to_vec()),
-            )
+            .send_frame(&Frame::new(FrameType::Request, ch1).with_payload(b"ch1-request".to_vec()))
             .await
             .unwrap();
         client
-            .send_frame(
-                &Frame::new(FrameType::Request, ch2).with_payload(b"ch2-request".to_vec()),
-            )
+            .send_frame(&Frame::new(FrameType::Request, ch2).with_payload(b"ch2-request".to_vec()))
             .await
             .unwrap();
 

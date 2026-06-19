@@ -239,10 +239,18 @@ fn cancel_reject_reason_to_u8(r: &CancelRejectReason) -> u8 {
 
 fn cancel_reject_reason_from_u8(v: u8) -> Option<CancelRejectReason> {
     match v {
-        v if v == cancel_reject_reason_values::ORDER_NOT_FOUND => Some(CancelRejectReason::OrderNotFound),
-        v if v == cancel_reject_reason_values::ALREADY_CANCELED => Some(CancelRejectReason::AlreadyCanceled),
-        v if v == cancel_reject_reason_values::ALREADY_FILLED => Some(CancelRejectReason::AlreadyFilled),
-        v if v == cancel_reject_reason_values::TOO_LATE_TO_CANCEL => Some(CancelRejectReason::TooLateToCancel),
+        v if v == cancel_reject_reason_values::ORDER_NOT_FOUND => {
+            Some(CancelRejectReason::OrderNotFound)
+        }
+        v if v == cancel_reject_reason_values::ALREADY_CANCELED => {
+            Some(CancelRejectReason::AlreadyCanceled)
+        }
+        v if v == cancel_reject_reason_values::ALREADY_FILLED => {
+            Some(CancelRejectReason::AlreadyFilled)
+        }
+        v if v == cancel_reject_reason_values::TOO_LATE_TO_CANCEL => {
+            Some(CancelRejectReason::TooLateToCancel)
+        }
         _ => None,
     }
 }
@@ -295,7 +303,9 @@ fn read_str(buf: &[u8], pos: &mut usize) -> String {
     *pos += 2;
     let bytes = &buf[*pos..*pos + len];
     *pos += len;
-    std::str::from_utf8(bytes).expect("invalid UTF-8 in SBE string").to_string()
+    std::str::from_utf8(bytes)
+        .expect("invalid UTF-8 in SBE string")
+        .to_string()
 }
 
 fn write_f64(buf: &mut Vec<u8>, v: f64) {
@@ -304,8 +314,14 @@ fn write_f64(buf: &mut Vec<u8>, v: f64) {
 
 fn read_f64(buf: &[u8], pos: &mut usize) -> f64 {
     let val = f64::from_be_bytes([
-        buf[*pos], buf[*pos + 1], buf[*pos + 2], buf[*pos + 3],
-        buf[*pos + 4], buf[*pos + 5], buf[*pos + 6], buf[*pos + 7],
+        buf[*pos],
+        buf[*pos + 1],
+        buf[*pos + 2],
+        buf[*pos + 3],
+        buf[*pos + 4],
+        buf[*pos + 5],
+        buf[*pos + 6],
+        buf[*pos + 7],
     ]);
     *pos += 8;
     val
@@ -317,8 +333,14 @@ fn write_i64(buf: &mut Vec<u8>, v: i64) {
 
 fn read_i64(buf: &[u8], pos: &mut usize) -> i64 {
     let val = i64::from_be_bytes([
-        buf[*pos], buf[*pos + 1], buf[*pos + 2], buf[*pos + 3],
-        buf[*pos + 4], buf[*pos + 5], buf[*pos + 6], buf[*pos + 7],
+        buf[*pos],
+        buf[*pos + 1],
+        buf[*pos + 2],
+        buf[*pos + 3],
+        buf[*pos + 4],
+        buf[*pos + 5],
+        buf[*pos + 6],
+        buf[*pos + 7],
     ]);
     *pos += 8;
     val
@@ -392,7 +414,11 @@ impl NewOrderSingleDecoder {
         let price_val = read_f64(buf, &mut pos);
         let has_price = buf[pos];
         pos += 1;
-        let price = if has_price == 1 { Some(Price(price_val)) } else { None };
+        let price = if has_price == 1 {
+            Some(Price(price_val))
+        } else {
+            None
+        };
 
         let symbol = read_str(buf, &mut pos);
         let order_type = order_type_from_u8(buf[pos])
@@ -740,7 +766,11 @@ fn read_price_level(buf: &[u8], pos: &mut usize) -> PriceLevel {
     } else {
         None
     };
-    PriceLevel { price, qty, order_count }
+    PriceLevel {
+        price,
+        qty,
+        order_count,
+    }
 }
 
 impl MarketDataSnapshotEncoder {
@@ -785,7 +815,8 @@ impl MarketDataSnapshotDecoder {
         let exchange = read_str(buf, &mut pos);
 
         // bids
-        let bids_count = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+        let bids_count =
+            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
         pos += 4;
         let mut bids = Vec::with_capacity(bids_count);
         for _ in 0..bids_count {
@@ -793,7 +824,8 @@ impl MarketDataSnapshotDecoder {
         }
 
         // asks
-        let asks_count = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+        let asks_count =
+            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
         pos += 4;
         let mut asks = Vec::with_capacity(asks_count);
         for _ in 0..asks_count {
@@ -835,7 +867,12 @@ fn read_market_data_update(buf: &[u8], pos: &mut usize) -> MarketDataUpdate {
     *pos += 1;
     let price = Price(read_f64(buf, pos));
     let qty = Quantity(read_f64(buf, pos));
-    MarketDataUpdate { side, action, price, qty }
+    MarketDataUpdate {
+        side,
+        action,
+        price,
+        qty,
+    }
 }
 
 impl MarketDataIncrementalRefreshEncoder {
@@ -871,7 +908,8 @@ impl MarketDataIncrementalRefreshDecoder {
 
         let symbol = read_str(buf, &mut pos);
 
-        let updates_count = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+        let updates_count =
+            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
         pos += 4;
         let mut updates = Vec::with_capacity(updates_count);
         for _ in 0..updates_count {
@@ -1030,12 +1068,22 @@ mod tests {
             symbol: "AAPL".to_string(),
             exchange: "NASDAQ".to_string(),
             bids: vec![
-                PriceLevel { price: Price(150.0), qty: Quantity(100.0), order_count: Some(5) },
-                PriceLevel { price: Price(149.5), qty: Quantity(200.0), order_count: None },
+                PriceLevel {
+                    price: Price(150.0),
+                    qty: Quantity(100.0),
+                    order_count: Some(5),
+                },
+                PriceLevel {
+                    price: Price(149.5),
+                    qty: Quantity(200.0),
+                    order_count: None,
+                },
             ],
-            asks: vec![
-                PriceLevel { price: Price(151.0), qty: Quantity(50.0), order_count: Some(3) },
-            ],
+            asks: vec![PriceLevel {
+                price: Price(151.0),
+                qty: Quantity(50.0),
+                order_count: Some(3),
+            }],
             timestamp: 1700000000000000000,
         };
 

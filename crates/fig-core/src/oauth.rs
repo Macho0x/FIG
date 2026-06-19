@@ -61,10 +61,7 @@ impl OAuthValidator {
 
     /// Introspect a bearer token and return auth result.
     pub fn validate(&self, token: &str) -> Result<AuthResult, OAuthError> {
-        let info = self
-            .tokens
-            .get(token)
-            .ok_or(OAuthError::InvalidToken)?;
+        let info = self.tokens.get(token).ok_or(OAuthError::InvalidToken)?;
 
         if !info.active {
             return Err(OAuthError::InvalidToken);
@@ -80,11 +77,7 @@ impl OAuthValidator {
             return Err(OAuthError::Expired);
         }
 
-        let permissions: Vec<String> = info
-            .scope
-            .split_whitespace()
-            .map(String::from)
-            .collect();
+        let permissions: Vec<String> = info.scope.split_whitespace().map(String::from).collect();
 
         Ok(AuthResult::new(
             AuthMethod::Token(token.to_string()),
@@ -140,8 +133,8 @@ mod tests {
     fn test_oauth_rejects_expired() {
         let mut info = sample_info();
         info.exp = 1;
-        let validator = OAuthValidator::new("https://auth.example.com")
-            .register_token("expired", info);
+        let validator =
+            OAuthValidator::new("https://auth.example.com").register_token("expired", info);
         assert!(matches!(
             validator.validate("expired"),
             Err(OAuthError::Expired)

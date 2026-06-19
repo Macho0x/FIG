@@ -1,6 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use fig_core::frame::{Frame, FrameType};
-use fig_core::transport::{client_config, generate_self_signed_cert, server_config, FigClient, FigServer};
+use fig_core::transport::{
+    client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
+};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -27,11 +29,11 @@ fn tree_round_trip(c: &mut Criterion) {
                 });
 
                 let client = FigClient::new(client_cfg.clone()).unwrap();
-                let conn = client
-                    .connect(addr, "localhost")
+                let conn = client.connect(addr, "localhost").await.unwrap();
+                let ch = conn
+                    .open_channel(fig_core::channel::ChannelMode::Stateless, None)
                     .await
                     .unwrap();
-                let ch = conn.open_channel(fig_core::channel::ChannelMode::Stateless, None).await.unwrap();
                 conn.send_frame(ch, &Frame::ping()).await.unwrap();
                 let pong = conn.recv_frame(ch).await.unwrap();
                 black_box(pong);
@@ -71,7 +73,10 @@ fn tree_throughput(c: &mut Criterion) {
 
                 let client = FigClient::new(client_cfg.clone()).unwrap();
                 let conn = client.connect(addr, "localhost").await.unwrap();
-                let ch = conn.open_channel(fig_core::channel::ChannelMode::Stateless, None).await.unwrap();
+                let ch = conn
+                    .open_channel(fig_core::channel::ChannelMode::Stateless, None)
+                    .await
+                    .unwrap();
                 let frame = Frame::new(FrameType::Request, ch).with_payload(b"x".repeat(64));
                 for _ in 0..100 {
                     conn.send_frame(ch, &frame).await.unwrap();

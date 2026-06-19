@@ -11,7 +11,9 @@ use crate::error::FrameError;
 ///
 /// Uses a simplified field layout: keys become string field names hashed
 /// to field numbers for wire encoding of scalar values.
-pub fn encode_protobuf_map(fields: &HashMap<String, serde_json::Value>) -> Result<Vec<u8>, FrameError> {
+pub fn encode_protobuf_map(
+    fields: &HashMap<String, serde_json::Value>,
+) -> Result<Vec<u8>, FrameError> {
     let mut buf = Vec::new();
     for (i, (key, value)) in fields.iter().enumerate() {
         let field_num = (i + 1) as u32;
@@ -90,7 +92,11 @@ fn encode_proto_field(
     Ok(())
 }
 
-fn decode_proto_value(data: &[u8], pos: &mut usize, wire_type: u64) -> Result<serde_json::Value, FrameError> {
+fn decode_proto_value(
+    data: &[u8],
+    pos: &mut usize,
+    wire_type: u64,
+) -> Result<serde_json::Value, FrameError> {
     match wire_type {
         0 => {
             let (v, new_pos) = read_varint(data, *pos)?;
@@ -107,8 +113,7 @@ fn decode_proto_value(data: &[u8], pos: &mut usize, wire_type: u64) -> Result<se
             let bytes: [u8; 8] = data[*pos..*pos + 8].try_into().unwrap();
             *pos += 8;
             Ok(serde_json::Value::Number(
-                serde_json::Number::from_f64(f64::from_le_bytes(bytes))
-                    .unwrap_or_else(|| 0.into()),
+                serde_json::Number::from_f64(f64::from_le_bytes(bytes)).unwrap_or_else(|| 0.into()),
             ))
         }
         2 => {

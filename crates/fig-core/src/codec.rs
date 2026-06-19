@@ -45,8 +45,8 @@ pub fn encode_json(value: &serde_json::Value) -> Result<Vec<u8>, FrameError> {
 /// Parses JSON into a generic value, then encodes as CBOR. Invalid JSON
 /// is rejected before CBOR encoding begins.
 pub fn json_to_cbor(json: &str) -> Result<Vec<u8>, FrameError> {
-    let value: serde_json::Value = serde_json::from_str(json)
-        .map_err(|e| FrameError::CborDecodeError(e.to_string()))?;
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| FrameError::CborDecodeError(e.to_string()))?;
     encode_cbor(&value)
 }
 
@@ -174,12 +174,24 @@ mod tests {
         let book = OrderBook {
             symbol: "AAPL".into(),
             bids: vec![
-                Level { price: 150.10, size: 500 },
-                Level { price: 150.05, size: 300 },
+                Level {
+                    price: 150.10,
+                    size: 500,
+                },
+                Level {
+                    price: 150.05,
+                    size: 300,
+                },
             ],
             asks: vec![
-                Level { price: 150.20, size: 200 },
-                Level { price: 150.25, size: 400 },
+                Level {
+                    price: 150.20,
+                    size: 200,
+                },
+                Level {
+                    price: 150.25,
+                    size: 400,
+                },
             ],
         };
 

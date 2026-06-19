@@ -162,9 +162,8 @@ pub fn reassemble_fragments(fragments: Vec<Frame>) -> Result<Frame, FrameError> 
     let mut reassembler = FragmentReassembler::new();
     let mut result = None;
     for fragment in fragments {
-        match reassembler.feed(fragment)? {
-            Some(frame) => result = Some(frame),
-            None => {}
+        if let Some(frame) = reassembler.feed(fragment)? {
+            result = Some(frame);
         }
     }
     result.ok_or(FrameError::BufferTooShort {
@@ -224,7 +223,10 @@ mod tests {
     fn test_reassembler_incremental_feed() {
         let base = Frame::new(FrameType::StreamItem, 3)
             .with_seq(7)
-            .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/cbor",
+            ))
             .with_payload(b"abcdefghijklmnop".to_vec());
 
         let fragments = split_frame(&base, 4).unwrap();
