@@ -123,13 +123,19 @@ fn test_typescript_codegen_orders() {
     let schema = orders_schema();
     let code = TypeScriptCodegen::generate(&schema);
     assert!(code.contains("export interface NewOrderSingle"));
+    assert!(code.contains("export type Side ="));
+    assert!(code.contains("export type ClientOrderId = string"));
+    assert!(code.contains("NewOrderSingleChannelType"));
+    assert!(code.contains("CBOR (snake_case keys"));
 }
 
 #[test]
 fn test_ocaml_codegen_orders() {
     let schema = orders_schema();
     let code = OcamlCodegen::generate(&schema);
-    assert!(code.contains("type NewOrderSingle"));
+    assert!(code.contains("type NewOrderSingle ="));
+    assert!(code.contains("type Side ="));
+    assert!(code.contains("type ClientOrderId = string"));
 }
 
 #[test]
@@ -137,6 +143,17 @@ fn test_zig_codegen_orders() {
     let schema = orders_schema();
     let code = ZigCodegen::generate(&schema);
     assert!(code.contains("pub const NewOrderSingle"));
+    assert!(code.contains("pub const Side = enum(u8)"));
+    assert!(code.contains("pub const ClientOrderId = []const u8"));
+}
+
+#[test]
+fn test_java_codegen_orders() {
+    let schema = orders_schema();
+    let code = fig_fsl::JavaCodegen::generate(&schema);
+    assert!(code.contains("public class NewOrderSingle"));
+    assert!(code.contains("public enum Side"));
+    assert!(code.contains("NewOrderSingleChannelType"));
 }
 
 #[test]

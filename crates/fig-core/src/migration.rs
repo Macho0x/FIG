@@ -4,6 +4,7 @@
 //! This module captures channel state for handoff and reapplies it on the
 //! new connection.
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::channel::ChannelManager;
@@ -11,14 +12,14 @@ use crate::error::{FigError, SessionError};
 use crate::session::Session;
 
 /// Token capturing migratable connection state.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MigrationToken {
     pub session_id: Uuid,
     pub channels: Vec<MigratedChannel>,
 }
 
 /// Per-channel state preserved across migration.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MigratedChannel {
     pub channel_id: u16,
     pub last_sent_seq: u32,

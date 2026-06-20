@@ -130,6 +130,65 @@ uint64_t fig_client_channel_stream_id(uint16_t channel_id, uint8_t is_server);
 
 int32_t fig_cbor_encode_open_orders_request(struct FigBuffer *out);
 
+/**
+ * Compress payload bytes with zstd. Returns 0 on success.
+ */
+int32_t fig_payload_compress(const uint8_t *data, uintptr_t data_len, struct FigBuffer *out);
+
+/**
+ * Decompress zstd payload bytes. Returns 0 on success.
+ */
+int32_t fig_payload_decompress(const uint8_t *data, uintptr_t data_len, struct FigBuffer *out);
+
+/**
+ * Split an encoded frame into fragments (max payload size per fragment).
+ */
+int32_t fig_frame_split(const uint8_t *frame_bytes,
+                        uintptr_t frame_len,
+                        uintptr_t max_payload,
+                        struct FigFrameList *out);
+
+/**
+ * Reassemble fragment frames (encoded bytes concatenated in `frames` array).
+ */
+int32_t fig_frames_reassemble(const uint8_t *const *frame_ptrs,
+                              const uintptr_t *frame_lens,
+                              uintptr_t count,
+                              struct FigBuffer *out);
+
+/**
+ * Connect with optional 0-RTT resumption token.
+ */
+int32_t fig_client_connect_0rtt(const char *addr,
+                                const char *server_name,
+                                const uint8_t *resumption_token,
+                                uintptr_t token_len,
+                                struct FigClientHandle **out);
+
+/**
+ * Export resumption token for an active session (if present).
+ */
+int32_t fig_client_export_resumption_token(struct FigClientHandle *handle, struct FigBuffer *out);
+
+/**
+ * Prepare migration token CBOR bytes from active session + connection.
+ */
+int32_t fig_client_migration_prepare(struct FigClientHandle *handle, struct FigBuffer *out);
+
+/**
+ * Apply migration token CBOR and reopen channels on the connection.
+ */
+int32_t fig_client_migration_apply(struct FigClientHandle *handle,
+                                   const uint8_t *token_bytes,
+                                   uintptr_t token_len);
+
+/**
+ * Restore session from resumption token bytes (without connecting).
+ */
+int32_t fig_session_from_resumption_token(const uint8_t *token_bytes,
+                                          uintptr_t token_len,
+                                          struct FigBuffer *out);
+
 void fig_frame_list_free(struct FigFrameList list);
 
 /**
@@ -151,5 +210,47 @@ int32_t fig_client_request_and_recv(struct FigClientHandle *handle,
  * Send PING on channel 0.
  */
 int32_t fig_client_ping(struct FigClientHandle *handle);
+
+/**
+ * Extract payload bytes from an encoded FIG frame.
+ */
+int32_t fig_frame_payload(const uint8_t *frame_bytes,
+                          uintptr_t frame_len,
+                          struct FigBuffer *out,
+                          uint8_t *out_frame_type,
+                          uint8_t *out_schema_id);
+
+/**
+ * Return 1 when frame is STREAM_ITEM, else 0. Returns -1 on decode error.
+ */
+int32_t fig_frame_is_stream_item(const uint8_t *frame_bytes, uintptr_t frame_len);
+
+/**
+ * Decode ExecutionReport CBOR payload; write cl_ord_id to newly allocated C string.
+ */
+int32_t fig_cbor_decode_execution_report_cl_ord_id(const uint8_t *data,
+                                                   uintptr_t data_len,
+                                                   char **out_cl_ord_id);
+
+/**
+ * Decode SymbolTicker CBOR; returns last price in `out_price` (0 on success).
+ */
+int32_t fig_cbor_decode_symbol_ticker_price(const uint8_t *data,
+                                            uintptr_t data_len,
+                                            double *out_price);
+
+/**
+ * Decode BalanceSnapshot CBOR; returns account id via allocated C string.
+ */
+int32_t fig_cbor_decode_balance_snapshot_account(const uint8_t *data,
+                                                 uintptr_t data_len,
+                                                 char **out_account);
+
+/**
+ * Decode MarketDataSnapshot CBOR; returns symbol via allocated C string.
+ */
+int32_t fig_cbor_decode_market_data_snapshot_symbol(const uint8_t *data,
+                                                    uintptr_t data_len,
+                                                    char **out_symbol);
 
 #endif  /* FIG_FFI_H */

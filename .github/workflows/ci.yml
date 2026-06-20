@@ -29,6 +29,8 @@ jobs:
         run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python binding_conformance
       - name: FFI binding conformance
         run: cargo test -p fig-ffi binding_conformance
+      - name: FFI Tier 4 smoke tests
+        run: cargo test -p fig-ffi --test advanced
       - name: Build fig-cli
         run: cargo build -p fig-cli --all-features
       - name: Codegen drift check

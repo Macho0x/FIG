@@ -29,4 +29,4 @@ See [`fig.ts`](fig.ts) for `FigClient` (connect, ping) over `node:ffi`.
 
 ## Status
 
-🔶 Thin `fig.ts` wrapper landed (connect/ping). Full request/subscribe parity tracks [TODO.md §16.3](../../TODO.md). Decision: [ADR 0005](../../docs/adr/0005-multi-language-runtime-strategy.md).
+🔶 `fig.ts` wrapper landed — connect (incl. 0-RTT token), request, subscribe, stream payload decode, compression. FSL types via `ftlc --lang typescript`. Tracks [TODO.md §16](../../TODO.md).

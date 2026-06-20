@@ -6,6 +6,7 @@ use std::os::raw::c_char;
 use std::sync::{Arc, Mutex};
 
 use fig_core::frame::Frame;
+use fig_core::session::Session;
 use fig_core::transport::{client_config, FigClient, FigConnection};
 use tokio::runtime::Runtime;
 
@@ -13,8 +14,9 @@ use crate::{into_buffer, FigBuffer};
 
 /// Opaque connected FIG client (one TREE connection).
 pub struct FigClientHandle {
-    rt: Runtime,
-    conn: Arc<Mutex<Option<Arc<FigConnection>>>>,
+    pub(crate) rt: Runtime,
+    pub(crate) conn: Arc<Mutex<Option<Arc<FigConnection>>>>,
+    pub(crate) session: Arc<Mutex<Option<Session>>>,
 }
 
 /// List of encoded frames returned from request/subscribe calls.
@@ -92,6 +94,7 @@ pub unsafe extern "C" fn fig_client_connect(
     *out = Box::into_raw(Box::new(FigClientHandle {
         rt,
         conn: Arc::new(Mutex::new(Some(Arc::new(conn)))),
+        session: Arc::new(Mutex::new(None)),
     }));
     0
 }
@@ -114,7 +117,7 @@ fn send_frame_and_recv_all(handle: &FigClientHandle, frame: Frame) -> Result<Vec
         .block_on(async move { conn.request_and_recv_all(frame).await.map_err(|_| -6) })
 }
 
-fn frames_to_list(frames: Vec<Frame>) -> Result<FigFrameList, i32> {
+pub(crate) fn frames_to_list(frames: Vec<Frame>) -> Result<FigFrameList, i32> {
     let mut out: Vec<FigBuffer> = Vec::with_capacity(frames.len());
     for frame in frames {
         let bytes = frame.encode().map_err(|_| -7)?;

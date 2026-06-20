@@ -68,10 +68,11 @@ fn main() -> anyhow::Result<()> {
                 "typescript" | "ts" => fig_fsl::TypeScriptCodegen::generate(&schema),
                 "ocaml" => fig_fsl::OcamlCodegen::generate(&schema),
                 "zig" => fig_fsl::ZigCodegen::generate(&schema),
+                "java" => fig_fsl::JavaCodegen::generate(&schema),
                 "json-schema" | "jsonschema" => fig_fsl::JsonSchemaCodegen::generate(&schema),
                 "fix-yaml" | "fix" => fig_fsl::FixYamlCodegen::generate(&schema),
                 other => anyhow::bail!(
-                    "Unsupported language '{}'. Supported: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, json-schema, fix-yaml.",
+                    "Unsupported language '{}'. Supported: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, java, json-schema, fix-yaml.",
                     other
                 ),
             };
@@ -91,6 +92,7 @@ fn main() -> anyhow::Result<()> {
                 "typescript" | "ts" => "generated.ts".to_string(),
                 "ocaml" => "generated.ml".to_string(),
                 "zig" => "generated.zig".to_string(),
+                "java" => "Generated.java".to_string(),
                 "json-schema" | "jsonschema" => {
                     format!("{}.schema.json", schema.name.replace('.', "_"))
                 }

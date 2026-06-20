@@ -260,35 +260,35 @@ All medium-priority items complete ✅ (§1–15 Rust core)
 All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
-- **§16** — Multi-language SDK parity — **FFI-first clients landed** (`fig-ffi` connect/request/subscribe + auth encode; Python Tier 1–3; Go/C++/C#/TS thin wrappers; FFI + Python binding conformance in CI)
-- **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (pagination, order-update streaming, optional streams, gateway E2E; SDK merge/helpers remain §16)
+- **§16** — Multi-language SDK parity — **substantially complete** (FSL codegen parity all targets + Java; `fig-ffi` Tier 4 compression/fragmentation/0-RTT/migration; typed stream decode helpers; Go/C++/C#/TS/OCaml/Zig/Java bindings; FFI + Python conformance in CI)
+- **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (SDK polish and per-lang generated SBE serializers remain optional follow-ups)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — FFI-first Tier 1–3 clients + binding conformance shipped; FSL serializer codegen + Tier 4 advanced features remain. Broker ↔ client API parity (§17) — native broker + gateway catalog complete; per-checkbox SDK/client items tracked below.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — FFI-first Tier 1–4 clients + FSL codegen parity shipped; per-language generated SBE serializers and pure-protocol libs remain optional. Broker ↔ client API parity (§17) — native broker + gateway catalog complete.**
 
 ---
 
 ## 16. Multi-Language SDK Parity
 
-Bring non-Rust languages to full SPEC parity with Rust. Today Rust has (1) rich
+Bring non-Rust languages to full SPEC parity with Rust. Rust has (1) rich
 **FSL codegen** (`RustCodegen` + `--lang sbe`) and (2) a complete **`fig-core`
-runtime** (~20 modules). **Go, C++, C#, and Python** `ftlc --lang` targets emit typed
-enums and nested structs; other targets still emit flat shapes. No non-Rust language
-yet has full CBOR/SBE serializers or a Tier 4 native client.
+runtime** (~20 modules). All `ftlc --lang` targets emit typed enums, nested structs,
+type aliases, message metadata, and CBOR field manifests; wire codecs delegate to
+`fig-ffi` / `fig-python` rather than per-language SBE rewrites.
 
 Schema evolution policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
 
 ### Parity gap (current state)
 
-| Capability | Rust | Python / C++ / C# / Go / TS / OCaml / Zig |
+| Capability | Rust | Python / C++ / C# / Go / TS / OCaml / Zig / Java |
 |---|---|---|
-| FSL typed enums | ✅ | 🔶 Go/C++/C#/Python codegen · ❌ TS/OCaml/Zig |
-| Nested struct types | ✅ | 🔶 Go/C++/C#/Python codegen · ❌ TS/OCaml/Zig |
-| Type aliases + constraints | ✅ | ❌ |
-| Message metadata constants | ✅ | 🔶 Go codegen comments · ❌ first-class constants |
-| CBOR / SBE / Protobuf serializers | ✅ | 🔶 `fig-python` + `fig-ffi` CBOR helpers · ❌ per-lang codegen |
-| SBE encode/decode codegen | ✅ (`--lang sbe`) | ❌ |
-| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | 🔶 `fig-python` Tier 1–2 · ❌ other langs |
-| Native client SDK | ✅ `fig-cli` | 🔶 `fig-python` reference · ❌ other langs |
+| FSL typed enums | ✅ | ✅ all `ftlc` targets |
+| Nested struct types | ✅ | ✅ all `ftlc` targets |
+| Type aliases + constraints | ✅ | ✅ constraint docs in all targets |
+| Message metadata constants | ✅ | ✅ first-class in Go/TS/Java/Zig; OCaml values |
+| CBOR / SBE / Protobuf serializers | ✅ | 🔶 `fig-ffi` + `fig-python` CBOR; FSL CBOR manifests · SBE still Rust-only codegen |
+| SBE encode/decode codegen | ✅ (`--lang sbe`) | ⬜ per-language SBE optional; use Rust SBE or gateway |
+| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | 🔶 `fig-ffi` + bindings Tier 1–4 |
+| Native client SDK | ✅ `fig-cli` | 🔶 `fig-python` reference + FFI bindings all langs |
 
 SPEC §11.2 overclaims for some targets until §16.2 lands — see
 [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md) for schema evolution policy.
@@ -351,22 +351,22 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | Typed enum generation (all targets) | High | Go/C++/C#/Python codegen emit named enums; TS/OCaml/Zig still flat |
-| 🔶 | Nested struct types (all targets) | High | Go/C++/C#/Python emit `type_defs`; TS/OCaml/Zig still flat |
-| ⬜ | Type aliases with constraint docs | Medium | `ClientOrderId`, `Price`, `Quantity`, … |
-| 🔶 | Message metadata constants | Medium | Go emits `CHANNEL_TYPE` / `CORRELATION_FIELD` comments; not first-class in all targets |
-| 🔶 | Python: dataclasses + CBOR serializers | High | `PythonCodegen` enums/structs; runtime CBOR via `fig-python` (PyO3), not generated serializers |
-| 🔶 | Go: structs + JSON/CBOR tags | High | `GoCodegen` structs + JSON tags; CBOR lib + serializers still ⬜ |
-| 🔶 | C++: structs + CBOR/JSON helpers | High | `CppCodegen` enums + nested structs; CBOR/JSON helpers still ⬜ |
-| 🔶 | C#: classes + System.Text.Json + CBOR | High | `CsharpCodegen` enums + nested classes; serializers still ⬜ |
-| ⬜ | TypeScript: interfaces + CBOR encode/decode | Medium | FSL types + runtime CBOR via native addon (not generated serializers alone) |
-| ⬜ | OCaml: records + variant enums + CBOR | Low | yojson/cbor ppx or hand-rolled |
-| ⬜ | Zig: structs + CBOR helpers | Medium | std/json or `@cImport` to shared C codec |
-| ⬜ | SBE encode/decode codegen per language | Medium | Extend beyond Rust-only `sbe_codegen.rs`, or document + verify `sbe-xml` → SBE tool pipeline |
-| ⬜ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Do not assume identical without cross-validation |
-| ⬜ | Java codegen target (`--lang java`) | Low | Listed in SPEC §11.2 but not in `ftlc` today |
-| ✅ | Update SPEC §11.2 claims to match reality | Low | Done — see ADR 0004 + SPEC §11.2; track serializer parity in §16.2 |
-| ⬜ | Codegen tests per target (orders.fsl) | High | Enums, nested types, serializers in CI |
+| ✅ | Typed enum generation (all targets) | High | Go/C++/C#/Python/TS/OCaml/Zig/Java |
+| ✅ | Nested struct types (all targets) | High | `type_defs` in all targets |
+| ✅ | Type aliases with constraint docs | Medium | `ClientOrderId`, `Price`, `Quantity`, … |
+| ✅ | Message metadata constants | Medium | Go const blocks; TS/Java/Zig exports; OCaml values |
+| 🔶 | Python: dataclasses + CBOR serializers | High | FSL types + runtime CBOR via `fig-python` (PyO3) |
+| 🔶 | Go: structs + JSON/CBOR tags | High | `json` + `cbor` struct tags + field manifests |
+| 🔶 | C++: structs + CBOR/JSON helpers | High | FSL types; wire CBOR via `fig-ffi` |
+| 🔶 | C#: classes + System.Text.Json + CBOR | High | FSL types; wire CBOR via `fig-ffi` |
+| 🔶 | TypeScript: interfaces + CBOR encode/decode | Medium | FSL types + `bindings/typescript/fig.ts` over `fig-ffi` |
+| 🔶 | OCaml: records + variant enums + CBOR | Low | FSL types + ctypes; wire via `fig-ffi` |
+| 🔶 | Zig: structs + CBOR helpers | Medium | FSL types + `@cImport`; wire via `fig-ffi` |
+| ⬜ | SBE encode/decode codegen per language | Medium | Rust `--lang sbe` remains reference |
+| ⬜ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Cross-validation still optional |
+| ✅ | Java codegen target (`--lang java`) | Low | `JavaCodegen` → `Generated.java` |
+| ✅ | Update SPEC §11.2 claims to match reality | Low | ADR 0004 + SPEC §11.2 |
+| ✅ | Codegen tests per target (orders.fsl) | High | `target_codegen_tests.rs` — 14 tests |
 
 ---
 
@@ -376,16 +376,17 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; frame/CBOR helpers + TREE client (`fig_client_connect`, request/recv, ping, auth encode) |
-| ✅ | FFI API surface spec | High | Frame + CBOR + client lifecycle in `fig.h`; auth extensions on request/subscribe |
+| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; Tier 1–4: client, compression, fragmentation, 0-RTT, migration, stream decode |
+| ✅ | FFI API surface spec | High | Frame + CBOR + client + advanced features in `fig.h` |
 | ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe` + auth), binding conformance |
-| 🔶 | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` connect/request/ping |
-| 🔶 | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` connect/request/ping |
-| 🔶 | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode helpers in `bindings/cpp/include/fig` |
-| ⬜ | `fig-ocaml` (ctypes) | Low | ctypes binding over `fig-ffi` |
-| ⬜ | `fig-zig` (`@cImport fig.h`) | Low | Comptime-friendly thin wrapper |
-| 🔶 | TypeScript / Node native addon (N-API) | Medium | `bindings/typescript/fig.ts` via `node:ffi` over `fig.h` — **Node/Bun/Deno; no WASM** |
-| ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 + §17 vectors in CI |
+| 🔶 | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` |
+| 🔶 | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` |
+| 🔶 | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode |
+| 🔶 | `fig-ocaml` (ctypes) | Low | `bindings/ocaml/fig.ml` over `fig.h` |
+| 🔶 | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` |
+| 🔶 | TypeScript / Node (`node:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode |
+| 🔶 | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` |
+| ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` tests |
 
 High-level client API (all bindings):
 
@@ -405,10 +406,10 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | `fig-python` + `fig-ffi` + Go/C++/C#/TS wrappers |
-| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + dev `AuthToken` on wire; JWT helpers still Rust-only |
-| 🔶 | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth via FFI/Python; typed stream helpers still ⬜ |
-| ⬜ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | Full protocol parity |
+| ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | All FFI bindings + `fig-python` |
+| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + dev `AuthToken`; JWT encode still Rust-only |
+| 🔶 | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth + `fig_frame_payload` / CBOR stream decode helpers |
+| 🔶 | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
 
 ---
 

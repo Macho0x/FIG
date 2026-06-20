@@ -2,13 +2,25 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+mod advanced;
 mod binding;
 mod client;
+mod streams;
 
+pub use advanced::{
+    fig_client_connect_0rtt, fig_client_export_resumption_token, fig_client_migration_apply,
+    fig_client_migration_prepare, fig_frame_split, fig_frames_reassemble, fig_payload_compress,
+    fig_payload_decompress, fig_session_from_resumption_token,
+};
 pub use binding::run_binding_conformance;
 pub use client::{
     fig_client_close, fig_client_connect, fig_client_ping, fig_client_request_and_recv,
     fig_frame_list_free, FigClientHandle, FigFrameList,
+};
+pub use streams::{
+    fig_cbor_decode_balance_snapshot_account, fig_cbor_decode_execution_report_cl_ord_id,
+    fig_cbor_decode_market_data_snapshot_symbol, fig_cbor_decode_symbol_ticker_price,
+    fig_frame_is_stream_item, fig_frame_payload,
 };
 
 use std::ffi::CStr;

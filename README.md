@@ -193,14 +193,14 @@ Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** ship
 | Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
 |---|---|---|---|---|
 | **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — complete runtime |
-| **Python** | 🔶 Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | 🔶 enums + nested structs | Tier 1–3 — connect, request, subscribe + auth; [CI conformance](crates/fig-python/tests/binding_conformance.rs) |
-| **C++** | 🔶 Thin wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | 🔶 enums + nested structs | Tier 1–2 — encode + `fig::Client` connect/request/ping |
-| **C#** | 🔶 Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | 🔶 enums + nested classes | Tier 1–2 — encode + `FigClient` connect/request/ping |
-| **Go** | 🔶 Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | 🔶 structs + JSON tags | Tier 1–2 — encode + `Client` connect/request/ping |
-| **TypeScript** | 🔶 Thin wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | 🔶 interfaces (types only) | Tier 1 — `node:ffi` connect/ping; **Node, Bun, Deno** (no WASM) |
-| **OCaml** | ⬜ Planned | — | 🔶 records (flat shapes) | ctypes → `fig-ffi` TBD |
-| **Zig** | ⬜ Planned | — | 🔶 structs (flat shapes) | `@cImport fig.h` or pure Zig codec TBD |
-| **Java** | ⬜ Planned | — | ⬜ not in `ftlc` yet | JNI → `fig-ffi` TBD |
+| **Python** | 🔶 Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ enums + nested + aliases | Tier 1–3 — connect, request, subscribe + auth |
+| **C++** | 🔶 Thin wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ enums + nested + aliases | Tier 1–2 — `fig::Client` + encode |
+| **C#** | 🔶 Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ enums + nested + aliases | Tier 1–2 — `FigClient` + encode |
+| **Go** | 🔶 Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ structs + JSON/CBOR tags | Tier 1–2 — `Client` + encode |
+| **TypeScript** | 🔶 Thin wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ interfaces + metadata | Tier 1–3 — request/subscribe/stream decode via `node:ffi` |
+| **OCaml** | 🔶 Thin wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | ctypes — connect/compress/subscribe encode |
+| **Zig** | 🔶 Thin wrapper | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ structs + comptime enums | `@cImport` — connect/compress/subscribe |
+| **Java** | 🔶 Thin wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | JNI — connect/compress/subscribe |
 
 **C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md) — shared foundation for C++, C#, Go, TypeScript (N-API), and future OCaml/Zig.
 
@@ -208,8 +208,8 @@ Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** ship
 `fig-ffi` (same model as Go/C#). We do **not** ship a WASM build. Browser clients use
 [`fig-gateway`](crates/fig-gateways/) (REST/WebSocket) instead of an in-browser FIG stack.
 
-Languages without a native TREE client yet can use `fig-gateway` against a FIG backend
-while SDK work continues (OCaml, Zig, Java).
+Languages without a native TREE client can use `fig-gateway` against a FIG backend
+for browser or WASM-free edge cases.
 
 ---
 

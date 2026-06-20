@@ -32,6 +32,9 @@ pub struct OcamlCodegen;
 /// Zig struct generator
 pub struct ZigCodegen;
 
+/// Java class generator
+pub struct JavaCodegen;
+
 /// JSON Schema generator
 pub struct JsonSchemaCodegen;
 
@@ -48,6 +51,14 @@ impl GoCodegen {
         ));
         out.push_str(&format!("// {}\n\n", desc));
         out.push_str("package generated\n\n");
+
+        for td in &schema.type_defs {
+            if td.fields.is_none() {
+                out.push_str(&format_type_alias_comment(td));
+                let base = go_type_alias_base(td);
+                out.push_str(&format!("type {} {}\n\n", td.name, base));
+            }
+        }
 
         for (name, variants) in collect_shared_enums(schema) {
             out.push_str(&format!("type {name} int32\n\n"));
@@ -83,10 +94,8 @@ impl GoCodegen {
 
         for msg in &schema.messages {
             out.push_str(&format!("// Message: {}\n", msg.name));
-            out.push_str(&format!("// CHANNEL_TYPE: {:?}\n", msg.channel_type));
-            if let Some(cf) = &msg.correlation_field {
-                out.push_str(&format!("// CORRELATION_FIELD: {cf}\n"));
-            }
+            out.push_str(&message_metadata_constants_go(msg, schema.well_known_id));
+            out.push_str(&cbor_fields_comment(msg));
             out.push_str(&format!("type {} struct {{\n", msg.name));
             for field in &msg.fields {
                 let go_type = go_field_type_named(
@@ -98,8 +107,8 @@ impl GoCodegen {
                 );
                 let field_name = pascal_case(&field.name);
                 out.push_str(&format!(
-                    "    {} {} `json:\"{}\"`\n",
-                    field_name, go_type, field.name
+                    "    {} {} `json:\"{}\" cbor:\"{}\"`\n",
+                    field_name, go_type, field.name, field.name
                 ));
             }
             out.push_str("}\n\n");
@@ -385,6 +394,160 @@ fn collect_shared_enums(schema: &Schema) -> Vec<(String, Vec<String>)> {
     }
     let mut out: Vec<_> = enums.into_iter().collect();
     out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn channel_type_str(ct: &ChannelType) -> &'static str {
+    match ct {
+        ChannelType::RequestResponse => "request_response",
+        ChannelType::StreamItem => "stream_item",
+        ChannelType::BidirectionalStream => "bidirectional_stream",
+        ChannelType::FireAndForget => "fire_and_forget",
+        ChannelType::PubSub => "pub_sub",
+    }
+}
+
+fn format_type_alias_comment(td: &TypeDef) -> String {
+    if td.constraints.is_empty() {
+        format!("// Type: {}\n", td.name)
+    } else {
+        let constraints: Vec<String> = td.constraints.iter().map(constraint_to_doc).collect();
+        format!("// Type: {} — {}\n", td.name, constraints.join(", "))
+    }
+}
+
+fn constraint_to_doc(c: &Constraint) -> String {
+    match c {
+        Constraint::MaxLen(n) => format!("max_len: {n}"),
+        Constraint::Min(v) => format!("min: {v}"),
+        Constraint::Max(v) => format!("max: {v}"),
+        Constraint::Precision(n) => format!("precision: {n}"),
+        Constraint::Pattern(p) => format!("pattern: {p:?}"),
+        Constraint::Uppercase(b) => format!("uppercase: {b}"),
+    }
+}
+
+fn type_alias_base_name(td: &TypeDef) -> &'static str {
+    match td.base_type.as_ref() {
+        Some(BaseType::String | BaseType::Bytes) => "string",
+        Some(BaseType::Bool) => "bool",
+        Some(BaseType::Float32 | BaseType::Float64 | BaseType::Decimal64) => "float64",
+        Some(BaseType::Int64 | BaseType::UInt64) => "int64",
+        Some(
+            BaseType::Int8
+            | BaseType::Int16
+            | BaseType::Int32
+            | BaseType::UInt8
+            | BaseType::UInt16
+            | BaseType::UInt32,
+        ) => "int32",
+        Some(BaseType::List(_)) => "list",
+        None => "string",
+    }
+}
+
+fn go_type_alias_base(td: &TypeDef) -> &'static str {
+    match type_alias_base_name(td) {
+        "string" => "string",
+        "bool" => "bool",
+        "float64" => "float64",
+        "int64" => "int64",
+        "int32" => "int32",
+        "list" => "[]string",
+        _ => "string",
+    }
+}
+
+fn ts_type_alias_base(td: &TypeDef) -> &'static str {
+    match type_alias_base_name(td) {
+        "string" => "string",
+        "bool" => "boolean",
+        "float64" | "int32" | "int64" => "number",
+        "list" => "string[]",
+        _ => "string",
+    }
+}
+
+fn ocaml_type_alias_base(td: &TypeDef) -> &'static str {
+    match type_alias_base_name(td) {
+        "string" => "string",
+        "bool" => "bool",
+        "float64" => "float",
+        "int64" => "int64",
+        "int32" => "int",
+        "list" => "string list",
+        _ => "string",
+    }
+}
+
+fn zig_type_alias_base(td: &TypeDef) -> &'static str {
+    match type_alias_base_name(td) {
+        "string" => "[]const u8",
+        "bool" => "bool",
+        "float64" => "f64",
+        "int64" => "i64",
+        "int32" => "i32",
+        "list" => "[]const []const u8",
+        _ => "[]const u8",
+    }
+}
+
+fn java_type_alias_base(td: &TypeDef) -> &'static str {
+    match type_alias_base_name(td) {
+        "string" => "String",
+        "bool" => "boolean",
+        "float64" => "double",
+        "int64" => "long",
+        "int32" => "int",
+        "list" => "List<String>",
+        _ => "String",
+    }
+}
+
+fn cbor_fields_comment(msg: &Message) -> String {
+    let fields: Vec<&str> = msg.fields.iter().map(|f| f.name.as_str()).collect();
+    format!(
+        "// CBOR (snake_case keys, string enums): {}\n",
+        fields.join(", ")
+    )
+}
+
+fn message_metadata_constants_go(msg: &Message, schema_id: Option<u8>) -> String {
+    let mut out = format!(
+        "const (\n    {}MessageName = \"{}\"\n    {}ChannelType = \"{}\"\n",
+        msg.name,
+        msg.name,
+        msg.name,
+        channel_type_str(&msg.channel_type)
+    );
+    if let Some(cf) = &msg.correlation_field {
+        out.push_str(&format!("    {}CorrelationField = \"{cf}\"\n", msg.name));
+    }
+    if let Some(id) = schema_id {
+        out.push_str(&format!("    {}SchemaId = 0x{id:02x}\n", msg.name));
+    }
+    out.push_str(")\n");
+    out
+}
+
+fn message_metadata_constants_ts(msg: &Message, schema_id: Option<u8>) -> String {
+    let mut out = format!(
+        "export const {}MessageName = \"{}\" as const;\nexport const {}ChannelType = \"{}\" as const;\n",
+        msg.name, msg.name, msg.name, channel_type_str(&msg.channel_type)
+    );
+    if let Some(cf) = &msg.correlation_field {
+        out.push_str(&format!(
+            "export const {}CorrelationField = \"{cf}\" as const;\n",
+            msg.name
+        ));
+    }
+    if let Some(id) = schema_id {
+        out.push_str(&format!(
+            "export const {}SchemaId = 0x{id:02x} as const;\n",
+            msg.name
+        ));
+    }
+    out.push_str(&cbor_fields_comment(msg));
     out
 }
 
@@ -789,11 +952,68 @@ impl TypeScriptCodegen {
             schema.name, schema.version
         ));
 
+        for td in &schema.type_defs {
+            if td.fields.is_none() {
+                out.push_str(&format_type_alias_comment(td));
+                out.push_str(&format!(
+                    "export type {} = {};\n\n",
+                    td.name,
+                    ts_type_alias_base(td)
+                ));
+            }
+        }
+
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("export type {} = ", name));
+            out.push_str(
+                &variants
+                    .iter()
+                    .map(|v| format!("\"{}\"", pascal_case(v)))
+                    .collect::<Vec<_>>()
+                    .join(" | "),
+            );
+            out.push('\n');
+            out.push_str(&format!("export const {}Values = [", name));
+            out.push_str(
+                &variants
+                    .iter()
+                    .map(|v| format!("\"{}\"", pascal_case(v)))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            );
+            out.push_str("] as const;\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("// Struct: {}\n", td.name));
+                out.push_str(&format!("export interface {} {{\n", td.name));
+                for field in fields {
+                    let ts_type = ts_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!("  {}: {};\n", field.name, ts_type));
+                }
+                out.push_str("}\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             out.push_str(&format!("// Message: {}\n", msg.name));
+            out.push_str(&message_metadata_constants_ts(msg, schema.well_known_id));
             out.push_str(&format!("export interface {} {{\n", msg.name));
             for field in &msg.fields {
-                let ts_type = ts_field_type(&field.field_type, schema, field.optional);
+                let ts_type = ts_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 out.push_str(&format!("  {}: {};\n", field.name, ts_type));
             }
             out.push_str("}\n\n");
@@ -810,12 +1030,65 @@ impl OcamlCodegen {
             schema.name, schema.version
         ));
 
+        for td in &schema.type_defs {
+            if td.fields.is_none() {
+                out.push_str(&format!("(* {} *)\n", format_type_alias_comment(td).trim()));
+                out.push_str(&format!(
+                    "type {} = {}\n\n",
+                    td.name,
+                    ocaml_type_alias_base(td)
+                ));
+            }
+        }
+
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("type {} =\n", name));
+            for (i, variant) in variants.iter().enumerate() {
+                let sep = if i + 1 == variants.len() { "" } else { " |" };
+                out.push_str(&format!("  {} {sep}\n", pascal_case(variant)));
+            }
+            out.push('\n');
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("(* Struct: {} *)\n", td.name));
+                out.push_str(&format!("type {} = {{\n", td.name));
+                for field in fields {
+                    let ocaml_type = ocaml_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!("  {}: {};\n", field.name, ocaml_type));
+                }
+                out.push_str("}\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             let type_name = snake_to_camel(&msg.name);
             out.push_str(&format!("(* Message: {} *)\n", msg.name));
+            out.push_str(&format!(
+                "let {}_channel_type = \"{}\"\n",
+                msg.name,
+                channel_type_str(&msg.channel_type)
+            ));
+            if let Some(cf) = &msg.correlation_field {
+                out.push_str(&format!("let {}_correlation_field = \"{cf}\"\n", msg.name));
+            }
+            out.push_str(&format!("(* {} *)\n", cbor_fields_comment(msg).trim()));
             out.push_str(&format!("type {} = {{\n", type_name));
             for field in &msg.fields {
-                let ocaml_type = ocaml_field_type(&field.field_type, schema, field.optional);
+                let ocaml_type = ocaml_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 out.push_str(&format!("  {}: {};\n", field.name, ocaml_type));
             }
             out.push_str("}\n\n");
@@ -832,14 +1105,176 @@ impl ZigCodegen {
             schema.name, schema.version
         ));
 
+        for td in &schema.type_defs {
+            if td.fields.is_none() {
+                out.push_str(&format_type_alias_comment(td));
+                out.push_str(&format!(
+                    "pub const {} = {};\n\n",
+                    td.name,
+                    zig_type_alias_base(td)
+                ));
+            }
+        }
+
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("pub const {name} = enum(u8) {{\n"));
+            for (i, variant) in variants.iter().enumerate() {
+                out.push_str(&format!("    {} = {},\n", pascal_case(variant), i + 1));
+            }
+            out.push_str("};\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("// Struct: {}\n", td.name));
+                out.push_str(&format!("pub const {} = struct {{\n", td.name));
+                for field in fields {
+                    let zig_type = zig_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!("    {}: {},\n", field.name, zig_type));
+                }
+                out.push_str("};\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             out.push_str(&format!("// Message: {}\n", msg.name));
+            out.push_str(&format!(
+                "pub const {}ChannelType = \"{}\";\n",
+                msg.name,
+                channel_type_str(&msg.channel_type)
+            ));
+            if let Some(cf) = &msg.correlation_field {
+                out.push_str(&format!(
+                    "pub const {}CorrelationField = \"{cf}\";\n",
+                    msg.name
+                ));
+            }
+            out.push_str(&cbor_fields_comment(msg));
             out.push_str(&format!("pub const {} = struct {{\n", msg.name));
             for field in &msg.fields {
-                let zig_type = zig_field_type(&field.field_type, schema, field.optional);
+                let zig_type = zig_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 out.push_str(&format!("    {}: {},\n", field.name, zig_type));
             }
             out.push_str("};\n\n");
+        }
+        out
+    }
+}
+
+impl JavaCodegen {
+    pub fn generate(schema: &Schema) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "// Auto-generated by fig-fsl from schema '{}' v{}\n\n",
+            schema.name, schema.version
+        ));
+        out.push_str("package generated;\n\n");
+        out.push_str("import java.util.List;\n\n");
+
+        for td in &schema.type_defs {
+            if td.fields.is_none() {
+                out.push_str(&format_type_alias_comment(td));
+                out.push_str(&format!(
+                    "public @interface {} {{ /* {} */ }}\n\n",
+                    td.name,
+                    java_type_alias_base(td)
+                ));
+            }
+        }
+
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("public enum {} {{\n", name));
+            for (i, variant) in variants.iter().enumerate() {
+                let suffix = if i + 1 == variants.len() { ";" } else { "," };
+                out.push_str(&format!(
+                    "    {}({}){}\n",
+                    pascal_case(variant),
+                    i + 1,
+                    suffix
+                ));
+            }
+            out.push_str("    public final int wireValue;\n");
+            out.push_str(&format!(
+                "    {}(int wireValue) {{ this.wireValue = wireValue; }}\n",
+                name
+            ));
+            out.push_str("}\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("// Struct: {}\n", td.name));
+                out.push_str(&format!("public class {} {{\n", td.name));
+                for field in fields {
+                    let java_type = java_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!(
+                        "    public {} {};\n",
+                        java_type,
+                        snake_to_camel(&field.name)
+                    ));
+                }
+                out.push_str("}\n\n");
+            }
+        }
+
+        for msg in &schema.messages {
+            out.push_str(&format!("// Message: {}\n", msg.name));
+            out.push_str(&format!(
+                "public static final String {}MessageName = \"{}\";\n",
+                msg.name, msg.name
+            ));
+            out.push_str(&format!(
+                "public static final String {}ChannelType = \"{}\";\n",
+                msg.name,
+                channel_type_str(&msg.channel_type)
+            ));
+            if let Some(cf) = &msg.correlation_field {
+                out.push_str(&format!(
+                    "public static final String {}CorrelationField = \"{cf}\";\n",
+                    msg.name
+                ));
+            }
+            if let Some(id) = schema.well_known_id {
+                out.push_str(&format!(
+                    "public static final int {}SchemaId = 0x{id:02x};\n",
+                    msg.name
+                ));
+            }
+            out.push_str(&cbor_fields_comment(msg));
+            out.push_str(&format!("public class {} {{\n", msg.name));
+            for field in &msg.fields {
+                let java_type = java_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
+                out.push_str(&format!(
+                    "    public {} {};\n",
+                    java_type,
+                    snake_to_camel(&field.name)
+                ));
+            }
+            out.push_str("}\n\n");
         }
         out
     }
@@ -938,22 +1373,163 @@ fn ts_base_type(bt: &BaseType) -> String {
     }
 }
 
-fn ts_field_type(ft: &FieldType, schema: &Schema, optional: bool) -> String {
+fn ts_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
     let base = match ft {
         FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
-                ts_base_type(&bt)
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if resolve_named_type(name, schema).is_some() {
+                ts_type_alias_base(&TypeDef {
+                    name: name.clone(),
+                    base_type: resolve_named_type(name, schema),
+                    constraints: vec![],
+                    fields: None,
+                })
+                .to_string()
             } else {
                 "string".to_string()
             }
         }
-        FieldType::Enum(_) => "number".to_string(),
-        FieldType::List(inner) => format!("{}[]", ts_field_type(inner, schema, false)),
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => format!(
+            "{}[]",
+            ts_field_type_named(inner, schema, parent, false, field_name)
+        ),
         FieldType::InlineStruct(_) => "Record<string, unknown>".to_string(),
         FieldType::InlineBase(bt, _) => ts_base_type(bt),
     };
     if optional {
-        format!("{} | null", base)
+        format!("{base} | null")
+    } else {
+        base
+    }
+}
+
+fn ocaml_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
+    let base = match ft {
+        FieldType::Named(name) => {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
+                ocaml_base_type(&bt)
+            } else {
+                name.clone()
+            }
+        }
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => format!(
+            "{} list",
+            ocaml_field_type_named(inner, schema, parent, false, field_name)
+        ),
+        FieldType::InlineStruct(_) => parent.to_string(),
+        FieldType::InlineBase(bt, _) => ocaml_base_type(bt),
+    };
+    if optional {
+        format!("{base} option")
+    } else {
+        base
+    }
+}
+
+fn zig_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
+    let base = match ft {
+        FieldType::Named(name) => {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
+                zig_base_type(&bt)
+            } else {
+                "[]const u8".to_string()
+            }
+        }
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => format!(
+            "[]const {}",
+            zig_field_type_named(inner, schema, parent, false, field_name)
+        ),
+        FieldType::InlineStruct(_) => parent.to_string(),
+        FieldType::InlineBase(bt, _) => zig_base_type(bt),
+    };
+    if optional {
+        format!("?{base}")
+    } else {
+        base
+    }
+}
+
+fn java_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
+    let base = match ft {
+        FieldType::Named(name) => {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
+                java_type_alias_base(&TypeDef {
+                    name: name.clone(),
+                    base_type: Some(bt),
+                    constraints: vec![],
+                    fields: None,
+                })
+                .to_string()
+            } else {
+                "String".to_string()
+            }
+        }
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => format!(
+            "List<{}>",
+            java_field_type_named(inner, schema, parent, false, field_name)
+        ),
+        FieldType::InlineStruct(_) => parent.to_string(),
+        FieldType::InlineBase(bt, _) => java_type_alias_base(&TypeDef {
+            name: String::new(),
+            base_type: Some(bt.clone()),
+            constraints: vec![],
+            fields: None,
+        })
+        .to_string(),
+    };
+    if optional {
+        format!("{base} /* optional */")
     } else {
         base
     }
@@ -974,27 +1550,6 @@ fn ocaml_base_type(bt: &BaseType) -> String {
     }
 }
 
-fn ocaml_field_type(ft: &FieldType, schema: &Schema, optional: bool) -> String {
-    let base = match ft {
-        FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
-                ocaml_base_type(&bt)
-            } else {
-                "string".to_string()
-            }
-        }
-        FieldType::Enum(_) => "int".to_string(),
-        FieldType::List(_) => "string list".to_string(),
-        FieldType::InlineStruct(_) => "string".to_string(),
-        FieldType::InlineBase(bt, _) => ocaml_base_type(bt),
-    };
-    if optional {
-        format!("{} option", base)
-    } else {
-        base
-    }
-}
-
 fn zig_base_type(bt: &BaseType) -> String {
     match bt {
         BaseType::String | BaseType::Bytes => "[]const u8".to_string(),
@@ -1010,27 +1565,6 @@ fn zig_base_type(bt: &BaseType) -> String {
         BaseType::UInt32 => "u32".to_string(),
         BaseType::UInt64 => "u64".to_string(),
         BaseType::List(_) => "[]const u8".to_string(),
-    }
-}
-
-fn zig_field_type(ft: &FieldType, schema: &Schema, optional: bool) -> String {
-    let base = match ft {
-        FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
-                zig_base_type(&bt)
-            } else {
-                "[]const u8".to_string()
-            }
-        }
-        FieldType::Enum(_) => "u8".to_string(),
-        FieldType::List(_) => "[]const u8".to_string(),
-        FieldType::InlineStruct(_) => "[]const u8".to_string(),
-        FieldType::InlineBase(bt, _) => zig_base_type(bt),
-    };
-    if optional {
-        format!("?{}", base)
-    } else {
-        base
     }
 }
 
