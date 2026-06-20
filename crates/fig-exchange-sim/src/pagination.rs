@@ -21,11 +21,7 @@ where
     }
     let has_more = slice.len() > limit;
     let page: Vec<T> = slice.into_iter().take(limit).collect();
-    let next_cursor = if has_more {
-        page.last().map(key)
-    } else {
-        None
-    };
+    let next_cursor = if has_more { page.last().map(key) } else { None };
     (page, has_more, next_cursor)
 }
 
