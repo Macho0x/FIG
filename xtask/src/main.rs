@@ -52,10 +52,56 @@ fn run_codegen(check: bool) -> Result<()> {
         check,
     )?;
 
+    let sbe_targets = [
+        (
+            root.join("bindings/go/fig/sbe_generated.go"),
+            fig_fsl::SbeTargetLang::Go,
+        ),
+        (
+            root.join("bindings/cpp/include/fig/sbe_generated.hpp"),
+            fig_fsl::SbeTargetLang::Cpp,
+        ),
+        (
+            root.join("bindings/csharp/Fig/SbeGenerated.cs"),
+            fig_fsl::SbeTargetLang::Csharp,
+        ),
+        (
+            root.join("bindings/typescript/sbe_generated.ts"),
+            fig_fsl::SbeTargetLang::TypeScript,
+        ),
+        (
+            root.join("bindings/zig/sbe_generated.zig"),
+            fig_fsl::SbeTargetLang::Zig,
+        ),
+    ];
+    for (path, lang) in sbe_targets {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_if_changed(&path, &fig_fsl::generate_sbe_target(&parsed, lang), check)?;
+    }
+
+    let cpp_pure = root.join("bindings/cpp/pure");
+    let zig_pure = root.join("bindings/zig/pure");
+    fs::create_dir_all(&cpp_pure)?;
+    fs::create_dir_all(&zig_pure)?;
+    write_if_changed(
+        &cpp_pure.join("fig_protocol.hpp"),
+        &fig_fsl::generate_protocol(fig_fsl::ProtocolTargetLang::Cpp),
+        check,
+    )?;
+    write_if_changed(
+        &zig_pure.join("protocol.zig"),
+        &fig_fsl::generate_protocol(fig_fsl::ProtocolTargetLang::Zig),
+        check,
+    )?;
+
     if check {
         println!("codegen check OK");
     } else {
         println!("codegen refreshed in {}", out_dir.display());
+        println!("SBE target bindings refreshed under bindings/{{go,cpp,csharp,typescript,zig}}");
+        println!("protocol libraries refreshed in bindings/{{cpp,zig}}/pure");
     }
     Ok(())
 }

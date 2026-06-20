@@ -17,6 +17,18 @@ static char *copy_jstring(JNIEnv *env, jstring value) {
     return out;
 }
 
+static jint set_out_buffer(JNIEnv *env, struct FigBuffer out, jobjectArray out_arr) {
+    jbyteArray arr = (*env)->NewByteArray(env, (jsize)out.len);
+    if (arr == NULL) {
+        fig_buffer_free(out);
+        return -2;
+    }
+    (*env)->SetByteArrayRegion(env, arr, 0, (jsize)out.len, (const jbyte *)out.data);
+    fig_buffer_free(out);
+    (*env)->SetObjectArrayElement(env, out_arr, 0, arr);
+    return 0;
+}
+
 JNIEXPORT jint JNICALL Java_fig_FigNative_figClientConnect(
     JNIEnv *env,
     jclass cls,
@@ -71,15 +83,7 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figPayloadCompress(
     if (rc != 0) {
         return rc;
     }
-    jbyteArray arr = (*env)->NewByteArray(env, (jsize)out.len);
-    if (arr == NULL) {
-        fig_buffer_free(out);
-        return -2;
-    }
-    (*env)->SetByteArrayRegion(env, arr, 0, (jsize)out.len, (const jbyte *)out.data);
-    fig_buffer_free(out);
-    (*env)->SetObjectArrayElement(env, out_arr, 0, arr);
-    return 0;
+    return set_out_buffer(env, out, out_arr);
 }
 
 JNIEXPORT jint JNICALL Java_fig_FigNative_figFrameEncodeSubscribeAuth(
@@ -109,13 +113,77 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figFrameEncodeSubscribeAuth(
     if (rc != 0) {
         return rc;
     }
-    jbyteArray arr = (*env)->NewByteArray(env, (jsize)out.len);
-    if (arr == NULL) {
-        fig_buffer_free(out);
-        return -2;
+    return set_out_buffer(env, out, out_arr);
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figJwtEncode(
+    JNIEnv *env,
+    jclass cls,
+    jstring sub,
+    jlong exp,
+    jstring secret,
+    jobjectArray out_arr) {
+    (void)cls;
+    char *sub_c = copy_jstring(env, sub);
+    char *secret_c = copy_jstring(env, secret);
+    if (sub_c == NULL || secret_c == NULL) {
+        free(sub_c);
+        free(secret_c);
+        return -1;
     }
-    (*env)->SetByteArrayRegion(env, arr, 0, (jsize)out.len, (const jbyte *)out.data);
-    fig_buffer_free(out);
-    (*env)->SetObjectArrayElement(env, out_arr, 0, arr);
-    return 0;
+    struct FigBuffer out = {0};
+    int32_t rc = fig_jwt_encode(sub_c, (uint64_t)exp, secret_c, &out);
+    free(sub_c);
+    free(secret_c);
+    if (rc != 0) {
+        return rc;
+    }
+    return set_out_buffer(env, out, out_arr);
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figJwtVerifyBearer(
+    JNIEnv *env,
+    jclass cls,
+    jstring token,
+    jstring secret) {
+    (void)cls;
+    char *token_c = copy_jstring(env, token);
+    char *secret_c = copy_jstring(env, secret);
+    if (token_c == NULL || secret_c == NULL) {
+        free(token_c);
+        free(secret_c);
+        return -1;
+    }
+    int32_t rc = fig_jwt_verify_bearer(token_c, secret_c);
+    free(token_c);
+    free(secret_c);
+    return rc;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figSbeEncodeNewOrderSingle(
+    JNIEnv *env,
+    jclass cls,
+    jstring cl_ord_id,
+    jstring symbol,
+    jbyte side_buy,
+    jdouble order_qty,
+    jdouble price,
+    jobjectArray out_arr) {
+    (void)cls;
+    char *cl = copy_jstring(env, cl_ord_id);
+    char *sym = copy_jstring(env, symbol);
+    if (cl == NULL || sym == NULL) {
+        free(cl);
+        free(sym);
+        return -1;
+    }
+    struct FigBuffer out = {0};
+    int32_t rc = fig_sbe_encode_new_order_single(
+        cl, sym, (uint8_t)side_buy, order_qty, price, &out);
+    free(cl);
+    free(sym);
+    if (rc != 0) {
+        return rc;
+    }
+    return set_out_buffer(env, out, out_arr);
 }

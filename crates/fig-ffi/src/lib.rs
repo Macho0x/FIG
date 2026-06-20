@@ -5,6 +5,8 @@
 mod advanced;
 mod binding;
 mod client;
+mod jwt;
+mod sbe;
 mod streams;
 
 pub use advanced::{
@@ -22,6 +24,11 @@ pub use streams::{
     fig_cbor_decode_market_data_snapshot_symbol, fig_cbor_decode_symbol_ticker_price,
     fig_frame_is_stream_item, fig_frame_payload,
 };
+pub use jwt::{fig_jwt_decode_sub, fig_jwt_encode, fig_jwt_verify_bearer};
+pub use sbe::{
+    fig_sbe_decode_new_order_single_cl_ord_id, fig_sbe_encode_candle_bar,
+    fig_sbe_encode_new_order_single, fig_sbe_encode_symbol_ticker,
+};
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -31,7 +38,7 @@ use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, MarketDataSnapshot,
+    CandleBar, CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, MarketDataSnapshot,
     NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price,
     PriceLevel, Quantity, Side, TimeInForce,
 };
@@ -411,6 +418,11 @@ pub unsafe extern "C" fn fig_cbor_decode_new_order_single_cl_ord_id(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn fig_cbor_encode_candle_bar(out: *mut FigBuffer) -> i32 {
+    encode_cbor_out(&sample_candle_bar(), out)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn fig_cbor_encode_capabilities(out: *mut FigBuffer) -> i32 {
     encode_cbor_out(&sample_capabilities(), out)
 }
@@ -501,6 +513,22 @@ fn sample_order_history_request() -> OrderHistoryRequest {
         end_time: None,
         limit: Some(100),
         cursor: None,
+    }
+}
+
+fn sample_candle_bar() -> CandleBar {
+    CandleBar {
+        symbol: "AAPL".to_string(),
+        interval: "5m".to_string(),
+        open: Price(150.0),
+        high: Price(151.0),
+        low: Price(149.5),
+        close: Price(150.5),
+        volume: Quantity(1000.0),
+        bar_start: 1_700_000_000_000_000_000,
+        bar_end: 1_700_000_300_000_000_000,
+        is_final: true,
+        is_snapshot: Some(false),
     }
 }
 

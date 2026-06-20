@@ -59,3 +59,36 @@ pub fn encodeSubscribeAuth(
     defer c.fig_buffer_free(out);
     return alloc.dupe(u8, out.data[0..out.len]);
 }
+
+pub fn jwtEncode(sub: [:0]const u8, exp: u64, secret: [:0]const u8) ![]u8 {
+    var out = FigBuffer{ .data = null, .len = 0 };
+    const rc = c.fig_jwt_encode(sub.ptr, exp, secret.ptr, &out);
+    if (rc != 0) return error.JwtEncodeFailed;
+    defer c.fig_buffer_free(out);
+    return alloc.dupe(u8, out.data[0..out.len]);
+}
+
+pub fn jwtVerifyBearer(token: [:0]const u8, secret: [:0]const u8) !void {
+    if (c.fig_jwt_verify_bearer(token.ptr, secret.ptr) != 0) return error.JwtVerifyFailed;
+}
+
+pub fn sbeEncodeNewOrderSingle(
+    cl_ord_id: [:0]const u8,
+    symbol: [:0]const u8,
+    side_buy: bool,
+    qty: f64,
+    price: f64,
+) ![]u8 {
+    var out = FigBuffer{ .data = null, .len = 0 };
+    const rc = c.fig_sbe_encode_new_order_single(
+        cl_ord_id.ptr,
+        symbol.ptr,
+        @intFromBool(side_buy),
+        qty,
+        price,
+        &out,
+    );
+    if (rc != 0) return error.SbeEncodeFailed;
+    defer c.fig_buffer_free(out);
+    return alloc.dupe(u8, out.data[0..out.len]);
+}

@@ -193,14 +193,14 @@ Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** ship
 | Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
 |---|---|---|---|---|
 | **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — complete runtime |
-| **Python** | 🔶 Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ enums + nested + aliases | Tier 1–3 — connect, request, subscribe + auth |
-| **C++** | 🔶 Thin wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ enums + nested + aliases | Tier 1–2 — `fig::Client` + encode |
-| **C#** | 🔶 Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ enums + nested + aliases | Tier 1–2 — `FigClient` + encode |
-| **Go** | 🔶 Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ structs + JSON/CBOR tags | Tier 1–2 — `Client` + encode |
-| **TypeScript** | 🔶 Thin wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ interfaces + metadata | Tier 1–3 — request/subscribe/stream decode via `node:ffi` |
-| **OCaml** | 🔶 Thin wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | ctypes — connect/compress/subscribe encode |
-| **Zig** | 🔶 Thin wrapper | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ structs + comptime enums | `@cImport` — connect/compress/subscribe |
-| **Java** | 🔶 Thin wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | JNI — connect/compress/subscribe |
+| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | Tier 1–4 — connect, request, subscribe + auth |
+| **C++** | ✅ FFI + pure protocol | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ types + generated SBE | Tier 1–4 — `fig::Client` + JWT/SBE |
+| **C#** | ✅ Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | Tier 1–4 — `FigClient` + JWT/SBE |
+| **Go** | ✅ Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | Tier 1–4 — `Client` + JWT/SBE |
+| **TypeScript** | ✅ Thin wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Tier 1–4 — request/subscribe/stream decode + JWT |
+| **OCaml** | ✅ Thin wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | Tier 1–4 — ctypes + JWT/SBE FFI |
+| **Zig** | ✅ FFI + pure protocol | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ structs + generated SBE | Tier 1–4 — `@cImport` + JWT/SBE |
+| **Java** | ✅ Thin wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | Tier 1–4 — JNI + JWT/SBE |
 
 **C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md) — shared foundation for C++, C#, Go, TypeScript (N-API), and future OCaml/Zig.
 

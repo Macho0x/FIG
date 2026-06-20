@@ -33,6 +33,32 @@ public final class FigNative {
             String authToken,
             byte[][] out);
 
+    public static native int figJwtEncode(String sub, long exp, String secret, byte[][] out);
+
+    public static native int figJwtVerifyBearer(String token, String secret);
+
+    public static native int figSbeEncodeNewOrderSingle(
+            String clOrdId,
+            String symbol,
+            byte sideBuy,
+            double orderQty,
+            double price,
+            byte[][] out);
+
+    public static String jwtEncode(String sub, long exp, String secret) {
+        byte[][] out = new byte[1][];
+        if (figJwtEncode(sub, exp, secret, out) != 0) {
+            throw new IllegalStateException("fig_jwt_encode failed");
+        }
+        return new String(out[0], java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public static void jwtVerifyBearer(String token, String secret) {
+        if (figJwtVerifyBearer(token, secret) != 0) {
+            throw new IllegalStateException("fig_jwt_verify_bearer failed");
+        }
+    }
+
     public static long connect(String addr, String serverName) {
         long[] out = new long[1];
         if (figClientConnect(addr, serverName, out) != 0) {

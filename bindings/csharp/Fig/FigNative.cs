@@ -100,6 +100,87 @@ public static class FigNative
         UIntPtr frameLen,
         out FigFrameList outList);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_jwt_encode(
+        string sub,
+        ulong exp,
+        string secret,
+        out FigBuffer outBuf);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_jwt_decode_sub(
+        string token,
+        string secret,
+        out IntPtr outSub);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_jwt_verify_bearer(string token, string secret);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_string_free(IntPtr s);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_sbe_encode_new_order_single(
+        string clOrdId,
+        string symbol,
+        byte sideBuy,
+        double orderQty,
+        double price,
+        out FigBuffer outBuf);
+
+    public static string JwtEncode(string sub, ulong exp, string secret)
+    {
+        if (fig_jwt_encode(sub, exp, secret, out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_jwt_encode failed");
+        }
+        return System.Text.Encoding.UTF8.GetString(CopyBuffer(buf));
+    }
+
+    public static string JwtDecodeSub(string token, string secret)
+    {
+        if (fig_jwt_decode_sub(token, secret, out var subPtr) != 0)
+        {
+            throw new InvalidOperationException("fig_jwt_decode_sub failed");
+        }
+        try
+        {
+            return Marshal.PtrToStringUTF8(subPtr) ?? string.Empty;
+        }
+        finally
+        {
+            fig_string_free(subPtr);
+        }
+    }
+
+    public static void JwtVerifyBearer(string token, string secret)
+    {
+        if (fig_jwt_verify_bearer(token, secret) != 0)
+        {
+            throw new InvalidOperationException("fig_jwt_verify_bearer failed");
+        }
+    }
+
+    public static byte[] SbeEncodeNewOrderSingle(
+        string clOrdId,
+        string symbol,
+        bool sideBuy,
+        double orderQty,
+        double price)
+    {
+        if (fig_sbe_encode_new_order_single(
+                clOrdId,
+                symbol,
+                (byte)(sideBuy ? 1 : 0),
+                orderQty,
+                price,
+                out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_sbe_encode_new_order_single failed");
+        }
+        return CopyBuffer(buf);
+    }
+
     public static string Version => Marshal.PtrToStringUTF8(fig_version()) ?? "unknown";
 
     public static byte[] CopyBuffer(FigBuffer buf)

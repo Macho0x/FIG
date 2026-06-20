@@ -116,6 +116,8 @@ int32_t fig_cbor_decode_new_order_single_cl_ord_id(const uint8_t *data,
                                                    uintptr_t data_len,
                                                    char **out_cl_ord_id);
 
+int32_t fig_cbor_encode_candle_bar(struct FigBuffer *out);
+
 int32_t fig_cbor_encode_capabilities(struct FigBuffer *out);
 
 int32_t fig_cbor_encode_open_orders_snapshot(struct FigBuffer *out);
@@ -210,6 +212,56 @@ int32_t fig_client_request_and_recv(struct FigClientHandle *handle,
  * Send PING on channel 0.
  */
 int32_t fig_client_ping(struct FigClientHandle *handle);
+
+/**
+ * Encode HS256 JWT claims (`sub`, `exp`) into `out`. Returns 0 on success.
+ */
+int32_t fig_jwt_encode(const char *sub, uint64_t exp, const char *secret, struct FigBuffer *out);
+
+/**
+ * Decode JWT and return the `sub` claim via newly allocated C string.
+ */
+int32_t fig_jwt_decode_sub(const char *token, const char *secret, char **out_sub);
+
+/**
+ * Verify bearer JWT signature and expiry. Returns 0 on success.
+ */
+int32_t fig_jwt_verify_bearer(const char *token, const char *secret);
+
+int32_t fig_sbe_encode_new_order_single(const char *cl_ord_id,
+                                        const char *symbol,
+                                        uint8_t side_buy,
+                                        double qty,
+                                        double price,
+                                        struct FigBuffer *out);
+
+int32_t fig_sbe_decode_new_order_single_cl_ord_id(const uint8_t *data,
+                                                  uintptr_t len,
+                                                  char **out_cl_ord_id);
+
+int32_t fig_sbe_encode_candle_bar(const char *symbol,
+                                  const char *interval,
+                                  double open,
+                                  double high,
+                                  double low,
+                                  double close,
+                                  double volume,
+                                  int64_t bar_start,
+                                  int64_t bar_end,
+                                  uint8_t is_final,
+                                  struct FigBuffer *out);
+
+int32_t fig_sbe_encode_symbol_ticker(const char *symbol,
+                                     double last_price,
+                                     double price_change,
+                                     double price_change_pct,
+                                     double volume,
+                                     double high,
+                                     double low,
+                                     double open,
+                                     int64_t timestamp,
+                                     uint8_t is_snapshot,
+                                     struct FigBuffer *out);
 
 /**
  * Extract payload bytes from an encoded FIG frame.

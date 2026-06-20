@@ -95,6 +95,25 @@ const fig = dlopen(libPath, {
     parameters: [FFIType.pointer, FFIType.u64, FFIType.pointer],
     result: FFIType.i32,
   },
+  fig_jwt_encode: {
+    parameters: [FFIType.cstring, FFIType.u64, FFIType.cstring, FFIType.pointer],
+    result: FFIType.i32,
+  },
+  fig_jwt_verify_bearer: {
+    parameters: [FFIType.cstring, FFIType.cstring],
+    result: FFIType.i32,
+  },
+  fig_sbe_encode_new_order_single: {
+    parameters: [
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.u8,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.pointer,
+    ],
+    result: FFIType.i32,
+  },
 });
 
 function copyBuffer(buf: FigBuffer): Buffer {
@@ -284,6 +303,49 @@ export class FigClient {
       this.handle = ptr(null);
     }
   }
+}
+
+export function jwtEncode(sub: string, exp: bigint, secret: string): string {
+  const { buf: out } = emptyOutBuffer();
+  const rc = fig.symbols.fig_jwt_encode(
+    sub,
+    exp,
+    secret,
+    ptr(out),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_jwt_encode failed: ${rc}`);
+  }
+  return copyBuffer(out).toString("utf8");
+}
+
+export function jwtVerifyBearer(token: string, secret: string): void {
+  const rc = fig.symbols.fig_jwt_verify_bearer(token, secret) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_jwt_verify_bearer failed: ${rc}`);
+  }
+}
+
+export function sbeEncodeNewOrderSingle(
+  clOrdId: string,
+  symbol: string,
+  sideBuy: boolean,
+  qty: number,
+  price: number,
+): Buffer {
+  const { buf: out } = emptyOutBuffer();
+  const rc = fig.symbols.fig_sbe_encode_new_order_single(
+    clOrdId,
+    symbol,
+    sideBuy ? 1 : 0,
+    qty,
+    price,
+    ptr(out),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_sbe_encode_new_order_single failed: ${rc}`);
+  }
+  return copyBuffer(out);
 }
 
 export { libPath };

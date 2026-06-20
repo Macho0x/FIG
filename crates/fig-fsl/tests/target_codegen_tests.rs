@@ -1,7 +1,7 @@
 use fig_fsl::{
-    load_merged_trading_schema, CppCodegen, CsharpCodegen, FixYamlCodegen, GoCodegen,
-    JsonSchemaCodegen, OcamlCodegen, Parser, ProtoCodegen, PythonCodegen, SbeXmlCodegen,
-    TypeScriptCodegen, ZigCodegen,
+    generate_sbe_target, load_merged_trading_schema, CppCodegen, CsharpCodegen, FixYamlCodegen,
+    GoCodegen, JsonSchemaCodegen, OcamlCodegen, Parser, ProtoCodegen, PythonCodegen, SbeTargetLang,
+    SbeXmlCodegen, TypeScriptCodegen, ZigCodegen,
 };
 
 fn orders_schema() -> fig_fsl::Schema {
@@ -170,4 +170,27 @@ fn test_fix_yaml_codegen_orders() {
     let code = FixYamlCodegen::generate(&schema);
     assert!(code.contains("fix_version"));
     assert!(code.contains("fig_message: NewOrderSingle"));
+}
+
+#[test]
+fn test_sbe_target_go_orders() {
+    let schema = orders_schema();
+    let code = generate_sbe_target(&schema, SbeTargetLang::Go);
+    assert!(code.contains("NewOrderSingleEncoder"));
+    assert!(code.contains("SCHEMA_ID"));
+    assert!(code.contains("package figsbe"));
+}
+
+#[test]
+fn test_sbe_xml_template_ids_match_rust() {
+    let schema = orders_schema();
+    let xml = SbeXmlCodegen::generate(&schema);
+    for (i, msg) in schema.messages.iter().enumerate() {
+        let tid = i + 1;
+        assert!(
+            xml.contains(&format!("<message name=\"{}\" id=\"{}\">", msg.name, tid)),
+            "missing template id for {}",
+            msg.name
+        );
+    }
 }

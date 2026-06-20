@@ -3,10 +3,11 @@
 use fig_conformance::{load_suite, run_vector, ConformanceVector};
 
 use crate::{
-    fig_cbor_encode_capabilities, fig_cbor_encode_market_data_snapshot,
+    fig_cbor_encode_candle_bar, fig_cbor_encode_capabilities, fig_cbor_encode_market_data_snapshot,
     fig_cbor_encode_new_order_single, fig_cbor_encode_open_orders_request,
     fig_cbor_encode_open_orders_snapshot, fig_cbor_encode_order_history_request,
-    fig_frame_encode_request_ex, fig_frame_encode_subscribe, FigBuffer,
+    fig_frame_encode_request_ex, fig_frame_encode_subscribe, fig_sbe_encode_candle_bar,
+    fig_sbe_encode_new_order_single, FigBuffer,
 };
 
 /// Run conformance vectors against `fig-ffi` encode paths.
@@ -35,6 +36,59 @@ fn binding_check_vector(vector: &ConformanceVector) -> Result<(), String> {
             };
             if rc != 0 {
                 return Err(format!("fig_cbor_encode_new_order_single rc={rc}"));
+            }
+            unsafe {
+                check_hex(&vector.expected_hex, &buf_slice(&out))?;
+                free_buf(out);
+            }
+        }
+        ("cbor", "CandleBar") => {
+            let mut out = empty_buf();
+            assert_eq!(unsafe { fig_cbor_encode_candle_bar(&mut out) }, 0);
+            unsafe {
+                check_hex(&vector.expected_hex, &buf_slice(&out))?;
+                free_buf(out);
+            }
+        }
+        ("sbe", "NewOrderSingle") => {
+            let mut out = empty_buf();
+            let rc = unsafe {
+                fig_sbe_encode_new_order_single(
+                    c"CONF-001".as_ptr(),
+                    c"AAPL".as_ptr(),
+                    1,
+                    100.0,
+                    50.25,
+                    &mut out,
+                )
+            };
+            if rc != 0 {
+                return Err(format!("fig_sbe_encode_new_order_single rc={rc}"));
+            }
+            unsafe {
+                check_hex(&vector.expected_hex, &buf_slice(&out))?;
+                free_buf(out);
+            }
+        }
+        ("sbe", "CandleBar") => {
+            let mut out = empty_buf();
+            let rc = unsafe {
+                fig_sbe_encode_candle_bar(
+                    c"AAPL".as_ptr(),
+                    c"5m".as_ptr(),
+                    150.0,
+                    151.0,
+                    149.5,
+                    150.5,
+                    1000.0,
+                    1_700_000_000_000_000_000,
+                    1_700_000_300_000_000_000,
+                    1,
+                    &mut out,
+                )
+            };
+            if rc != 0 {
+                return Err(format!("fig_sbe_encode_candle_bar rc={rc}"));
             }
             unsafe {
                 check_hex(&vector.expected_hex, &buf_slice(&out))?;

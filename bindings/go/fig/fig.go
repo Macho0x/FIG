@@ -240,3 +240,66 @@ func freeCString(s *C.char) {
 		C.free(unsafe.Pointer(s))
 	}
 }
+
+// JwtEncode builds an HS256 dev JWT for wire AuthToken extensions.
+func JwtEncode(sub string, exp uint64, secret string) (string, error) {
+	cSub := C.CString(sub)
+	cSecret := C.CString(secret)
+	defer C.free(unsafe.Pointer(cSub))
+	defer C.free(unsafe.Pointer(cSecret))
+	var out C.struct_FigBuffer
+	if rc := C.fig_jwt_encode(cSub, C.uint64_t(exp), cSecret, &out); rc != 0 {
+		return "", errors.New("fig_jwt_encode failed")
+	}
+	buf, err := intoGoBuffer(out)
+	if err != nil {
+		return "", err
+	}
+	return string(buf.Bytes()), nil
+}
+
+// JwtDecodeSub verifies a JWT and returns the subject claim.
+func JwtDecodeSub(token, secret string) (string, error) {
+	cToken := C.CString(token)
+	cSecret := C.CString(secret)
+	defer C.free(unsafe.Pointer(cToken))
+	defer C.free(unsafe.Pointer(cSecret))
+	var outSub *C.char
+	if rc := C.fig_jwt_decode_sub(cToken, cSecret, &outSub); rc != 0 {
+		return "", errors.New("fig_jwt_decode_sub failed")
+	}
+	defer C.fig_string_free(outSub)
+	return C.GoString(outSub), nil
+}
+
+// JwtVerifyBearer checks JWT signature and expiry.
+func JwtVerifyBearer(token, secret string) error {
+	cToken := C.CString(token)
+	cSecret := C.CString(secret)
+	defer C.free(unsafe.Pointer(cToken))
+	defer C.free(unsafe.Pointer(cSecret))
+	if rc := C.fig_jwt_verify_bearer(cToken, cSecret); rc != 0 {
+		return errors.New("fig_jwt_verify_bearer failed")
+	}
+	return nil
+}
+
+// SbeEncodeNewOrderSingle encodes a limit order as FIG SBE payload bytes.
+func SbeEncodeNewOrderSingle(clOrdID, symbol string, sideBuy bool, qty, price float64) (Buffer, error) {
+	cCl := C.CString(clOrdID)
+	cSym := C.CString(symbol)
+	defer C.free(unsafe.Pointer(cCl))
+	defer C.free(unsafe.Pointer(cSym))
+	var side C.uint8_t
+	if sideBuy {
+		side = 1
+	}
+	var out C.struct_FigBuffer
+	rc := C.fig_sbe_encode_new_order_single(
+		cCl, cSym, side, C.double(qty), C.double(price), &out,
+	)
+	if rc != 0 {
+		return Buffer{}, errors.New("fig_sbe_encode_new_order_single failed")
+	}
+	return intoGoBuffer(out)
+}

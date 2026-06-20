@@ -135,4 +135,43 @@ inline uint64_t channel_stream_id(uint16_t channel_id, bool is_server) {
     return fig_client_channel_stream_id(channel_id, is_server ? 1 : 0);
 }
 
+inline std::string jwt_encode(const char* sub, uint64_t exp, const char* secret) {
+    FigBuffer out{};
+    if (fig_jwt_encode(sub, exp, secret, &out) != 0) {
+        throw std::runtime_error("fig_jwt_encode failed");
+    }
+    Buffer buf(out);
+    const auto& bytes = buf.bytes();
+    return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+}
+
+inline std::string jwt_decode_sub(const char* token, const char* secret) {
+    char* sub = nullptr;
+    if (fig_jwt_decode_sub(token, secret, &sub) != 0) {
+        throw std::runtime_error("fig_jwt_decode_sub failed");
+    }
+    std::string out(sub);
+    fig_string_free(sub);
+    return out;
+}
+
+inline void jwt_verify_bearer(const char* token, const char* secret) {
+    if (fig_jwt_verify_bearer(token, secret) != 0) {
+        throw std::runtime_error("fig_jwt_verify_bearer failed");
+    }
+}
+
+inline Buffer sbe_encode_new_order_single(const char* cl_ord_id,
+                                          const char* symbol,
+                                          bool side_buy,
+                                          double qty,
+                                          double price) {
+    FigBuffer out{};
+    if (fig_sbe_encode_new_order_single(cl_ord_id, symbol, side_buy ? 1 : 0, qty, price, &out) !=
+        0) {
+        throw std::runtime_error("fig_sbe_encode_new_order_single failed");
+    }
+    return Buffer(out);
+}
+
 } // namespace fig

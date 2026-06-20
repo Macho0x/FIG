@@ -99,7 +99,7 @@ pub fn generate_sbe(schema: &Schema) -> String {
 }
 
 /// Generate SBE enum type with explicit values
-fn generate_sbe_enum(name: &str, variants: &[String]) -> String {
+pub(crate) fn generate_sbe_enum(name: &str, variants: &[String]) -> String {
     let mut out = String::new();
     out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]\n");
     out.push_str(&format!("pub enum {} {{\n", name));
@@ -132,7 +132,7 @@ fn generate_sbe_enum(name: &str, variants: &[String]) -> String {
 }
 
 /// Generate SBE inline struct type
-fn generate_sbe_inline_struct(name: &str, fields: &[Field]) -> String {
+pub(crate) fn generate_sbe_inline_struct(name: &str, fields: &[Field]) -> String {
     let mut out = String::new();
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     out.push_str(&format!("pub struct {} {{\n", name));
@@ -166,7 +166,7 @@ fn generate_sbe_inline_struct(name: &str, fields: &[Field]) -> String {
 }
 
 /// Generate encoder struct for a message
-fn generate_sbe_message_encoder(
+pub(crate) fn generate_sbe_message_encoder(
     msg: &Message,
     template_id: u16,
     _enum_types: &[(String, Vec<String>)],
@@ -218,7 +218,7 @@ fn generate_sbe_message_encoder(
 }
 
 /// Generate the encoder function parameter list
-fn encoder_params(msg: &Message) -> String {
+pub(crate) fn encoder_params(msg: &Message) -> String {
     let mut params = Vec::new();
     for field in &msg.fields {
         let rust_type = sbe_field_type_name_for_message(&field.field_type, &msg.name, &field.name);
@@ -233,7 +233,7 @@ fn encoder_params(msg: &Message) -> String {
 }
 
 /// Generate the decoder struct for a message
-fn generate_sbe_message_decoder(
+pub(crate) fn generate_sbe_message_decoder(
     msg: &Message,
     template_id: u16,
     _enum_types: &[(String, Vec<String>)],
@@ -296,7 +296,7 @@ fn generate_sbe_message_decoder(
 }
 
 /// Generate decode code for a single field
-fn generate_decode_field(field: &Field, msg: &Message) -> String {
+pub(crate) fn generate_decode_field(field: &Field, msg: &Message) -> String {
     let mut out = String::new();
     let field_name = &field.name;
     let optional = field.optional;
@@ -486,7 +486,7 @@ fn generate_decode_field(field: &Field, msg: &Message) -> String {
 }
 
 /// Generate encode code for a single field
-fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String {
+pub(crate) fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String {
     let mut out = String::new();
     let field_name = &field.name;
     let optional = field.optional;
@@ -638,8 +638,19 @@ fn generate_encode_field(field: &Field, msg: &Message, buf_var: &str) -> String 
 
 // ── SBE type mapping helpers ──────────────────────────────────
 
+/// Resolve the SBE wire type for a field (str, f64, i64, u8, …).
+pub(crate) fn sbe_field_wire_type(field: &Field) -> String {
+    match &field.field_type {
+        FieldType::Named(n) => sbe_named_type_to_wire_type(n),
+        FieldType::InlineBase(bt, _) => sbe_base_type_to_wire_type(bt),
+        FieldType::Enum(_) => "u8".to_string(),
+        FieldType::List(_) => "list".to_string(),
+        FieldType::InlineStruct(_) => "struct".to_string(),
+    }
+}
+
 /// Get the Rust type name for a field in SBE context
-fn sbe_field_type_name(ft: &FieldType) -> String {
+pub(crate) fn sbe_field_type_name(ft: &FieldType) -> String {
     match ft {
         FieldType::Named(name) => name.clone(),
         FieldType::Enum(_) => "u8".to_string(),
@@ -652,7 +663,11 @@ fn sbe_field_type_name(ft: &FieldType) -> String {
 }
 
 /// Get the Rust type name for a field in a specific message context
-fn sbe_field_type_name_for_message(ft: &FieldType, msg_name: &str, field_name: &str) -> String {
+pub(crate) fn sbe_field_type_name_for_message(
+    ft: &FieldType,
+    msg_name: &str,
+    field_name: &str,
+) -> String {
     match ft {
         FieldType::Named(name) => name.clone(),
         FieldType::Enum(_) => format!("{}{}", msg_name, pascal_case(field_name)),
@@ -674,7 +689,7 @@ fn sbe_field_type_name_for_message_inner(ft: &FieldType, _msg_name: &str) -> Str
 }
 
 /// Map a named FSL type to its SBE wire type
-fn sbe_named_type_to_wire_type(name: &str) -> String {
+pub(crate) fn sbe_named_type_to_wire_type(name: &str) -> String {
     match name {
         "ClientOrderId" | "Symbol" | "String" => "str".to_string(),
         "Price" | "Quantity" => "f64".to_string(),
@@ -693,7 +708,7 @@ fn sbe_named_type_to_wire_type(name: &str) -> String {
 }
 
 /// Map a base type to its SBE wire type
-fn sbe_base_type_to_wire_type(bt: &BaseType) -> String {
+pub(crate) fn sbe_base_type_to_wire_type(bt: &BaseType) -> String {
     match bt {
         BaseType::String => "str".to_string(),
         BaseType::Int8 | BaseType::UInt8 | BaseType::Bool => "u8".to_string(),
@@ -728,7 +743,7 @@ fn sbe_base_type_to_rust(bt: &BaseType) -> String {
 }
 
 /// Compute the fixed block length for a message
-fn compute_block_length(fields: &[Field]) -> u16 {
+pub(crate) fn compute_block_length(fields: &[Field]) -> u16 {
     let mut total: usize = 0;
     for field in fields {
         total += sbe_field_encoded_size(&field.field_type);
@@ -767,7 +782,7 @@ fn sbe_field_encoded_size(ft: &FieldType) -> usize {
 }
 
 /// Convert a snake_case identifier to PascalCase
-fn pascal_case(s: &str) -> String {
+pub(crate) fn pascal_case(s: &str) -> String {
     s.split('_')
         .map(|word| {
             let mut chars = word.chars();

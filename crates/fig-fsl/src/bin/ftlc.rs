@@ -20,7 +20,7 @@ enum Commands {
     Compile {
         /// The .fsl file to compile
         file: PathBuf,
-        /// Target language: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, json-schema, fix-yaml
+        /// Target language: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, java, json-schema, fix-yaml, protocol-cpp, protocol-zig
         #[arg(long)]
         lang: String,
         /// Output directory for generated code
@@ -66,13 +66,22 @@ fn main() -> anyhow::Result<()> {
                 "csharp" => fig_fsl::CsharpCodegen::generate(&schema),
                 "python" => fig_fsl::PythonCodegen::generate(&schema),
                 "typescript" | "ts" => fig_fsl::TypeScriptCodegen::generate(&schema),
+                "sbe-go" => fig_fsl::generate_sbe_target(&schema, fig_fsl::SbeTargetLang::Go),
+                "sbe-cpp" => fig_fsl::generate_sbe_target(&schema, fig_fsl::SbeTargetLang::Cpp),
+                "sbe-csharp" => fig_fsl::generate_sbe_target(&schema, fig_fsl::SbeTargetLang::Csharp),
+                "sbe-typescript" | "sbe-ts" => {
+                    fig_fsl::generate_sbe_target(&schema, fig_fsl::SbeTargetLang::TypeScript)
+                }
+                "sbe-zig" => fig_fsl::generate_sbe_target(&schema, fig_fsl::SbeTargetLang::Zig),
                 "ocaml" => fig_fsl::OcamlCodegen::generate(&schema),
                 "zig" => fig_fsl::ZigCodegen::generate(&schema),
                 "java" => fig_fsl::JavaCodegen::generate(&schema),
                 "json-schema" | "jsonschema" => fig_fsl::JsonSchemaCodegen::generate(&schema),
                 "fix-yaml" | "fix" => fig_fsl::FixYamlCodegen::generate(&schema),
+                "protocol-cpp" => fig_fsl::generate_protocol(fig_fsl::ProtocolTargetLang::Cpp),
+                "protocol-zig" => fig_fsl::generate_protocol(fig_fsl::ProtocolTargetLang::Zig),
                 other => anyhow::bail!(
-                    "Unsupported language '{}'. Supported: rust, sbe, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, java, json-schema, fix-yaml.",
+                    "Unsupported language '{}'. Supported: rust, sbe, sbe-go, sbe-cpp, sbe-csharp, sbe-typescript, sbe-ts, sbe-zig, go, proto, sbe-xml, cpp, csharp, python, typescript, ocaml, zig, java, json-schema, fix-yaml, protocol-cpp, protocol-zig.",
                     other
                 ),
             };
@@ -97,6 +106,13 @@ fn main() -> anyhow::Result<()> {
                     format!("{}.schema.json", schema.name.replace('.', "_"))
                 }
                 "fix-yaml" | "fix" => format!("{}.fix.yaml", schema.name.replace('.', "_")),
+                "sbe-go" => "sbe_generated.go".to_string(),
+                "sbe-cpp" => "sbe_generated.hpp".to_string(),
+                "sbe-csharp" => "SbeGenerated.cs".to_string(),
+                "sbe-typescript" | "sbe-ts" => "sbe_generated.ts".to_string(),
+                "sbe-zig" => "sbe_generated.zig".to_string(),
+                "protocol-cpp" => "fig_protocol.hpp".to_string(),
+                "protocol-zig" => "protocol.zig".to_string(),
                 _ => "generated.rs".to_string(),
             };
             let output_path = out.join(output_filename);

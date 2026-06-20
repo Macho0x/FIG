@@ -260,10 +260,10 @@ All medium-priority items complete ✅ (§1–15 Rust core)
 All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
-- **§16** — Multi-language SDK parity — **substantially complete** (FSL codegen parity all targets + Java; `fig-ffi` Tier 4 compression/fragmentation/0-RTT/migration; typed stream decode helpers; Go/C++/C#/TS/OCaml/Zig/Java bindings; FFI + Python conformance in CI)
+- **§16** — Multi-language SDK parity — **complete** ✅ (FSL codegen all targets + Java; per-lang SBE via `sbe_target_codegen`; `fig-ffi` Tier 1–4 + JWT/SBE helpers; Go/C++/C#/TS/OCaml/Zig/Java bindings; pure protocol libs C++/Zig; conformance in CI)
 - **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (SDK polish and per-lang generated SBE serializers remain optional follow-ups)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — FFI-first Tier 1–4 clients + FSL codegen parity shipped; per-language generated SBE serializers and pure-protocol libs remain optional. Broker ↔ client API parity (§17) — native broker + gateway catalog complete.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — complete ✅ (FFI Tier 1–4, per-language SBE codegen, pure protocol libs, JWT helpers, binding conformance). Broker ↔ client API parity (§17) — native broker + gateway catalog complete.**
 
 ---
 
@@ -285,12 +285,12 @@ Schema evolution policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md)
 | Nested struct types | ✅ | ✅ all `ftlc` targets |
 | Type aliases + constraints | ✅ | ✅ constraint docs in all targets |
 | Message metadata constants | ✅ | ✅ first-class in Go/TS/Java/Zig; OCaml values |
-| CBOR / SBE / Protobuf serializers | ✅ | 🔶 `fig-ffi` + `fig-python` CBOR; FSL CBOR manifests · SBE still Rust-only codegen |
-| SBE encode/decode codegen | ✅ (`--lang sbe`) | ⬜ per-language SBE optional; use Rust SBE or gateway |
-| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | 🔶 `fig-ffi` + bindings Tier 1–4 |
-| Native client SDK | ✅ `fig-cli` | 🔶 `fig-python` reference + FFI bindings all langs |
+| CBOR / SBE / Protobuf serializers | ✅ | ✅ `fig-ffi` + `fig-python` CBOR; per-lang SBE codegen (Go/C++/C#/TS/Zig) |
+| SBE encode/decode codegen | ✅ (`--lang sbe`) | ✅ `ftlc --lang sbe-{go,cpp,csharp,typescript,zig}` via `sbe_target_codegen.rs` |
+| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | ✅ `fig-ffi` Tier 1–4 + pure protocol libs (C++/Zig) |
+| Native client SDK | ✅ `fig-cli` | ✅ `fig-python` reference + FFI bindings all langs + JWT helpers |
 
-SPEC §11.2 overclaims for some targets until §16.2 lands — see
+SPEC §11.2 claims aligned via ADR 0004 — see
 [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md) for schema evolution policy.
 
 ### Definition of "full spec"
@@ -336,7 +336,7 @@ integration tests are the reference behavior.
 | ✅ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
 | ✅ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
 | ✅ | Historical / query REQUEST-RESPONSE vectors | High | `frame.request.order_history_paginated` + candle/open-orders frames |
-| 🔶 | `CandleBar` CBOR/SBE payload vectors | High | `cbor.candle_bar.snapshot` + `sbe.candle_bar*` / `sbe.symbol_ticker` in `v1.json` (28 vectors) |
+| ✅ | `CandleBar` CBOR/SBE payload vectors | High | `cbor.candle_bar.snapshot` + `sbe.candle_bar*` / `sbe.symbol_ticker` in `v1.json`; `fig_cbor_encode_candle_bar` + binding conformance |
 | ✅ | Account / position / balance stream vectors | High | balance + position + order book snapshot/delta CBOR vectors |
 | ✅ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
 | ✅ | Channel stream-ID mapping vectors | Medium | `channel_id * 4 + offset` client/server cases |
@@ -362,8 +362,8 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 | 🔶 | TypeScript: interfaces + CBOR encode/decode | Medium | FSL types + `bindings/typescript/fig.ts` over `fig-ffi` |
 | 🔶 | OCaml: records + variant enums + CBOR | Low | FSL types + ctypes; wire via `fig-ffi` |
 | 🔶 | Zig: structs + CBOR helpers | Medium | FSL types + `@cImport`; wire via `fig-ffi` |
-| ⬜ | SBE encode/decode codegen per language | Medium | Rust `--lang sbe` remains reference |
-| ⬜ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Cross-validation still optional |
+| ✅ | SBE encode/decode codegen per language | Medium | `ftlc --lang sbe-{go,cpp,csharp,typescript,zig}` → `bindings/` via `sbe_target_codegen.rs` + xtask |
+| ✅ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Cross-validation test in `target_codegen_tests.rs` |
 | ✅ | Java codegen target (`--lang java`) | Low | `JavaCodegen` → `Generated.java` |
 | ✅ | Update SPEC §11.2 claims to match reality | Low | ADR 0004 + SPEC §11.2 |
 | ✅ | Codegen tests per target (orders.fsl) | High | `target_codegen_tests.rs` — 14 tests |
@@ -376,16 +376,16 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; Tier 1–4: client, compression, fragmentation, 0-RTT, migration, stream decode |
+| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; Tier 1–4: client, compression, fragmentation, 0-RTT, migration, stream decode; `jwt.rs` + `sbe.rs` (NewOrderSingle, CandleBar, SymbolTicker) |
 | ✅ | FFI API surface spec | High | Frame + CBOR + client + advanced features in `fig.h` |
 | ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe` + auth), binding conformance |
-| 🔶 | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` |
-| 🔶 | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` |
-| 🔶 | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode |
-| 🔶 | `fig-ocaml` (ctypes) | Low | `bindings/ocaml/fig.ml` over `fig.h` |
-| 🔶 | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` |
-| 🔶 | TypeScript / Node (`node:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode |
-| 🔶 | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` |
+| ✅ | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` + JWT + SBE generated |
+| ✅ | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` + JWT + SBE generated |
+| ✅ | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode + JWT + SBE generated |
+| ✅ | `fig-ocaml` (ctypes) | Low | `bindings/ocaml/fig.ml` over `fig.h` + JWT helpers |
+| ✅ | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` + JWT + SBE generated |
+| ✅ | TypeScript / Node (`node:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode, JWT, SBE generated |
+| ✅ | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` + JWT helpers |
 | ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` tests |
 
 High-level client API (all bindings):
@@ -407,9 +407,9 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | All FFI bindings + `fig-python` |
-| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + dev `AuthToken`; JWT encode still Rust-only |
-| 🔶 | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth + `fig_frame_payload` / CBOR stream decode helpers |
-| 🔶 | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
+| ✅ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + JWT encode/decode/verify in all bindings |
+| ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth + `fig_frame_payload` / CBOR stream decode helpers |
+| ✅ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
 
 ---
 
@@ -434,13 +434,13 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Generated frame encode/decode (spec-driven) | Medium | 16-byte header + TLV extensions |
-| ⬜ | Generated extension tag library | Medium | All 29 tags from `ext.rs` |
-| ⬜ | Generated channel manager | Medium | Stream ID formula, seq nums |
-| ⬜ | Generated control frame dispatcher | Medium | PING/PONG, AUTH_REFRESH, SEQ_RESET, … |
+| ✅ | Generated frame encode/decode (spec-driven) | Medium | `protocol_codegen.rs` → frame header encode/decode |
+| ✅ | Generated extension tag library | Medium | All 29 extension tags in `bindings/cpp/pure/fig_protocol.hpp` + `bindings/zig/pure/protocol.zig` |
+| ✅ | Generated channel manager | Medium | Stream ID formula, seq nums in pure protocol libs |
+| ✅ | Generated control frame dispatcher | Medium | PING/PONG + control dispatch in pure protocol libs |
 | ⬜ | TREE transport binding per language | Low | Native FIG client over UDP/TLS (ALPN `fig/1`); or TCP downgrade (`FIG\x01`) where TREE is unavailable |
-| ⬜ | C++ pure protocol library | Medium | HFT / low-latency path without Rust runtime dep |
-| ⬜ | Zig pure protocol library | Low | `@cImport` or comptime-generated frame codec |
+| ✅ | C++ pure protocol library | Medium | `bindings/cpp/pure/fig_protocol.hpp` via `protocol_codegen.rs` |
+| ✅ | Zig pure protocol library | Low | `bindings/zig/pure/protocol.zig` via `protocol_codegen.rs` |
 
 ---
 
@@ -493,19 +493,11 @@ FSL codegen (full) + PyO3/FFI client (Tier 2) + CBOR only + conformance tests
 
 | Priority | Items |
 |---|---|
-| **High** | §16.1 conformance vectors · §16.2 enum/nested/serializer codegen · §16.3 `fig-ffi` + Python binding · §16.4 Tier 1–2 SDK · §16.5 multi-codec exchange-sim |
-| **Medium** | C# / Go / C++ bindings · SBE per-language codegen · gateway proxy · TypeScript SDK · pure protocol libs (C++) |
-| **Low** | OCaml / Zig bindings · Tier 4 advanced features · Java target · pure Zig protocol lib |
+| **High** | ✅ §16.1 conformance vectors · §16.2 enum/nested/serializer + SBE codegen · §16.3 `fig-ffi` + all bindings · §16.4 Tier 1–4 SDK · §16.5 multi-codec exchange-sim |
+| **Medium** | ✅ C# / Go / C++ bindings · SBE per-language codegen · gateway proxy · TypeScript SDK · pure protocol libs (C++) |
+| **Low** | ✅ OCaml / Zig bindings · Tier 4 advanced features · Java target · pure Zig protocol lib · ⬜ TREE transport per language |
 
-**Suggested implementation order:**
-
-1. Conformance test vectors (§16.1)
-2. Extend `target_codegen` — enums, nested types, serializers (§16.2)
-3. `fig-ffi` + Python binding (§16.3) — reference SDK
-4. Wire gateway to exchange-sim (§16.5) — HTTP path for langs without a native TREE client yet
-5. Multi-codec server dispatch (§16.5)
-6. C++ / C# / Go bindings (§16.3)
-7. Pure-generated protocol libs where FFI is unacceptable (§16.6)
+**§16 complete** — remaining optional: Production gateway service template (§16.5), native TREE transport per language (§16.6).
 
 ---
 

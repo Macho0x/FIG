@@ -34,3 +34,18 @@ let fig_frame_encode_subscribe_auth =
     (uint16_t @-> uint32_t @-> string @-> string @-> string
     @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
     @-> returning int32_t)
+
+let fig_jwt_encode =
+  foreign "fig_jwt_encode"
+    (string @-> uint64_t @-> string
+    @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
+    @-> returning int32_t)
+
+let fig_jwt_verify_bearer =
+  foreign "fig_jwt_verify_bearer" (string @-> string @-> returning int32_t)
+
+let fig_sbe_encode_new_order_single =
+  foreign "fig_sbe_encode_new_order_single"
+    (string @-> string @-> uint8_t @-> float @-> float
+    @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
+    @-> returning int32_t)
