@@ -8,7 +8,8 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CandleBarRequest, FillHistoryRequest, TradeHistoryRequest, schema_id,
+    CandleBarRequest, FillHistoryRequest, FundingHistoryRequest, LedgerHistoryRequest,
+    TradeHistoryRequest, schema_id,
 };
 
 use crate::rest::{HttpRequest, RestError, RestResult};
@@ -47,7 +48,6 @@ fn map_http_path_to_channel_path(
 ) -> RestResult<String> {
     let trimmed = path.trim_start_matches('/');
 
-    // Binance alias: GET /api/v3/klines?symbol=BTCUSDT&interval=5m
     if trimmed == "api/v3/klines" || trimmed == "klines" {
         let symbol = query_param(query, &["symbol", "Symbol"])
             .ok_or_else(|| RestError::InvalidRequestLine("klines requires symbol".into()))?;
@@ -56,13 +56,7 @@ fn map_http_path_to_channel_path(
         return Ok(format!("marketdata/{symbol}/candles/{interval}"));
     }
 
-    // FSL-declared native paths (leading slash optional)
     if trimmed.starts_with("marketdata/") || trimmed.starts_with("accounts/") {
-        return Ok(trimmed.to_string());
-    }
-
-    // Legacy REST prefix: /accounts/{account}/…
-    if trimmed.starts_with("accounts/") {
         return Ok(trimmed.to_string());
     }
 
@@ -102,6 +96,32 @@ fn build_query_payload(channel_path: &str, query: &[(String, String)]) -> RestRe
         let req = FillHistoryRequest {
             account: account.to_string(),
             symbol: query_param(query, &["symbol", "Symbol"]),
+            start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
+            end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
+            limit: parse_limit_param(query),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if channel_path.starts_with("accounts/") && channel_path.ends_with("/funding") {
+        let account = channel_path.split('/').nth(1).unwrap_or("default");
+        let req = FundingHistoryRequest {
+            account: account.to_string(),
+            start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
+            end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
+            limit: parse_limit_param(query),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if channel_path.starts_with("accounts/") && channel_path.ends_with("/ledger") {
+        let account = channel_path.split('/').nth(1).unwrap_or("default");
+        let req = LedgerHistoryRequest {
+            account: account.to_string(),
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),

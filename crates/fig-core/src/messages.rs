@@ -27,6 +27,9 @@ pub mod channel_path {
     pub const POSITIONS: &str = "accounts/{account}/positions";
     pub const MARGIN: &str = "accounts/{account}/margin";
     pub const FILLS: &str = "accounts/{account}/fills";
+    pub const TICKER: &str = "marketdata/{symbol}/ticker";
+    pub const FUNDING: &str = "accounts/{account}/funding";
+    pub const LEDGER: &str = "accounts/{account}/ledger";
 }
 
 #[cfg(test)]

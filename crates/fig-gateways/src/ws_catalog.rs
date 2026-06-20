@@ -34,6 +34,8 @@ pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
         format!("marketdata/{symbol}/trades")
     } else if stream == "bookTicker" {
         format!("marketdata/{symbol}/bbo")
+    } else if stream == "ticker" {
+        format!("marketdata/{symbol}/ticker")
     } else if stream == "depth" || stream.starts_with("depth@") {
         format!("marketdata/{symbol}/quotes")
     } else {

@@ -376,6 +376,33 @@ channel://broker.example.com:8443/analytics/risk/VaR?portfolio=main&type=request
 **Capability discovery:** `channel://host/.well-known/capabilities` returns
 the server's channel tree (available paths, types, schemas).
 
+### 9.1 Native stream catalog (§17)
+
+| Path | Pattern | Auth | FSL payload |
+|---|---|---|---|
+| `marketdata/{symbol}/quotes` | pub/sub | none | `MarketDataSnapshot` |
+| `marketdata/{symbol}/candles/{interval}` | pub/sub + GET | none | `CandleBarEvent` / `CandleBarBatch` |
+| `marketdata/{symbol}/trades` | pub/sub + GET | none | `PublicTradeEvent` / `PublicTradeBatch` |
+| `marketdata/{symbol}/bbo` | pub/sub | none | `BestBidOffer` |
+| `marketdata/{symbol}/ticker` | pub/sub + GET | none | `SymbolTicker` |
+| `trading/accounts/{account}/executions` | pub/sub | required | `ExecutionReport` |
+| `accounts/{account}/balances` | pub/sub | required | `BalanceSnapshot` / `BalanceUpdate` |
+| `accounts/{account}/positions` | pub/sub | required | `PositionSnapshot` / `PositionUpdate` |
+| `accounts/{account}/funding` | pub/sub + GET | required | `FundingPayment` / `FundingHistoryBatch` |
+| `accounts/{account}/ledger` | pub/sub + GET | required | `LedgerUpdate` / `LedgerHistoryBatch` |
+| `accounts/{account}` | GET | required | `AccountSummary` |
+| `accounts/{account}/margin` | GET | required | `MarginSummary` |
+| `accounts/{account}/fills` | GET | required | `FillHistoryBatch` |
+
+Private paths require `AUTH_TOKEN` (`fig-dev-{account}` in the exchange simulator).
+Gateway REST/WS adapters translate legacy broker APIs to these native paths.
+
+### 9.2 Historical query patterns (§7.3)
+
+- **Small query:** `REQUEST` (GET + `ChannelPath`) → single `RESPONSE` with batch type.
+- **Large range:** `REQUEST` → `STREAM_ITEM` × N (future `request_stream` channels).
+- **Live stream:** `SUBSCRIBE` → ongoing `STREAM_ITEM` updates; gap-fill via `CandleBarRequest`.
+
 ---
 
 ## 10. Security

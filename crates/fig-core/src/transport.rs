@@ -571,6 +571,47 @@ impl FigConnection {
         }
     }
 
+    /// Send one frame on a fresh bidirectional stream and read all response frames.
+    ///
+    /// Used by gateway proxies: half-closes the send side after the request so the
+    /// server can flush responses and close the stream.
+    pub async fn request_and_recv_all(&self, frame: Frame) -> Result<Vec<Frame>, FrameError> {
+        let (mut send, mut recv) = self
+            .conn
+            .open_bi()
+            .await
+            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+        let data = frame.encode()?;
+        send.write_all(&data).await.map_err(|e| {
+            FrameError::IoError(std::io::Error::other(e.to_string()))
+        })?;
+        send.finish().map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+
+        let mut decoder = FrameDecoder::new();
+        let mut buf = vec![0u8; 65536];
+        let mut frames = Vec::new();
+        loop {
+            match recv.read(&mut buf).await {
+                Ok(Some(n)) => {
+                    decoder.feed(&buf[..n]);
+                    while let Some(result) = decoder.decode_next() {
+                        frames.push(result?);
+                    }
+                }
+                Ok(None) => {
+                    while let Some(result) = decoder.decode_next() {
+                        frames.push(result?);
+                    }
+                    break;
+                }
+                Err(e) => {
+                    return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
+                }
+            }
+        }
+        Ok(frames)
+    }
+
     /// Accept an incoming bidirectional stream, read the first frame to determine
     /// the channel ID, store the stream mapping, and return the frame.
     ///

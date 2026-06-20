@@ -171,7 +171,6 @@ pub async fn handle_stream(
     state: Arc<ExchangeState>,
 ) -> Result<()> {
     let mut decoder = FrameDecoder::new();
-    let mut send_buf = Vec::new();
 
     // Read frames from the stream
     let mut buf = vec![0u8; 4096];
@@ -202,23 +201,15 @@ pub async fn handle_stream(
 
             info!("Received: {}", frame);
 
-            // Handle the frame based on its type
-            let response = handle_frame(frame, &state).await;
-
-            // Send response frames
-            for resp_frame in response {
+            let responses = handle_frame(frame, &state).await;
+            for resp_frame in responses {
                 let encoded = resp_frame.encode()?;
-                send_buf.extend_from_slice(&encoded);
+                send.write_all(&encoded).await?;
             }
         }
     }
 
-    // Send any buffered responses
-    if !send_buf.is_empty() {
-        send.write_all(&send_buf).await?;
-        send.finish()?;
-    }
-
+    send.finish()?;
     Ok(())
 }
 
@@ -279,8 +270,11 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
 
     let is_query = method.eq_ignore_ascii_case("GET")
         || channel_path.contains("/candles/")
+        || channel_path.contains("/ticker")
         || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
         || channel_path.ends_with("/fills")
+        || channel_path.ends_with("/funding")
+        || channel_path.ends_with("/ledger")
         || channel_path.ends_with("/margin")
         || (channel_path.starts_with("accounts/")
             && !channel_path.contains("/orders")
@@ -580,6 +574,8 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
     if channel_path.contains("/executions")
         || channel_path.contains("/balances")
         || channel_path.contains("/positions")
+        || channel_path.ends_with("/funding")
+        || channel_path.ends_with("/ledger")
     {
         return crate::broker_api::handle_account_subscribe(frame, state).await;
     }
@@ -588,6 +584,7 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
         || routing_key.contains("quotes")
         || routing_key.contains("candles")
         || routing_key.contains("trades")
+        || routing_key.contains("ticker")
         || channel_path.starts_with("marketdata/")
     {
         return crate::broker_api::handle_market_subscribe(frame, state).await;

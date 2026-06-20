@@ -36,7 +36,9 @@ clients (e.g. `fig-cli`) connect directly to that address.
 | Flag | Default | Description |
 |---|---|---|
 | `--rest-addr` | `127.0.0.1:8080` | REST HTTP listener |
+| `--ws-addr` | `127.0.0.1:8090` | WebSocket HTTP upgrade listener |
 | `--fix-addr` | `127.0.0.1:9876` | FIX TCP listener |
+| `--fig-backend` | (none) | Proxy REST GET and WS SUBSCRIBE to native FIG backend |
 
 Example:
 
@@ -71,7 +73,7 @@ state management (sequence numbers, heartbeats, gap fill).
 
 ## WebSocket & SSE
 
-- **WebSocket**: use `fig_gateways::ws` (`ws_to_fig_frame` / `fig_to_ws_frame`) in a custom HTTP upgrade handler. No standalone WS listener is included in `fig-gateway` today.
+- **WebSocket**: `fig-gateway` listens on `--ws-addr` (default `8090`). Legacy subscribe JSON is translated via `fig_gateways::ws_catalog` and proxied when `--fig-backend` is set.
 - **SSE**: use `fig_gateways::sse` (`parse_sse_chunk`, `sse_to_fig_stream_item`) for REST streaming endpoints.
 
 ## Production Checklist

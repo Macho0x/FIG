@@ -4,11 +4,13 @@ use std::collections::HashMap;
 
 use fig_core::messages::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountSubscriptionKind {
     Executions,
     Balances,
     Positions,
+    Funding,
+    Ledger,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +30,8 @@ pub struct SimAccount {
     pub assets: HashMap<String, BalanceEntry>,
     pub positions: HashMap<String, PositionEntry>,
     pub fills: Vec<ExecutionReport>,
+    pub funding: Vec<FundingPayment>,
+    pub ledger: Vec<LedgerUpdate>,
 }
 
 impl SimAccount {
@@ -50,6 +54,8 @@ impl SimAccount {
             assets,
             positions: HashMap::new(),
             fills: Vec::new(),
+            funding: Vec::new(),
+            ledger: Vec::new(),
         }
     }
 
@@ -117,6 +123,68 @@ impl SimAccount {
         }
     }
 
+    pub fn record_funding(&mut self, payment: FundingPayment) {
+        self.funding.push(payment);
+    }
+
+    pub fn record_ledger(&mut self, entry: LedgerUpdate) {
+        self.balance += entry.delta;
+        self.buying_power += entry.delta;
+        if let Some(asset_entry) = self.assets.get_mut(&entry.asset) {
+            asset_entry.total += entry.delta;
+            asset_entry.available += entry.delta;
+        }
+        self.ledger.push(entry);
+    }
+
+    pub fn query_funding(
+        &self,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        limit: Option<u32>,
+    ) -> FundingHistoryBatch {
+        let mut payments: Vec<FundingPayment> = self
+            .funding
+            .iter()
+            .filter(|p| start_time.is_none_or(|st| p.timestamp >= st))
+            .filter(|p| end_time.is_none_or(|et| p.timestamp <= et))
+            .cloned()
+            .collect();
+        let limit = limit.unwrap_or(500) as usize;
+        let has_more = payments.len() > limit;
+        payments.truncate(limit);
+        FundingHistoryBatch {
+            account: self.account.clone(),
+            payments,
+            has_more,
+            next_cursor: None,
+        }
+    }
+
+    pub fn query_ledger(
+        &self,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        limit: Option<u32>,
+    ) -> LedgerHistoryBatch {
+        let mut entries: Vec<LedgerUpdate> = self
+            .ledger
+            .iter()
+            .filter(|e| start_time.is_none_or(|st| e.timestamp >= st))
+            .filter(|e| end_time.is_none_or(|et| e.timestamp <= et))
+            .cloned()
+            .collect();
+        let limit = limit.unwrap_or(500) as usize;
+        let has_more = entries.len() > limit;
+        entries.truncate(limit);
+        LedgerHistoryBatch {
+            account: self.account.clone(),
+            entries,
+            has_more,
+            next_cursor: None,
+        }
+    }
+
     pub fn query_fills(
         &self,
         symbol: Option<&str>,
@@ -178,6 +246,14 @@ pub fn parse_account_subscription(routing_key: &str, channel_path: &str) -> Opti
     if path.starts_with("accounts/") && path.ends_with("/positions") {
         let account = path.split('/').nth(1)?.to_string();
         return Some((account, AccountSubscriptionKind::Positions));
+    }
+    if path.starts_with("accounts/") && path.ends_with("/funding") {
+        let account = path.split('/').nth(1)?.to_string();
+        return Some((account, AccountSubscriptionKind::Funding));
+    }
+    if path.starts_with("accounts/") && path.ends_with("/ledger") {
+        let account = path.split('/').nth(1)?.to_string();
+        return Some((account, AccountSubscriptionKind::Ledger));
     }
     None
 }

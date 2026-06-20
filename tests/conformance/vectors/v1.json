@@ -69,6 +69,67 @@
       "channel": null
     },
     {
+      "id": "cbor.candle_bar.snapshot",
+      "category": "cbor",
+      "description": "Canonical CandleBar CBOR",
+      "message_type": "CandleBar",
+      "expected_hex": "ab6673796d626f6c644141504c68696e74657276616c62356d646f70656ef958b06468696768f958b8636c6f77f958ac65636c6f7365f958b466766f6c756d65f963d0696261725f73746172741b17979cfe362a0000676261725f656e641b17979d440f8eb8006869735f66696e616cf56b69735f736e617073686f74f4",
+      "frame": null,
+      "payload": {
+        "bar_end": 1700000300000000000,
+        "bar_start": 1700000000000000000,
+        "close": 150.5,
+        "high": 151.0,
+        "interval": "5m",
+        "is_final": true,
+        "low": 149.5,
+        "open": 150.0,
+        "symbol": "AAPL",
+        "volume": 1000.0
+      },
+      "channel": null
+    },
+    {
+      "id": "cbor.balance_snapshot.demo",
+      "category": "cbor",
+      "description": "BalanceSnapshot CBOR for private stream conformance",
+      "message_type": "BalanceSnapshot",
+      "expected_hex": "a3676163636f756e746444454d4f6862616c616e63657381a46561737365746355534465746f74616cfa4974240069617661696c61626c65fa49f4240064686f6c64f900006b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "frame.request.candle_bar_query",
+      "category": "frame",
+      "description": "GET CandleBarRequest on marketdata path",
+      "message_type": "CandleBarRequest",
+      "expected_hex": "0000006a0101000200000001030100000017001a6d61726b6574646174612f4141504c2f63616e646c65732f356d000d0003474554000300106170706c69636174696f6e2f63626f72a36673796d626f6c644141504c68696e74657276616c62356d656c696d69741864",
+      "frame": {
+        "frame_type": "Request",
+        "channel_id": 2,
+        "stream_seq": 1,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": "marketdata/AAPL/candles/5m"
+          },
+          {
+            "tag": "Method",
+            "value": "GET"
+          },
+          {
+            "tag": "ContentType",
+            "value": "application/cbor"
+          }
+        ],
+        "payload_hex": "a36673796d626f6c644141504c68696e74657276616c62356d656c696d69741864"
+      },
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "channel.stream_id.client_server",
       "category": "channel",
       "description": "Client stream = channel*4+0, server = channel*4+1",

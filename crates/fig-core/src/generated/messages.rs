@@ -186,6 +186,32 @@ impl ExecType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum LedgerUpdateKind {
+    Deposit = 1,
+    Withdrawal = 2,
+    Transfer = 3,
+    Fee = 4,
+    Funding = 5,
+}
+
+impl LedgerUpdateKind {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(LedgerUpdateKind::Deposit),
+            2 => Some(LedgerUpdateKind::Withdrawal),
+            3 => Some(LedgerUpdateKind::Transfer),
+            4 => Some(LedgerUpdateKind::Fee),
+            5 => Some(LedgerUpdateKind::Funding),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum MarketDataAction {
     New = 1,
     Change = 2,
@@ -815,6 +841,167 @@ pub struct FillHistoryBatch {
 }
 
 impl FillHistoryBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: SymbolTicker (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SymbolTicker {
+    pub symbol: Symbol,
+    pub last_price: Price,
+    pub price_change: f64,
+    pub price_change_pct: f64,
+    pub volume: Quantity,
+    pub high: Price,
+    pub low: Price,
+    pub open: Price,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl SymbolTicker {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: TickerRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickerRequest {
+    pub symbol: Symbol,
+}
+
+impl TickerRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: FundingPayment (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FundingPayment {
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+    pub amount: f64,
+    pub rate: f64,
+    pub timestamp: TradeTimestamp,
+}
+
+impl FundingPayment {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: FundingHistoryRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FundingHistoryRequest {
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl FundingHistoryRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: FundingHistoryBatch (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FundingHistoryBatch {
+    pub account: String,
+    pub payments: Vec<FundingPayment>,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+impl FundingHistoryBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: LedgerUpdate (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LedgerUpdate {
+    pub account: String,
+    pub asset: String,
+    pub delta: f64,
+    pub kind: LedgerUpdateKind,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_id: Option<String>,
+}
+
+impl LedgerUpdate {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: LedgerHistoryRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LedgerHistoryRequest {
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl LedgerHistoryRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: LedgerHistoryBatch (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LedgerHistoryBatch {
+    pub account: String,
+    pub entries: Vec<LedgerUpdate>,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+impl LedgerHistoryBatch {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "request_response";
     /// Priority level

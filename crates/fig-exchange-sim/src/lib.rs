@@ -4,6 +4,7 @@
 //! capabilities: order entry, market data streaming, and session management.
 
 pub mod account_state;
+pub mod auth;
 pub mod broker_api;
 pub mod matching;
 pub mod market_data;

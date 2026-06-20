@@ -40,6 +40,7 @@ pub enum SubscriptionKind {
     Candles { symbol: String, interval: String },
     Trades { symbol: String },
     Bbo { symbol: String },
+    Ticker { symbol: String },
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,7 @@ pub struct MarketDataHub {
     closed_candles: HashMap<(String, String), Vec<CandleBar>>,
     partial_candles: HashMap<(String, String), CandleBar>,
     last_bbo: HashMap<String, BestBidOffer>,
+    tickers: HashMap<String, SymbolTicker>,
     trade_seq: u64,
 }
 
@@ -81,6 +83,54 @@ impl MarketDataHub {
         for interval in ["1m", "5m"] {
             self.update_candle(symbol, interval, price, qty, ts);
         }
+        self.update_ticker(symbol, price, qty, ts);
+    }
+
+    fn update_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
+        let entry = self.tickers.entry(symbol.to_string()).or_insert_with(|| SymbolTicker {
+            symbol: symbol.to_string(),
+            last_price: Price(price),
+            price_change: 0.0,
+            price_change_pct: 0.0,
+            volume: Quantity(0.0),
+            high: Price(price),
+            low: Price(price),
+            open: Price(price),
+            timestamp: ts,
+            is_snapshot: None,
+        });
+        let open = entry.open.0;
+        entry.last_price = Price(price);
+        entry.high = Price(entry.high.0.max(price));
+        entry.low = Price(entry.low.0.min(price));
+        entry.volume = Quantity(entry.volume.0 + qty);
+        entry.price_change = price - open;
+        entry.price_change_pct = if open.abs() > f64::EPSILON {
+            (price - open) / open * 100.0
+        } else {
+            0.0
+        };
+        entry.timestamp = ts;
+        entry.is_snapshot = Some(false);
+    }
+
+    pub fn ticker(&self, symbol: &str) -> Option<SymbolTicker> {
+        self.tickers.get(symbol).cloned()
+    }
+
+    pub fn ticker_snapshot(&self, symbol: &str) -> SymbolTicker {
+        self.tickers.get(symbol).cloned().unwrap_or(SymbolTicker {
+            symbol: symbol.to_string(),
+            last_price: Price(0.0),
+            price_change: 0.0,
+            price_change_pct: 0.0,
+            volume: Quantity(0.0),
+            high: Price(0.0),
+            low: Price(0.0),
+            open: Price(0.0),
+            timestamp: now_ns(),
+            is_snapshot: Some(true),
+        })
     }
 
     fn update_candle(&mut self, symbol: &str, interval: &str, price: f64, qty: f64, ts: i64) {
@@ -233,8 +283,17 @@ pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<Su
         }
         Some("trades") => Some(SubscriptionKind::Trades { symbol }),
         Some("bbo") => Some(SubscriptionKind::Bbo { symbol }),
+        Some("ticker") => Some(SubscriptionKind::Ticker { symbol }),
         _ => None,
     }
+}
+
+pub fn parse_ticker_query_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "ticker" {
+        return Some(parts[1].to_string());
+    }
+    None
 }
 
 pub fn parse_candle_query_path(path: &str) -> Option<(String, String)> {

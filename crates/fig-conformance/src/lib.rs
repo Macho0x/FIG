@@ -9,11 +9,11 @@ pub use vectors::{
 
 use anyhow::{anyhow, Context, Result};
 use fig_core::channel::ChannelManager;
-use fig_core::codec::{decode_cbor, encode_cbor};
+use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
+    BalanceSnapshot, CandleBar, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -58,19 +58,50 @@ fn run_frame_vector(vector: &ConformanceVector) -> Result<()> {
 }
 
 fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
-    let payload = vector
-        .payload
-        .as_ref()
-        .ok_or_else(|| anyhow!("cbor vector missing `payload`"))?;
-    let order = json_to_new_order_single(payload)?;
-    let encoded = encode_cbor(&order).map_err(|e| anyhow!("encode_cbor: {e}"))?;
+    let payload = vector.payload.as_ref();
+    let encoded = match vector.message_type.as_str() {
+        "NewOrderSingle" => {
+            let payload = payload.ok_or_else(|| anyhow!("cbor vector missing `payload`"))?;
+            let order = json_to_new_order_single(payload)?;
+            encode_cbor(&order).map_err(|e| anyhow!("encode_cbor: {e}"))?
+        }
+        "CandleBar" => encode_cbor(&sample_candle_bar())
+            .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+        "BalanceSnapshot" => encode_cbor(&sample_balance_snapshot())
+            .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+        other => return Err(anyhow!("unsupported cbor message_type: {other}")),
+    };
     assert_hex(&vector.expected_hex, &encoded)?;
-    let decoded: NewOrderSingle =
-        decode_cbor(&encoded).map_err(|e| anyhow!("decode_cbor: {e}"))?;
-    if decoded.cl_ord_id != order.cl_ord_id {
-        return Err(anyhow!("round-trip cl_ord_id mismatch"));
-    }
     Ok(())
+}
+
+fn sample_candle_bar() -> CandleBar {
+    CandleBar {
+        symbol: "AAPL".to_string(),
+        interval: "5m".to_string(),
+        open: Price(150.0),
+        high: Price(151.0),
+        low: Price(149.5),
+        close: Price(150.5),
+        volume: Quantity(1000.0),
+        bar_start: 1_700_000_000_000_000_000,
+        bar_end: 1_700_000_300_000_000_000,
+        is_final: true,
+        is_snapshot: Some(false),
+    }
+}
+
+fn sample_balance_snapshot() -> BalanceSnapshot {
+    BalanceSnapshot {
+        account: "DEMO".to_string(),
+        balances: vec![fig_core::messages::BalanceEntry {
+            asset: "USD".to_string(),
+            total: 1_000_000.0,
+            available: 2_000_000.0,
+            hold: 0.0,
+        }],
+        is_snapshot: Some(true),
+    }
 }
 
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {

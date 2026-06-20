@@ -10,9 +10,10 @@ use fig_core::messages::*;
 use crate::account_state::{
     parse_account_subscription, AccountSubscription, AccountSubscriptionKind,
 };
+use crate::auth::{account_from_private_path, authorize_private};
 use crate::market_data::{
-    parse_candle_query_path, parse_md_subscription, parse_trade_query_path, StreamSubscription,
-    SubscriptionKind,
+    parse_candle_query_path, parse_md_subscription, parse_ticker_query_path,
+    parse_trade_query_path, StreamSubscription, SubscriptionKind,
 };
 use crate::matching::Fill;
 use crate::server::{make_error_frame, schema_id, ExchangeState};
@@ -21,6 +22,19 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
     let method = extension_text(&frame, ExtensionTag::Method);
     let method = if method.is_empty() { "GET".to_string() } else { method };
+
+    if let Some(account) = account_from_private_path(&channel_path) {
+        if let Some(err) = authorize_private(&frame, &account) {
+            return vec![err];
+        }
+    }
+
+    if let Some(symbol) = parse_ticker_query_path(&channel_path) {
+        let md = state.market_data.lock().await;
+        let ticker = md.ticker_snapshot(&symbol);
+        drop(md);
+        return ok_response(frame, &ticker);
+    }
 
     if method != "GET" && !frame.payload.is_empty() {
         // POST with query payload is allowed
@@ -95,6 +109,46 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.limit,
         );
         return ok_response(frame, &batch);
+    }
+
+    if channel_path.starts_with("accounts/") && channel_path.ends_with("/funding") {
+        let account = channel_path.split('/').nth(1).unwrap_or("default");
+        let req = decode_or(
+            &frame.payload,
+            FundingHistoryRequest {
+                account: account.to_string(),
+                start_time: None,
+                end_time: None,
+                limit: Some(500),
+            },
+        );
+        let accounts = state.accounts.lock().await;
+        let acct = accounts
+            .get(&req.account)
+            .cloned()
+            .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
+        drop(accounts);
+        return ok_response(frame, &acct.query_funding(req.start_time, req.end_time, req.limit));
+    }
+
+    if channel_path.starts_with("accounts/") && channel_path.ends_with("/ledger") {
+        let account = channel_path.split('/').nth(1).unwrap_or("default");
+        let req = decode_or(
+            &frame.payload,
+            LedgerHistoryRequest {
+                account: account.to_string(),
+                start_time: None,
+                end_time: None,
+                limit: Some(500),
+            },
+        );
+        let accounts = state.accounts.lock().await;
+        let acct = accounts
+            .get(&req.account)
+            .cloned()
+            .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
+        drop(accounts);
+        return ok_response(frame, &acct.query_ledger(req.start_time, req.end_time, req.limit));
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/margin") {
@@ -175,11 +229,17 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
     });
 
     match kind {
-        SubscriptionKind::Quotes { symbol } => crate::server::build_market_data_push(state, &symbol)
-            .await
-            .into_iter()
-            .filter(|f| f.channel_id == frame.channel_id)
-            .collect(),
+        SubscriptionKind::Quotes { symbol } => {
+            let mut frames: Vec<Frame> = crate::server::build_market_data_push(state, &symbol)
+                .await
+                .into_iter()
+                .filter(|f| f.channel_id == frame.channel_id)
+                .collect();
+            if frames.is_empty() {
+                frames.push(ack_subscribe(frame));
+            }
+            frames
+        }
         SubscriptionKind::Candles { symbol, interval } => {
             let md = state.market_data.lock().await;
             let mut frames = Vec::new();
@@ -247,6 +307,21 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
             }
             vec![ack_subscribe(frame)]
         }
+        SubscriptionKind::Ticker { symbol } => {
+            let md = state.market_data.lock().await;
+            let mut ticker = md.ticker_snapshot(&symbol);
+            ticker.is_snapshot = Some(true);
+            drop(md);
+            if let Ok(payload) = codec::encode_cbor(&ticker) {
+                return vec![stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "marketdata/ticker",
+                )];
+            }
+            vec![ack_subscribe(frame)]
+        }
     }
 }
 
@@ -261,6 +336,10 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
             "UNKNOWN_ACCOUNT_SUBSCRIPTION",
         )];
     };
+
+    if let Some(err) = authorize_private(&frame, &account) {
+        return vec![err];
+    }
 
     state
         .account_subscriptions
@@ -313,6 +392,30 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
                     payload,
                     "accounts/positions",
                 ));
+            }
+        }
+        AccountSubscriptionKind::Funding => {
+            for payment in &acct.funding {
+                if let Ok(payload) = codec::encode_cbor(payment) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "accounts/funding",
+                    ));
+                }
+            }
+        }
+        AccountSubscriptionKind::Ledger => {
+            for entry in &acct.ledger {
+                if let Ok(payload) = codec::encode_cbor(entry) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "accounts/ledger",
+                    ));
+                }
             }
         }
     }
@@ -368,6 +471,29 @@ pub async fn post_fill_updates(
                         }
                     }
                     AccountSubscriptionKind::Positions => {}
+                    AccountSubscriptionKind::Funding => {}
+                    AccountSubscriptionKind::Ledger => {}
+                }
+            }
+            let ledger = LedgerUpdate {
+                account: account.to_string(),
+                asset: "USD".to_string(),
+                delta: balance_update.delta,
+                kind: LedgerUpdateKind::Fee,
+                timestamp: report.transact_time,
+                reference_id: Some(report.exec_id.clone()),
+            };
+            acct.record_ledger(ledger.clone());
+            for sub in subs.iter().filter(|s| s.account == account) {
+                if sub.kind == AccountSubscriptionKind::Ledger {
+                    if let Ok(payload) = codec::encode_cbor(&ledger) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "accounts/ledger",
+                        ));
+                    }
                 }
             }
         }
@@ -424,6 +550,19 @@ pub async fn post_fill_updates(
                                 "marketdata/bbo",
                             ));
                         }
+                    }
+                }
+            }
+            SubscriptionKind::Ticker { symbol: sym } if sym == symbol => {
+                let md = state.market_data.lock().await;
+                if let Some(ticker) = md.ticker(symbol) {
+                    if let Ok(payload) = codec::encode_cbor(&ticker) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "marketdata/ticker",
+                        ));
                     }
                 }
             }

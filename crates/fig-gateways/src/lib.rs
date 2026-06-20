@@ -16,6 +16,7 @@
 //! use fig_gateways::sse::{parse_sse_chunk, sse_to_fig_stream_item};
 //! ```
 
+pub mod backend;
 pub mod fix;
 pub mod fix_seq_store;
 pub mod fix_session;
@@ -25,3 +26,4 @@ pub mod rest_query;
 pub mod sse;
 pub mod ws;
 pub mod ws_catalog;
+pub mod ws_listener;

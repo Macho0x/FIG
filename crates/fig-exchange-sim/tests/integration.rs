@@ -116,23 +116,33 @@ fn make_order_frame(channel_id: u16, order: &NewOrderSingle) -> anyhow::Result<F
         .with_payload(payload))
 }
 
+/// Helper: dev auth token for private paths in tests and CLI.
+fn auth_extension(account: &str) -> Extension {
+    Extension::text(
+        ExtensionTag::AuthToken,
+        &format!("fig-dev-{account}"),
+    )
+}
+
 /// Helper: build a subscribe frame.
-fn make_subscribe_frame(channel_id: u16, routing_key: &str) -> Frame {
+fn make_subscribe_frame(channel_id: u16, routing_key: &str, channel_path: &str) -> Frame {
     Frame::new(FrameType::Subscribe, channel_id)
         .with_seq(1)
         .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
+        .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
 }
 
 /// Helper: build an account query request frame.
 fn make_account_query_frame(channel_id: u16, account: &str) -> Frame {
     Frame::new(FrameType::Request, channel_id)
         .with_seq(1)
-        .with_schema_id(1) // TRADING_ORDERS — required for routing to handle_trading_request
+        .with_schema_id(1)
         .with_extension(Extension::text(
             ExtensionTag::ChannelPath,
-            &format!("accounts/{}", account),
+            &format!("accounts/{account}"),
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+        .with_extension(auth_extension(account))
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -199,7 +209,7 @@ async fn test_market_data_subscription() {
 
     let conn = connect_client(server_addr).await.expect("client connect");
 
-    let sub_frame = make_subscribe_frame(1, "marketdata.AAPL.quotes");
+    let sub_frame = make_subscribe_frame(1, "marketdata.AAPL.quotes", "marketdata/AAPL/quotes");
     let responses = send_and_receive(&conn, sub_frame)
         .await
         .expect("send/receive");
@@ -547,4 +557,71 @@ async fn test_stream_reset_detection() {
     drop(server_conn);
     drop(client);
     drop(server);
+}
+
+/// Candle subscribe returns ack or partial bar snapshot.
+#[tokio::test]
+async fn test_candle_subscription() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let sub = make_subscribe_frame(
+        1,
+        "marketdata/AAPL/candles/5m",
+        "marketdata/AAPL/candles/5m",
+    );
+    let responses = send_and_receive(&conn, sub).await.expect("send/receive");
+    assert!(!responses.is_empty());
+}
+
+/// Private account query without auth is rejected.
+#[tokio::test]
+async fn test_private_auth_required() {
+    let _ = tracing_subscriber::fmt::try_init();
+    std::env::remove_var("FIG_DEV_OPEN");
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let query = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "accounts/SECRET",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    let responses = send_and_receive(&conn, query).await.expect("send/receive");
+    assert!(responses.iter().any(|f| {
+        f.frame_type == FrameType::StreamError
+            && f.extensions.iter().any(|e| {
+                e.tag == ExtensionTag::ErrorMessage && e.value.as_text() == Some("AUTH_REQUIRED")
+            })
+    }));
+}
+
+/// Ticker query returns SymbolTicker payload.
+#[tokio::test]
+async fn test_ticker_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let server_addr = endpoint.local_addr().unwrap();
+    let conn = connect_client(server_addr).await.expect("client connect");
+
+    let query = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/ticker",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    let responses = send_and_receive(&conn, query).await.expect("send/receive");
+    let ticker = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .and_then(|f| codec::decode_cbor::<SymbolTicker>(&f.payload).ok());
+    assert!(ticker.is_some());
 }

@@ -1,6 +1,6 @@
 //! Standalone FIG gateway process.
 //!
-//! Accepts legacy FIX and REST connections and translates them to FIG frames.
+//! Accepts legacy FIX, REST, and WebSocket connections and translates them to FIG frames.
 //! Intended as a migration bridge alongside native FIG clients.
 
 use std::net::SocketAddr;
@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use fig_gateways::backend::{connect_backend, proxy_frame};
 use fig_gateways::fix::{
     fig_to_fix_business_message_reject, fix_to_fig_cancel, fix_to_fig_cancel_replace,
     fix_to_fig_order, logon_to_stream_open, split_fix_messages, BusinessMessageReject,
@@ -18,12 +19,15 @@ use fig_gateways::fix_session::{FixAction, FixSession};
 use fig_gateways::fix_tls::{accept_tls, build_tls_acceptor, FixGatewayStream, FixTlsAcceptor};
 use fig_gateways::rest::{fig_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response};
 use fig_gateways::rest_query::http_get_to_fig_request;
-use fig_core::channel::ChannelMode;
+use fig_gateways::ws::{fig_to_ws_frame, serialize_ws_frame, WsOpcode};
+use fig_gateways::ws_catalog::{fig_stream_item_to_legacy_json, legacy_ws_json_to_fig_subscribe};
+use fig_gateways::ws_listener::{
+    accept_websocket, is_websocket_upgrade, read_ws_text_or_binary, write_ws_json, write_ws_pong,
+};
 use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
-use fig_core::transport::FigClient;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
@@ -34,6 +38,9 @@ struct Args {
     /// REST/HTTP listen address
     #[arg(long, default_value = "127.0.0.1:8080")]
     rest_addr: SocketAddr,
+    /// WebSocket listen address (HTTP upgrade)
+    #[arg(long, default_value = "127.0.0.1:8090")]
+    ws_addr: SocketAddr,
     /// FIX TCP listen address
     #[arg(long, default_value = "127.0.0.1:9876")]
     fix_addr: SocketAddr,
@@ -49,7 +56,7 @@ struct Args {
     /// Redis/etcd URL for shared FIX sequence store
     #[arg(long, default_value = "redis://127.0.0.1:6379/fig")]
     fix_seq_url: String,
-    /// Optional FIG backend to proxy translated FIX orders (host:port)
+    /// Optional FIG backend to proxy translated frames (host:port)
     #[arg(long)]
     fig_backend: Option<SocketAddr>,
 }
@@ -65,10 +72,14 @@ async fn main() -> anyhow::Result<()> {
 
     info!("FIG gateway starting");
     info!("  REST: {}", args.rest_addr);
+    info!("  WS:   {}", args.ws_addr);
     info!(
         "  FIX:  {} (tls={}, seq_store={:?})",
         args.fix_addr, args.fix_tls, seq_backend
     );
+    if let Some(backend) = args.fig_backend {
+        info!("  FIG backend: {}", backend);
+    }
 
     let tls_acceptor = if args.fix_tls {
         let (cert, key) = fig_core::transport::generate_self_signed_cert()
@@ -79,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let rest = tokio::spawn(run_rest_gateway(args.rest_addr, args.fig_backend));
+    let ws = tokio::spawn(run_ws_gateway(args.ws_addr, args.fig_backend));
     let fix = tokio::spawn(run_fix_gateway(
         args.fix_addr,
         tls_acceptor,
@@ -88,6 +100,7 @@ async fn main() -> anyhow::Result<()> {
 
     tokio::select! {
         r = rest => r??,
+        w = ws => w??,
         f = fix => f??,
     }
 
@@ -97,9 +110,6 @@ async fn main() -> anyhow::Result<()> {
 async fn run_rest_gateway(addr: SocketAddr, fig_backend: Option<SocketAddr>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("REST gateway listening on {}", addr);
-    if let Some(backend) = fig_backend {
-        info!("  REST queries proxy to FIG backend {}", backend);
-    }
 
     loop {
         let (mut stream, peer) = listener.accept().await?;
@@ -122,21 +132,25 @@ async fn handle_rest_connection(
         return Ok(());
     }
 
+    if is_websocket_upgrade(&buf[..n]) {
+        return handle_ws_connection(stream, &buf[..n], fig_backend).await;
+    }
+
     let request = parse_http_request(&buf[..n])?;
     fig_core::observability::Metrics::inc(&fig_core::observability::METRICS.gateway_translations);
 
     let http_response = if request.method.eq_ignore_ascii_case("GET") {
         let frame = http_get_to_fig_request(&request)?;
         if let Some(addr) = fig_backend {
-            match proxy_fig_query(addr, &frame).await {
-                Ok(resp) => resp,
+            match proxy_frame(addr, frame).await {
+                Ok(frames) => frames_to_http_response(&frames)?,
                 Err(e) => {
                     warn!("FIG backend query failed: {}", e);
-                    demo_translate_response(&frame)?
+                    demo_translate_response(&http_get_to_fig_request(&request)?)?
                 }
             }
         } else {
-            demo_translate_response(&frame)?
+            demo_translate_response(&http_get_to_fig_request(&request)?)?
         }
     } else {
         let frame = http_to_fig_frame(&request)?;
@@ -147,6 +161,90 @@ async fn handle_rest_connection(
         .write_all(&serialize_http_response(&http_response))
         .await?;
     Ok(())
+}
+
+async fn run_ws_gateway(addr: SocketAddr, fig_backend: Option<SocketAddr>) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(addr).await?;
+    info!("WebSocket gateway listening on {}", addr);
+
+    loop {
+        let (mut stream, peer) = listener.accept().await?;
+        let backend = fig_backend;
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 65536];
+            let n = match stream.read(&mut buf).await {
+                Ok(n) => n,
+                Err(e) => {
+                    warn!("WS read from {} failed: {}", peer, e);
+                    return;
+                }
+            };
+            if n == 0 {
+                return;
+            }
+            if let Err(e) = handle_ws_connection(&mut stream, &buf[..n], backend).await {
+                warn!("WS connection from {} failed: {}", peer, e);
+            }
+        });
+    }
+}
+
+async fn handle_ws_connection(
+    stream: &mut TcpStream,
+    raw: &[u8],
+    fig_backend: Option<SocketAddr>,
+) -> anyhow::Result<()> {
+    accept_websocket(stream, raw).await?;
+    fig_core::observability::Metrics::inc(&fig_core::observability::METRICS.gateway_translations);
+
+    loop {
+        let ws = read_ws_text_or_binary(stream).await?;
+        match ws.opcode {
+            WsOpcode::Close => break,
+            WsOpcode::Ping => {
+                write_ws_pong(stream, &ws.payload).await?;
+                continue;
+            }
+            WsOpcode::Text | WsOpcode::Binary => {
+                let text = String::from_utf8(ws.payload)?;
+                let fig = legacy_ws_json_to_fig_subscribe(&text, 1)?;
+                if let Some(addr) = fig_backend {
+                    let responses = proxy_frame(addr, fig).await?;
+                    for resp in responses {
+                        if resp.frame_type == FrameType::StreamItem
+                            || resp.frame_type == FrameType::Response
+                        {
+                            let json = fig_stream_item_to_legacy_json(&resp)?;
+                            write_ws_json(stream, &json).await?;
+                        } else if resp.frame_type == FrameType::Control {
+                            let pong = fig_to_ws_frame(&resp)?;
+                            stream.write_all(&serialize_ws_frame(&pong)).await?;
+                        }
+                    }
+                } else {
+                    write_ws_json(
+                        stream,
+                        &format!(
+                            "{{\"status\":\"translated\",\"frame_type\":\"{}\"}}",
+                            fig.frame_type
+                        ),
+                    )
+                    .await?;
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn frames_to_http_response(frames: &[Frame]) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
+    let response = frames
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .or_else(|| frames.first())
+        .ok_or_else(|| anyhow::anyhow!("backend returned no frames"))?;
+    fig_to_http_response(response).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn demo_translate_response(frame: &Frame) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
@@ -171,20 +269,6 @@ fn demo_translate_response(frame: &Frame) -> anyhow::Result<fig_gateways::rest::
     })
 }
 
-async fn proxy_fig_query(
-    addr: SocketAddr,
-    frame: &Frame,
-) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
-    let conn = connect_fig_backend(addr).await?;
-    let channel_id = conn
-        .open_channel(ChannelMode::Stateless, Some(messages::schema_id::TRADING_ORDERS))
-        .await
-        .map_err(|e| anyhow::anyhow!("open channel: {e}"))?;
-    conn.send_frame(channel_id, frame).await?;
-    let response = conn.recv_frame(channel_id).await?;
-    fig_to_http_response(&response).map_err(|e| anyhow::anyhow!("{e}"))
-}
-
 async fn run_fix_gateway(
     addr: SocketAddr,
     tls_acceptor: Option<FixTlsAcceptor>,
@@ -201,15 +285,13 @@ async fn run_fix_gateway(
         let backend = fig_backend;
         tokio::spawn(async move {
             let gateway_stream = match acceptor {
-                Some(acceptor) => {
-                    match accept_tls(&acceptor, stream).await {
-                        Ok(tls) => FixGatewayStream::from_tls(tls),
-                        Err(e) => {
-                            warn!("FIX TLS handshake from {} failed: {}", peer, e);
-                            return;
-                        }
+                Some(acceptor) => match accept_tls(&acceptor, stream).await {
+                    Ok(tls) => FixGatewayStream::from_tls(tls),
+                    Err(e) => {
+                        warn!("FIX TLS handshake from {} failed: {}", peer, e);
+                        return;
                     }
-                }
+                },
                 None => FixGatewayStream::from_plain(stream),
             };
             if let Err(e) = handle_fix_connection(gateway_stream, store, backend).await {
@@ -225,7 +307,7 @@ async fn handle_fix_connection(
     fig_backend: Option<SocketAddr>,
 ) -> anyhow::Result<()> {
     let backend_conn = if let Some(addr) = fig_backend {
-        Some(connect_fig_backend(addr).await?)
+        Some(connect_backend(addr).await?)
     } else {
         None
     };
@@ -261,48 +343,37 @@ async fn handle_fix_connection(
                     frame.frame_type, frame.channel_id
                 );
             } else if session.is_logged_in() {
-                let translate_result: Result<(), fig_gateways::fix::FixError> = match msg_type.as_str() {
-                    "D" => {
-                        let order = fix_to_fig_order(&fix_msg.tags)?;
-                        info!(
-                            "Translated FIX NewOrderSingle → FIG {} {:?} {}",
-                            order.cl_ord_id, order.side, order.symbol
-                        );
-                        if let Some(conn) = backend_conn.as_ref() {
-                            if let Err(e) = forward_new_order(conn, &order).await {
-                                warn!("FIG backend forward failed: {}", e);
+                let translate_result: Result<(), fig_gateways::fix::FixError> =
+                    match msg_type.as_str() {
+                        "D" => {
+                            let order = fix_to_fig_order(&fix_msg.tags)?;
+                            if let Some(conn) = backend_conn.as_ref() {
+                                if let Err(e) = forward_new_order(conn, &order).await {
+                                    warn!("FIG backend forward failed: {}", e);
+                                }
                             }
+                            Ok(())
                         }
-                        Ok(())
-                    }
-                    "F" => {
-                        let cancel = fix_to_fig_cancel(&fix_msg.tags)?;
-                        info!(
-                            "Translated FIX CancelRequest → FIG {} -> {}",
-                            cancel.cl_ord_id, cancel.orig_cl_ord_id
-                        );
-                        if let Some(conn) = backend_conn.as_ref() {
-                            if let Err(e) = forward_cancel(conn, &cancel).await {
-                                warn!("FIG backend forward failed: {}", e);
+                        "F" => {
+                            let cancel = fix_to_fig_cancel(&fix_msg.tags)?;
+                            if let Some(conn) = backend_conn.as_ref() {
+                                if let Err(e) = forward_cancel(conn, &cancel).await {
+                                    warn!("FIG backend forward failed: {}", e);
+                                }
                             }
+                            Ok(())
                         }
-                        Ok(())
-                    }
-                    "G" => {
-                        let replace = fix_to_fig_cancel_replace(&fix_msg.tags)?;
-                        info!(
-                            "Translated FIX CancelReplace → FIG {} -> {}",
-                            replace.cl_ord_id, replace.orig_cl_ord_id
-                        );
-                        if let Some(conn) = backend_conn.as_ref() {
-                            if let Err(e) = forward_cancel_replace(conn, &replace).await {
-                                warn!("FIG backend forward failed: {}", e);
+                        "G" => {
+                            let replace = fix_to_fig_cancel_replace(&fix_msg.tags)?;
+                            if let Some(conn) = backend_conn.as_ref() {
+                                if let Err(e) = forward_cancel_replace(conn, &replace).await {
+                                    warn!("FIG backend forward failed: {}", e);
+                                }
                             }
+                            Ok(())
                         }
-                        Ok(())
-                    }
-                    _ => Ok(()),
-                };
+                        _ => Ok(()),
+                    };
 
                 if let Err(err) = translate_result {
                     warn!("FIX translation failed for MsgType={}: {}", msg_type, err);
@@ -343,16 +414,6 @@ async fn handle_fix_connection(
     Ok(())
 }
 
-async fn connect_fig_backend(
-    addr: SocketAddr,
-) -> anyhow::Result<fig_core::transport::FigConnection> {
-    let config = fig_core::transport::client_config()
-        .map_err(|e| anyhow::anyhow!("client config: {e}"))?;
-    let client = FigClient::new(config)?;
-    info!("Connecting FIG gateway backend at {}", addr);
-    client.connect(addr, "localhost").await.map_err(Into::into)
-}
-
 async fn forward_new_order(
     conn: &fig_core::transport::FigConnection,
     order: &NewOrderSingle,
@@ -369,7 +430,7 @@ async fn forward_new_order(
         .with_extension(Extension::text(ExtensionTag::Method, "POST"))
         .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
         .with_payload(payload);
-    conn.send_frame(1, &frame).await?;
+    conn.request_and_recv_all(frame).await?;
     Ok(())
 }
 
@@ -387,7 +448,7 @@ async fn forward_cancel(
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "DELETE"))
         .with_payload(payload);
-    conn.send_frame(1, &frame).await?;
+    conn.request_and_recv_all(frame).await?;
     Ok(())
 }
 
@@ -405,6 +466,6 @@ async fn forward_cancel_replace(
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "PUT"))
         .with_payload(payload);
-    conn.send_frame(1, &frame).await?;
+    conn.request_and_recv_all(frame).await?;
     Ok(())
 }
