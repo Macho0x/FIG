@@ -582,10 +582,11 @@ impl FigConnection {
             .await
             .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
         let data = frame.encode()?;
-        send.write_all(&data).await.map_err(|e| {
-            FrameError::IoError(std::io::Error::other(e.to_string()))
-        })?;
-        send.finish().map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+        send.write_all(&data)
+            .await
+            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+        send.finish()
+            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
 
         let mut decoder = FrameDecoder::new();
         let mut buf = vec![0u8; 65536];

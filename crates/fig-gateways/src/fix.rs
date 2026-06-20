@@ -19,8 +19,8 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, ExecType,
-    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, SecurityIdSource,
-    Side, TimeInForce,
+    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, SecurityIdSource, Side,
+    TimeInForce,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -194,7 +194,9 @@ pub fn split_fix_messages(input: &[u8]) -> Vec<Vec<u8>> {
     let mut i = 0usize;
     while i + 4 <= input.len() {
         if input[i..].starts_with(b"10=") {
-            let end = (i + 4..input.len()).find(|&j| input[j] == SOH).map(|j| j + 1);
+            let end = (i + 4..input.len())
+                .find(|&j| input[j] == SOH)
+                .map(|j| j + 1);
             if let Some(end) = end {
                 messages.push(input[start..end].to_vec());
                 start = end;
@@ -296,17 +298,18 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i32 {
     let y = year - i32::from(month <= 2);
     let era = (if y >= 0 { y } else { y - 399 }) / 400;
     let yoe = y - era * 400;
-    let doy = (153 * (if month <= 2 {
-        month as i32 + 9
-    } else {
-        month as i32 - 3
-    }) + 2)
-        / 5
-        + i32::try_from(day).unwrap_or(0)
-        - 1
-        + yoe * 365
-        + yoe / 4
-        - yoe / 100;
+    let doy =
+        (153 * (if month <= 2 {
+            month as i32 + 9
+        } else {
+            month as i32 - 3
+        }) + 2)
+            / 5
+            + i32::try_from(day).unwrap_or(0)
+            - 1
+            + yoe * 365
+            + yoe / 4
+            - yoe / 100;
     era * 146097 + doy - 719468
 }
 
@@ -338,7 +341,14 @@ fn chrono_from_epoch_secs(secs: i64) -> UtcDateTime {
     }
 }
 
-fn epoch_secs_from_utc(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
+fn epoch_secs_from_utc(
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+) -> i64 {
     i64::from(days_from_civil(year, month, day)) * 86400
         + i64::from(hour) * 3600
         + i64::from(minute) * 60
@@ -597,9 +607,7 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
 
     let account = find_tag(tags, 1).map(|s| s.to_string());
     let security_id = find_tag(tags, 48).map(|s| s.to_string());
-    let id_source = find_tag(tags, 22)
-        .map(parse_fix_id_source)
-        .transpose()?;
+    let id_source = find_tag(tags, 22).map(parse_fix_id_source).transpose()?;
     let security_exchange = find_tag(tags, 207).map(|s| s.to_string());
 
     match order_type {
@@ -609,10 +617,8 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
                 msg_type: "D".to_string(),
             });
         }
-        OrderType::Limit
-        | OrderType::StopLimit
-        | OrderType::LimitOnClose
-        | OrderType::Pegged if price.is_none() =>
+        OrderType::Limit | OrderType::StopLimit | OrderType::LimitOnClose | OrderType::Pegged
+            if price.is_none() =>
         {
             return Err(FixError::MissingTag {
                 tag: 44,
@@ -732,10 +738,7 @@ pub fn fix_to_fig_cancel_replace(tags: &[(u32, String)]) -> FixResult<CancelRepl
 // ─── FIG → FIX Conversion ────────────────────────────────────────
 
 /// Convert a FIG `ExecutionReport` to a FIX ExecutionReport (35=8) wire-format message.
-pub fn fig_to_fix_execution_report(
-    report: &ExecutionReport,
-    ctx: &FixOutboundContext,
-) -> Vec<u8> {
+pub fn fig_to_fix_execution_report(report: &ExecutionReport, ctx: &FixOutboundContext) -> Vec<u8> {
     let mut body = vec![
         (11, report.cl_ord_id.clone()),
         (37, report.order_id.clone()),

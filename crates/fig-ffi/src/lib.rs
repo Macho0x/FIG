@@ -6,9 +6,7 @@ use std::slice;
 
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::{Frame, FrameType};
-use fig_core::messages::{
-    NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
-};
+use fig_core::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
 
 /// Opaque owned byte buffer returned to callers.
 #[repr(C)]
@@ -135,11 +133,7 @@ pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
         Ok(s) => s.to_string(),
         Err(_) => return -2,
     };
-    let side = if side_buy != 0 {
-        Side::Buy
-    } else {
-        Side::Sell
-    };
+    let side = if side_buy != 0 { Side::Buy } else { Side::Sell };
     let order = NewOrderSingle {
         cl_ord_id,
         side,

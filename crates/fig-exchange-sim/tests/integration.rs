@@ -96,9 +96,9 @@ fn make_order(
         expire_time: None,
         account: Some("TEST".to_string()),
         strategy_id: None,
-            security_id: None,
-            id_source: None,
-            security_exchange: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
     }
 }
 
@@ -118,10 +118,7 @@ fn make_order_frame(channel_id: u16, order: &NewOrderSingle) -> anyhow::Result<F
 
 /// Helper: dev auth token for private paths in tests and CLI.
 fn auth_extension(account: &str) -> Extension {
-    Extension::text(
-        ExtensionTag::AuthToken,
-        &format!("fig-dev-{account}"),
-    )
+    Extension::text(ExtensionTag::AuthToken, &format!("fig-dev-{account}"))
 }
 
 /// Helper: build a subscribe frame.

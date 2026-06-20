@@ -107,7 +107,8 @@ fn bench_fig_to_fix_execution_report(c: &mut Criterion) {
     let report = make_execution_report();
     c.bench_function("fig_to_fix_execution_report", |b| {
         b.iter(|| {
-            let msg = fig_to_fix_execution_report(black_box(&report), &FixOutboundContext::default());
+            let msg =
+                fig_to_fix_execution_report(black_box(&report), &FixOutboundContext::default());
             black_box(msg);
         })
     });

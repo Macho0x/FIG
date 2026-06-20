@@ -17,7 +17,10 @@ use fig_core::messages::{
 use fig_core::sbe::encode_new_order_single;
 
 #[derive(Parser)]
-#[command(name = "fig-conformance-gen", about = "Regenerate FIG conformance vectors")]
+#[command(
+    name = "fig-conformance-gen",
+    about = "Regenerate FIG conformance vectors"
+)]
 struct Args {
     #[arg(long, default_value = "tests/conformance/vectors/v1.json")]
     write: PathBuf,
@@ -27,7 +30,11 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let suite = build_suite()?;
     write_suite(&args.write, &suite)?;
-    println!("Wrote {} ({} vectors)", args.write.display(), suite.vectors.len());
+    println!(
+        "Wrote {} ({} vectors)",
+        args.write.display(),
+        suite.vectors.len()
+    );
     Ok(())
 }
 
@@ -51,7 +58,10 @@ fn build_suite() -> Result<ConformanceSuite> {
             "trading/accounts/DEMO/orders",
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "POST"))
-        .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/cbor",
+        ))
         .with_payload(encode_cbor(&order)?);
 
     let mut client = ChannelManager::new(false);
@@ -100,7 +110,10 @@ fn build_suite() -> Result<ConformanceSuite> {
             "marketdata/AAPL/candles/5m",
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-        .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/cbor",
+        ))
         .with_payload(encode_cbor(&candle_req)?);
     let balance_snap = BalanceSnapshot {
         account: "DEMO".to_string(),
@@ -131,9 +144,7 @@ fn build_suite() -> Result<ConformanceSuite> {
                     extensions: vec![
                         ExtensionSpec {
                             tag: "ChannelPath".into(),
-                            value: ExtensionValueSpec::Text(
-                                "trading/accounts/DEMO/orders".into(),
-                            ),
+                            value: ExtensionValueSpec::Text("trading/accounts/DEMO/orders".into()),
                         },
                         ExtensionSpec {
                             tag: "Method".into(),
@@ -203,9 +214,7 @@ fn build_suite() -> Result<ConformanceSuite> {
                     extensions: vec![
                         ExtensionSpec {
                             tag: "ChannelPath".into(),
-                            value: ExtensionValueSpec::Text(
-                                "marketdata/AAPL/candles/5m".into(),
-                            ),
+                            value: ExtensionValueSpec::Text("marketdata/AAPL/candles/5m".into()),
                         },
                         ExtensionSpec {
                             tag: "Method".into(),

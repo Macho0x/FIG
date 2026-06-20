@@ -178,7 +178,10 @@ impl MatchingEngine {
 
     fn reference_price(&self, symbol: &Symbol) -> Option<f64> {
         let book = self.books.get(symbol)?;
-        book.asks.best_price().map(|p| p.0).or_else(|| book.bids.best_price().map(|p| p.0))
+        book.asks
+            .best_price()
+            .map(|p| p.0)
+            .or_else(|| book.bids.best_price().map(|p| p.0))
     }
 
     /// Process a new order. Returns fills and any resting order.
@@ -205,7 +208,11 @@ impl MatchingEngine {
         }
     }
 
-    fn process_new_order_inner(&mut self, order: &NewOrderSingle, allow_stop_rest: bool) -> MatchResult {
+    fn process_new_order_inner(
+        &mut self,
+        order: &NewOrderSingle,
+        allow_stop_rest: bool,
+    ) -> MatchResult {
         if let Some(reason) = self.validate_order(order) {
             return MatchResult {
                 fills: vec![],
@@ -661,7 +668,10 @@ mod tests {
         let result = engine.process_new_order(&buy);
 
         assert!(result.fills.is_empty());
-        assert_eq!(result.reject_reason.as_deref(), Some("FOK not fully fillable"));
+        assert_eq!(
+            result.reject_reason.as_deref(),
+            Some("FOK not fully fillable")
+        );
     }
 
     #[test]

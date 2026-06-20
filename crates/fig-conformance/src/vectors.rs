@@ -61,8 +61,7 @@ pub struct ChannelSpec {
 }
 
 pub fn load_suite(path: &Path) -> Result<ConformanceSuite> {
-    let data = fs::read_to_string(path)
-        .with_context(|| format!("read {}", path.display()))?;
+    let data = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
     serde_json::from_str(&data).context("parse conformance JSON")
 }
 

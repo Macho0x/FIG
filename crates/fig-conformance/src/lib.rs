@@ -65,10 +65,12 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
             let order = json_to_new_order_single(payload)?;
             encode_cbor(&order).map_err(|e| anyhow!("encode_cbor: {e}"))?
         }
-        "CandleBar" => encode_cbor(&sample_candle_bar())
-            .map_err(|e| anyhow!("encode_cbor: {e}"))?,
-        "BalanceSnapshot" => encode_cbor(&sample_balance_snapshot())
-            .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+        "CandleBar" => {
+            encode_cbor(&sample_candle_bar()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+        }
+        "BalanceSnapshot" => {
+            encode_cbor(&sample_balance_snapshot()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+        }
         other => return Err(anyhow!("unsupported cbor message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;
@@ -206,15 +208,8 @@ fn json_to_new_order_single(v: &serde_json::Value) -> Result<NewOrderSingle> {
             .unwrap_or("CONF-001")
             .to_string(),
         side,
-        order_qty: Quantity(
-            v.get("order_qty")
-                .and_then(|n| n.as_f64())
-                .unwrap_or(100.0),
-        ),
-        price: v
-            .get("price")
-            .and_then(|n| n.as_f64())
-            .map(Price),
+        order_qty: Quantity(v.get("order_qty").and_then(|n| n.as_f64()).unwrap_or(100.0)),
+        price: v.get("price").and_then(|n| n.as_f64()).map(Price),
         stop_price: None,
         symbol: v
             .get("symbol")
@@ -272,8 +267,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn vectors_path() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/conformance/vectors/v1.json")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/conformance/vectors/v1.json")
     }
 
     #[test]

@@ -87,18 +87,21 @@ impl MarketDataHub {
     }
 
     fn update_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
-        let entry = self.tickers.entry(symbol.to_string()).or_insert_with(|| SymbolTicker {
-            symbol: symbol.to_string(),
-            last_price: Price(price),
-            price_change: 0.0,
-            price_change_pct: 0.0,
-            volume: Quantity(0.0),
-            high: Price(price),
-            low: Price(price),
-            open: Price(price),
-            timestamp: ts,
-            is_snapshot: None,
-        });
+        let entry = self
+            .tickers
+            .entry(symbol.to_string())
+            .or_insert_with(|| SymbolTicker {
+                symbol: symbol.to_string(),
+                last_price: Price(price),
+                price_change: 0.0,
+                price_change_pct: 0.0,
+                volume: Quantity(0.0),
+                high: Price(price),
+                low: Price(price),
+                open: Price(price),
+                timestamp: ts,
+                is_snapshot: None,
+            });
         let open = entry.open.0;
         entry.last_price = Price(price);
         entry.high = Price(entry.high.0.max(price));
@@ -185,11 +188,7 @@ impl MarketDataHub {
         limit: Option<u32>,
     ) -> CandleBarBatch {
         let key = (symbol.to_string(), interval.to_string());
-        let mut bars = self
-            .closed_candles
-            .get(&key)
-            .cloned()
-            .unwrap_or_default();
+        let mut bars = self.closed_candles.get(&key).cloned().unwrap_or_default();
         if let Some(partial) = self.partial_candles.get(&key) {
             bars.push(partial.clone());
         }

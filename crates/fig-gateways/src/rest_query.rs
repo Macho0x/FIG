@@ -8,8 +8,8 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CandleBarRequest, FillHistoryRequest, FundingHistoryRequest, LedgerHistoryRequest,
-    TradeHistoryRequest, schema_id,
+    schema_id, CandleBarRequest, FillHistoryRequest, FundingHistoryRequest, LedgerHistoryRequest,
+    TradeHistoryRequest,
 };
 
 use crate::rest::{HttpRequest, RestError, RestResult};
@@ -42,10 +42,7 @@ pub fn http_get_to_fig_request(request: &HttpRequest) -> RestResult<Frame> {
     Ok(frame)
 }
 
-fn map_http_path_to_channel_path(
-    path: &str,
-    query: &[(String, String)],
-) -> RestResult<String> {
+fn map_http_path_to_channel_path(path: &str, query: &[(String, String)]) -> RestResult<String> {
     let trimmed = path.trim_start_matches('/');
 
     if trimmed == "api/v3/klines" || trimmed == "klines" {
@@ -65,7 +62,10 @@ fn map_http_path_to_channel_path(
     )))
 }
 
-fn build_query_payload(channel_path: &str, query: &[(String, String)]) -> RestResult<Option<Vec<u8>>> {
+fn build_query_payload(
+    channel_path: &str,
+    query: &[(String, String)],
+) -> RestResult<Option<Vec<u8>>> {
     if let Some((symbol, interval)) = parse_candle_path(channel_path) {
         let req = CandleBarRequest {
             symbol,
@@ -159,7 +159,10 @@ fn parse_query_string(path: &str) -> Vec<(String, String)> {
     qs.split('&')
         .filter_map(|pair| {
             let mut parts = pair.splitn(2, '=');
-            Some((parts.next()?.to_string(), parts.next().unwrap_or("").to_string()))
+            Some((
+                parts.next()?.to_string(),
+                parts.next().unwrap_or("").to_string(),
+            ))
         })
         .collect()
 }

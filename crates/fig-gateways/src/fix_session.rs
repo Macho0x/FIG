@@ -141,7 +141,8 @@ impl FixSession {
         let Some(store) = &self.seq_store else {
             return;
         };
-        let state = FixSeqState::from_session(self.expected_recv_seq, self.next_send_seq, self.state);
+        let state =
+            FixSeqState::from_session(self.expected_recv_seq, self.next_send_seq, self.state);
         let _ = store.put(&self.session_key(), &state);
     }
 
@@ -865,7 +866,8 @@ mod tests {
 
         let store: Arc<dyn crate::fix_seq_store::FixSeqStore> = Arc::new(MemoryFixSeqStore::new());
 
-        let mut session = FixSession::new("GW".into(), "CLIENT".into()).with_seq_store(store.clone());
+        let mut session =
+            FixSession::new("GW".into(), "CLIENT".into()).with_seq_store(store.clone());
         session.send_logon();
         session.process_incoming(&fix_msg("A", 1)).unwrap();
         session.process_incoming(&fix_msg("0", 2)).unwrap();

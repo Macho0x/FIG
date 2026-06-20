@@ -490,7 +490,11 @@ pub fn encode_new_order_single(order: &NewOrderSingle) -> Vec<u8> {
     if let Some(ref id_source) = order.id_source {
         enc.write_u8(security_id_source_to_u8(id_source));
     }
-    enc.write_u8(if order.security_exchange.is_some() { 1 } else { 0 });
+    enc.write_u8(if order.security_exchange.is_some() {
+        1
+    } else {
+        0
+    });
     if let Some(ref security_exchange) = order.security_exchange {
         enc.write_str(security_exchange);
     }

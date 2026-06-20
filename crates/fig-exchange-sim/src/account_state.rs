@@ -229,7 +229,10 @@ impl AccountHub {
     }
 }
 
-pub fn parse_account_subscription(routing_key: &str, channel_path: &str) -> Option<(String, AccountSubscriptionKind)> {
+pub fn parse_account_subscription(
+    routing_key: &str,
+    channel_path: &str,
+) -> Option<(String, AccountSubscriptionKind)> {
     let path = if !channel_path.is_empty() {
         channel_path.to_string()
     } else {

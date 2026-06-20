@@ -20,9 +20,9 @@ fn make_order() -> NewOrderSingle {
         expire_time: None,
         account: Some("ACCT-123".to_string()),
         strategy_id: None,
-            security_id: None,
-            id_source: None,
-            security_exchange: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
     }
 }
 

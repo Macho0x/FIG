@@ -73,9 +73,8 @@ pub fn decode_new_order_single_frame(
 ) -> Result<crate::messages::NewOrderSingle, FrameError> {
     match frame_content_type(frame) {
         "application/fig+sbe" | "application/sbe" => {
-            crate::sbe::decode_new_order_single(&frame.payload).map_err(|e| {
-                FrameError::CborDecodeError(format!("sbe decode: {e}"))
-            })
+            crate::sbe::decode_new_order_single(&frame.payload)
+                .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
         }
         "application/x-protobuf" | "application/protobuf" => {
             let json = crate::protobuf::protobuf_to_json(&frame.payload)?;
@@ -300,9 +299,7 @@ mod tests {
     fn test_decode_new_order_single_sbe_frame() {
         use crate::ext::{Extension, ExtensionTag};
         use crate::frame::{Frame, FrameType};
-        use crate::messages::{
-            NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
-        };
+        use crate::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
 
         let order = NewOrderSingle {
             cl_ord_id: "SBE-1".into(),

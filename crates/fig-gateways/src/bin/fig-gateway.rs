@@ -8,6 +8,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use fig_core::codec::encode_cbor;
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{Frame, FrameType};
+use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
 use fig_gateways::backend::{connect_backend, proxy_frame};
 use fig_gateways::fix::{
     fig_to_fix_business_message_reject, fix_to_fig_cancel, fix_to_fig_cancel_replace,
@@ -17,17 +21,15 @@ use fig_gateways::fix::{
 use fig_gateways::fix_seq_store::{build_seq_store, FixSeqStoreBackend};
 use fig_gateways::fix_session::{FixAction, FixSession};
 use fig_gateways::fix_tls::{accept_tls, build_tls_acceptor, FixGatewayStream, FixTlsAcceptor};
-use fig_gateways::rest::{fig_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response};
+use fig_gateways::rest::{
+    fig_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response,
+};
 use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws::{fig_to_ws_frame, serialize_ws_frame, WsOpcode};
 use fig_gateways::ws_catalog::{fig_stream_item_to_legacy_json, legacy_ws_json_to_fig_subscribe};
 use fig_gateways::ws_listener::{
     accept_websocket, is_websocket_upgrade, read_ws_text_or_binary, write_ws_json, write_ws_pong,
 };
-use fig_core::codec::encode_cbor;
-use fig_core::ext::{Extension, ExtensionTag};
-use fig_core::frame::{Frame, FrameType};
-use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
@@ -82,8 +84,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let tls_acceptor = if args.fix_tls {
-        let (cert, key) = fig_core::transport::generate_self_signed_cert()
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let (cert, key) =
+            fig_core::transport::generate_self_signed_cert().map_err(|e| anyhow::anyhow!("{e}"))?;
         Some(build_tls_acceptor(cert, key).map_err(|e| anyhow::anyhow!("{e}"))?)
     } else {
         None
@@ -428,7 +430,10 @@ async fn forward_new_order(
             format!("trading/accounts/{account}/orders"),
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "POST"))
-        .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/cbor",
+        ))
         .with_payload(payload);
     conn.request_and_recv_all(frame).await?;
     Ok(())

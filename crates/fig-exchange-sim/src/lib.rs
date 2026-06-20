@@ -6,8 +6,8 @@
 pub mod account_state;
 pub mod auth;
 pub mod broker_api;
-pub mod matching;
 pub mod market_data;
+pub mod matching;
 pub mod orderbook;
 pub mod server;
 

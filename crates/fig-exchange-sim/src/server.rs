@@ -411,33 +411,33 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
 
                 let response = match outcome {
                     CancelOutcome::Cancelled(_order) => {
-                    let report = ExecutionReport {
-                        cl_ord_id: cancel.cl_ord_id.clone(),
-                        order_id: format!("OX-{}", cancel.orig_cl_ord_id),
-                        exec_id: format!("EX-{}", Uuid::new_v4()),
-                        exec_type: ExecType::Canceled,
-                        ord_status: OrdStatus::Canceled,
-                        side: cancel.side,
-                        last_qty: None,
-                        last_price: None,
-                        leaves_qty: Quantity(0.0),
-                        cum_qty: Quantity(0.0),
-                        avg_price: Price(0.0),
-                        symbol: cancel.symbol.clone(),
-                        transact_time: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_nanos() as i64,
-                    };
-                    if let Ok(payload) = codec::encode_cbor(&report) {
-                        Frame::new(FrameType::Response, frame.channel_id)
-                            .with_seq(frame.stream_seq)
-                            .with_schema_id(schema_id::TRADING_ORDERS)
-                            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-                            .with_payload(payload)
-                    } else {
-                        make_error_frame(frame.channel_id, frame.stream_seq, "ENCODE_ERROR")
-                    }
+                        let report = ExecutionReport {
+                            cl_ord_id: cancel.cl_ord_id.clone(),
+                            order_id: format!("OX-{}", cancel.orig_cl_ord_id),
+                            exec_id: format!("EX-{}", Uuid::new_v4()),
+                            exec_type: ExecType::Canceled,
+                            ord_status: OrdStatus::Canceled,
+                            side: cancel.side,
+                            last_qty: None,
+                            last_price: None,
+                            leaves_qty: Quantity(0.0),
+                            cum_qty: Quantity(0.0),
+                            avg_price: Price(0.0),
+                            symbol: cancel.symbol.clone(),
+                            transact_time: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_nanos() as i64,
+                        };
+                        if let Ok(payload) = codec::encode_cbor(&report) {
+                            Frame::new(FrameType::Response, frame.channel_id)
+                                .with_seq(frame.stream_seq)
+                                .with_schema_id(schema_id::TRADING_ORDERS)
+                                .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+                                .with_payload(payload)
+                        } else {
+                            make_error_frame(frame.channel_id, frame.stream_seq, "ENCODE_ERROR")
+                        }
                     }
                     CancelOutcome::Rejected(reason) => {
                         let reject = CancelReject {

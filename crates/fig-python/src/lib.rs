@@ -5,9 +5,7 @@ use pyo3::prelude::*;
 
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::{Frame, FrameType};
-use fig_core::messages::{
-    NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
-};
+use fig_core::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
 
 #[pyfunction]
 fn version() -> &'static str {
@@ -110,9 +108,7 @@ fn parse_side(s: &str) -> PyResult<Side> {
 #[cfg(test)]
 mod tests {
     use fig_core::codec::{decode_cbor, encode_cbor};
-    use fig_core::messages::{
-        NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
-    };
+    use fig_core::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
 
     #[test]
     fn test_encode_cbor_order_round_trip() {

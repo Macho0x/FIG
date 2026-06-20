@@ -58,10 +58,7 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
             format!("hl.trades.{symbol}"),
         ),
         "candle" => {
-            let interval = sub
-                .get("interval")
-                .and_then(|i| i.as_str())
-                .unwrap_or("5m");
+            let interval = sub.get("interval").and_then(|i| i.as_str()).unwrap_or("5m");
             (
                 format!("marketdata/{symbol}/candles/{interval}"),
                 format!("hl.candle.{symbol}.{interval}"),
@@ -80,7 +77,7 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
                 format!("trading/accounts/{user}/executions"),
                 format!("hl.orderUpdates.{user}"),
             )
-        },
+        }
         "subscribeBalance" | "spotState" => {
             let user = sub
                 .get("user")
@@ -90,7 +87,7 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
                 format!("accounts/{user}/balances"),
                 format!("hl.balances.{user}"),
             )
-        },
+        }
         "subscribePosition" | "clearinghouseState" => {
             let user = sub
                 .get("user")
@@ -100,7 +97,7 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
                 format!("accounts/{user}/positions"),
                 format!("hl.positions.{user}"),
             )
-        },
+        }
         _ => return None,
     };
     Some(LegacySubscribe {
@@ -154,10 +151,7 @@ pub fn legacy_ws_json_to_fig_subscribe(json: &str, channel_id: u16) -> WsResult<
 pub fn fig_subscribe_frame(channel_id: u16, sub: &LegacySubscribe) -> Frame {
     Frame::new(FrameType::Subscribe, channel_id)
         .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::RoutingKey,
-            &sub.routing_key,
-        ))
+        .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
         .with_extension(Extension::text(
             ExtensionTag::ChannelPath,
             &sub.channel_path,
@@ -184,8 +178,7 @@ pub fn fig_stream_item_to_legacy_json(frame: &Frame) -> WsResult<String> {
     } else {
         let json_str = fig_core::codec::cbor_to_json(&frame.payload)
             .map_err(|e| WsError::UnmappableFrameType(e.to_string()))?;
-        serde_json::from_str(&json_str)
-            .map_err(|e| WsError::UnmappableFrameType(e.to_string()))?
+        serde_json::from_str(&json_str).map_err(|e| WsError::UnmappableFrameType(e.to_string()))?
     };
 
     let event = serde_json::json!({

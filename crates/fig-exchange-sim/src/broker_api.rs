@@ -21,7 +21,11 @@ use crate::server::{make_error_frame, schema_id, ExchangeState};
 pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
     let method = extension_text(&frame, ExtensionTag::Method);
-    let method = if method.is_empty() { "GET".to_string() } else { method };
+    let method = if method.is_empty() {
+        "GET".to_string()
+    } else {
+        method
+    };
 
     if let Some(account) = account_from_private_path(&channel_path) {
         if let Some(err) = authorize_private(&frame, &account) {
@@ -74,12 +78,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             },
         );
         let md = state.market_data.lock().await;
-        let batch = md.query_trades(
-            &req.symbol,
-            req.start_time,
-            req.end_time,
-            req.limit,
-        );
+        let batch = md.query_trades(&req.symbol, req.start_time, req.end_time, req.limit);
         drop(md);
         return ok_response(frame, &batch);
     }
@@ -128,7 +127,10 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             .cloned()
             .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
         drop(accounts);
-        return ok_response(frame, &acct.query_funding(req.start_time, req.end_time, req.limit));
+        return ok_response(
+            frame,
+            &acct.query_funding(req.start_time, req.end_time, req.limit),
+        );
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/ledger") {
@@ -148,7 +150,10 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             .cloned()
             .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
         drop(accounts);
-        return ok_response(frame, &acct.query_ledger(req.start_time, req.end_time, req.limit));
+        return ok_response(
+            frame,
+            &acct.query_ledger(req.start_time, req.end_time, req.limit),
+        );
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/margin") {
@@ -187,17 +192,15 @@ fn decode_or<T: serde::de::DeserializeOwned + Clone>(payload: &[u8], default: T)
 
 fn ok_response<T: serde::Serialize>(frame: Frame, payload: &T) -> Vec<Frame> {
     match codec::encode_cbor(payload) {
-        Ok(bytes) => vec![
-            Frame::new(FrameType::Response, frame.channel_id)
-                .with_seq(frame.stream_seq)
-                .with_schema_id(schema_id::TRADING_ORDERS)
-                .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-                .with_extension(Extension::text(
-                    ExtensionTag::ContentType,
-                    "application/cbor",
-                ))
-                .with_payload(bytes),
-        ],
+        Ok(bytes) => vec![Frame::new(FrameType::Response, frame.channel_id)
+            .with_seq(frame.stream_seq)
+            .with_schema_id(schema_id::TRADING_ORDERS)
+            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/cbor",
+            ))
+            .with_payload(bytes)],
         Err(_) => vec![make_error_frame(
             frame.channel_id,
             frame.stream_seq,
@@ -444,8 +447,7 @@ pub async fn post_fill_updates(
     {
         let mut accounts = state.accounts.lock().await;
         let acct = accounts.get_or_create(account);
-        let subs: Vec<AccountSubscription> =
-            state.account_subscriptions.lock().await.clone();
+        let subs: Vec<AccountSubscription> = state.account_subscriptions.lock().await.clone();
         for report in reports {
             let balance_update = acct.record_fill(report.clone());
             for sub in subs.iter().filter(|s| s.account == account) {
@@ -502,7 +504,10 @@ pub async fn post_fill_updates(
     let subs: Vec<StreamSubscription> = state.subscriptions.lock().await.clone();
     for sub in subs {
         match &sub.kind {
-            SubscriptionKind::Candles { symbol: sym, interval } if sym == symbol => {
+            SubscriptionKind::Candles {
+                symbol: sym,
+                interval,
+            } if sym == symbol => {
                 let md = state.market_data.lock().await;
                 if let Some(bar) = md.partial_candle(sym, interval) {
                     if let Ok(payload) = codec::encode_cbor(&CandleBarEvent { bar }) {

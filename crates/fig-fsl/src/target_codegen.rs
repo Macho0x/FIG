@@ -75,11 +75,7 @@ impl GoCodegen {
                         field.optional,
                         &field.name,
                     );
-                    out.push_str(&format!(
-                        "    {} {}\n",
-                        pascal_case(&field.name),
-                        go_type
-                    ));
+                    out.push_str(&format!("    {} {}\n", pascal_case(&field.name), go_type));
                 }
                 out.push_str("}\n\n");
             }
@@ -282,7 +278,11 @@ fn canonical_enum_name(field_name: &str, parent: &str) -> String {
     }
 }
 
-fn merge_enum_variants(map: &mut std::collections::HashMap<String, Vec<String>>, name: String, variants: &[String]) {
+fn merge_enum_variants(
+    map: &mut std::collections::HashMap<String, Vec<String>>,
+    name: String,
+    variants: &[String],
+) {
     map.entry(name)
         .and_modify(|existing| {
             for v in variants {
@@ -382,7 +382,10 @@ fn go_field_type_named(
         }
         FieldType::Enum(_) => canonical_enum_name(field_name, parent),
         FieldType::List(inner) => {
-            format!("[]{}", go_field_type_named(inner, schema, parent, false, field_name))
+            format!(
+                "[]{}",
+                go_field_type_named(inner, schema, parent, false, field_name)
+            )
         }
         FieldType::InlineStruct(_) => parent.to_string(),
         FieldType::InlineBase(bt, _) => go_base_type(bt),

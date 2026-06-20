@@ -20,9 +20,9 @@ fn make_limit_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) ->
         expire_time: None,
         account: None,
         strategy_id: None,
-            security_id: None,
-            id_source: None,
-            security_exchange: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
     }
 }
 
@@ -39,9 +39,9 @@ fn make_market_order(id: &str, side: Side, symbol: &str, qty: f64) -> NewOrderSi
         expire_time: None,
         account: None,
         strategy_id: None,
-            security_id: None,
-            id_source: None,
-            security_exchange: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
     }
 }
 
