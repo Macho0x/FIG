@@ -12,6 +12,8 @@ streaming over a single multiplexed TREE transport. Key goals:
 - **Schema-native payloads** — CBOR for flexibility, SBE for zero-alloc hot paths.
 - **Channel isolation** — each logical stream maps to a TREE bidirectional or
   unidirectional stream with independent sequence numbers.
+- **Native FIG first** — REST and WebSocket are gateway edges over the same FSL
+  types; see [ADR 0006](adr/0006-broker-api-parity.md).
 
 ## Connection Lifecycle
 
@@ -52,6 +54,9 @@ persist channel and sequence state across restarts.
 | `fig_core::rate_limit` | Token-bucket per-channel rate limiting |
 | `fig_core::dos` | Connection-level DoS guard and flood detection |
 
+Private account paths require `AUTH_TOKEN` whose principal matches the
+`{account}` segment in `ChannelPath`. See SPEC §9.3.
+
 ## Worked Example: Order Entry
 
 ```text
@@ -66,12 +71,124 @@ Client                              Server
   |<----------------------------------|
 ```
 
+## Worked Example: Public Market Data Subscribe (Candles)
+
+Subscribe to live OHLCV bars on `marketdata/BTC/candles/5m`. No auth required.
+
+```text
+Client (channel 3)                    Exchange (fig-exchange-sim)
+  |                                    |
+  | STREAM_OPEN (session mode)         |
+  |----------------------------------->|
+  | SUBSCRIBE                          |
+  |   RoutingKey: marketdata/BTC/candles/5m
+  |   ChannelPath: marketdata/BTC/candles/5m
+  |   SchemaId: 0x01
+  |----------------------------------->|
+  | STREAM_ITEM (CandleBarEvent)       |  partial bar, is_snapshot optional
+  |<-----------------------------------|
+  | STREAM_ITEM (CandleBarEvent)       |  bar update on each trade
+  |<-----------------------------------|
+  | STREAM_ITEM (CandleBarEvent)       |  final bar when interval closes
+  |<-----------------------------------|
+  | UNSUBSCRIBE                        |
+  |----------------------------------->|
+  | STREAM_CLOSE                       |
+  |<-----------------------------------|
+```
+
+**Frame details:**
+
+1. Open a session channel (`ChannelMode::Session`, schema `0x01`).
+2. Send `SUBSCRIBE` with both `ROUTING_KEY` and `CHANNEL_PATH` set to the native
+   path (gateway WS clients use legacy keys like `btcusdt@kline_5m` — mapped by
+   `fig_gateways::ws_catalog::binance_topic_to_subscribe`).
+3. Decode each `STREAM_ITEM` payload as CBOR `CandleBarEvent` (contains
+   `CandleBar` + `is_final`).
+4. On sequence gap, issue `CandleBarRequest` for the missing window (see below),
+   then resume the subscription.
+
+**Gap fill after disconnect:**
+
+```text
+  | REQUEST GET marketdata/BTC/candles/5m  (CandleBarRequest body)
+  |----------------------------------->|
+  | RESPONSE (CandleBarBatch)          |
+  |<-----------------------------------|
+  | SUBSCRIBE (same path)              |
+  |----------------------------------->|
+```
+
+## Worked Example: Private Account Subscribe (Balances + Executions)
+
+Account `DEMO-ACCT` requires `AUTH_TOKEN: fig-dev-DEMO-ACCT` on subscribe frames
+(simulator dev token). Production venues use JWT or mTLS per SPEC §9.3.
+
+```text
+Client (channel 5)                    Exchange
+  |                                    |
+  | SUBSCRIBE                          |
+  |   ChannelPath: accounts/DEMO-ACCT/balances
+  |   AuthToken: fig-dev-DEMO-ACCT
+  |----------------------------------->|
+  | STREAM_ITEM (BalanceSnapshot)      |  snapshot on subscribe
+  |<-----------------------------------|
+  |                                    |
+  | SUBSCRIBE (channel 6)              |
+  |   ChannelPath: trading/accounts/DEMO-ACCT/executions
+  |   AuthToken: fig-dev-DEMO-ACCT
+  |----------------------------------->|
+  |                                    |
+  | REQUEST (NewOrderSingle on ch 1)   |
+  |----------------------------------->|
+  | STREAM_ITEM (ExecutionReport)      |  ch 6 — fill notification
+  |<-----------------------------------|
+  | STREAM_ITEM (BalanceUpdate)        |  ch 5 — balance delta on fill
+  |<-----------------------------------|
+  | STREAM_ITEM (PositionUpdate)       |  ch 7 if positions subscribed
+  |<-----------------------------------|
+```
+
+**Auth rules:**
+
+- Token account suffix MUST match path `{account}` or the broker rejects the frame.
+- Set `FIG_DEV_OPEN=1` on the simulator to skip auth during local development.
+- Margin, funding, ledger, and liquidations use the same auth model on their
+  respective paths (see [STREAMING.md](STREAMING.md)).
+
+## Worked Example: Historical Query (Fill History)
+
+```text
+Client                              Exchange
+  | REQUEST GET accounts/DEMO-ACCT/fills
+  |   AuthToken: fig-dev-DEMO-ACCT
+  |   Payload: FillHistoryRequest { limit: 100, … }
+  |----------------------------------->|
+  | RESPONSE 200 (FillHistoryBatch)    |
+  |<-----------------------------------|
+```
+
+Large order history responses use `request_stream`:
+
+```text
+  | REQUEST GET trading/accounts/DEMO-ACCT/orders
+  |----------------------------------->|
+  | STREAM_ITEM (OrderHistoryBatch)    |  chunk 1
+  |<-----------------------------------|
+  | STREAM_ITEM (OrderHistoryBatch)    |  chunk 2
+  |<-----------------------------------|
+  | STREAM_CLOSE                       |
+  |<-----------------------------------|
+```
+
+See [QUERY.md](QUERY.md) for REST gateway mapping and pagination fields.
+
 ## Codec Selection
 
 | Payload | When to use |
 |---|---|
 | SBE | Production trading hot path (fixed schema) |
-| CBOR | Self-describing, gateway translation |
+| CBOR | Self-describing, gateway translation, stream payloads |
 | Protobuf | Schema-evolving enterprise integrations |
 | JSON | REST gateway edge only |
 
@@ -79,11 +196,13 @@ Client                              Server
 
 - **Resume:** persisted subscriptions are replayed when the client sends `SUBSCRIBE` with `Method: RESUME` and `ChannelPath: .well-known/resume` (same `SESSION_ID` as before disconnect when available).
 - **Gap fill:** after a sequence gap on a live book or candle stream, issue `OrderBookRequest` or `CandleBarRequest` for a snapshot, then resume the subscription.
-- **`request_stream`:** large historical responses (order history, candles) may arrive as multiple `STREAM_ITEM` frames plus `STREAM_CLOSE` instead of one `RESPONSE`.
+- **`request_stream`:** large historical responses (order history when >50 rows) arrive as multiple `STREAM_ITEM` frames plus `STREAM_CLOSE` instead of one `RESPONSE`.
 
 ## Further Reading
 
-- [SPEC.md](../SPEC.md) — normative wire format
-- [TUTORIAL.md](TUTORIAL.md) — getting started
+- [SPEC.md](../SPEC.md) — normative wire format (§9 stream catalog, §9.3 auth)
+- [TUTORIAL.md](TUTORIAL.md) — getting started and stream inventory
+- [STREAMING.md](STREAMING.md) — live subscribe paths and WS catalog
+- [QUERY.md](QUERY.md) — historical REQUEST paths and REST GET mapping
 - [GATEWAY.md](GATEWAY.md) — legacy protocol deployment
-- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md))
+- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md), [0006: broker API parity](adr/0006-broker-api-parity.md))

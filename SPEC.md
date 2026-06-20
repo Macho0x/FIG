@@ -367,41 +367,107 @@ channel://broker.example.com:8443/analytics/risk/VaR?portfolio=main&type=request
 - Carried in the CHANNEL_PATH extension.
 - For pub/sub, ROUTING_KEY may also be used (dot-separated topics).
 
+**Native FIG is canonical.** Every broker capability must exist as native FIG
+frames on TREE first (`SUBSCRIBE` for live push, `REQUEST`/`RESPONSE` or
+`REQUEST`/`STREAM_ITEM` for historical pulls). REST GET and WebSocket topics
+are **gateway adapters** that translate to and from the same FSL payloads —
+they must not introduce queries or streams that native FIG lacks. See
+[ADR 0006](docs/adr/0006-broker-api-parity.md).
+
 **Routing rules:**
 - If CHANNEL_PATH is present → route to the path handler.
 - If ROUTING_KEY is present → match against subscriptions, fan out.
 - If both → route to path handler AND fan out to subscribers.
 - If neither → deliver to the specific channel (WebSocket equivalent).
 
-**Capability discovery:** `channel://host/.well-known/capabilities` returns
-the server's channel tree (available paths, types, schemas).
+**Capability discovery:** `GET /.well-known/capabilities` (or
+`CapabilitiesRequest` on TREE) returns the server's channel tree (available
+paths, types, schemas).
 
 ### 9.1 Native stream catalog (§17)
 
-| Path | Pattern | Auth | FSL payload |
-|---|---|---|---|
-| `marketdata/{symbol}/quotes` | pub/sub | none | `MarketDataSnapshot` |
-| `marketdata/{symbol}/candles/{interval}` | pub/sub + GET | none | `CandleBarEvent` / `CandleBarBatch` |
-| `marketdata/{symbol}/trades` | pub/sub + GET | none | `PublicTradeEvent` / `PublicTradeBatch` |
-| `marketdata/{symbol}/bbo` | pub/sub | none | `BestBidOffer` |
-| `marketdata/{symbol}/ticker` | pub/sub + GET | none | `SymbolTicker` |
-| `trading/accounts/{account}/executions` | pub/sub | required | `ExecutionReport` |
-| `accounts/{account}/balances` | pub/sub | required | `BalanceSnapshot` / `BalanceUpdate` |
-| `accounts/{account}/positions` | pub/sub | required | `PositionSnapshot` / `PositionUpdate` |
-| `accounts/{account}/funding` | pub/sub + GET | required | `FundingPayment` / `FundingHistoryBatch` |
-| `accounts/{account}/ledger` | pub/sub + GET | required | `LedgerUpdate` / `LedgerHistoryBatch` |
-| `accounts/{account}` | GET | required | `AccountSummary` |
-| `accounts/{account}/margin` | GET | required | `MarginSummary` |
-| `accounts/{account}/fills` | GET | required | `FillHistoryBatch` |
+Paths below are implemented by the reference broker (`fig-exchange-sim`) and
+mapped by `fig-gateways` when `--fig-backend` is set. Gateway WS aliases refer
+to Binance-style topics; Hyperliquid JSON subscriptions map via `ws_catalog.rs`.
 
-Private paths require `AUTH_TOKEN` (`fig-dev-{account}` in the exchange simulator).
-Gateway REST/WS adapters translate legacy broker APIs to these native paths.
+#### Public market data (no auth)
+
+| Native `CHANNEL_PATH` | Pattern | FSL payload(s) | Gateway WS alias (examples) |
+|---|---|---|---|
+| `marketdata/{symbol}/book` | pub/sub + GET | `OrderBookSnapshot`, `OrderBookDelta` | `@depth` |
+| `marketdata/{symbol}/quotes` | pub/sub + GET | `MarketDataSnapshot`, incremental | `@depth` (legacy alias) |
+| `marketdata/{symbol}/bbo` | pub/sub | `BestBidOffer` | `@bookTicker` |
+| `marketdata/{symbol}/trades` | pub/sub + GET | `PublicTradeEvent`, `PublicTradeBatch` | `@trade` |
+| `marketdata/{symbol}/aggtrades` | pub/sub + GET | `AggregateTradeEvent`, `AggregateTradeBatch` | `@aggTrade` |
+| `marketdata/{symbol}/candles/{interval}` | pub/sub + GET | `CandleBarEvent`, `CandleBarBatch` | `@kline_{interval}` |
+| `marketdata/{symbol}/ticker` | pub/sub + GET | `SymbolTicker` | `@ticker` |
+| `marketdata/ticker/all` | pub/sub + GET | `MiniTicker`, `AllMidsBatch` | `@miniTicker`, `allMids` |
+| `marketdata/{symbol}/mark` | pub/sub + GET | `MarkPriceUpdate` | `@markPrice`, `activeAssetCtx` |
+| `marketdata/liquidations` | pub/sub | `LiquidationTrade` | `@forceOrder` |
+
+Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
+
+#### Private account / trading (auth required)
+
+| Native `CHANNEL_PATH` | Pattern | FSL payload(s) | Notes |
+|---|---|---|---|
+| `trading/accounts/{account}/executions` | pub/sub | `ExecutionReport` | Fill fan-out on match |
+| `trading/accounts/{account}/orders/open` | GET | `OpenOrdersSnapshot` | Snapshot query |
+| `trading/accounts/{account}/orders` | GET (+ stream) | `OrderHistoryBatch` | `request_stream` when >50 rows |
+| `accounts/{account}` | GET | `AccountSummary` | Account snapshot |
+| `accounts/{account}/balances` | pub/sub | `BalanceSnapshot`, `BalanceUpdate` | Snapshot on subscribe |
+| `accounts/{account}/positions` | pub/sub | `PositionSnapshot`, `PositionUpdate` | Delta on fill |
+| `accounts/{account}/margin` | pub/sub + GET | `MarginSummary`, `MarginUpdate` | Live margin on subscribe/fill |
+| `accounts/{account}/fills` | GET | `FillHistoryBatch` | User trade history |
+| `accounts/{account}/funding` | pub/sub + GET | `FundingPayment`, `FundingHistoryBatch` | |
+| `accounts/{account}/ledger` | pub/sub + GET | `LedgerUpdate`, `LedgerHistoryBatch` | Fee on fill |
+| `accounts/{account}/liquidations` | pub/sub | `UserLiquidation` | Push on balance breach |
+| `/.well-known/capabilities` | GET | `CapabilitiesResponse` | Exchange info / path catalog |
+
+`OrderListStatus` is defined in FSL but not yet wired as a live stream in the
+reference broker.
 
 ### 9.2 Historical query patterns (§7.3)
 
-- **Small query:** `REQUEST` (GET + `ChannelPath`) → single `RESPONSE` with batch type.
-- **Large range:** `REQUEST` → `STREAM_ITEM` × N (future `request_stream` channels).
-- **Live stream:** `SUBSCRIBE` → ongoing `STREAM_ITEM` updates; gap-fill via `CandleBarRequest`.
+| Result size | Pattern | FIG frames | Example |
+|---|---|---|---|
+| Small (≤ few KB) | Request-Response | `REQUEST` → `RESPONSE` | `CandleBarRequest` → `CandleBarBatch` |
+| Large / paginated | Request-Stream | `REQUEST` → `STREAM_ITEM` × N → `STREAM_CLOSE` | Order history (>50 rows in exchange-sim) |
+| Live ongoing | Pub/Sub | `SUBSCRIBE` → `STREAM_ITEM` × N | Candle stream, balance updates |
+
+Batch requests accept optional `start_time`, `end_time`, `limit`, and `cursor`.
+Batch responses include `has_more` and optional `next_cursor` (see `PageInfo` in
+`account.fsl`). Gap-fill after live disconnect: client sends `CandleBarRequest`
+or `FillHistoryRequest` for the missing window, then resumes `SUBSCRIBE`.
+
+REST `GET` paths and query parameters map to the same `ChannelPath` and CBOR
+request bodies via `fig_gateways::rest_query`. See [docs/QUERY.md](docs/QUERY.md).
+
+### 9.3 Private stream auth and scoping
+
+Private paths under `accounts/{account}/…` and `trading/accounts/{account}/…`
+require authentication on every frame that opens or uses the channel:
+
+| Mechanism | Extension / transport | Scope |
+|---|---|---|
+| Dev token (simulator) | `AUTH_TOKEN` = `fig-dev-{account}` | Account in path must match token suffix |
+| Bearer / JWT | `AUTH_TOKEN` bearer or JWT claims | Subject must match `{account}` in path |
+| mTLS | Client certificate CN | CN mapped to permitted account(s) |
+| Dev bypass | Server env `FIG_DEV_OPEN=1` | Skips auth check (local testing only) |
+
+**Scoping rules:**
+
+1. A client authenticated as account `A` MUST NOT subscribe or query paths for
+   account `B` — the broker returns `403` / `STREAM_ERROR`.
+2. Public market data paths (`marketdata/…`) do not require auth unless the
+   venue policy adds rate limits by tier.
+3. Gateway proxies MUST forward `AUTH_TOKEN` (or terminate TLS and inject venue
+   credentials) when translating private WS/REST to native FIG.
+4. Cross-account reads are rejected even when the token is valid for another
+   account.
+
+See [docs/STREAMING.md](docs/STREAMING.md) and [docs/TUTORIAL.md](docs/TUTORIAL.md)
+for subscribe examples with `AUTH_TOKEN`.
 
 ---
 

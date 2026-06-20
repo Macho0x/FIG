@@ -184,8 +184,64 @@ docker run --rm -p 8443:8443/udp fig-exchange-sim
 
 ## Next steps
 
-- Read [SPEC.md](../SPEC.md) for the full protocol specification (§9 stream catalog)
-- Read [PROTOCOL.md](PROTOCOL.md) for design rationale and migration patterns
+- Read [SPEC.md](../SPEC.md) for the full protocol specification (§9 stream catalog, §9.3 auth)
+- Read [PROTOCOL.md](PROTOCOL.md) for worked subscribe/query sequences
 - Read [STREAMING.md](STREAMING.md) and [QUERY.md](QUERY.md) for broker API parity
 - See [API.md](API.md) for the module index
 - Run integration tests: `cargo test -p fig-exchange-sim --test integration`
+
+## 10. Broker API stream and query inventory
+
+Native FIG paths implemented by `fig-exchange-sim`. Gateway WS/REST columns show
+legacy aliases when running `fig-gateway --fig-backend`.
+
+### Live streams (`SUBSCRIBE` → `STREAM_ITEM`)
+
+| Category | Native path | FSL payload | Gateway WS (examples) |
+|---|---|---|---|
+| Book snapshot/delta | `marketdata/{sym}/book` | `OrderBookSnapshot`, `OrderBookDelta` | `@depth` |
+| BBO | `marketdata/{sym}/bbo` | `BestBidOffer` | `@bookTicker` |
+| Trades | `marketdata/{sym}/trades` | `PublicTradeEvent` | `@trade` |
+| Agg trades | `marketdata/{sym}/aggtrades` | `AggregateTradeEvent` | `@aggTrade` |
+| Candles | `marketdata/{sym}/candles/{iv}` | `CandleBarEvent` | `@kline_{iv}` |
+| Ticker | `marketdata/{sym}/ticker` | `SymbolTicker` | `@ticker` |
+| All mids | `marketdata/ticker/all` | `MiniTicker` | `@miniTicker` |
+| Mark price | `marketdata/{sym}/mark` | `MarkPriceUpdate` | `@markPrice` |
+| Public liq | `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
+| Executions | `trading/accounts/{acct}/executions` | `ExecutionReport` | HL `orderUpdates` |
+| Balances | `accounts/{acct}/balances` | `BalanceSnapshot`, `BalanceUpdate` | HL `spotState` |
+| Positions | `accounts/{acct}/positions` | `PositionSnapshot`, `PositionUpdate` | HL `clearinghouseState` |
+| Margin | `accounts/{acct}/margin` | `MarginUpdate` | HL `margin` |
+| Funding | `accounts/{acct}/funding` | `FundingPayment` | HL `userFunding` |
+| Ledger | `accounts/{acct}/ledger` | `LedgerUpdate` | HL `ledgerUpdates` |
+| User liq | `accounts/{acct}/liquidations` | `UserLiquidation` | HL `liquidation` |
+
+Private rows require `AUTH_TOKEN: fig-dev-{acct}` (or production JWT/mTLS).
+
+### Historical queries (`REQUEST` → `RESPONSE` or `STREAM_ITEM` × N)
+
+| Query | Native path | Request → response |
+|---|---|---|
+| Capabilities | `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` |
+| Candles | `marketdata/{sym}/candles/{iv}` | `CandleBarRequest` → `CandleBarBatch` |
+| Trades | `marketdata/{sym}/trades` | `TradeHistoryRequest` → `PublicTradeBatch` |
+| Agg trades | `marketdata/{sym}/aggtrades` | `AggregateTradeRequest` → `AggregateTradeBatch` |
+| Book snapshot | `marketdata/{sym}/book` | `OrderBookRequest` → `OrderBookSnapshot` |
+| Ticker | `marketdata/{sym}/ticker` | `TickerRequest` → `SymbolTicker` |
+| Account | `accounts/{acct}` | GET → `AccountSummary` |
+| Margin | `accounts/{acct}/margin` | GET → `MarginSummary` |
+| Open orders | `trading/accounts/{acct}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` |
+| Order history | `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` (stream if large) |
+| Fills | `accounts/{acct}/fills` | `FillHistoryRequest` → `FillHistoryBatch` |
+| Funding hist | `accounts/{acct}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` |
+| Ledger hist | `accounts/{acct}/ledger` | `LedgerHistoryRequest` → `LedgerHistoryBatch` |
+
+Example gateway REST query:
+
+```bash
+curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
+curl 'http://127.0.0.1:8080/.well-known/capabilities'
+```
+
+See [PROTOCOL.md](PROTOCOL.md) for frame-by-frame worked examples.
+

@@ -258,6 +258,50 @@ legacy protocols by varying which extensions are populated.
 | **3 — Pub/Sub** | + ROUTING_KEY, SUBSCRIBE/UNSUBSCRIBE, STREAM_ITEM streaming | Market data |
 | **4 — Advanced** | + ACK_RANGE, FLOW_CONTROL, REDIRECT, FRAGMENTED, COMPRESSION | Full protocol |
 
+### Broker API (native FIG)
+
+Native FIG is canonical: live data uses `SUBSCRIBE` → `STREAM_ITEM`; historical
+data uses `REQUEST` → `RESPONSE` (or `STREAM_ITEM` × N for large ranges). REST
+and WebSocket are gateway edges over the same FSL types — see
+[ADR 0006](docs/adr/0006-broker-api-parity.md).
+
+**Public live streams**
+
+| Path | FSL payload | Gateway WS |
+|---|---|---|
+| `marketdata/{sym}/book` | `OrderBookSnapshot`, `OrderBookDelta` | `@depth` |
+| `marketdata/{sym}/bbo` | `BestBidOffer` | `@bookTicker` |
+| `marketdata/{sym}/trades` | `PublicTradeEvent` | `@trade` |
+| `marketdata/{sym}/aggtrades` | `AggregateTradeEvent` | `@aggTrade` |
+| `marketdata/{sym}/candles/{iv}` | `CandleBarEvent` | `@kline_{iv}` |
+| `marketdata/{sym}/ticker` | `SymbolTicker` | `@ticker` |
+| `marketdata/ticker/all` | `MiniTicker` | `@miniTicker` |
+| `marketdata/{sym}/mark` | `MarkPriceUpdate` | `@markPrice` |
+| `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
+
+**Private live streams** (auth required — `fig-dev-{account}` on simulator)
+
+| Path | FSL payload |
+|---|---|
+| `trading/accounts/{acct}/executions` | `ExecutionReport` |
+| `accounts/{acct}/balances` | `BalanceSnapshot`, `BalanceUpdate` |
+| `accounts/{acct}/positions` | `PositionSnapshot`, `PositionUpdate` |
+| `accounts/{acct}/margin` | `MarginUpdate` |
+| `accounts/{acct}/funding` | `FundingPayment` |
+| `accounts/{acct}/ledger` | `LedgerUpdate` |
+| `accounts/{acct}/liquidations` | `UserLiquidation` |
+
+**Historical queries** (selected — full list in [docs/QUERY.md](docs/QUERY.md))
+
+| Path | Request → response |
+|---|---|
+| `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` |
+| `marketdata/{sym}/candles/{iv}` | `CandleBarRequest` → `CandleBarBatch` |
+| `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` |
+| `accounts/{acct}/fills` | `FillHistoryRequest` → `FillHistoryBatch` |
+
+Normative catalog: [SPEC.md §9](SPEC.md). Worked sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
 ---
 
 ## Gateway Adapters

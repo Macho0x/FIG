@@ -261,9 +261,9 @@ All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
 - **§16** — Multi-language SDK parity — **core landed** (§17 vectors, C++/C# enum/nested codegen, expanded `fig-ffi`, `fig-python` reference SDK + CI binding tests, Go/C++/C# thin wrappers)
-- **§17** — Broker ↔ client API parity — **complete** (advanced MD streams, dedicated book types, position/margin streams, gateway WS/REST catalog, conformance vectors; SDK helpers deferred to §16)
+- **§17** — Broker ↔ client API parity — **broker complete** (native FIG paths + gateway catalog in exchange-sim; client SDK merge/helpers and remaining E2E/conformance depth in §16 / §17.6)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — core landed (Python reference + FFI + thin wrappers). Broker ↔ client API parity (§17) — complete (native FIG + gateway catalog; client SDK helpers in §16).**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — core landed (Python reference + FFI + thin wrappers). Broker ↔ client API parity (§17) — native broker + gateway catalog complete; per-checkbox SDK/client items tracked below.**
 
 ---
 
@@ -271,23 +271,24 @@ All low-priority items complete ✅ (§1–15 Rust core)
 
 Bring non-Rust languages to full SPEC parity with Rust. Today Rust has (1) rich
 **FSL codegen** (`RustCodegen` + `--lang sbe`) and (2) a complete **`fig-core`
-runtime** (~20 modules). All other `ftlc --lang` targets emit flat message shapes
-only — no typed enums, nested types, serializers, or protocol client.
+runtime** (~20 modules). **Go, C++, C#, and Python** `ftlc --lang` targets emit typed
+enums and nested structs; other targets still emit flat shapes. No non-Rust language
+yet has full CBOR/SBE serializers or a Tier 4 native client.
 
 Schema evolution policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
 
 ### Parity gap (current state)
 
-| Capability | Rust | Python / C++ / C# / OCaml / Zig / Go / TS |
+| Capability | Rust | Python / C++ / C# / Go / TS / OCaml / Zig |
 |---|---|---|
-| FSL typed enums | ✅ | ❌ (int/string) |
-| Nested struct types | ✅ | ❌ |
+| FSL typed enums | ✅ | 🔶 Go/C++/C#/Python codegen · ❌ TS/OCaml/Zig |
+| Nested struct types | ✅ | 🔶 Go/C++/C#/Python codegen · ❌ TS/OCaml/Zig |
 | Type aliases + constraints | ✅ | ❌ |
-| Message metadata constants | ✅ | ❌ (`CHANNEL_TYPE`, `CORRELATION_FIELD`, …) |
-| CBOR / SBE / Protobuf serializers | ✅ | ❌ |
+| Message metadata constants | ✅ | 🔶 Go codegen comments · ❌ first-class constants |
+| CBOR / SBE / Protobuf serializers | ✅ | 🔶 `fig-python` + `fig-ffi` CBOR helpers · ❌ per-lang codegen |
 | SBE encode/decode codegen | ✅ (`--lang sbe`) | ❌ |
-| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | ❌ |
-| Native client SDK | ✅ `fig-cli` | ❌ |
+| Protocol runtime (frames, channels, transport) | ✅ `fig-core` | 🔶 `fig-python` Tier 1–2 · ❌ other langs |
+| Native client SDK | ✅ `fig-cli` | 🔶 `fig-python` reference · ❌ other langs |
 
 SPEC §11.2 overclaims for some targets until §16.2 lands — see
 [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md) for schema evolution policy.
@@ -334,7 +335,7 @@ integration tests are the reference behavior.
 | ✅ | Conformance test vector format spec | High | `tests/conformance/README.md` + `vectors/v1.json` |
 | ✅ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
 | ✅ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
-| 🔶 | Historical / query REQUEST-RESPONSE vectors | High | `frame.request.candle_bar_query` in `v1.json`; order-history fixtures still ⬜ |
+| 🔶 | Historical / query REQUEST-RESPONSE vectors | High | `frame.request.candle_bar_query`, `frame.request.open_orders`, `cbor.order_history_request.demo` in `v1.json`; full order-history frame fixtures still ⬜ |
 | 🔶 | `CandleBar` CBOR/SBE payload vectors | High | `cbor.candle_bar.snapshot` in `v1.json`; SBE + batch fixtures still ⬜ |
 | 🔶 | Account / position / balance stream vectors | High | `cbor.balance_snapshot.demo` in `v1.json`; position/delta + SBE fixtures still ⬜ |
 | ✅ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
@@ -350,14 +351,14 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Typed enum generation (all targets) | High | Named variants, not bare `int` |
-| ⬜ | Nested struct types (all targets) | High | `PriceLevel`, `MarketDataUpdate`, inline structs |
+| 🔶 | Typed enum generation (all targets) | High | Go/C++/C#/Python codegen emit named enums; TS/OCaml/Zig still flat |
+| 🔶 | Nested struct types (all targets) | High | Go/C++/C#/Python emit `type_defs`; TS/OCaml/Zig still flat |
 | ⬜ | Type aliases with constraint docs | Medium | `ClientOrderId`, `Price`, `Quantity`, … |
-| ⬜ | Message metadata constants | Medium | `CHANNEL_TYPE`, `CORRELATION_FIELD`, `PRIORITY`, `IDEMPOTENT` per message |
-| ⬜ | Python: dataclasses + CBOR serializers | High | `cbor2` or `msgspec`; field names match Rust serde |
-| ⬜ | Go: structs + JSON/CBOR tags | High | `encoding/json` + CBOR lib |
-| ⬜ | C++: structs + CBOR/JSON helpers | High | nlohmann/json or custom CBOR |
-| ⬜ | C#: classes + System.Text.Json + CBOR | High | Nullable reference types for optionals |
+| 🔶 | Message metadata constants | Medium | Go emits `CHANNEL_TYPE` / `CORRELATION_FIELD` comments; not first-class in all targets |
+| 🔶 | Python: dataclasses + CBOR serializers | High | `PythonCodegen` enums/structs; runtime CBOR via `fig-python` (PyO3), not generated serializers |
+| 🔶 | Go: structs + JSON/CBOR tags | High | `GoCodegen` structs + JSON tags; CBOR lib + serializers still ⬜ |
+| 🔶 | C++: structs + CBOR/JSON helpers | High | `CppCodegen` enums + nested structs; CBOR/JSON helpers still ⬜ |
+| 🔶 | C#: classes + System.Text.Json + CBOR | High | `CsharpCodegen` enums + nested classes; serializers still ⬜ |
 | ⬜ | TypeScript: interfaces + CBOR encode/decode | Medium | Browser vs Node packaging |
 | ⬜ | OCaml: records + variant enums + CBOR | Low | yojson/cbor ppx or hand-rolled |
 | ⬜ | Zig: structs + CBOR helpers | Medium | std/json or `@cImport` to shared C codec |
@@ -375,12 +376,12 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; staticlib + cdylib |
-| ⬜ | FFI API surface spec | High | `fig_client_connect`, `fig_frame_encode/decode`, send/recv/close, … |
+| 🔶 | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; frame encode/decode + CBOR order helpers; no full TREE client yet |
+| 🔶 | FFI API surface spec | High | Frame + CBOR helpers landed; `fig_client_connect` / send/recv/close still ⬜ |
 | ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe`), binding conformance |
-| ⬜ | `fig-csharp` (P/Invoke) | Medium | Common in trading desks |
-| ⬜ | `fig-go` (cgo) | Medium | cgo wrapper over `fig-ffi` |
-| ⬜ | `fig-cpp` (header + link staticlib) | Medium | Low-latency client path |
+| 🔶 | `fig-csharp` (P/Invoke) | Medium | Thin wrapper in `bindings/csharp/Fig` over `fig.h` |
+| 🔶 | `fig-go` (cgo) | Medium | Thin wrapper in `bindings/go/fig` over `fig.h` |
+| 🔶 | `fig-cpp` (header + link staticlib) | Medium | Header-only RAII helpers in `bindings/cpp/include/fig` |
 | ⬜ | `fig-ocaml` (ctypes) | Low | ctypes binding over `fig-ffi` |
 | ⬜ | `fig-zig` (`@cImport fig.h`) | Low | Comptime-friendly thin wrapper |
 | ⬜ | TypeScript / Node native addon or WASM | Medium | Browser → gateway; Node → addon or WASM build of `fig-core` |
@@ -404,8 +405,8 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | MVP: trade against exchange-sim |
-| ⬜ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Session parity with FIX tier |
+| 🔶 | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | `fig-python` + `fig-ffi` cover core paths; other bindings pending |
+| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | `fig-python` client covers connect/subscribe/request; other bindings pending |
 | ⬜ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Native pub/sub in exchange-sim; SDK wrappers pending (§17) |
 | ⬜ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | Full protocol parity |
 
@@ -569,9 +570,9 @@ and from FIG frames on TREE.
 
 | Class | Native FIG pattern | Binance analogue | FIG today |
 |---|---|---|---|
-| **Live push** | `SUBSCRIBE` → `STREAM_ITEM × N` | WS candle stream (Binance: `@kline_*`) | 🔶 candles, trades, BBO, quotes, ticker, account streams |
-| **Point / batch query** | `REQUEST` → `RESPONSE` | REST `GET …/candles/{interval}` (Binance: `/klines`) | 🔶 candles, trades, ticker, account, margin, fills, funding, ledger |
-| **Large range query** | `REQUEST` → `STREAM_ITEM × N` → close | REST paginated history | ⬜ |
+| **Live push** | `SUBSCRIBE` → `STREAM_ITEM × N` | WS candle stream (Binance: `@kline_*`) | ✅ native broker paths; client SDK merge helpers in §16 |
+| **Point / batch query** | `REQUEST` → `RESPONSE` | REST `GET …/candles/{interval}` (Binance: `/klines`) | ✅ candles, trades, ticker, account, margin, fills, funding, ledger |
+| **Large range query** | `REQUEST` → `STREAM_ITEM × N` → close | REST paginated history | 🔶 order history `request_stream`; not generalized to all batch types |
 
 **Two data domains:**
 
@@ -739,7 +740,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | Shared pagination types | High | `next_cursor` + `has_more` on batch types; no shared `PageInfo` type yet |
+| 🔶 | Shared pagination types | High | `PageInfo` in FSL; batches also inline `next_cursor` + `has_more`; cursor propagation still partial |
 | ✅ | `CapabilitiesRequest` → `CapabilitiesResponse` | Medium | `.well-known/capabilities` |
 | ✅ | `LedgerHistoryRequest` → `LedgerHistoryBatch` | Medium | Implemented |
 | ✅ | `FundingHistoryRequest` → `FundingHistoryBatch` | Low | Implemented |
@@ -767,7 +768,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | L2 quote streaming | — | `MarketDataSnapshot` + incremental; BBO split done; sequence fields pending |
+| ✅ | L2 quote streaming | — | `OrderBookSnapshot` + `OrderBookDelta` on subscribe/fill; client merge helpers pending (§16) |
 | ✅ | `handle_subscribe` for all MD paths | High | `book`, `bbo`, `trades`, `candles`, `ticker` in `broker_api` |
 | ✅ | Trade tape fan-out | High | `MarketDataHub::on_trade` + `post_fill_updates` |
 | ✅ | Candle aggregator | High | OHLCV from trades; partial + final bars |
@@ -786,13 +787,13 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 |---|---|---|---|
 | ✅ | `AccountSummary` REQUEST | — | GET on `accounts/{account}` |
 | ✅ | `SUBSCRIBE accounts/{account}/balances` | High | Snapshot + `BalanceUpdate` on fill |
-| 🔶 | `SUBSCRIBE accounts/{account}/margin` | High | `MarginSummary` GET only; no live margin stream |
-| ✅ | `SUBSCRIBE accounts/{account}/positions` | High | Snapshot on subscribe; delta fan-out pending |
+| ✅ | `SUBSCRIBE accounts/{account}/margin` | High | Snapshot + live `MarginUpdate` on subscribe and fill (`test_margin_subscribe_snapshot`) |
+| ✅ | `SUBSCRIBE accounts/{account}/positions` | High | Snapshot on subscribe + `PositionUpdate` on fill (`test_position_delta_on_fill`) |
 | ✅ | `SUBSCRIBE trading/…/executions` | High | `post_fill_updates` execution fan-out |
 | 🔶 | `SUBSCRIBE trading/…/fills` | Medium | Covered by executions sub + `FillHistoryRequest` GET |
 | ✅ | `SUBSCRIBE accounts/{account}/funding` | Medium | Subscribe path wired |
 | ✅ | `SUBSCRIBE accounts/{account}/ledger` | Medium | Subscribe + fee ledger on fill |
-| ⬜ | `SUBSCRIBE accounts/{account}/liquidations` | Low | Not implemented |
+| 🔶 | `SUBSCRIBE accounts/{account}/liquidations` | Low | Push on balance breach wired; no snapshot on subscribe |
 | ✅ | Account state on order fill | High | Balance + execution + ledger updates on fill |
 | ✅ | `fig-cli` private stream demo | High | Balance subscribe + authenticated queries in `fig-cli` |
 | ⬜ | Client account cache | High | SDK merge/reconcile pending (§16) |
@@ -811,7 +812,7 @@ FIG `REQUEST` on TREE; the REST gateway translates HTTP → same frames.
 | ✅ | `handle_request` router for query paths | High | `broker_api::handle_query_request` |
 | ✅ | Historical candle store + handler | High | `MarketDataHub::query_candles` |
 | ✅ | Public trade history handler | High | `MarketDataHub::query_trades` |
-| 🔶 | Order / fill history handler | High | `FillHistoryRequest` ✅; `OrderHistoryRequest` ✅ |
+| ✅ | Order / fill history handler | High | `FillHistoryRequest` + `OrderHistoryRequest` handlers + integration tests |
 | ✅ | Open orders query | Medium | GET `trading/accounts/{account}/orders/open` |
 | 🔶 | Large-range `request_stream` | Medium | Candles + order history; generalize for all large queries |
 | 🔶 | Pagination enforcement | High | `limit` + `next_cursor` on batches; rate limits pending |
@@ -851,9 +852,9 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ⬜ | SBE golden vectors per message | High | NewOrderSingle + seed types; stream messages pending |
 | ⬜ | Snapshot + delta vector pairs | High | Not in conformance suite yet |
 | ⬜ | Multi-codec exchange-sim dispatch | High | CBOR-only in exchange-sim today |
-| 🔶 | E2E: public MD subscribe suite | High | `test_candle_subscription` + MD sub paths; dedicated book/trade/BBO tests pending |
-| 🔶 | E2E: private account subscribe suite | High | Auth test + balance/execution paths; dedicated execution-sub test pending |
-| 🔶 | E2E: native historical REQUEST suite | High | `test_ticker_query` + query handlers; candle/fill history E2E pending |
+| 🔶 | E2E: public MD subscribe suite | High | Candle/book/agg-trade/mark tests landed; dedicated trade/BBO E2E still thin |
+| 🔶 | E2E: private account subscribe suite | High | Auth + balance/margin/position-delta tests; dedicated execution-sub E2E still thin |
+| 🔶 | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/agg-trades queries tested; fill-history E2E still thin |
 | ⬜ | E2E: gateway REST GET round-trip | High | `rest_query` unit tests only |
 | ⬜ | E2E: gateway WS round-trip | Medium | WS listener + `--fig-backend`; no CI E2E yet |
 | ⬜ | §16 binding tests for new types | Medium | Extend to Go/C#/C++ compile smoke |
@@ -878,16 +879,16 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | SPEC.md: native FIG is canonical transport | High | §9.1 catalog + gateway note; expand normative edge rules |
-| 🔶 | SPEC.md §9 stream catalog | High | Core paths documented; full §17.0 matrix not exhaustive in SPEC |
-| 🔶 | SPEC.md private vs public auth | High | §9.1 auth note; expand scoping rules |
-| ✅ | SPEC.md §7.3 historical patterns | High | Gap-fill + `request_stream` in STREAMING.md / PROTOCOL.md |
+| ✅ | SPEC.md: native FIG is canonical transport | High | §9 intro + ADR 0006 cross-ref; gateway edge rules |
+| ✅ | SPEC.md §9 stream catalog | High | Full §17.0 public + private path tables in §9.1 |
+| ✅ | SPEC.md private vs public auth | High | §9.3 scoping rules (token match, cross-account reject) |
+| ✅ | SPEC.md §7.3 historical patterns | High | §9.2 request/response + request_stream + gap-fill |
 | ✅ | `docs/QUERY.md` or STREAMING.md § query | High | [QUERY.md](docs/QUERY.md) + [STREAMING.md](docs/STREAMING.md) |
 | ✅ | `docs/WS_GATEWAY.md` or GATEWAY.md § WS catalog | High | `ws_catalog.rs` + [GATEWAY.md](docs/GATEWAY.md) update |
 | ✅ | ADR 0006 broker API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
-| ⬜ | PROTOCOL.md worked examples | High | Public MD subscribe + private account subscribe sequences |
-| 🔶 | TUTORIAL.md streaming steps | Medium | Gateway backend + WS + auth updated; full stream inventory pending |
-| 🔶 | README.md message / stream table | Medium | CLI demos + doc links updated; full stream inventory pending |
+| ✅ | PROTOCOL.md worked examples | High | Public MD subscribe + private account + historical query |
+| ✅ | TUTORIAL.md streaming steps | Medium | §10 stream/query inventory tables |
+| ✅ | README.md message / stream table | Medium | Broker API section with live + query tables |
 
 ---
 
@@ -913,11 +914,11 @@ with `--fig-backend`; not every native row has a legacy catalog entry yet.
 | Public trades | ✅ | ✅ | ✅ | ✅ | ✅ |
 | BBO | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 24h ticker | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Order book (quotes) | 🔶 | 🔶 | 🔶 | 🔶 | 🔶 |
+| Order book (quotes) | ✅ | ✅ | 🔶 | ✅ | ✅ |
 | Order / execution updates | ✅ | ✅ | 🔶 | ✅ | ✅ |
 | Balances (snapshot + delta) | ✅ | ✅ | 🔶 | ✅ | ✅ |
 | Positions (snapshot) | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Position delta | 🔶 | 🔶 | ⬜ | ✅ | 🔶 |
+| Position delta | ✅ | ✅ | 🔶 | ✅ | ✅ |
 | Margin live stream | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Funding / ledger live | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Aggregate trades / mini ticker / mark / liquidations | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -933,7 +934,7 @@ with `--fig-backend`; not every native row has a legacy catalog entry yet.
 |---|---|
 | **High** | ADR 0006 + FSL schema split · §17.0 + §17.0b matrices · native `REQUEST` handlers (candles, history) · live SUBSCRIBE streams · pagination · exchange-sim query + stream engines · conformance vectors · `fig-cli` pull + push demos |
 | **Medium** | `request_stream` for large ranges · tickers · funding · ledger · gateway REST/WS catalogs · session resume · capabilities endpoint |
-| **Low** | Public liquidations · order list status · FIX MD · mark price · funding history |
+| **Low** | Order list status stream · FIX MD · generalized `request_stream` · full conformance depth |
 
 **Suggested implementation order:**
 
