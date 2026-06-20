@@ -119,7 +119,7 @@ a migration path, not as the protocol's identity.
 |---|---|---|---|
 | [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, migration, observability | 233 | `frame`, `ext`, `channel`, `session`, `transport`, `sbe`, `auth`, `migration`, `observability` |
 | [`fig-fsl`](crates/fig-fsl/) | FSL parser, multi-target codegen, and `ftlc` CLI | 43 | `ast`, `parser`, `codegen`, `target_codegen`, `bin/ftlc` |
-| [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX 4.4, REST/HTTP, WebSocket, SSE ↔ FIG translation | 66 | `fix`, `fix_session`, `rest`, `ws`, `sse` |
+| [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX, REST, WebSocket, SSE ↔ FIG; `fig-gateway` binary | 90+ | `fix`, `rest`, `rest_query`, `ws`, `ws_catalog`, `backend` |
 | [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 18 | `orderbook`, `matching`, `server` |
 | [`fig-cli`](crates/fig-cli/) | Native FIG trading client demo | — | `main` |
 | [`fig-bench`](crates/fig-bench/) | Criterion benchmarks for all components | 6 suites | `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` |
@@ -149,15 +149,20 @@ cargo run -p fig-exchange-sim
 # In another terminal, run the trading client
 cargo run -p fig-cli
 
-# Optional: run the legacy gateway (REST + FIX translation demo)
-cargo run -p fig-gateways --bin fig-gateway
+# Optional: run the legacy gateway (REST + FIX + WebSocket; proxy with --fig-backend)
+cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 The CLI demonstrates:
-1. **Order entry** — sends a NewOrderSingle, receives an ExecutionReport
-2. **Market data subscription** — subscribes to AAPL quotes, receives a snapshot
-3. **Account query** — queries account balance and buying power
-4. **PING/PONG** — control frame heartbeat
+1. **Order entry** — NewOrderSingle with auth token → ExecutionReport
+2. **Candle subscribe** — `SUBSCRIBE marketdata/AAPL/candles/5m`
+3. **Balance subscribe** — private `accounts/DEMO-ACCT/balances` (requires `fig-dev-DEMO-ACCT`)
+4. **Historical query** — GET `CandleBarRequest` batch
+5. **Account / ticker / funding / ledger queries** — native FIG `REQUEST`/`RESPONSE`
+6. **PING/PONG** — control frame heartbeat
+
+Private paths on the exchange simulator require an `AUTH_TOKEN` extension
+(`fig-dev-{account}`). Set `FIG_DEV_OPEN=1` to disable auth checks locally.
 
 All over a single TREE connection with per-stream multiplexing.
 
@@ -293,8 +298,13 @@ Translates between HTTP/1.1 requests and FIG frames:
 | Chunked transfer | STREAM_ITEM frames |
 | SSE | `fig_gateways::sse` → STREAM_ITEM with `text/event-stream` |
 
-The `fig-gateway` binary provides a REST + FIX translation demo. WebSocket and
-SSE adapters are library modules for embedding in custom gateway services.
+The `fig-gateway` binary listens on REST `:8080`, WebSocket `:8090`, and FIX
+`:9876`. With `--fig-backend`, REST GET and WS subscribe frames proxy to a
+native FIG server (exchange-sim). SSE adapters remain library modules for
+custom gateway services.
+
+See [docs/GATEWAY.md](docs/GATEWAY.md), [docs/STREAMING.md](docs/STREAMING.md),
+and [docs/QUERY.md](docs/QUERY.md).
 
 ### WebSocket Adapter
 
@@ -503,11 +513,14 @@ Run `cargo test --workspace` for the full suite (~360 tests). Key areas:
 | [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started guide |
 | [docs/API.md](docs/API.md) | Module index and API reference |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Design rationale and integration patterns |
-| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment (REST, WS, FIX) |
+| [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and gateway WS catalog |
+| [docs/QUERY.md](docs/QUERY.md) | Historical query paths and REST GET mapping |
 | [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Pre-1.0 security checklist |
 | [docs/adr/README.md](docs/adr/README.md) | Architecture decision records |
 | [docs/adr/0004-fsl-single-source-of-truth.md](docs/adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
-| [TODO.md](TODO.md) | Implementation roadmap (complete) |
+| [docs/adr/0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) | Broker API parity (native FIG first) |
+| [TODO.md](TODO.md) | Implementation roadmap |
 
 ---
 

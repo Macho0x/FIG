@@ -36,8 +36,7 @@ pub fn account_from_private_path(path: &str) -> Option<String> {
 }
 
 pub fn is_private_path(path: &str) -> bool {
-    path.starts_with("accounts/")
-        || path.starts_with("trading/accounts/")
+    path.starts_with("accounts/") || path.starts_with("trading/accounts/")
 }
 
 /// Returns an error frame if auth fails; `None` if access is allowed.
@@ -66,7 +65,7 @@ pub fn authorize_private(frame: &Frame, account: &str) -> Option<Frame> {
 pub fn with_auth_token(frame: Frame, account: &str) -> Frame {
     frame.with_extension(Extension::text(
         ExtensionTag::AuthToken,
-        &expected_dev_token(account),
+        expected_dev_token(account),
     ))
 }
 
@@ -77,10 +76,7 @@ mod tests {
 
     #[test]
     fn dev_token_matches_account() {
-        let frame = with_auth_token(
-            Frame::new(FrameType::Subscribe, 1),
-            "DEMO-ACCT",
-        );
+        let frame = with_auth_token(Frame::new(FrameType::Subscribe, 1), "DEMO-ACCT");
         assert!(authorize_private(&frame, "DEMO-ACCT").is_none());
         assert!(authorize_private(&frame, "OTHER").is_some());
     }

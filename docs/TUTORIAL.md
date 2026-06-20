@@ -38,24 +38,41 @@ In another terminal:
 cargo run -p fig-cli
 ```
 
-The client connects to `127.0.0.1:8443` and demonstrates order entry, market
-data subscription, account query, and PING/PONG over a single TREE connection.
+The client connects to `127.0.0.1:8443` (override with `FIG_SERVER=host:port`)
+and runs six demos: order entry, candle subscribe, balance subscribe,
+historical candle query, account/ticker/funding/ledger queries, and PING/PONG.
+
+Private account paths require an `AUTH_TOKEN` extension. The simulator accepts
+`fig-dev-{account}` (e.g. `fig-dev-DEMO-ACCT` for the CLI default account).
+Set `FIG_DEV_OPEN=1` on the server to skip auth during local development.
 
 ## 3. Run the legacy gateway (optional)
 
-Translate FIX and REST into FIG frames without a native FIG client:
+Translate FIX, REST, and WebSocket into native FIG frames:
 
 ```bash
-cargo run -p fig-gateways --bin fig-gateway
+# Terminal 1: backend
+cargo run -p fig-exchange-sim
+
+# Terminal 2: gateway with backend proxy
+cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
-- REST gateway: `http://127.0.0.1:8080`
-- FIX gateway: `tcp://127.0.0.1:9876`
+| Listener | Address | Purpose |
+|---|---|---|
+| REST | `http://127.0.0.1:8080` | HTTP GET → FIG `REQUEST` (with `--fig-backend`) |
+| WebSocket | `ws://127.0.0.1:8090` | Legacy subscribe JSON → FIG `SUBSCRIBE` |
+| FIX | `tcp://127.0.0.1:9876` | FIX 4.4 → FIG trading frames |
 
-See [GATEWAY.md](GATEWAY.md) for deployment details. The gateway currently
-translates frames in-process; wire it to your FIG backend for production use.
+See [GATEWAY.md](GATEWAY.md), [STREAMING.md](STREAMING.md), and [QUERY.md](QUERY.md).
 
-Example REST request:
+Example REST historical query (requires `--fig-backend`):
+
+```bash
+curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
+```
+
+Example REST order (translation demo without backend):
 
 ```bash
 curl -X POST http://127.0.0.1:8080/trading/orders \
@@ -133,6 +150,20 @@ let policy = ChannelAuthPolicy::new()
 assert!(policy.authorize(5, &auth));
 ```
 
+### Exchange simulator dev tokens
+
+Private streams and queries on `fig-exchange-sim` require an `AUTH_TOKEN`
+extension matching `fig-dev-{account}`. Example for account `DEMO-ACCT`:
+
+```rust
+frame.with_extension(Extension::text(
+    ExtensionTag::AuthToken,
+    "fig-dev-DEMO-ACCT",
+));
+```
+
+Set `FIG_DEV_OPEN=1` when running the simulator to disable this check locally.
+
 ## 8. Run benchmarks
 
 ```bash
@@ -153,7 +184,8 @@ docker run --rm -p 8443:8443/udp fig-exchange-sim
 
 ## Next steps
 
-- Read [SPEC.md](../SPEC.md) for the full protocol specification
+- Read [SPEC.md](../SPEC.md) for the full protocol specification (§9 stream catalog)
 - Read [PROTOCOL.md](PROTOCOL.md) for design rationale and migration patterns
+- Read [STREAMING.md](STREAMING.md) and [QUERY.md](QUERY.md) for broker API parity
 - See [API.md](API.md) for the module index
 - Run integration tests: `cargo test -p fig-exchange-sim --test integration`

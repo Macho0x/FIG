@@ -8,12 +8,15 @@ Central reference for FIG crates, modules, and project documentation.
 |---|---|
 | [TUTORIAL.md](TUTORIAL.md) | Step-by-step getting started |
 | [PROTOCOL.md](PROTOCOL.md) | Design rationale, channel directions, migration |
-| [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST gateway deployment |
+| [STREAMING.md](STREAMING.md) | Live `SUBSCRIBE` paths and gateway WS mapping |
+| [QUERY.md](QUERY.md) | Historical `REQUEST`/`RESPONSE` paths and REST GET mapping |
+| [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST/WebSocket gateway deployment |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Pre-1.0 security checklist |
 | [adr/README.md](adr/README.md) | Architecture decision records |
 | [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
+| [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
 | [../SPEC.md](../SPEC.md) | Normative wire format specification |
-| [../TODO.md](../TODO.md) | Implementation roadmap (complete) |
+| [../TODO.md](../TODO.md) | Implementation roadmap |
 
 Generate Rust API docs:
 
@@ -48,7 +51,7 @@ cargo doc --workspace --no-deps --open
 | [`dos`](../crates/fig-core/src/dos.rs) | Connection-level DoS guard and flood detector |
 | [`trace`](../crates/fig-core/src/trace.rs) | W3C traceparent ↔ TRACE_ID extension |
 | [`observability`](../crates/fig-core/src/observability.rs) | Tracing spans, metrics, Prometheus export |
-| [`messages`](../crates/fig-core/src/messages.rs) | Trading message types (NewOrderSingle, …) |
+| [`messages`](../crates/fig-core/src/messages.rs) | Trading message types; `channel_path` constants for §17 paths |
 | [`error`](../crates/fig-core/src/error.rs) | `FrameError`, `ChannelError`, `SessionError`, `FigError` |
 
 ### Binaries
@@ -66,14 +69,18 @@ cargo doc --workspace --no-deps --open
 | [`fix`](../crates/fig-gateways/src/fix.rs) | FIX 4.4 parse/serialize, FIG message conversion |
 | [`fix_session`](../crates/fig-gateways/src/fix_session.rs) | FIX session state machine (logon, heartbeat, resend) |
 | [`rest`](../crates/fig-gateways/src/rest.rs) | HTTP/1.1 parse/serialize, JSON ↔ CBOR |
+| [`rest_query`](../crates/fig-gateways/src/rest_query.rs) | REST GET → native FIG `REQUEST` (candles, fills, funding, …) |
 | [`ws`](../crates/fig-gateways/src/ws.rs) | WebSocket RFC 6455 frame mapping |
+| [`ws_catalog`](../crates/fig-gateways/src/ws_catalog.rs) | Binance/Hyperliquid topics → FIG `SUBSCRIBE` |
+| [`ws_listener`](../crates/fig-gateways/src/ws_listener.rs) | HTTP upgrade handler for `fig-gateway` WS listener |
+| [`backend`](../crates/fig-gateways/src/backend.rs) | Proxy frames to remote FIG backend over TREE |
 | [`sse`](../crates/fig-gateways/src/sse.rs) | Server-Sent Events ↔ STREAM_ITEM |
 
 ### Binaries
 
 | Binary | Command | Purpose |
 |---|---|---|
-| `fig-gateway` | `cargo run -p fig-gateways --bin fig-gateway` | REST `:8080` + FIX `:9876` translation demo |
+| `fig-gateway` | `cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876` |
 
 ---
 
@@ -102,7 +109,11 @@ Supported `--lang` values: `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csha
 
 | Module | Purpose |
 |---|---|
-| [`server`](../crates/fig-exchange-sim/src/server.rs) | FIG server: orders, cancels, replace, market data, accounts |
+| [`server`](../crates/fig-exchange-sim/src/server.rs) | FIG server: orders, queries, subscribe fan-out |
+| [`broker_api`](../crates/fig-exchange-sim/src/broker_api.rs) | §17 query/subscribe routing and post-fill fan-out |
+| [`market_data`](../crates/fig-exchange-sim/src/market_data.rs) | Candles, trades, BBO, ticker aggregation |
+| [`account_state`](../crates/fig-exchange-sim/src/account_state.rs) | Balances, positions, funding, ledger |
+| [`auth`](../crates/fig-exchange-sim/src/auth.rs) | Private path auth (`fig-dev-{account}`) |
 | [`matching`](../crates/fig-exchange-sim/src/matching.rs) | Price-time matching engine |
 | [`orderbook`](../crates/fig-exchange-sim/src/orderbook.rs) | Limit order book |
 
@@ -113,7 +124,8 @@ Default listen address: `127.0.0.1:8443` (UDP/TREE).
 ## `fig-cli` — demo client
 
 Native FIG client connecting to `127.0.0.1:8443`. Demonstrates order entry,
-market data subscription, account query, and PING/PONG over TREE.
+candle/balance subscribe, historical candle query, account/ticker/funding/ledger
+queries, and PING/PONG. Uses `fig-dev-DEMO-ACCT` auth tokens on private paths.
 
 ---
 

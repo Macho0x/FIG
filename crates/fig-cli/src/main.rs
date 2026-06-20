@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use quinn::Endpoint;
-use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 use fig_core::codec;
@@ -14,7 +13,7 @@ use fig_core::transport;
 const ACCOUNT: &str = "DEMO-ACCT";
 
 fn auth_ext(account: &str) -> Extension {
-    Extension::text(ExtensionTag::AuthToken, &format!("fig-dev-{account}"))
+    Extension::text(ExtensionTag::AuthToken, format!("fig-dev-{account}"))
 }
 
 async fn send_and_read(conn: &quinn::Connection, frame: Frame) -> Result<Vec<Frame>> {
@@ -40,23 +39,56 @@ fn log_frames(label: &str, frames: &[Frame]) {
             continue;
         }
         if let Ok(report) = codec::decode_cbor::<ExecutionReport>(&frame.payload) {
-            info!("  ExecutionReport: {} {:?} {}", report.cl_ord_id, report.exec_type, report.symbol);
+            info!(
+                "  ExecutionReport: {} {:?} {}",
+                report.cl_ord_id, report.exec_type, report.symbol
+            );
         } else if let Ok(snapshot) = codec::decode_cbor::<MarketDataSnapshot>(&frame.payload) {
-            info!("  MarketDataSnapshot: {} bids={} asks={}", snapshot.symbol, snapshot.bids.len(), snapshot.asks.len());
+            info!(
+                "  MarketDataSnapshot: {} bids={} asks={}",
+                snapshot.symbol,
+                snapshot.bids.len(),
+                snapshot.asks.len()
+            );
         } else if let Ok(event) = codec::decode_cbor::<CandleBarEvent>(&frame.payload) {
-            info!("  CandleBar: {} {} close={}", event.bar.symbol, event.bar.interval, event.bar.close.0);
+            info!(
+                "  CandleBar: {} {} close={}",
+                event.bar.symbol, event.bar.interval, event.bar.close.0
+            );
         } else if let Ok(ticker) = codec::decode_cbor::<SymbolTicker>(&frame.payload) {
-            info!("  SymbolTicker: {} last={}", ticker.symbol, ticker.last_price.0);
+            info!(
+                "  SymbolTicker: {} last={}",
+                ticker.symbol, ticker.last_price.0
+            );
         } else if let Ok(summary) = codec::decode_cbor::<AccountSummary>(&frame.payload) {
-            info!("  AccountSummary: {} balance={}", summary.account, summary.balance);
+            info!(
+                "  AccountSummary: {} balance={}",
+                summary.account, summary.balance
+            );
         } else if let Ok(batch) = codec::decode_cbor::<CandleBarBatch>(&frame.payload) {
-            info!("  CandleBarBatch: {} bars={}", batch.symbol, batch.bars.len());
+            info!(
+                "  CandleBarBatch: {} bars={}",
+                batch.symbol,
+                batch.bars.len()
+            );
         } else if let Ok(snap) = codec::decode_cbor::<BalanceSnapshot>(&frame.payload) {
-            info!("  BalanceSnapshot: {} entries={}", snap.account, snap.balances.len());
+            info!(
+                "  BalanceSnapshot: {} entries={}",
+                snap.account,
+                snap.balances.len()
+            );
         } else if let Ok(batch) = codec::decode_cbor::<FundingHistoryBatch>(&frame.payload) {
-            info!("  FundingHistoryBatch: {} payments={}", batch.account, batch.payments.len());
+            info!(
+                "  FundingHistoryBatch: {} payments={}",
+                batch.account,
+                batch.payments.len()
+            );
         } else if let Ok(batch) = codec::decode_cbor::<LedgerHistoryBatch>(&frame.payload) {
-            info!("  LedgerHistoryBatch: {} entries={}", batch.account, batch.entries.len());
+            info!(
+                "  LedgerHistoryBatch: {} entries={}",
+                batch.account,
+                batch.entries.len()
+            );
         }
     }
 }
