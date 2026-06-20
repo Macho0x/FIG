@@ -3,7 +3,10 @@
 //! A native FIG exchange simulator that demonstrates the protocol's
 //! capabilities: order entry, market data streaming, and session management.
 
+pub mod account_state;
+pub mod broker_api;
 pub mod matching;
+pub mod market_data;
 pub mod orderbook;
 pub mod server;
 

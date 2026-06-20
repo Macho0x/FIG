@@ -16,7 +16,9 @@ use fig_gateways::fix::{
 use fig_gateways::fix_seq_store::{build_seq_store, FixSeqStoreBackend};
 use fig_gateways::fix_session::{FixAction, FixSession};
 use fig_gateways::fix_tls::{accept_tls, build_tls_acceptor, FixGatewayStream, FixTlsAcceptor};
-use fig_gateways::rest::{http_to_fig_frame, parse_http_request};
+use fig_gateways::rest::{fig_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response};
+use fig_gateways::rest_query::http_get_to_fig_request;
+use fig_core::channel::ChannelMode;
 use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
@@ -76,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    let rest = tokio::spawn(run_rest_gateway(args.rest_addr));
+    let rest = tokio::spawn(run_rest_gateway(args.rest_addr, args.fig_backend));
     let fix = tokio::spawn(run_fix_gateway(
         args.fix_addr,
         tls_acceptor,
@@ -92,21 +94,28 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run_rest_gateway(addr: SocketAddr) -> anyhow::Result<()> {
+async fn run_rest_gateway(addr: SocketAddr, fig_backend: Option<SocketAddr>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("REST gateway listening on {}", addr);
+    if let Some(backend) = fig_backend {
+        info!("  REST queries proxy to FIG backend {}", backend);
+    }
 
     loop {
         let (mut stream, peer) = listener.accept().await?;
+        let backend = fig_backend;
         tokio::spawn(async move {
-            if let Err(e) = handle_rest_connection(&mut stream).await {
+            if let Err(e) = handle_rest_connection(&mut stream, backend).await {
                 warn!("REST connection from {} failed: {}", peer, e);
             }
         });
     }
 }
 
-async fn handle_rest_connection(stream: &mut TcpStream) -> anyhow::Result<()> {
+async fn handle_rest_connection(
+    stream: &mut TcpStream,
+    fig_backend: Option<SocketAddr>,
+) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65536];
     let n = stream.read(&mut buf).await?;
     if n == 0 {
@@ -114,23 +123,66 @@ async fn handle_rest_connection(stream: &mut TcpStream) -> anyhow::Result<()> {
     }
 
     let request = parse_http_request(&buf[..n])?;
-    let frame = http_to_fig_frame(&request)?;
     fig_core::observability::Metrics::inc(&fig_core::observability::METRICS.gateway_translations);
 
+    let http_response = if request.method.eq_ignore_ascii_case("GET") {
+        let frame = http_get_to_fig_request(&request)?;
+        if let Some(addr) = fig_backend {
+            match proxy_fig_query(addr, &frame).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    warn!("FIG backend query failed: {}", e);
+                    demo_translate_response(&frame)?
+                }
+            }
+        } else {
+            demo_translate_response(&frame)?
+        }
+    } else {
+        let frame = http_to_fig_frame(&request)?;
+        demo_translate_response(&frame)?
+    };
+
+    stream
+        .write_all(&serialize_http_response(&http_response))
+        .await?;
+    Ok(())
+}
+
+fn demo_translate_response(frame: &Frame) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
     let response_body = format!(
-        "FIG frame translated: type={} channel={} payload_len={}\n",
+        "FIG frame translated: type={} channel={} path={} payload_len={}\n",
         frame.frame_type,
         frame.channel_id,
+        channel_path,
         frame.payload.len()
     );
+    Ok(fig_gateways::rest::HttpResponse {
+        status_code: 200,
+        reason: "OK".to_string(),
+        headers: vec![("Content-Type".to_string(), "text/plain".to_string())],
+        body: response_body.into_bytes(),
+    })
+}
 
-    let http_response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
-        response_body.len(),
-        response_body
-    );
-    stream.write_all(http_response.as_bytes()).await?;
-    Ok(())
+async fn proxy_fig_query(
+    addr: SocketAddr,
+    frame: &Frame,
+) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
+    let conn = connect_fig_backend(addr).await?;
+    let channel_id = conn
+        .open_channel(ChannelMode::Stateless, Some(messages::schema_id::TRADING_ORDERS))
+        .await
+        .map_err(|e| anyhow::anyhow!("open channel: {e}"))?;
+    conn.send_frame(channel_id, frame).await?;
+    let response = conn.recv_frame(channel_id).await?;
+    fig_to_http_response(&response).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 async fn run_fix_gateway(

@@ -21,5 +21,7 @@ pub mod fix_seq_store;
 pub mod fix_session;
 pub mod fix_tls;
 pub mod rest;
+pub mod rest_query;
 pub mod sse;
 pub mod ws;
+pub mod ws_catalog;

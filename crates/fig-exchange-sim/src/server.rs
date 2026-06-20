@@ -18,6 +18,8 @@ use fig_core::messages::*;
 use fig_core::session::{FileSessionStore, MemorySessionStore, Session, SessionStore};
 use fig_core::transport;
 
+use crate::account_state::{AccountHub, AccountSubscription};
+use crate::market_data::{MarketDataHub, StreamSubscription};
 use crate::matching::MatchingEngine;
 
 /// Well-known schema IDs for trading messages.
@@ -32,21 +34,24 @@ pub mod paths {
     pub const REPLACE: &str = "trading/accounts/{account}/orders/{order_id}/replace";
     pub const EXECUTIONS: &str = "trading/accounts/{account}/executions";
     pub const MARKET_DATA: &str = "marketdata/{symbol}/quotes";
+    pub const CANDLES: &str = "marketdata/{symbol}/candles/{interval}";
+    pub const TRADES: &str = "marketdata/{symbol}/trades";
+    pub const BBO: &str = "marketdata/{symbol}/bbo";
+    pub const BALANCES: &str = "accounts/{account}/balances";
+    pub const POSITIONS: &str = "accounts/{account}/positions";
+    pub const MARGIN: &str = "accounts/{account}/margin";
+    pub const FILLS: &str = "trading/accounts/{account}/fills";
     pub const ACCOUNT: &str = "accounts/{account}";
-}
-
-#[derive(Clone)]
-pub struct MarketSubscription {
-    pub channel_id: u16,
-    pub routing_key: String,
-    pub symbol: String,
 }
 
 pub struct ExchangeState {
     pub engine: Mutex<MatchingEngine>,
     pub sessions: MemorySessionStore,
     pub file_sessions: FileSessionStore,
-    pub market_subscriptions: Mutex<Vec<MarketSubscription>>,
+    pub subscriptions: Mutex<Vec<StreamSubscription>>,
+    pub account_subscriptions: Mutex<Vec<AccountSubscription>>,
+    pub market_data: Mutex<MarketDataHub>,
+    pub accounts: Mutex<AccountHub>,
 }
 
 /// Start the FIG exchange server on the given address.
@@ -80,7 +85,10 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
         engine: Mutex::new(MatchingEngine::new()),
         sessions: MemorySessionStore::new(),
         file_sessions: FileSessionStore::new(std::env::temp_dir().join("fig-exchange-sessions")),
-        market_subscriptions: Mutex::new(Vec::new()),
+        subscriptions: Mutex::new(Vec::new()),
+        account_subscriptions: Mutex::new(Vec::new()),
+        market_data: Mutex::new(MarketDataHub::default()),
+        accounts: Mutex::new(AccountHub::default()),
     });
 
     info!("Waiting for connections...");
@@ -256,7 +264,32 @@ pub fn handle_control(frame: Frame) -> Vec<Frame> {
 }
 
 pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
-    // Decode the payload based on schema ID
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+    let method = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::Method)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+
+    let is_query = method.eq_ignore_ascii_case("GET")
+        || channel_path.contains("/candles/")
+        || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
+        || channel_path.ends_with("/fills")
+        || channel_path.ends_with("/margin")
+        || (channel_path.starts_with("accounts/")
+            && !channel_path.contains("/orders")
+            && channel_path.matches('/').count() == 1);
+
+    if is_query {
+        return crate::broker_api::handle_query_request(frame, state).await;
+    }
+
     match frame.schema_id {
         schema_id::TRADING_ORDERS => handle_trading_request(frame, state).await,
         _ => handle_generic_request(frame, state).await,
@@ -301,9 +334,13 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
 
                 let mut engine = state.engine.lock().await;
                 let result = engine.process_new_order(&order);
+                drop(engine);
+
+                let account = order.account.as_deref().unwrap_or("DEMO-ACCT");
 
                 // Build execution report(s)
                 let mut responses = Vec::new();
+                let mut reports = Vec::new();
                 for fill in &result.fills {
                     let report = ExecutionReport {
                         cl_ord_id: order.cl_ord_id.clone(),
@@ -323,6 +360,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                             .unwrap()
                             .as_nanos() as i64,
                     };
+                    reports.push(report.clone());
 
                     if let Ok(payload) = codec::encode_cbor(&report) {
                         responses.push(
@@ -342,8 +380,20 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     responses.push(make_error_frame(frame.channel_id, frame.stream_seq, reject));
                 }
 
-                // Push book depth updates to subscribers
-                responses.extend(push_book_depth(state, &order.symbol).await);
+                if !result.fills.is_empty() {
+                    responses.extend(
+                        crate::broker_api::post_fill_updates(
+                            state,
+                            &order.symbol,
+                            account,
+                            &result.fills,
+                            &reports,
+                        )
+                        .await,
+                    );
+                } else {
+                    responses.extend(push_book_depth(state, &order.symbol).await);
+                }
 
                 responses
             }
@@ -485,30 +535,6 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 )]
             }
         }
-    } else if (channel_path.starts_with("accounts/") || channel_path.contains("/accounts/"))
-        && !channel_path.contains("/orders")
-    {
-        // Account query
-        let account = channel_path.split('/').nth(1).unwrap_or("default");
-        let summary = AccountSummary {
-            account: account.to_string(),
-            balance: 1000000.00,
-            buying_power: 2000000.00,
-            currency: "USD".to_string(),
-        };
-        if let Ok(payload) = codec::encode_cbor(&summary) {
-            vec![Frame::new(FrameType::Response, frame.channel_id)
-                .with_seq(frame.stream_seq)
-                .with_schema_id(schema_id::TRADING_ORDERS)
-                .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-                .with_payload(payload)]
-        } else {
-            vec![make_error_frame(
-                frame.channel_id,
-                frame.stream_seq,
-                "ENCODE_ERROR",
-            )]
-        }
     } else {
         vec![make_error_frame(
             frame.channel_id,
@@ -541,49 +567,32 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
         .and_then(|e| e.value.as_text())
         .unwrap_or("")
         .to_string();
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("")
+        .to_string();
 
-    info!("Subscribe to: {}", routing_key);
+    info!("Subscribe to: {} path={}", routing_key, channel_path);
 
-    // Register subscription for incremental push updates
-    if routing_key.contains("marketdata") || routing_key.contains("quotes") {
-        let symbol = routing_key
-            .split('.')
-            .nth(1)
-            .or_else(|| {
-                routing_key
-                    .split('/')
-                    .find(|s| !s.is_empty() && *s != "marketdata" && *s != "quotes")
-            })
-            .unwrap_or("")
-            .to_string();
-
-        if symbol.is_empty() {
-            return vec![make_error_frame(
-                frame.channel_id,
-                frame.stream_seq,
-                "MISSING_SYMBOL",
-            )];
-        }
-
-        state
-            .market_subscriptions
-            .lock()
-            .await
-            .push(MarketSubscription {
-                channel_id: frame.channel_id,
-                routing_key: routing_key.clone(),
-                symbol: symbol.clone(),
-            });
-
-        // Send initial snapshot
-        return build_market_data_push(state, &symbol)
-            .await
-            .into_iter()
-            .filter(|f| f.channel_id == frame.channel_id)
-            .collect::<Vec<_>>();
+    if channel_path.contains("/executions")
+        || channel_path.contains("/balances")
+        || channel_path.contains("/positions")
+    {
+        return crate::broker_api::handle_account_subscribe(frame, state).await;
     }
 
-    // Acknowledge subscription
+    if routing_key.contains("marketdata")
+        || routing_key.contains("quotes")
+        || routing_key.contains("candles")
+        || routing_key.contains("trades")
+        || channel_path.starts_with("marketdata/")
+    {
+        return crate::broker_api::handle_market_subscribe(frame, state).await;
+    }
+
     vec![Frame::new(FrameType::Response, frame.channel_id)
         .with_seq(frame.stream_seq)
         .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))]
@@ -591,12 +600,17 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
 
 /// Build incremental market data STREAM_ITEM frames for all subscribers of a symbol.
 pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) -> Vec<Frame> {
-    let subs: Vec<MarketSubscription> = state
-        .market_subscriptions
+    use crate::market_data::SubscriptionKind;
+
+    let subs: Vec<StreamSubscription> = state
+        .subscriptions
         .lock()
         .await
         .iter()
-        .filter(|s| s.symbol == symbol)
+        .filter(|s| match &s.kind {
+            SubscriptionKind::Quotes { symbol: sym } => sym == symbol,
+            _ => false,
+        })
         .cloned()
         .collect();
 

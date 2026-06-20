@@ -2,7 +2,9 @@
 
 Tracking work to reach production-grade coverage of the
 [SPEC.md](SPEC.md). **Sections 1–15 (Rust core) are complete.** Section 16
-tracks multi-language SDK parity — the active roadmap. See [API.md](docs/API.md)
+tracks multi-language SDK parity; **§17 tracks broker ↔ client API parity**
+(live streaming **and** historical/query pulls — WS, REST, balances, candles, and
+more) — the active roadmap. See [API.md](docs/API.md)
 for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidance.
 
 **Legend:** ✅ Done · 🔶 Partial · ⬜ Not started
@@ -121,6 +123,8 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | FIX Logon (35=A) → STREAM_OPEN + AUTH | — | logon_to_stream_open + stream_open_to_logon conversion functions |
 | ✅ | FIX ResendRequest (35=2) → CONTROL(RESEND) | Medium | resend_request_to_control + control_to_resend_request |
 | ✅ | REST SSE → STREAM_ITEM streaming | Low | `sse` module: parse_sse_chunk / sse_to_fig_stream_item |
+| ✅ | Historical / query REST gateway mappings | High | See **§17.0b**, **§17.5** — `rest_query.rs` + `--fig-backend` proxy |
+| ✅ | Full WS stream catalog (MD + user data) | High | See **§17.8** — `ws_catalog.rs` Binance/Hyperliquid → FIG `SUBSCRIBE` |
 | ✅ | Gateway process (standalone binary) | Medium | fig-gateway binary: REST + FIX TCP listeners |
 
 ---
@@ -159,6 +163,10 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | FIG server over TREE | — | Order entry, cancel, market data, account query |
 | ✅ | Integration tests (end-to-end) | — | 6 tests |
 | ✅ | Market data streaming (push updates) | Medium | Subscription registry + build_market_data_push on trade |
+| ✅ | Historical data handlers in exchange-sim | High | See **§17.4b** — `broker_api::handle_query_request` |
+| ✅ | Candle / OHLCV bar streaming | High | See **§17.3** — `market_data` + `SubscriptionKind::Candles` |
+| ✅ | Private account streaming (balance, margin, positions) | High | See **§17.4** — `account_state` + `handle_account_subscribe` |
+| ✅ | Execution / order update subscription | High | See **§17.4** — `post_fill_updates` execution fan-out |
 | ✅ | CancelReplace (order modification) | Low | `/replace` path wired to `process_replace` |
 | ✅ | Order book depth streaming | Low | `push_book_depth` on every book change |
 | ✅ | Multi-symbol support in server | Low | Symbol from routing key/order; no hardcoded default |
@@ -243,15 +251,19 @@ If you want the full transport throughput benchmark back in CI later, we'll need
 ## Priority Summary
 
 ### High Priority (blocking production use)
-All high-priority items complete ✅
+All high-priority items complete ✅ (§1–15 Rust core)
 
 ### Medium Priority (important for adoption)
-All medium-priority items complete ✅
+All medium-priority items complete ✅ (§1–15 Rust core)
 
 ### Low Priority (nice to have)
-All low-priority items complete ✅
+All low-priority items complete ✅ (§1–15 Rust core)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — not started.**
+### Active roadmap
+- **§16** — Multi-language SDK parity (FFI-first; conformance vectors landed)
+- **§17** — Broker ↔ client API parity — live streams + historical/query (not started)
+
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — in progress. Broker ↔ client API parity (§17) — foundation complete (native FIG + gateway catalogs); conformance vectors and CLI demos remain.**
 
 ---
 
@@ -322,6 +334,9 @@ integration tests are the reference behavior.
 | ✅ | Conformance test vector format spec | High | `tests/conformance/README.md` + `vectors/v1.json` |
 | ✅ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
 | ✅ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
+| ⬜ | Historical / query REQUEST-RESPONSE vectors | High | See **§17.0b**, **§17.6** — `CandleBarRequest`, trade/order history fixtures |
+| ⬜ | `CandleBar` CBOR/SBE payload vectors | High | See **§17.6** — streaming + batch response fixtures |
+| ⬜ | Account / position / balance stream vectors | High | See **§17.6** — private stream conformance fixtures |
 | ✅ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
 | ✅ | Channel stream-ID mapping vectors | Medium | `channel_id * 4 + offset` client/server cases |
 | ⬜ | End-to-end integration scripts | Medium | connect → order → execution report; language-agnostic driver |
@@ -391,7 +406,7 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 |---|---|---|---|
 | ⬜ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | MVP: trade against exchange-sim |
 | ⬜ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Session parity with FIX tier |
-| ⬜ | Tier 3 — SUBSCRIBE, market data streams, correlation | Medium | Pub/sub parity |
+| ⬜ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Pub/sub parity — see **§17** (quotes-only today) |
 | ⬜ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | Full protocol parity |
 
 ---
@@ -444,6 +459,8 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 
 ### 16.8 Anti-Patterns (do not do)
 
+- **Do not** ship gateway REST GET endpoints without native FIG `REQUEST`/`RESPONSE` for that query — REST is translation only (§17.0b).
+- **Do not** ship gateway WS streams without native FIG `SUBSCRIBE` + FSL message for that stream — WS is translation only (§17).
 - **Do not** treat REST gateway as native FIG parity — gateway demo does not proxy to exchange-sim.
 - **Do not** hand-port `fig-core` eight times without §16.1 conformance vectors — wire drift is guaranteed.
 - **Do not** stop at flat dataclasses/structs — that is ~5% of Rust capability.
@@ -487,3 +504,433 @@ FSL codegen (full) + PyO3/FFI client (Tier 2) + CBOR only + conformance tests
 5. Multi-codec server dispatch (§16.5)
 6. C++ / C# / Go bindings (§16.3)
 7. Pure-generated protocol libs where FFI is unacceptable (§16.6)
+
+---
+
+## 17. Broker ↔ Client API Parity
+
+FIG must support the **full broker API surface** that modern venues expose — **live
+streams** (WebSocket) **and historical/query pulls** (REST GET). Reference APIs:
+[Binance Spot REST](https://developers.binance.com/docs/binance-spot-api-docs/rest-api),
+[Binance WebSocket Streams / User Data](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams),
+[Hyperliquid WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions).
+
+**Goal:** a FIG-native broker serves typed messages over TREE; clients use native
+FIG frames (`SUBSCRIBE` for push, `REQUEST` for pull); legacy REST/WS gateways map
+to the **same FSL messages** — not parallel JSON schemas.
+
+### Native FIG is canonical (REST & WS are edge adapters)
+
+**Every capability in §17.0 (live) and §17.0b (historical) must work in native FIG
+first.** REST GET and WebSocket are legacy wire formats that gateways translate to
+and from FIG frames on TREE.
+
+| Layer | Role | Completeness rule |
+|---|---|---|
+| **Native FIG** (TREE + frames + FSL) | **Source of truth** | **Push:** `SUBSCRIBE` → `STREAM_ITEM` · **Pull:** `REQUEST` → `RESPONSE` (or `REQUEST` → `STREAM_ITEM` × N for large ranges) |
+| **Gateway REST** | **Adapter** | HTTP `GET`/`POST` ↔ native FIG `REQUEST`/`RESPONSE`; query params ↔ payload or `CHANNEL_PATH` |
+| **Gateway WS / SSE** | **Adapter** | Topics / SSE ↔ native FIG `SUBSCRIBE` / `STREAM_ITEM` |
+| **Client SDK** | **Native first** | `FigClient::subscribe(…)` and `FigClient::request(…)` over TREE |
+
+```text
+                         NATIVE FIG (required, complete)
+  Client ──TREE──► SUBSCRIBE ──► STREAM_ITEM × N     (live)
+         ──TREE──► REQUEST ──► RESPONSE             (small query)
+         ──TREE──► REQUEST ──► STREAM_ITEM × N       (large historical range)
+         ▲                    │
+         │                    │ same FSL payloads
+  Legacy ├──REST GET─────────┤
+         └──WS/SSE───────────┘   fig-gateway (translate only)
+```
+
+**Native FIG must cover everything** means:
+
+1. **Live parity (§17.0)** — each WS stream has native `SUBSCRIBE` + FSL `stream_item`.
+2. **Historical parity (§17.0b)** — each REST GET has native `REQUEST`/`RESPONSE` +
+   FSL `request_response` (or `request_stream` for paginated dumps per SPEC §7.3).
+3. **Broker implements on FIG first** — exchange-sim handles native frames; gateway
+   re-exports, not the other way around.
+4. **Pull + push work together** — e.g. `SUBSCRIBE` live candles + `CandleBarRequest`
+   backfill after reconnect gap; gateway `GET …/candles/…` is not a separate feature set.
+5. **Conformance proves native wire** — golden vectors are FIG CBOR/SBE frames;
+   gateway tests round-trip *through* native FIG.
+6. **No REST-only or WS-only features** — incumbent aliases (e.g. Binance `GET /klines`,
+   `@kline_5m`) map to native FIG `/candles` paths and `CandleBar` — not separate semantics.
+
+**Roles:**
+
+| Role | Responsibility |
+|---|---|
+| **Broker / exchange** | Own stream truth **and** queryable history: snapshots, deltas, bar store, account state |
+| **Client / trader** | `SUBSCRIBE` for live; `REQUEST` for historical; merge, paginate, gap-fill on reconnect |
+| **Gateway** (optional edge) | Map legacy REST GET / WS ↔ native FIG; never add queries or streams FIG lacks |
+
+**Three interaction classes (all required on native FIG):**
+
+| Class | Native FIG pattern | Binance analogue | FIG today |
+|---|---|---|---|
+| **Live push** | `SUBSCRIBE` → `STREAM_ITEM × N` | WS candle stream (Binance: `@kline_*`) | 🔶 quotes only |
+| **Point / batch query** | `REQUEST` → `RESPONSE` | REST `GET …/candles/{interval}` (Binance: `/klines`) | 🔶 `AccountSummary` GET only |
+| **Large range query** | `REQUEST` → `STREAM_ITEM × N` → close | REST paginated history | ⬜ |
+
+**Two data domains:**
+
+| Domain | Auth | Live (§17.0) | Historical (§17.0b) |
+|---|---|---|---|
+| **Public market data** | Usually none | trades, depth, candles, ticker | candles, trades, depth snapshot at time T |
+| **Private account** | Required | balances, positions, executions | order history, fill history, ledger |
+
+Normative detail belongs in [SPEC.md](SPEC.md) §7.3 (interaction patterns), §9
+(addressing), new FSL schema files, and ADR 0006 (broker API parity). Do not hand-edit
+generated Rust types.
+
+---
+
+### 17.0 Live streaming coverage matrix
+
+Map incumbent broker WS offerings → **native FIG** channel paths + FSL messages.
+Use this as the completeness checklist: **if a row is ⬜, native FIG is incomplete**
+(gateway WS for that stream is blocked until the native path exists).
+
+#### Public market data (unauthenticated)
+
+| Incumbent stream | Binance example | Hyperliquid example | Native FIG `CHANNEL_PATH` | FSL message | Native FIG | Gateway WS |
+|---|---|---|---|---|---|---|
+| Order book snapshot | REST `depth` / WS snapshot | `l2Book` snapshot | `marketdata/{symbol}/book` | `OrderBookSnapshot` | 🔶 partial (`MarketDataSnapshot`) | ⬜ blocked |
+| Order book delta | `@depth` diff | `l2Book` updates | `marketdata/{symbol}/book` | `OrderBookDelta` | 🔶 partial (`MarketDataIncrementalRefresh`) | ⬜ blocked |
+| Best bid/offer | `@bookTicker` | `bbo` | `marketdata/{symbol}/bbo` | `BestBidOffer` | ⬜ | ⬜ blocked |
+| Trade tape | `@trade` | `trades` | `marketdata/{symbol}/trades` | `PublicTrade` | ⬜ | ⬜ blocked |
+| Aggregate trades | `@aggTrade` | — | `marketdata/{symbol}/aggtrades` | `AggregateTrade` | ⬜ | ⬜ blocked |
+| Candles (OHLCV bars) | Binance: `@kline_{interval}` | — (build from trades) | `marketdata/{symbol}/candles/{interval}` | `CandleBar` | ⬜ | ⬜ blocked |
+| 24h ticker | `@ticker` | — | `marketdata/{symbol}/ticker` | `SymbolTicker` | ⬜ | ⬜ blocked |
+| Mini ticker | `@miniTicker` | `allMids` | `marketdata/ticker/all` or per-symbol | `MiniTicker` / `AllMids` | ⬜ | ⬜ blocked |
+| Mark / index / funding rate | futures mark price | `activeAssetCtx` | `marketdata/{symbol}/mark` | `MarkPriceUpdate` | ⬜ | ⬜ blocked |
+| Liquidation feed (public) | `@forceOrder` | public liquidation trades | `marketdata/liquidations` | `LiquidationTrade` | ⬜ | ⬜ blocked |
+
+#### Private user / account (authenticated)
+
+| Incumbent stream | Binance User Data event | Hyperliquid subscription | Native FIG `CHANNEL_PATH` | FSL message | Native FIG | Gateway WS |
+|---|---|---|---|---|---|---|
+| Order / execution updates | `executionReport` | `orderUpdates` / fills in `userEvents` | `trading/accounts/{account}/executions` | `ExecutionReport` | 🔶 type exists; **no SUBSCRIBE** | ⬜ blocked |
+| Account balance snapshot | `outboundAccountPosition` | `spotState.balances` | `accounts/{account}/balances` | `BalanceSnapshot` | ⬜ | ⬜ blocked |
+| Balance delta | `balanceUpdate` | balance WS (`subscribeBalance`) | `accounts/{account}/balances` | `BalanceUpdate` | ⬜ | ⬜ blocked |
+| Open orders snapshot | (via REST / WS API) | order state in user channel | `trading/accounts/{account}/orders/open` | `OpenOrdersSnapshot` | ⬜ | ⬜ blocked |
+| Position snapshot | futures account | `clearinghouseState` / `subscribePosition` | `accounts/{account}/positions` | `PositionSnapshot` | ⬜ | ⬜ blocked |
+| Position delta | — | position WS updates | `accounts/{account}/positions` | `PositionUpdate` | ⬜ | ⬜ blocked |
+| Margin / account summary | account info REST | clearinghouse margin summary | `accounts/{account}/margin` | `MarginSummary` | 🔶 partial (`AccountSummary` GET only) | ⬜ blocked |
+| User fills stream | trade in `executionReport` | `userFills` | `trading/accounts/{account}/fills` | `UserFill` or reuse `ExecutionReport` | ⬜ | ⬜ blocked |
+| Funding payments | — | `userFundings` | `accounts/{account}/funding` | `FundingPayment` | ⬜ | ⬜ blocked |
+| Ledger (deposit/withdraw/transfer) | — | `userNonFundingLedgerUpdates` | `accounts/{account}/ledger` | `LedgerUpdate` | ⬜ | ⬜ blocked |
+| Liquidation (user) | — | `liquidation` in `userEvents` | `accounts/{account}/liquidations` | `UserLiquidation` | ⬜ | ⬜ blocked |
+| List / OCO status | `listStatus` | — | `trading/accounts/{account}/orderlists` | `OrderListStatus` | ⬜ | ⬜ blocked |
+| Stream lifecycle | `eventStreamTerminated` | subscription ack + snapshot flag | control / `STREAM_CLOSE` | session event | ⬜ | ⬜ blocked |
+
+**Legend:** ✅ native FIG complete · 🔶 partial · ⬜ not started · **Gateway WS** blocked until native FIG ✅
+
+---
+
+### 17.0b Historical / query coverage matrix (REST-style pull)
+
+**Terminology:** FIG uses **candles** (`/candles/{interval}`, `CandleBar`) — not "klines"
+(Binance-only). Gateway maps incumbent `/klines` and `@kline_*` aliases to native FIG paths.
+
+Map incumbent broker **REST GET** (and RPC query) endpoints → **native FIG
+`REQUEST`/`RESPONSE`**. Use this checklist: **if Native FIG is ⬜, gateway REST GET
+for that query is blocked.**
+
+| Query | Binance REST example | Hyperliquid / other | Native FIG `CHANNEL_PATH` | Request → Response FSL | Native FIG | Gateway REST |
+|---|---|---|---|---|---|---|
+| Historical candles | Binance alias: `GET /api/v3/klines` | candle snapshot API | `marketdata/{symbol}/candles/{interval}` | `CandleBarRequest` → `CandleBarBatch` | ⬜ | ⬜ blocked |
+| Historical public trades | `GET /api/v3/aggTrades` | — | `marketdata/{symbol}/trades` | `TradeHistoryRequest` → `PublicTradeBatch` | ⬜ | ⬜ blocked |
+| Order book snapshot at time | `GET /api/v3/depth` | `l2Book` snapshot REST | `marketdata/{symbol}/book` | `OrderBookRequest` → `OrderBookSnapshot` | 🔶 partial (`MarketDataSnapshot` GET) | 🔶 partial |
+| 24h ticker snapshot | `GET /api/v3/ticker/24hr` | — | `marketdata/{symbol}/ticker` | `TickerRequest` → `SymbolTicker` | ⬜ | ⬜ blocked |
+| Exchange info / symbols | `GET /api/v3/exchangeInfo` | meta endpoints | `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` | ⬜ | ⬜ blocked |
+| Account snapshot | `GET /api/v3/account` | clearinghouse state | `accounts/{account}` | `AccountSummaryRequest` → `AccountSummary` / `MarginSummary` | 🔶 partial | 🔶 partial |
+| Open orders | `GET /api/v3/openOrders` | open orders REST | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` | ⬜ | ⬜ blocked |
+| Order history | `GET /api/v3/allOrders` | — | `trading/accounts/{account}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` | ⬜ | ⬜ blocked |
+| User trade / fill history | `GET /api/v3/myTrades` | user fills REST | `trading/accounts/{account}/fills` | `FillHistoryRequest` → `FillHistoryBatch` | ⬜ | ⬜ blocked |
+| Ledger / deposits / withdrawals | — | ledger REST | `accounts/{account}/ledger` | `LedgerHistoryRequest` → `LedgerHistoryBatch` | ⬜ | ⬜ blocked |
+| Funding history | `GET /fundingRate` (futures) | `userFundings` history | `accounts/{account}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` | ⬜ | ⬜ blocked |
+| Position snapshot | futures account | clearinghouse REST | `accounts/{account}/positions` | `PositionRequest` → `PositionSnapshot` | ⬜ | ⬜ blocked |
+
+**Native FIG interaction patterns for historical data:**
+
+| Result size | Pattern | FIG frames | FSL `channel_type` |
+|---|---|---|---|
+| Small (≤ few KB) | Request-Response | `REQUEST` → `RESPONSE` | `request_response` |
+| Large / paginated | Request-Stream | `REQUEST` → `STREAM_ITEM` × N → `STREAM_CLOSE` | `request_stream` (SPEC §9) |
+| Live ongoing | Pub/Sub | `SUBSCRIBE` → `STREAM_ITEM` × N | `stream_item` (§17.0) |
+
+**Pagination (all historical requests):** `start_time`, `end_time`, `limit`, `cursor`
+in request payload; `next_cursor` + `has_more` in response — mirror Binance time/id
+pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
+`FillHistoryRequest` for the missing window, then resumes `SUBSCRIBE`.
+
+**Legend:** **Gateway REST** = HTTP GET mapping only; **blocked until native FIG ✅**
+
+---
+
+### 17.1 Schema & Protocol Specification
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | ADR 0006: broker ↔ client API parity | High | Live streams + historical query; snapshot+delta; pagination; auth |
+| ⬜ | Split FSL schemas by domain | High | `schemas/trading.orders.fsl` (0x01, existing), `schemas/marketdata.fsl` (0x02), `schemas/account.fsl` (0x03) — avoid monolithic `orders.fsl` |
+| ⬜ | Well-known schema IDs in SPEC | High | Assign 0x02 market data, 0x03 account/portfolio; document in SPEC §10 |
+| ⬜ | Unified `CHANNEL_PATH` tree | High | Cover every row in §17.0 **and** §17.0b |
+| ⬜ | Interaction type on path | High | `?type=pub_sub` \| `request_response` \| `request_stream` per SPEC §9 |
+| ⬜ | Unified `ROUTING_KEY` convention | High | Dot-separated mirror of paths; e.g. `accounts.{id}.balances`, `marketdata.AAPL.candles.5m` |
+| ⬜ | Snapshot-on-subscribe contract | High | Hyperliquid `isSnapshot: true`; Binance depth snapshot — normative initial `STREAM_ITEM` before deltas |
+| ⬜ | `.well-known/capabilities` stream catalog | High | Broker advertises supported symbols, intervals, and private stream types per auth tier |
+| ⬜ | Private stream auth model | High | `SUBSCRIBE` requires `AUTH_TOKEN`; scope per account; reuse `ChannelAuthPolicy` |
+| ⬜ | `subscriptionId` / correlation | Medium | Binance maps events to subscription; FIG: `channel_id` + optional extension |
+| ⬜ | Multi-stream per connection | Medium | One TREE session, many channels — mirror Binance combined streams / Hyperliquid multiplex |
+| ⬜ | UNSUBSCRIBE semantics | Medium | Explicit tear-down; stop fan-out; optional `STREAM_CLOSE` |
+| ⬜ | Schema evolution policy | Medium | Extend ADR 0004 for new stream messages and optional fields |
+
+#### FSL messages — public market data (`marketdata.fsl`)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | `CandleInterval` type | High | `1m`, `5m`, `15m`, `1h`, `1d`, … |
+| ⬜ | `CandleBar` | High | OHLCV + `bar_start` / `bar_end` / `is_final` — used in **stream** and **batch** responses |
+| ⬜ | `CandleBarRequest` → `CandleBarBatch` | High | Historical candles / gap backfill (§17.0b); `channel_type: request_response` |
+| ⬜ | `TradeHistoryRequest` → `PublicTradeBatch` | High | `GET /aggTrades` parity |
+| ⬜ | `OrderBookRequest` → `OrderBookSnapshot` | High | Point-in-time depth; refine existing GET mapping |
+| ⬜ | `TickerRequest` → `SymbolTicker` | Medium | 24h stats snapshot |
+| ⬜ | `PublicTrade` | High | price, qty, side, trade_id, timestamp — `@trade` parity |
+| ⬜ | `AggregateTrade` | Medium | agg id, first/last trade id, qty — `@aggTrade` parity |
+| ⬜ | `BestBidOffer` | High | best bid/ask price+qty — `@bookTicker` / `bbo` parity |
+| ⬜ | `OrderBookSnapshot` | High | Refine or alias existing `MarketDataSnapshot`; depth levels + sequence |
+| ⬜ | `OrderBookDelta` | High | Refine `MarketDataIncrementalRefresh`; sequence / checksum fields |
+| ⬜ | `SymbolTicker` | Medium | 24h stats — `@ticker` parity |
+| ⬜ | `MiniTicker` / `AllMids` | Medium | Lightweight tickers — `@miniTicker` / `allMids` parity |
+| ⬜ | `MarkPriceUpdate` | Low | Perps: mark, index, funding rate — futures / Hyperliquid `assetCtx` |
+| ⬜ | `LiquidationTrade` | Low | Public liquidation feed |
+
+#### FSL messages — private account (`account.fsl`)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | `BalanceSnapshot` | High | Full wallet per asset — `outboundAccountPosition` / `spotState` |
+| ⬜ | `BalanceUpdate` | High | Delta per asset — `balanceUpdate` / balance WS |
+| ⬜ | `MarginSummary` | High | Extend `AccountSummary`: equity, margin used, available, buying power, leverage |
+| ⬜ | `PositionSnapshot` | High | Per-symbol position size, entry, unrealized PnL — clearinghouse state |
+| ⬜ | `PositionUpdate` | High | Delta on fill / funding / liquidation |
+| ⬜ | `OpenOrdersSnapshot` | Medium | Working orders at subscribe time |
+| ⬜ | `FundingPayment` | Medium | Perps funding on interval — Hyperliquid `userFundings` |
+| ⬜ | `LedgerUpdate` | Medium | Deposit, withdrawal, transfer, fee — `userNonFundingLedgerUpdates` |
+| ⬜ | `UserLiquidation` | Medium | User liquidation event |
+| ⬜ | `OrderListStatus` | Low | OCO / bracket list status — Binance `listStatus` |
+| ⬜ | `AccountStreamEvent` envelope | Medium | Optional tagged union wrapping private events (Hyperliquid `WsUserEvent` pattern) |
+
+#### Trading stream gaps (extend `trading.orders.fsl`)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🔶 | `ExecutionReport` | — | Exists; needs **SUBSCRIBE** path, not only inline order response |
+| ⬜ | `UserFill` vs reuse `ExecutionReport` | Medium | Decide in ADR: separate fill tape message or alias |
+| ⬜ | Order update stream | High | All order state transitions on `trading/accounts/{account}/orders` pub/sub |
+| ⬜ | `OrderHistoryRequest` → `OrderHistoryBatch` | High | Historical orders — `GET /allOrders` parity |
+| ⬜ | `FillHistoryRequest` → `FillHistoryBatch` | High | User trade history — `GET /myTrades` parity |
+| ⬜ | `OpenOrdersRequest` → `OpenOrdersSnapshot` | Medium | Working orders query (also first frame on live sub) |
+
+#### FSL messages — historical / query (cross-schema)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Shared pagination types | High | `TimeRange`, `PageCursor`, `PageInfo { next_cursor, has_more }` |
+| ⬜ | `CapabilitiesRequest` → `CapabilitiesResponse` | Medium | Symbols, intervals, stream + query endpoints — `exchangeInfo` parity |
+| ⬜ | `LedgerHistoryRequest` → `LedgerHistoryBatch` | Medium | Deposits, withdrawals, transfers |
+| ⬜ | `FundingHistoryRequest` → `FundingHistoryBatch` | Low | Perps funding history |
+| ⬜ | `*Batch` list response types | High | Batch wrappers for all historical responses; optional `request_stream` for huge ranges |
+| ⬜ | `gateway rest` GET for every §17.0b row | High | FSL-declared paths + query param mapping → native `REQUEST` |
+
+---
+
+### 17.2 Cross-Cutting Protocol (Both Sides)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Public `SUBSCRIBE` (no auth) | High | Market data channels; rate limit by IP / API key tier |
+| ⬜ | Private `SUBSCRIBE` (auth required) | High | Account-scoped channels; reject cross-account snooping |
+| ⬜ | Snapshot then delta | High | Every time-series stream: initial snapshot `STREAM_ITEM`s, then increments |
+| ⬜ | Sequence / gap detection | High | Book/candle gaps → `REQUEST` backfill (§17.0b) or resubscribe |
+| ⬜ | Tier 1 SDK: native `request()` | High | §16.4 Tier 1 includes `REQUEST`/`RESPONSE`, not only order entry |
+| ⬜ | Session resume restores subscriptions | High | Persist public + private subs in session store (§5) |
+| ⬜ | Heartbeat independent of data | — | PING/PONG already in §3; document for long-idle account streams |
+| ⬜ | Tier 3 SDK parity definition | Medium | §16.4 Tier 3 = pub/sub for **both** MD and account streams, not quotes-only |
+
+---
+
+### 17.3 Public Market Data — Broker & Client
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🔶 | L2 quote streaming | — | `MarketDataSnapshot` + incremental; needs sequence + BBO split |
+| ⬜ | `handle_subscribe` for all MD paths | High | Route by path segment: `book`, `bbo`, `trades`, `candles`, `ticker` |
+| ⬜ | Trade tape fan-out | High | Emit `PublicTrade` on every match event |
+| ⬜ | Candle aggregator | High | OHLCV from trades; partial + final bars |
+| ⬜ | BBO stream | High | Emit only on best level change |
+| ⬜ | Ticker aggregator | Medium | Rolling 24h stats from trades |
+| ⬜ | `fig-cli` MD demo suite | High | Subscribe book, trades, candles, BBO — not just quotes |
+| ⬜ | Client merge: order book | High | Snapshot + delta apply rules; gap → resubscribe |
+| ⬜ | Client merge: candles | High | Partial overwrite, final commit, correction replace |
+| ⬜ | SDK helpers | High | `subscribe_order_book`, `subscribe_trades`, `subscribe_candles`, `subscribe_bbo` |
+
+---
+
+### 17.4 Private Account & Trading — Broker & Client
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🔶 | `AccountSummary` REQUEST | — | Static GET in exchange-sim; not a live stream |
+| ⬜ | `SUBSCRIBE accounts/{account}/balances` | High | Push `BalanceSnapshot` then `BalanceUpdate` on deposit/trade/settlement |
+| ⬜ | `SUBSCRIBE accounts/{account}/margin` | High | Push `MarginSummary` on position/balance change |
+| ⬜ | `SUBSCRIBE accounts/{account}/positions` | High | Perps: snapshot + delta; spot may omit |
+| ⬜ | `SUBSCRIBE trading/…/executions` | High | **Critical gap:** today fills only inline on order REQUEST |
+| ⬜ | `SUBSCRIBE trading/…/fills` | Medium | Optional dedicated fill tape (Hyperliquid `userFills`) |
+| ⬜ | `SUBSCRIBE accounts/{account}/funding` | Medium | Perps funding payments |
+| ⬜ | `SUBSCRIBE accounts/{account}/ledger` | Medium | Deposits, withdrawals, transfers |
+| ⬜ | `SUBSCRIBE accounts/{account}/liquidations` | Low | User liquidation events |
+| ⬜ | Account state on order fill | High | Broker updates balance/position/margin engines; fan-out to all account subs |
+| ⬜ | `fig-cli` private stream demo | High | Authenticated subscribe to executions + balances |
+| ⬜ | Client account cache | High | Merge snapshots + deltas; reconcile on reconnect |
+
+---
+
+### 17.4b Historical / Query API — Native FIG (Broker & Client)
+
+**REST GET is not a separate product.** Each row in §17.0b is implemented as native
+FIG `REQUEST` on TREE; the REST gateway translates HTTP → same frames.
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🔶 | `AccountSummary` query | — | exchange-sim `REQUEST` on `accounts/{account}` → single `RESPONSE` |
+| 🔶 | `MarketDataSnapshot` query | — | FSL REST GET mapping exists; not a time-range historical API |
+| ⬜ | `handle_request` router for query paths | High | Dispatch by path + `METHOD` GET; separate from order POST paths |
+| ⬜ | Historical candle store + handler | High | `CandleBarRequest` → `CandleBarBatch`; bar store fed by matcher |
+| ⬜ | Public trade history handler | High | `TradeHistoryRequest` from stored tape |
+| ⬜ | Order / fill history handler | High | Authenticated; `OrderHistoryRequest`, `FillHistoryRequest` |
+| ⬜ | Open orders query | Medium | `OpenOrdersRequest` from matching engine state |
+| ⬜ | Large-range `request_stream` | Medium | `REQUEST` → many `STREAM_ITEM(CandleBar)` → `STREAM_CLOSE` when batch exceeds threshold |
+| ⬜ | Pagination enforcement | High | Max `limit`, cursor validation, rate limits on history endpoints |
+| ⬜ | `fig-cli` historical demo | High | Native `REQUEST` candles + fill history (no HTTP) |
+| ⬜ | SDK `request_candles`, `request_fills`, … | High | Mirror subscribe helpers in §17.3 |
+| ⬜ | Gap-fill workflow | High | Document: detect gap on live sub → `CandleBarRequest` → resume `SUBSCRIBE` |
+| ⬜ | Auth on private queries | High | Same scopes as private streams; reject cross-account reads |
+
+---
+
+### 17.5 Gateway Egress (REST + WebSocket)
+
+**Gateway is not a shortcut.** Implement native FIG first (§17.3–17.4, §17.4b); then
+add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ native
+`SUBSCRIBE`/`STREAM_ITEM` — **identical FSL payloads**.
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Native FIG completeness gate | High | CI: no gateway REST/WS mapping unless native FIG row is ✅ in §17.0 / §17.0b |
+| ✅ | REST GET catalog spec | High | Native paths use `/candles/{interval}`; gateway maps Binance `/klines` alias |
+| ✅ | FSL `gateway rest` for all query types | High | `CandleBarRequest`, `FillHistoryRequest`, … in `orders.fsl` |
+| ✅ | Query param ↔ CBOR request mapping | High | `rest_query.rs`: `?start=&end=&limit=` → request fields |
+| ✅ | WS topic catalog spec | High | `ws_catalog.rs`; Binance `@kline_*` / Hyperliquid topics |
+| ✅ | Inbound WS → FIG proxy | High | `legacy_ws_json_to_fig_subscribe` |
+| 🔶 | Gateway `--fig-backend` for queries + streams | Medium | GET queries proxied; SUBSCRIBE proxy not yet in `fig-gateway` |
+| ⬜ | FIX market data (MD entries) | Low | Optional mapping for bars / BBO where venues use FIX MD |
+
+---
+
+### 17.6 Codegen, Conformance & Testing
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Regenerate all schemas (`cargo xtask codegen`) | High | New FSL files → `generated/messages.rs` |
+| ⬜ | SBE templates for hot-path streams | High | `ExecutionReport`, `OrderBookDelta`, `CandleBar`, `BalanceUpdate` |
+| ⬜ | CBOR golden vectors per message | High | Extend `tests/conformance/vectors/` — group by public MD vs private account |
+| ⬜ | SBE golden vectors per message | High | Same split |
+| ⬜ | Snapshot + delta vector pairs | High | Order book and balance: snapshot fixture + following delta |
+| ⬜ | Multi-codec exchange-sim dispatch | High | Decode all new message types CBOR/SBE/Protobuf |
+| ⬜ | E2E: public MD subscribe suite | High | book, trades, candles, bbo |
+| ⬜ | E2E: private account subscribe suite | High | auth + executions + balance updates after trade |
+| ⬜ | E2E: native historical REQUEST suite | High | candles, trades, order history over TREE (no HTTP) |
+| ⬜ | E2E: gateway REST GET round-trip | High | HTTP GET → FIG REQUEST → RESPONSE → JSON === native client decode |
+| ⬜ | E2E: gateway WS round-trip | Medium | Legacy WS subscribe → FIG → legacy WS event JSON |
+| ⬜ | §16 binding tests for new types | Medium | Python/FFI first |
+
+---
+
+### 17.7 Exchange Simulator (Reference Broker)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ✅ | Subscription registry (all stream types) | High | `StreamSubscription` + `AccountSubscription` |
+| ✅ | Account state engine | High | `account_state::AccountHub` |
+| ✅ | Push account updates on fill | High | `post_fill_updates` balance + execution fan-out |
+| ✅ | Candle + trade tape from matcher | High | `market_data::MarketDataHub::on_trade` |
+| ✅ | Historical bar + trade tape store | High | In-memory `closed_candles` + trade tape |
+| ⬜ | Integration tests per §17.0b row | High | At least one native `REQUEST` test per **High** priority query |
+| ⬜ | Hyperliquid-style snapshot flag | Medium | First message tagged `is_snapshot: true` in CBOR |
+
+---
+
+### 17.8 Documentation
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | SPEC.md: native FIG is canonical transport | High | WS/SSE/FIX are gateway edges; TREE + SUBSCRIBE + STREAM_ITEM is normative |
+| ⬜ | SPEC.md §9 stream catalog | High | All native FIG channel paths + interaction patterns |
+| ⬜ | SPEC.md private vs public auth | High | Which streams require auth; account scoping rules |
+| ⬜ | SPEC.md §7.3 historical patterns | High | `request_response` vs `request_stream`; when to use each |
+| ✅ | `docs/QUERY.md` or STREAMING.md § query | High | [QUERY.md](docs/QUERY.md) + [STREAMING.md](docs/STREAMING.md) |
+| ✅ | `docs/WS_GATEWAY.md` or GATEWAY.md § WS catalog | High | `ws_catalog.rs` + [GATEWAY.md](docs/GATEWAY.md) update |
+| ✅ | ADR 0006 broker API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
+| ⬜ | PROTOCOL.md worked examples | High | Public MD subscribe + private account subscribe sequences |
+| ⬜ | TUTORIAL.md streaming steps | Medium | Extend beyond order + quotes + static account GET |
+| ⬜ | README.md message / stream table | Medium | Full stream inventory |
+
+---
+
+### 17.9 Parity Checklist (Broker ↔ Client)
+
+| Stream category | Broker publishes | Client subscribes | Gateway WS | In FSL | In exchange-sim |
+|---|---|---|---|---|---|
+| **Historical / query (§17.0b)** | | | | | |
+| Historical candles | ✅ | ✅ | — | ✅ | ✅ |
+| Trade / order / fill history | ✅ | ✅ | — | ✅ | ✅ |
+| Account / open orders query | ✅ GET | ✅ | — | ✅ | ✅ |
+| Gateway REST GET | ✅ | N/A | — | ✅ | ✅ |
+| **Live streaming (§17.0)** | | | | | |
+| BBO | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Public trades | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Candles (OHLCV bars) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Order / execution updates | ✅ SUBSCRIBE | ✅ | ✅ | ✅ | ✅ |
+| Balances (snapshot + delta) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Margin summary | ✅ GET | ✅ | — | ✅ | ✅ |
+| Positions | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Snapshot-on-subscribe | ✅ quotes+candles | ✅ | ✅ | ✅ | ✅ |
+| Session resume / gap fill | ⬜ | ⬜ | ⬜ | — | ⬜ |
+| Conformance vectors | ⬜ | ⬜ | ⬜ | — | — |
+
+---
+
+### 17.10 Priority Summary (§17)
+
+| Priority | Items |
+|---|---|
+| **High** | ADR 0006 + FSL schema split · §17.0 + §17.0b matrices · native `REQUEST` handlers (candles, history) · live SUBSCRIBE streams · pagination · exchange-sim query + stream engines · conformance vectors · `fig-cli` pull + push demos |
+| **Medium** | `request_stream` for large ranges · tickers · funding · ledger · gateway REST/WS catalogs · session resume · capabilities endpoint |
+| **Low** | Public liquidations · order list status · FIX MD · mark price · funding history |
+
+**Suggested implementation order:**
+
+1. ADR 0006 + FSL schema split + SPEC §7.3/§9 (§17.1)
+2. Native query path: `handle_request` router + `CandleBarRequest` + pagination types (§17.4b)
+3. Trading stream gap: `SUBSCRIBE` executions + account engine on fill (§17.4)
+4. Public MD live: trades + candles + BBO + book sequence (§17.3)
+5. Historical: trade/order/fill history handlers + bar store (§17.4b)
+6. Private account live: balance/margin/position snapshot+delta (§17.4)
+7. Codegen + conformance vectors for query + stream messages (§17.6)
+8. Gateway REST GET + WS catalogs (§17.5)
+9. Documentation (`QUERY.md` / `STREAMING.md`, gateway catalog) (§17.8)
+10. Remaining §17.0/§17.0b rows + cross-language binding tests (§16)

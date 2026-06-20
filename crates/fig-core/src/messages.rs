@@ -18,7 +18,15 @@ pub mod channel_path {
     pub const CANCEL_REPLACE: &str = "trading/accounts/{account}/orders/{order_id}/replace";
     pub const EXECUTIONS: &str = "trading/accounts/{account}/executions";
     pub const MARKET_DATA: &str = "marketdata/{symbol}/quotes";
+    pub const BOOK: &str = "marketdata/{symbol}/book";
+    pub const BBO: &str = "marketdata/{symbol}/bbo";
+    pub const TRADES: &str = "marketdata/{symbol}/trades";
+    pub const CANDLES: &str = "marketdata/{symbol}/candles/{interval}";
     pub const ACCOUNT: &str = "accounts/{account}";
+    pub const BALANCES: &str = "accounts/{account}/balances";
+    pub const POSITIONS: &str = "accounts/{account}/positions";
+    pub const MARGIN: &str = "accounts/{account}/margin";
+    pub const FILLS: &str = "accounts/{account}/fills";
 }
 
 #[cfg(test)]

@@ -280,6 +280,32 @@ impl CancelRejectRejectReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BalanceUpdateReason {
+    Trade = 1,
+    Deposit = 2,
+    Withdrawal = 3,
+    Transfer = 4,
+    Fee = 5,
+}
+
+impl BalanceUpdateReason {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(BalanceUpdateReason::Trade),
+            2 => Some(BalanceUpdateReason::Deposit),
+            3 => Some(BalanceUpdateReason::Withdrawal),
+            4 => Some(BalanceUpdateReason::Transfer),
+            5 => Some(BalanceUpdateReason::Fee),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MarketDataUpdateSide {
     Buy = 1,
     Sell = 2,
@@ -312,6 +338,26 @@ impl MarketDataUpdateAction {
             1 => Some(MarketDataUpdateAction::New),
             2 => Some(MarketDataUpdateAction::Change),
             3 => Some(MarketDataUpdateAction::Delete),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PublicTradeSide {
+    Buy = 1,
+    Sell = 2,
+}
+
+impl PublicTradeSide {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(PublicTradeSide::Buy),
+            2 => Some(PublicTradeSide::Sell),
             _ => None,
         }
     }
@@ -1444,6 +1490,1531 @@ impl AccountSummaryDecoder {
             balance,
             buying_power,
             currency,
+        })
+    }
+}
+
+/// SBE encoder for CandleBarEvent
+pub struct CandleBarEventEncoder;
+
+impl CandleBarEventEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(bar: CandleBar) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&9u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let bar_bytes = bar.as_bytes();
+        buf.extend_from_slice(&(bar_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(bar_bytes);
+
+        buf
+    }
+}
+
+/// SBE decoder for CandleBarEvent
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandleBarEventDecoder {
+    pub bar: CandleBar,
+}
+
+impl CandleBarEventDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 9 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let bar_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let bar_bytes = &buf[pos..pos+bar_len];
+        pos += bar_len;
+        let bar = std::str::from_utf8(bar_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+
+        Ok(Self {
+            bar,
+        })
+    }
+}
+
+/// SBE encoder for CandleBarRequest
+pub struct CandleBarRequestEncoder;
+
+impl CandleBarRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol, interval: CandleInterval, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&10u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        let interval_bytes = interval.as_bytes();
+        buf.extend_from_slice(&(interval_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(interval_bytes);
+        buf.push(if start_time.is_some() { 1 } else { 0 });
+        if let Some(v) = start_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        buf.push(if end_time.is_some() { 1 } else { 0 });
+        if let Some(v) = end_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        // TODO: encode limit as u32
+
+        buf
+    }
+}
+
+/// SBE decoder for CandleBarRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandleBarRequestDecoder {
+    pub symbol: Symbol,
+    pub interval: CandleInterval,
+    pub start_time: Option<TradeTimestamp>,
+    pub end_time: Option<TradeTimestamp>,
+    pub limit: Option<u32>,
+}
+
+impl CandleBarRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 10 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let interval_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let interval_bytes = &buf[pos..pos+interval_len];
+        pos += interval_len;
+        let interval = std::str::from_utf8(interval_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let start_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let end_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let limit = buf[pos]; // TODO: decode u32
+        pos += 1;
+
+        Ok(Self {
+            symbol,
+            interval,
+            start_time,
+            end_time,
+            limit,
+        })
+    }
+}
+
+/// SBE encoder for CandleBarBatch
+pub struct CandleBarBatchEncoder;
+
+impl CandleBarBatchEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol, interval: CandleInterval, bars: Vec<CandleBar>, has_more: bool, next_cursor: Option<String>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&11u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        let interval_bytes = interval.as_bytes();
+        buf.extend_from_slice(&(interval_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(interval_bytes);
+        buf.extend_from_slice(&(bars.len() as u32).to_be_bytes());
+        for item in &bars {
+            CandleBarEncoder::encode(item, buf);
+        }
+        buf.push(has_more);
+        buf.push(if next_cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = next_cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for CandleBarBatch
+#[derive(Debug, Clone, PartialEq)]
+pub struct CandleBarBatchDecoder {
+    pub symbol: Symbol,
+    pub interval: CandleInterval,
+    pub bars: Vec<CandleBar>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
+impl CandleBarBatchDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 11 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let interval_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let interval_bytes = &buf[pos..pos+interval_len];
+        pos += interval_len;
+        let interval = std::str::from_utf8(interval_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let bars_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;
+        pos += 4;
+        let mut bars = Vec::with_capacity(bars_count);
+        for _ in 0..bars_count {
+            let item = CandleBarDecoder::decode(&buf[pos..])?;
+            let item_len = item.encoded_len();
+            pos += item_len;
+            bars.push(item);
+        }
+        let has_more = buf[pos];
+        pos += 1;
+        let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+        pos += next_cursor_len;
+        let next_cursor = std::str::from_utf8(next_cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let next_cursor = if buf[pos] == 1 {
+            pos += 1;
+            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+            pos += next_cursor_len;
+            Some(std::str::from_utf8(next_cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
+
+        Ok(Self {
+            symbol,
+            interval,
+            bars,
+            has_more,
+            next_cursor,
+        })
+    }
+}
+
+/// SBE encoder for PublicTradeEvent
+pub struct PublicTradeEventEncoder;
+
+impl PublicTradeEventEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(trade: PublicTrade) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&12u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let trade_bytes = trade.as_bytes();
+        buf.extend_from_slice(&(trade_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(trade_bytes);
+
+        buf
+    }
+}
+
+/// SBE decoder for PublicTradeEvent
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublicTradeEventDecoder {
+    pub trade: PublicTrade,
+}
+
+impl PublicTradeEventDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 12 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let trade_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let trade_bytes = &buf[pos..pos+trade_len];
+        pos += trade_len;
+        let trade = std::str::from_utf8(trade_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+
+        Ok(Self {
+            trade,
+        })
+    }
+}
+
+/// SBE encoder for TradeHistoryRequest
+pub struct TradeHistoryRequestEncoder;
+
+impl TradeHistoryRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&13u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.push(if start_time.is_some() { 1 } else { 0 });
+        if let Some(v) = start_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        buf.push(if end_time.is_some() { 1 } else { 0 });
+        if let Some(v) = end_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        // TODO: encode limit as u32
+
+        buf
+    }
+}
+
+/// SBE decoder for TradeHistoryRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct TradeHistoryRequestDecoder {
+    pub symbol: Symbol,
+    pub start_time: Option<TradeTimestamp>,
+    pub end_time: Option<TradeTimestamp>,
+    pub limit: Option<u32>,
+}
+
+impl TradeHistoryRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 13 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let start_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let end_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let limit = buf[pos]; // TODO: decode u32
+        pos += 1;
+
+        Ok(Self {
+            symbol,
+            start_time,
+            end_time,
+            limit,
+        })
+    }
+}
+
+/// SBE encoder for PublicTradeBatch
+pub struct PublicTradeBatchEncoder;
+
+impl PublicTradeBatchEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol, trades: Vec<PublicTrade>, has_more: bool, next_cursor: Option<String>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&14u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.extend_from_slice(&(trades.len() as u32).to_be_bytes());
+        for item in &trades {
+            PublicTradeEncoder::encode(item, buf);
+        }
+        buf.push(has_more);
+        buf.push(if next_cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = next_cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for PublicTradeBatch
+#[derive(Debug, Clone, PartialEq)]
+pub struct PublicTradeBatchDecoder {
+    pub symbol: Symbol,
+    pub trades: Vec<PublicTrade>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
+impl PublicTradeBatchDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 14 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let trades_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;
+        pos += 4;
+        let mut trades = Vec::with_capacity(trades_count);
+        for _ in 0..trades_count {
+            let item = PublicTradeDecoder::decode(&buf[pos..])?;
+            let item_len = item.encoded_len();
+            pos += item_len;
+            trades.push(item);
+        }
+        let has_more = buf[pos];
+        pos += 1;
+        let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+        pos += next_cursor_len;
+        let next_cursor = std::str::from_utf8(next_cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let next_cursor = if buf[pos] == 1 {
+            pos += 1;
+            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+            pos += next_cursor_len;
+            Some(std::str::from_utf8(next_cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
+
+        Ok(Self {
+            symbol,
+            trades,
+            has_more,
+            next_cursor,
+        })
+    }
+}
+
+/// SBE encoder for BestBidOffer
+pub struct BestBidOfferEncoder;
+
+impl BestBidOfferEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol, bid_price: Option<Price>, bid_qty: Option<Quantity>, ask_price: Option<Price>, ask_qty: Option<Quantity>, timestamp: TradeTimestamp, is_snapshot: Option<bool>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&15u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&41u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.extend_from_slice(&bid_price.unwrap_or(0.0).to_be_bytes());
+        buf.push(if bid_price.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&bid_qty.unwrap_or(0.0).to_be_bytes());
+        buf.push(if bid_qty.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&ask_price.unwrap_or(0.0).to_be_bytes());
+        buf.push(if ask_price.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&ask_qty.unwrap_or(0.0).to_be_bytes());
+        buf.push(if ask_qty.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+        buf.push(is_snapshot.unwrap_or(0));
+        buf.push(if is_snapshot.is_some() { 1 } else { 0 });
+
+        buf
+    }
+}
+
+/// SBE decoder for BestBidOffer
+#[derive(Debug, Clone, PartialEq)]
+pub struct BestBidOfferDecoder {
+    pub symbol: Symbol,
+    pub bid_price: Option<Price>,
+    pub bid_qty: Option<Quantity>,
+    pub ask_price: Option<Price>,
+    pub ask_qty: Option<Quantity>,
+    pub timestamp: TradeTimestamp,
+    pub is_snapshot: Option<bool>,
+}
+
+impl BestBidOfferDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 15 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let bid_price_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let bid_price = if buf[pos] == 1 { Some(bid_price_raw) } else { None };
+        pos += 1;
+        let bid_qty_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let bid_qty = if buf[pos] == 1 { Some(bid_qty_raw) } else { None };
+        pos += 1;
+        let ask_price_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let ask_price = if buf[pos] == 1 { Some(ask_price_raw) } else { None };
+        pos += 1;
+        let ask_qty_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let ask_qty = if buf[pos] == 1 { Some(ask_qty_raw) } else { None };
+        pos += 1;
+        let timestamp = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let is_snapshot = buf[pos];
+        pos += 1;
+
+        Ok(Self {
+            symbol,
+            bid_price,
+            bid_qty,
+            ask_price,
+            ask_qty,
+            timestamp,
+            is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for MarginSummary
+pub struct MarginSummaryEncoder;
+
+impl MarginSummaryEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, balance: f64, buying_power: f64, equity: f64, margin_used: f64, available: f64, currency: String) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&16u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&40u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&balance.to_be_bytes());
+        buf.extend_from_slice(&buying_power.to_be_bytes());
+        buf.extend_from_slice(&equity.to_be_bytes());
+        buf.extend_from_slice(&margin_used.to_be_bytes());
+        buf.extend_from_slice(&available.to_be_bytes());
+        let currency_bytes = currency.as_bytes();
+        buf.extend_from_slice(&(currency_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(currency_bytes);
+
+        buf
+    }
+}
+
+/// SBE decoder for MarginSummary
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarginSummaryDecoder {
+    pub account: String,
+    pub balance: f64,
+    pub buying_power: f64,
+    pub equity: f64,
+    pub margin_used: f64,
+    pub available: f64,
+    pub currency: String,
+}
+
+impl MarginSummaryDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 16 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let balance = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let buying_power = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let equity = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let margin_used = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let available = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let currency_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let currency_bytes = &buf[pos..pos+currency_len];
+        pos += currency_len;
+        let currency = std::str::from_utf8(currency_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+
+        Ok(Self {
+            account,
+            balance,
+            buying_power,
+            equity,
+            margin_used,
+            available,
+            currency,
+        })
+    }
+}
+
+/// SBE encoder for BalanceSnapshot
+pub struct BalanceSnapshotEncoder;
+
+impl BalanceSnapshotEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, balances: Vec<BalanceEntry>, is_snapshot: Option<bool>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&17u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&(balances.len() as u32).to_be_bytes());
+        for item in &balances {
+            BalanceEntryEncoder::encode(item, buf);
+        }
+        buf.push(is_snapshot.unwrap_or(0));
+        buf.push(if is_snapshot.is_some() { 1 } else { 0 });
+
+        buf
+    }
+}
+
+/// SBE decoder for BalanceSnapshot
+#[derive(Debug, Clone, PartialEq)]
+pub struct BalanceSnapshotDecoder {
+    pub account: String,
+    pub balances: Vec<BalanceEntry>,
+    pub is_snapshot: Option<bool>,
+}
+
+impl BalanceSnapshotDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 17 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let balances_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;
+        pos += 4;
+        let mut balances = Vec::with_capacity(balances_count);
+        for _ in 0..balances_count {
+            let item = BalanceEntryDecoder::decode(&buf[pos..])?;
+            let item_len = item.encoded_len();
+            pos += item_len;
+            balances.push(item);
+        }
+        let is_snapshot = buf[pos];
+        pos += 1;
+
+        Ok(Self {
+            account,
+            balances,
+            is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for BalanceUpdate
+pub struct BalanceUpdateEncoder;
+
+impl BalanceUpdateEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, asset: String, delta: f64, total: f64, available: f64, reason: BalanceUpdateReason) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&18u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&25u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        let asset_bytes = asset.as_bytes();
+        buf.extend_from_slice(&(asset_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(asset_bytes);
+        buf.extend_from_slice(&delta.to_be_bytes());
+        buf.extend_from_slice(&total.to_be_bytes());
+        buf.extend_from_slice(&available.to_be_bytes());
+        buf.push(reason as u8);
+
+        buf
+    }
+}
+
+/// SBE decoder for BalanceUpdate
+#[derive(Debug, Clone, PartialEq)]
+pub struct BalanceUpdateDecoder {
+    pub account: String,
+    pub asset: String,
+    pub delta: f64,
+    pub total: f64,
+    pub available: f64,
+    pub reason: BalanceUpdateReason,
+}
+
+impl BalanceUpdateDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 18 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let asset_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let asset_bytes = &buf[pos..pos+asset_len];
+        pos += asset_len;
+        let asset = std::str::from_utf8(asset_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let delta = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let total = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let available = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let reason_raw = buf[pos];
+        pos += 1;
+        let reason = BalanceUpdateReason::from_value(reason_raw)
+            .ok_or_else(|| format!("invalid BalanceUpdateReason value: {}", reason_raw))?;
+
+        Ok(Self {
+            account,
+            asset,
+            delta,
+            total,
+            available,
+            reason,
+        })
+    }
+}
+
+/// SBE encoder for PositionSnapshot
+pub struct PositionSnapshotEncoder;
+
+impl PositionSnapshotEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, positions: Vec<PositionEntry>, is_snapshot: Option<bool>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&19u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&(positions.len() as u32).to_be_bytes());
+        for item in &positions {
+            PositionEntryEncoder::encode(item, buf);
+        }
+        buf.push(is_snapshot.unwrap_or(0));
+        buf.push(if is_snapshot.is_some() { 1 } else { 0 });
+
+        buf
+    }
+}
+
+/// SBE decoder for PositionSnapshot
+#[derive(Debug, Clone, PartialEq)]
+pub struct PositionSnapshotDecoder {
+    pub account: String,
+    pub positions: Vec<PositionEntry>,
+    pub is_snapshot: Option<bool>,
+}
+
+impl PositionSnapshotDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 19 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let positions_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;
+        pos += 4;
+        let mut positions = Vec::with_capacity(positions_count);
+        for _ in 0..positions_count {
+            let item = PositionEntryDecoder::decode(&buf[pos..])?;
+            let item_len = item.encoded_len();
+            pos += item_len;
+            positions.push(item);
+        }
+        let is_snapshot = buf[pos];
+        pos += 1;
+
+        Ok(Self {
+            account,
+            positions,
+            is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for PositionUpdate
+pub struct PositionUpdateEncoder;
+
+impl PositionUpdateEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, symbol: Symbol, qty: Quantity, entry_price: Price, unrealized_pnl: f64) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&20u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.extend_from_slice(&qty.to_be_bytes());
+        buf.extend_from_slice(&entry_price.to_be_bytes());
+        buf.extend_from_slice(&unrealized_pnl.to_be_bytes());
+
+        buf
+    }
+}
+
+/// SBE decoder for PositionUpdate
+#[derive(Debug, Clone, PartialEq)]
+pub struct PositionUpdateDecoder {
+    pub account: String,
+    pub symbol: Symbol,
+    pub qty: Quantity,
+    pub entry_price: Price,
+    pub unrealized_pnl: f64,
+}
+
+impl PositionUpdateDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 20 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let qty_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let qty = qty_raw;
+        let entry_price_raw = f64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let entry_price = entry_price_raw;
+        let unrealized_pnl = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+
+        Ok(Self {
+            account,
+            symbol,
+            qty,
+            entry_price,
+            unrealized_pnl,
+        })
+    }
+}
+
+/// SBE encoder for FillHistoryRequest
+pub struct FillHistoryRequestEncoder;
+
+impl FillHistoryRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, symbol: Option<Symbol>, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&21u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(if symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.push(if start_time.is_some() { 1 } else { 0 });
+        if let Some(v) = start_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        buf.push(if end_time.is_some() { 1 } else { 0 });
+        if let Some(v) = end_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
+        // TODO: encode limit as u32
+
+        buf
+    }
+}
+
+/// SBE decoder for FillHistoryRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct FillHistoryRequestDecoder {
+    pub account: String,
+    pub symbol: Option<Symbol>,
+    pub start_time: Option<TradeTimestamp>,
+    pub end_time: Option<TradeTimestamp>,
+    pub limit: Option<u32>,
+}
+
+impl FillHistoryRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 21 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos+symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let symbol = if buf[pos] == 1 {
+            pos += 1;
+            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let symbol_bytes = &buf[pos..pos+symbol_len];
+            pos += symbol_len;
+            Some(std::str::from_utf8(symbol_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
+        let start_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let end_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
+        let limit = buf[pos]; // TODO: decode u32
+        pos += 1;
+
+        Ok(Self {
+            account,
+            symbol,
+            start_time,
+            end_time,
+            limit,
+        })
+    }
+}
+
+/// SBE encoder for FillHistoryBatch
+pub struct FillHistoryBatchEncoder;
+
+impl FillHistoryBatchEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(account: String, fills: Vec<ExecutionReport>, has_more: bool, next_cursor: Option<String>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&22u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&(fills.len() as u32).to_be_bytes());
+        for item in &fills {
+            ExecutionReportEncoder::encode(item, buf);
+        }
+        buf.push(has_more);
+        buf.push(if next_cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = next_cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for FillHistoryBatch
+#[derive(Debug, Clone, PartialEq)]
+pub struct FillHistoryBatchDecoder {
+    pub account: String,
+    pub fills: Vec<ExecutionReport>,
+    pub has_more: bool,
+    pub next_cursor: Option<String>,
+}
+
+impl FillHistoryBatchDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 22 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let account_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let account_bytes = &buf[pos..pos+account_len];
+        pos += account_len;
+        let account = std::str::from_utf8(account_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let fills_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;
+        pos += 4;
+        let mut fills = Vec::with_capacity(fills_count);
+        for _ in 0..fills_count {
+            let item = ExecutionReportDecoder::decode(&buf[pos..])?;
+            let item_len = item.encoded_len();
+            pos += item_len;
+            fills.push(item);
+        }
+        let has_more = buf[pos];
+        pos += 1;
+        let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+        pos += next_cursor_len;
+        let next_cursor = std::str::from_utf8(next_cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let next_cursor = if buf[pos] == 1 {
+            pos += 1;
+            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let next_cursor_bytes = &buf[pos..pos+next_cursor_len];
+            pos += next_cursor_len;
+            Some(std::str::from_utf8(next_cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
+
+        Ok(Self {
+            account,
+            fills,
+            has_more,
+            next_cursor,
         })
     }
 }

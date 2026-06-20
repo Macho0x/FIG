@@ -5,8 +5,8 @@ How to run FIG alongside legacy FIX and REST infrastructure.
 ## Overview
 
 The `fig-gateway` binary is a **translation bridge** for migration testing. It
-accepts legacy FIX and REST connections, converts them to FIG frames in-process,
-and returns acknowledgements. It does not yet proxy frames to a remote FIG backend.
+accepts legacy FIX and REST connections, converts them to FIG frames, and can
+proxy GET queries to a remote FIG backend via `--fig-backend`.
 
 Library adapters (`fig_gateways::fix`, `rest`, `ws`, `sse`) can be embedded in
 your own gateway service that forwards to a FIG server.
