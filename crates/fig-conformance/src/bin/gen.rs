@@ -13,9 +13,10 @@ use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest,
     CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, ExecType, ExecutionReport,
-    MarkPriceUpdate, MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersRequest,
-    OpenOrdersSnapshot, OrdStatus, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest,
-    OrderListStatus, OrderListStatusStatus, OrderType, Price, PriceLevel, Quantity, Side,
+    MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker,
+    NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    OrderListStatusStatus, OrderType, PositionUpdate, Price, PriceLevel, Quantity, Side,
     TimeInForce,
 };
 use fig_core::sbe::encode_new_order_single;
@@ -192,6 +193,46 @@ fn build_suite() -> Result<ConformanceSuite> {
         status: OrderListStatusStatus::Executing,
         symbol: Some("AAPL".to_string()),
     };
+    let order_hist_paged_req = OrderHistoryRequest {
+        account: "DEMO".to_string(),
+        symbol: None,
+        start_time: None,
+        end_time: None,
+        limit: Some(5),
+        cursor: Some("exec-1".to_string()),
+    };
+    let book_delta = OrderBookDelta {
+        symbol: "AAPL".to_string(),
+        updates: vec![MarketDataUpdate {
+            action: MarketDataAction::Change,
+            side: Side::Buy,
+            price: Price(100.0),
+            qty: Quantity(5.0),
+        }],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(43),
+    };
+    let position_update = PositionUpdate {
+        account: "DEMO".to_string(),
+        symbol: "AAPL".to_string(),
+        qty: Quantity(10.0),
+        entry_price: Price(100.0),
+        unrealized_pnl: 0.0,
+    };
+    let order_hist_paged_frame = Frame::new(FrameType::Request, 5)
+        .with_seq(1)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/DEMO/orders",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/cbor",
+        ))
+        .with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-DEMO"))
+        .with_payload(encode_cbor(&order_hist_paged_req)?);
     let open_orders_req = OpenOrdersRequest {
         account: "DEMO".to_string(),
         symbol: None,
@@ -480,7 +521,7 @@ fn build_suite() -> Result<ConformanceSuite> {
             ConformanceVector {
                 id: "cbor.order_book_snapshot.demo".into(),
                 category: "cbor".into(),
-                description: "OrderBookSnapshot CBOR".into(),
+                description: "OrderBookSnapshot CBOR (snapshot pair)".into(),
                 message_type: "OrderBookSnapshot".into(),
                 expected_hex: hex::encode(encode_cbor(&OrderBookSnapshot {
                     symbol: "AAPL".to_string(),
@@ -496,6 +537,60 @@ fn build_suite() -> Result<ConformanceSuite> {
                     is_snapshot: Some(true),
                 })?),
                 frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.order_book_delta.demo".into(),
+                category: "cbor".into(),
+                description: "OrderBookDelta CBOR (delta pair)".into(),
+                message_type: "OrderBookDelta".into(),
+                expected_hex: hex::encode(encode_cbor(&book_delta)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.position_update.demo".into(),
+                category: "cbor".into(),
+                description: "PositionUpdate CBOR for private stream conformance".into(),
+                message_type: "PositionUpdate".into(),
+                expected_hex: hex::encode(encode_cbor(&position_update)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "frame.request.order_history_paginated".into(),
+                category: "frame".into(),
+                description: "GET order history with cursor pagination".into(),
+                message_type: "OrderHistoryRequest".into(),
+                expected_hex: hex::encode(order_hist_paged_frame.encode()?),
+                frame: Some(FrameSpec {
+                    frame_type: "Request".into(),
+                    channel_id: 5,
+                    stream_seq: 1,
+                    schema_id: 0x01,
+                    extensions: vec![
+                        ExtensionSpec {
+                            tag: "ChannelPath".into(),
+                            value: ExtensionValueSpec::Text("trading/accounts/DEMO/orders".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "Method".into(),
+                            value: ExtensionValueSpec::Text("GET".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "ContentType".into(),
+                            value: ExtensionValueSpec::Text("application/cbor".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "AuthToken".into(),
+                            value: ExtensionValueSpec::Text("fig-dev-DEMO".into()),
+                        },
+                    ],
+                    payload_hex: Some(hex::encode(encode_cbor(&order_hist_paged_req)?)),
+                }),
                 payload: None,
                 channel: None,
             },

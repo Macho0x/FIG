@@ -199,6 +199,7 @@ fn build_query_payload(
         let req = OrderBookRequest {
             symbol,
             depth: parse_limit_param(query),
+            at_time: parse_time_param(query, &["at_time", "atTime", "timestamp"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,

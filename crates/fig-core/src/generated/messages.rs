@@ -650,6 +650,8 @@ pub struct OrderBookRequest {
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at_time: Option<TradeTimestamp>,
 }
 
 impl OrderBookRequest {

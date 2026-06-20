@@ -65,6 +65,7 @@ pub struct MarketDataHub {
     mini_tickers: HashMap<String, MiniTicker>,
     mark_prices: HashMap<String, MarkPriceUpdate>,
     liquidations: Vec<LiquidationTrade>,
+    book_history: HashMap<String, Vec<OrderBookSnapshot>>,
     trade_seq: u64,
     agg_seq: u64,
 }
@@ -420,6 +421,33 @@ impl MarketDataHub {
 
     pub fn last_trade(&self, symbol: &str) -> Option<PublicTrade> {
         self.trades.get(symbol).and_then(|t| t.last().cloned())
+    }
+
+    pub fn record_book_snapshot(&mut self, mut snap: OrderBookSnapshot) {
+        snap.is_snapshot = Some(true);
+        let history = self.book_history.entry(snap.symbol.clone()).or_default();
+        history.push(snap);
+        if history.len() > 256 {
+            history.remove(0);
+        }
+    }
+
+    pub fn book_at_time(
+        &self,
+        symbol: &str,
+        at_time: i64,
+        depth: usize,
+    ) -> Option<OrderBookSnapshot> {
+        let history = self.book_history.get(symbol)?;
+        let mut snap = history
+            .iter()
+            .rev()
+            .find(|s| s.timestamp <= at_time)?
+            .clone();
+        snap.bids.truncate(depth);
+        snap.asks.truncate(depth);
+        snap.is_snapshot = Some(true);
+        Some(snap)
     }
 }
 

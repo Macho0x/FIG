@@ -209,16 +209,8 @@ pub fn respond_cbor<T: serde::Serialize>(
     if let Some(items) = stream_items {
         return stream_response(frame, items);
     }
-    match codec::encode_cbor(payload) {
-        Ok(bytes) => vec![Frame::new(FrameType::Response, frame.channel_id)
-            .with_seq(frame.stream_seq)
-            .with_schema_id(schema_id::TRADING_ORDERS)
-            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-            .with_extension(Extension::text(
-                ExtensionTag::ContentType,
-                "application/cbor",
-            ))
-            .with_payload(bytes)],
+    match codec::encode_response_payload(&frame, payload) {
+        Ok(bytes) => vec![response_frame(&frame, bytes)],
         Err(_) => vec![make_error_frame(
             frame.channel_id,
             frame.stream_seq,
@@ -227,82 +219,140 @@ pub fn respond_cbor<T: serde::Serialize>(
     }
 }
 
-pub fn stream_candle_batch(frame: Frame, batch: &CandleBarBatch) -> Vec<Frame> {
-    if batch.bars.len() <= REQUEST_STREAM_THRESHOLD && !batch.has_more {
-        return respond_cbor(frame, batch, None);
+fn response_frame(frame: &Frame, payload: Vec<u8>) -> Frame {
+    Frame::new(FrameType::Response, frame.channel_id)
+        .with_seq(frame.stream_seq)
+        .with_schema_id(schema_id::TRADING_ORDERS)
+        .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            codec::frame_content_type(frame),
+        ))
+        .with_payload(payload)
+}
+
+/// Stream a large paginated batch as `STREAM_ITEM` chunks + `STREAM_CLOSE`.
+pub fn stream_paginated_batch<T, F>(
+    frame: Frame,
+    items: &[T],
+    _has_more: bool,
+    encode: F,
+) -> Vec<Frame>
+where
+    F: Fn(&[T]) -> Option<Vec<u8>>,
+{
+    if items.len() <= REQUEST_STREAM_THRESHOLD {
+        return encode(items)
+            .map(|bytes| vec![response_frame(&frame, bytes)])
+            .unwrap_or_else(|| {
+                vec![make_error_frame(
+                    frame.channel_id,
+                    frame.stream_seq,
+                    "ENCODE_ERROR",
+                )]
+            });
     }
-    let items: Vec<Vec<u8>> = batch
-        .bars
+    let chunks: Vec<Vec<u8>> = items
         .chunks(REQUEST_STREAM_CHUNK)
-        .filter_map(|chunk| {
-            codec::encode_cbor(&CandleBarBatch {
-                symbol: batch.symbol.clone(),
-                interval: batch.interval.clone(),
-                bars: chunk.to_vec(),
-                has_more: batch.has_more,
-                next_cursor: batch.next_cursor.clone(),
-            })
-            .ok()
-        })
+        .filter_map(encode)
         .collect();
-    stream_response(frame, items)
+    stream_response(frame, chunks)
+}
+
+pub fn stream_candle_batch(frame: Frame, batch: &CandleBarBatch) -> Vec<Frame> {
+    stream_paginated_batch(frame, &batch.bars, batch.has_more, |chunk| {
+        codec::encode_cbor(&CandleBarBatch {
+            symbol: batch.symbol.clone(),
+            interval: batch.interval.clone(),
+            bars: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
+        })
+        .ok()
+    })
 }
 
 pub fn stream_order_history(frame: Frame, batch: &OrderHistoryBatch) -> Vec<Frame> {
-    if batch.orders.len() <= REQUEST_STREAM_THRESHOLD {
-        return respond_cbor(frame, batch, None);
-    }
-    stream_order_history_chunks(frame, batch)
+    stream_paginated_batch(frame, &batch.orders, batch.has_more, |chunk| {
+        codec::encode_cbor(&OrderHistoryBatch {
+            account: batch.account.clone(),
+            orders: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
+        })
+        .ok()
+    })
 }
 
 pub fn stream_fill_history(frame: Frame, batch: &FillHistoryBatch) -> Vec<Frame> {
-    if batch.fills.len() <= REQUEST_STREAM_THRESHOLD {
-        return respond_cbor(frame, batch, None);
-    }
-    let items: Vec<Vec<u8>> = batch
-        .fills
-        .chunks(REQUEST_STREAM_CHUNK)
-        .filter_map(|chunk| {
-            codec::encode_cbor(&FillHistoryBatch {
-                account: batch.account.clone(),
-                fills: chunk.to_vec(),
-                has_more: batch.has_more,
-                next_cursor: batch.next_cursor.clone(),
-            })
-            .ok()
+    stream_paginated_batch(frame, &batch.fills, batch.has_more, |chunk| {
+        codec::encode_cbor(&FillHistoryBatch {
+            account: batch.account.clone(),
+            fills: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
         })
-        .collect();
-    stream_response(frame, items)
+        .ok()
+    })
 }
 
-fn stream_order_history_chunks(frame: Frame, batch: &OrderHistoryBatch) -> Vec<Frame> {
-    let items: Vec<Vec<u8>> = batch
-        .orders
-        .chunks(REQUEST_STREAM_CHUNK)
-        .filter_map(|chunk| {
-            codec::encode_cbor(&OrderHistoryBatch {
-                account: batch.account.clone(),
-                orders: chunk.to_vec(),
-                has_more: batch.has_more,
-                next_cursor: batch.next_cursor.clone(),
-            })
-            .ok()
+pub fn stream_public_trade_batch(frame: Frame, batch: &PublicTradeBatch) -> Vec<Frame> {
+    stream_paginated_batch(frame, &batch.trades, batch.has_more, |chunk| {
+        codec::encode_cbor(&PublicTradeBatch {
+            symbol: batch.symbol.clone(),
+            trades: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
         })
-        .collect();
-    stream_response(frame, items)
+        .ok()
+    })
+}
+
+pub fn stream_agg_trade_batch(frame: Frame, batch: &AggregateTradeBatch) -> Vec<Frame> {
+    stream_paginated_batch(frame, &batch.trades, batch.has_more, |chunk| {
+        codec::encode_cbor(&AggregateTradeBatch {
+            symbol: batch.symbol.clone(),
+            trades: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
+        })
+        .ok()
+    })
+}
+
+pub fn stream_funding_batch(frame: Frame, batch: &FundingHistoryBatch) -> Vec<Frame> {
+    stream_paginated_batch(frame, &batch.payments, batch.has_more, |chunk| {
+        codec::encode_cbor(&FundingHistoryBatch {
+            account: batch.account.clone(),
+            payments: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
+        })
+        .ok()
+    })
+}
+
+pub fn stream_ledger_batch(frame: Frame, batch: &LedgerHistoryBatch) -> Vec<Frame> {
+    stream_paginated_batch(frame, &batch.entries, batch.has_more, |chunk| {
+        codec::encode_cbor(&LedgerHistoryBatch {
+            account: batch.account.clone(),
+            entries: chunk.to_vec(),
+            has_more: batch.has_more,
+            next_cursor: batch.next_cursor.clone(),
+        })
+        .ok()
+    })
 }
 
 fn stream_response(frame: Frame, payloads: Vec<Vec<u8>>) -> Vec<Frame> {
+    let content_type = codec::frame_content_type(&frame);
     let mut frames: Vec<Frame> = payloads
         .into_iter()
         .map(|payload| {
             Frame::new(FrameType::StreamItem, frame.channel_id)
                 .with_seq(frame.stream_seq)
                 .with_schema_id(schema_id::TRADING_ORDERS)
-                .with_extension(Extension::text(
-                    ExtensionTag::ContentType,
-                    "application/cbor",
-                ))
+                .with_extension(Extension::text(ExtensionTag::ContentType, content_type))
                 .with_payload(payload)
         })
         .collect();

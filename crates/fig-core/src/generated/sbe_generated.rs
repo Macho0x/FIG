@@ -1547,20 +1547,24 @@ pub struct OrderBookRequestEncoder;
 impl OrderBookRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol, depth: Option<u32>) -> Vec<u8> {
+    pub fn encode(symbol: Symbol, depth: Option<u32>, at_time: Option<TradeTimestamp>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&8u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
-        buf.extend_from_slice(&4u16.to_be_bytes()); // block_length
+        buf.extend_from_slice(&12u16.to_be_bytes()); // block_length
 
         // Fixed fields
         let symbol_bytes = symbol.as_bytes();
         buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
         buf.extend_from_slice(symbol_bytes);
         // TODO: encode depth as u32
+        buf.push(if at_time.is_some() { 1 } else { 0 });
+        if let Some(v) = at_time {
+            buf.extend_from_slice(&v.to_be_bytes());
+        }
 
         buf
     }
@@ -1571,6 +1575,7 @@ impl OrderBookRequestEncoder {
 pub struct OrderBookRequestDecoder {
     pub symbol: Symbol,
     pub depth: Option<u32>,
+    pub at_time: Option<TradeTimestamp>,
 }
 
 impl OrderBookRequestDecoder {
@@ -1602,10 +1607,22 @@ impl OrderBookRequestDecoder {
             .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
         let depth = buf[pos]; // TODO: decode u32
         pos += 1;
+        let at_time = i64::from_be_bytes([
+            buf[pos+0],
+            buf[pos+1],
+            buf[pos+2],
+            buf[pos+3],
+            buf[pos+4],
+            buf[pos+5],
+            buf[pos+6],
+            buf[pos+7],
+        ]);
+        pos += 8;
 
         Ok(Self {
             symbol,
             depth,
+            at_time,
         })
     }
 }

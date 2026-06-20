@@ -9,8 +9,10 @@ pub mod broker_api;
 pub mod broker_session;
 pub mod market_data;
 pub mod matching;
+pub mod multi_codec;
 pub mod orderbook;
 pub mod pagination;
+pub mod path_policy;
 pub mod server;
 
 pub use matching::MatchingEngine;

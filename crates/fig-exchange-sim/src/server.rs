@@ -270,6 +270,10 @@ pub fn handle_control(frame: Frame) -> Vec<Frame> {
 }
 
 pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+    if let Some(code) = crate::path_policy::validate_interaction(&frame) {
+        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+    }
+
     let channel_path = frame
         .extensions
         .iter()
@@ -381,7 +385,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     };
                     reports.push(report.clone());
 
-                    if let Ok(payload) = codec::encode_cbor(&report) {
+                    if let Ok(payload) = codec::encode_execution_report_frame(&frame, &report) {
                         responses.push(
                             Frame::new(FrameType::StreamItem, frame.channel_id)
                                 .with_seq(frame.stream_seq)
@@ -389,6 +393,10 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                                 .with_extension(Extension::text(
                                     ExtensionTag::ChannelPath,
                                     paths::EXECUTIONS,
+                                ))
+                                .with_extension(Extension::text(
+                                    ExtensionTag::ContentType,
+                                    codec::frame_content_type(&frame),
                                 ))
                                 .with_payload(payload),
                         );
@@ -449,7 +457,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
         }
     } else if channel_path.contains("/cancel") {
         // Cancel request
-        match codec::decode_cbor::<CancelRequest>(&frame.payload) {
+        match codec::decode_cancel_request_frame(&frame) {
             Ok(cancel) => {
                 info!("CancelRequest: {}", cancel.orig_cl_ord_id);
                 let mut engine = state.engine.lock().await;
@@ -558,7 +566,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                             .unwrap()
                             .as_nanos() as i64,
                     };
-                    if let Ok(payload) = codec::encode_cbor(&report) {
+                    if let Ok(payload) = codec::encode_execution_report_frame(&frame, &report) {
                         responses.push(
                             Frame::new(FrameType::StreamItem, frame.channel_id)
                                 .with_seq(frame.stream_seq)
@@ -566,6 +574,10 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                                 .with_extension(Extension::text(
                                     ExtensionTag::ChannelPath,
                                     paths::EXECUTIONS,
+                                ))
+                                .with_extension(Extension::text(
+                                    ExtensionTag::ContentType,
+                                    codec::frame_content_type(&frame),
                                 ))
                                 .with_payload(payload),
                         );
@@ -615,6 +627,10 @@ pub async fn handle_subscribe(
     state: &Arc<ExchangeState>,
     session_id: uuid::Uuid,
 ) -> Vec<Frame> {
+    if let Some(code) = crate::path_policy::validate_interaction(&frame) {
+        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+    }
+
     let routing_key = frame
         .extensions
         .iter()
@@ -714,7 +730,12 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
     let Some(delta) = engine.order_book_delta(symbol) else {
         return Vec::new();
     };
-    drop(engine);
+    if let Some(snap) = engine.order_book_snapshot_typed(symbol, 20) {
+        drop(engine);
+        state.market_data.lock().await.record_book_snapshot(snap);
+    } else {
+        drop(engine);
+    }
 
     let Ok(payload) = codec::encode_cbor(&delta) else {
         return Vec::new();

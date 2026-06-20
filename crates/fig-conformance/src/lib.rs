@@ -14,9 +14,10 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceSnapshot, CandleBar, CapabilitiesResponse, ExecType, ExecutionReport,
-    MarkPriceUpdate, MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus,
-    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderListStatusStatus, OrderType, Price, Quantity, Side, TimeInForce,
+    MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker,
+    NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot,
+    OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
+    PositionUpdate, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -90,6 +91,12 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
             }
             "OrderBookSnapshot" => encode_cbor(&sample_order_book_snapshot())
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OrderBookDelta" => {
+                encode_cbor(&sample_order_book_delta()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "PositionUpdate" => {
+                encode_cbor(&sample_position_update()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
             "AggregateTrade" => {
                 encode_cbor(&sample_aggregate_trade()).map_err(|e| anyhow!("encode_cbor: {e}"))?
             }
@@ -232,6 +239,30 @@ fn sample_order_book_snapshot() -> OrderBookSnapshot {
     }
 }
 
+fn sample_order_book_delta() -> OrderBookDelta {
+    OrderBookDelta {
+        symbol: "AAPL".to_string(),
+        updates: vec![MarketDataUpdate {
+            action: MarketDataAction::Change,
+            side: Side::Buy,
+            price: Price(100.0),
+            qty: Quantity(5.0),
+        }],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(43),
+    }
+}
+
+fn sample_position_update() -> PositionUpdate {
+    PositionUpdate {
+        account: "DEMO".to_string(),
+        symbol: "AAPL".to_string(),
+        qty: Quantity(10.0),
+        entry_price: Price(100.0),
+        unrealized_pnl: 0.0,
+    }
+}
+
 fn sample_aggregate_trade() -> AggregateTrade {
     AggregateTrade {
         symbol: "AAPL".to_string(),
@@ -337,6 +368,7 @@ fn parse_frame_type(name: &str) -> Result<FrameType> {
 
 fn parse_extension(spec: &ExtensionSpec) -> Result<Extension> {
     let tag = match spec.tag.as_str() {
+        "AuthToken" => ExtensionTag::AuthToken,
         "ChannelPath" => ExtensionTag::ChannelPath,
         "ContentType" => ExtensionTag::ContentType,
         "Method" => ExtensionTag::Method,

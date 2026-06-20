@@ -13,8 +13,9 @@ use crate::account_state::{
 use crate::auth::{account_from_private_path, authorize_private};
 use crate::broker_session::{
     capabilities_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
-    parse_order_history_path, parse_position_query_path, respond_cbor, stream_candle_batch,
-    stream_fill_history, stream_order_history,
+    parse_order_history_path, parse_position_query_path, respond_cbor, stream_agg_trade_batch,
+    stream_candle_batch, stream_fill_history, stream_funding_batch, stream_ledger_batch,
+    stream_order_history, stream_public_trade_batch,
 };
 use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_candle_query_path,
@@ -22,9 +23,14 @@ use crate::market_data::{
     StreamSubscription, SubscriptionKind,
 };
 use crate::matching::Fill;
+use crate::path_policy::validate_interaction;
 use crate::server::{make_error_frame, schema_id, ExchangeState};
 
 pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+    if let Some(code) = validate_interaction(&frame) {
+        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+    }
+
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
     let method = extension_text(&frame, ExtensionTag::Method);
     let method = if method.is_empty() {
@@ -55,7 +61,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if let Some(symbol) = parse_agg_trade_query_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             AggregateTradeRequest {
                 symbol: symbol.clone(),
                 start_time: None,
@@ -73,7 +79,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.cursor.as_deref(),
         );
         drop(md);
-        return ok_response(frame, &batch);
+        return stream_agg_trade_batch(frame, &batch);
     }
 
     if let Some(symbol) = parse_ticker_query_path(&channel_path) {
@@ -89,13 +95,22 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if let Some(symbol) = parse_order_book_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             OrderBookRequest {
                 symbol: symbol.clone(),
                 depth: Some(20),
+                at_time: None,
             },
         );
         let depth = req.depth.unwrap_or(20) as usize;
+        if let Some(at_time) = req.at_time {
+            let md = state.market_data.lock().await;
+            if let Some(snap) = md.book_at_time(&req.symbol, at_time, depth) {
+                drop(md);
+                return respond_cbor(frame, &snap, None);
+            }
+            drop(md);
+        }
         let engine = state.engine.lock().await;
         let snap = engine
             .order_book_snapshot_typed(&req.symbol, depth)
@@ -112,12 +127,15 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 is_snapshot: Some(true),
             });
         drop(engine);
+        let mut md = state.market_data.lock().await;
+        md.record_book_snapshot(snap.clone());
+        drop(md);
         return respond_cbor(frame, &snap, None);
     }
 
     if let Some(account) = parse_open_orders_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             OpenOrdersRequest {
                 account: account.clone(),
                 symbol: None,
@@ -131,7 +149,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if let Some(account) = parse_order_history_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             OrderHistoryRequest {
                 account: account.clone(),
                 symbol: None,
@@ -167,7 +185,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if let Some((symbol, interval)) = parse_candle_query_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             CandleBarRequest {
                 symbol: symbol.clone(),
                 interval: interval.clone(),
@@ -192,7 +210,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if let Some(symbol) = parse_trade_query_path(&channel_path) {
         let req = decode_or(
-            &frame.payload,
+            &frame,
             TradeHistoryRequest {
                 symbol: symbol.clone(),
                 start_time: None,
@@ -210,13 +228,13 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.cursor.as_deref(),
         );
         drop(md);
-        return ok_response(frame, &batch);
+        return stream_public_trade_batch(frame, &batch);
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/fills") {
         let account = channel_path.split('/').nth(1).unwrap_or("default");
         let req = decode_or(
-            &frame.payload,
+            &frame,
             FillHistoryRequest {
                 account: account.to_string(),
                 symbol: None,
@@ -245,7 +263,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/funding") {
         let account = channel_path.split('/').nth(1).unwrap_or("default");
         let req = decode_or(
-            &frame.payload,
+            &frame,
             FundingHistoryRequest {
                 account: account.to_string(),
                 start_time: None,
@@ -260,21 +278,19 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             .cloned()
             .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
         drop(accounts);
-        return ok_response(
-            frame,
-            &acct.query_funding(
-                req.start_time,
-                req.end_time,
-                req.limit,
-                req.cursor.as_deref(),
-            ),
+        let batch = acct.query_funding(
+            req.start_time,
+            req.end_time,
+            req.limit,
+            req.cursor.as_deref(),
         );
+        return stream_funding_batch(frame, &batch);
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/ledger") {
         let account = channel_path.split('/').nth(1).unwrap_or("default");
         let req = decode_or(
-            &frame.payload,
+            &frame,
             LedgerHistoryRequest {
                 account: account.to_string(),
                 start_time: None,
@@ -289,15 +305,13 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             .cloned()
             .unwrap_or_else(|| crate::account_state::SimAccount::demo(&req.account));
         drop(accounts);
-        return ok_response(
-            frame,
-            &acct.query_ledger(
-                req.start_time,
-                req.end_time,
-                req.limit,
-                req.cursor.as_deref(),
-            ),
+        let batch = acct.query_ledger(
+            req.start_time,
+            req.end_time,
+            req.limit,
+            req.cursor.as_deref(),
         );
+        return stream_ledger_batch(frame, &batch);
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/margin") {
@@ -326,34 +340,19 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
     )]
 }
 
-fn decode_or<T: serde::de::DeserializeOwned + Clone>(payload: &[u8], default: T) -> T {
-    if payload.is_empty() {
-        default
-    } else {
-        codec::decode_cbor(payload).unwrap_or(default)
-    }
+fn decode_or<T: serde::de::DeserializeOwned + Clone>(frame: &Frame, default: T) -> T {
+    codec::decode_request_payload_or(frame, default)
 }
 
 fn ok_response<T: serde::Serialize>(frame: Frame, payload: &T) -> Vec<Frame> {
-    match codec::encode_cbor(payload) {
-        Ok(bytes) => vec![Frame::new(FrameType::Response, frame.channel_id)
-            .with_seq(frame.stream_seq)
-            .with_schema_id(schema_id::TRADING_ORDERS)
-            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
-            .with_extension(Extension::text(
-                ExtensionTag::ContentType,
-                "application/cbor",
-            ))
-            .with_payload(bytes)],
-        Err(_) => vec![make_error_frame(
-            frame.channel_id,
-            frame.stream_seq,
-            "ENCODE_ERROR",
-        )],
-    }
+    respond_cbor(frame, payload, None)
 }
 
 pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+    if let Some(code) = validate_interaction(&frame) {
+        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+    }
+
     let routing_key = extension_text(&frame, ExtensionTag::RoutingKey);
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
 
@@ -582,6 +581,10 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
 }
 
 pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+    if let Some(code) = validate_interaction(&frame) {
+        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+    }
+
     let routing_key = extension_text(&frame, ExtensionTag::RoutingKey);
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
 

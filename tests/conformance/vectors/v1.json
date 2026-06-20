@@ -274,10 +274,64 @@
     {
       "id": "cbor.order_book_snapshot.demo",
       "category": "cbor",
-      "description": "OrderBookSnapshot CBOR",
+      "description": "OrderBookSnapshot CBOR (snapshot pair)",
       "message_type": "OrderBookSnapshot",
       "expected_hex": "a76673796d626f6c644141504c6865786368616e67656353494d646269647381a3657072696365f9564063717479f945006b6f726465725f636f756e74016461736b73806974696d657374616d701b17979cfe362a00006873657175656e6365182a6b69735f736e617073686f74f5",
       "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.order_book_delta.demo",
+      "category": "cbor",
+      "description": "OrderBookDelta CBOR (delta pair)",
+      "message_type": "OrderBookDelta",
+      "expected_hex": "a46673796d626f6c644141504c677570646174657381a464736964656342757966616374696f6e664368616e6765657072696365f9564063717479f945006974696d657374616d701b17979cfe362a00006873657175656e6365182b",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.position_update.demo",
+      "category": "cbor",
+      "description": "PositionUpdate CBOR for private stream conformance",
+      "message_type": "PositionUpdate",
+      "expected_hex": "a5676163636f756e746444454d4f6673796d626f6c644141504c63717479f949006b656e7472795f7072696365f956406e756e7265616c697a65645f706e6cf90000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "frame.request.order_history_paginated",
+      "category": "frame",
+      "description": "GET order history with cursor pagination",
+      "message_type": "OrderHistoryRequest",
+      "expected_hex": "0000007e0101000500000001040100000017001c74726164696e672f6163636f756e74732f44454d4f2f6f7264657273000d0003474554000300106170706c69636174696f6e2f63626f72000f000c6669672d6465762d44454d4fa3676163636f756e746444454d4f656c696d69740566637572736f7266657865632d31",
+      "frame": {
+        "frame_type": "Request",
+        "channel_id": 5,
+        "stream_seq": 1,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": "trading/accounts/DEMO/orders"
+          },
+          {
+            "tag": "Method",
+            "value": "GET"
+          },
+          {
+            "tag": "ContentType",
+            "value": "application/cbor"
+          },
+          {
+            "tag": "AuthToken",
+            "value": "fig-dev-DEMO"
+          }
+        ],
+        "payload_hex": "a3676163636f756e746444454d4f656c696d69740566637572736f7266657865632d31"
+      },
       "payload": null,
       "channel": null
     },

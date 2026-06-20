@@ -1176,3 +1176,145 @@ async fn test_order_list_status_subscribe() {
     assert!(status.is_some());
     assert_eq!(status.unwrap().list_id, "OL-1");
 }
+
+/// SBE-encoded NewOrderSingle is accepted on the order entry path.
+#[tokio::test]
+async fn test_sbe_new_order_single() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let order = make_order(
+        "SBE-1",
+        Side::Buy,
+        "AAPL",
+        OrderType::Limit,
+        Some(55.0),
+        2.0,
+    );
+    let payload = fig_core::sbe::encode_new_order_single(&order);
+    let mut frame = make_order_frame(1, &order).unwrap();
+    frame.payload = payload;
+    frame = frame.with_extension(Extension::text(
+        ExtensionTag::ContentType,
+        "application/fig+sbe",
+    ));
+    let responses = send_and_receive(&conn, frame).await.expect("sbe order");
+    assert!(
+        !responses
+            .iter()
+            .any(|f| f.frame_type == FrameType::StreamError),
+        "SBE order should not error"
+    );
+}
+
+/// Historical book query with `at_time` returns a recorded snapshot.
+#[tokio::test]
+async fn test_order_book_at_time_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "AT-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(200.0),
+        1.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("resting");
+
+    let req = OrderBookRequest {
+        symbol: "AAPL".to_string(),
+        depth: Some(10),
+        at_time: None,
+    };
+    let mut query = make_get_query_frame(2, "marketdata/AAPL/book", None);
+    query.payload = codec::encode_cbor(&req).unwrap();
+    let responses = send_and_receive(&conn, query).await.expect("book now");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response");
+    let snap: OrderBookSnapshot = codec::decode_cbor(&resp.payload).expect("decode");
+    let at_time = snap.timestamp;
+
+    let req2 = OrderBookRequest {
+        symbol: "AAPL".to_string(),
+        depth: Some(10),
+        at_time: Some(at_time),
+    };
+    let mut query2 = make_get_query_frame(2, "marketdata/AAPL/book", None);
+    query2.payload = codec::encode_cbor(&req2).unwrap();
+    let responses2 = send_and_receive(&conn, query2).await.expect("book at time");
+    let resp2 = responses2
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response2");
+    let snap2: OrderBookSnapshot = codec::decode_cbor(&resp2.payload).expect("decode2");
+    assert_eq!(snap2.timestamp, at_time);
+}
+
+/// Invalid method on a GET-only query path is rejected.
+#[tokio::test]
+async fn test_invalid_query_method_rejected() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let mut query = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            ".well-known/capabilities",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "POST"));
+    let responses = send_and_receive(&conn, query).await.expect("bad method");
+    assert!(responses
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamError));
+}
+
+/// Language-neutral E2E driver flow: connect → order → execution report.
+#[tokio::test]
+async fn test_e2e_driver_order_to_execution() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "E2E-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(150.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("resting");
+    let buy = make_order("E2E-2", Side::Buy, "AAPL", OrderType::Market, None, 5.0);
+    let responses = send_and_receive(&conn, make_order_frame(1, &buy).unwrap())
+        .await
+        .expect("fill");
+    let fill = responses.iter().find_map(|f| {
+        if f.frame_type != FrameType::StreamItem {
+            return None;
+        }
+        let report: ExecutionReport = codec::decode_cbor(&f.payload).ok()?;
+        (report.exec_type == ExecType::Fill).then_some(report)
+    });
+    assert!(fill.is_some(), "expected Trade execution report");
+}
