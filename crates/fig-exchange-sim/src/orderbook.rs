@@ -21,6 +21,7 @@ pub struct RestingOrder {
     pub qty: Quantity,
     pub leaves_qty: Quantity,
     pub time_in_force: TimeInForce,
+    pub expire_time: Option<TradeTimestamp>,
     pub account: Option<String>,
     /// Monotonically increasing sequence for price-time priority.
     pub seq: u64,
@@ -166,6 +167,18 @@ impl BookSide {
         self.levels.values()
     }
 
+    /// Get the best price on this side.
+    pub fn best_price(&self) -> Option<Price> {
+        self.best_level().map(|l| l.price.clone())
+    }
+
+    /// Whether an order with the given client ID is resting on this side.
+    pub fn contains(&self, cl_ord_id: &str) -> bool {
+        self.levels
+            .values()
+            .any(|level| level.orders.iter().any(|o| o.cl_ord_id == cl_ord_id))
+    }
+
     /// Get the total number of resting orders on this side.
     pub fn order_count(&self) -> usize {
         self.levels.values().map(|l| l.orders.len()).sum()
@@ -269,6 +282,7 @@ mod tests {
             qty: Quantity(qty),
             leaves_qty: Quantity(qty),
             time_in_force: TimeInForce::Day,
+            expire_time: None,
             account: None,
             seq: 0,
         }

@@ -89,6 +89,7 @@ fn make_order(
         side,
         order_qty: Quantity(qty),
         price: price.map(Price),
+        stop_price: None,
         symbol: symbol.to_string(),
         order_type,
         time_in_force: TimeInForce::Day,

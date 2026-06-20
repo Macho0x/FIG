@@ -28,6 +28,19 @@ pub struct Fill {
     pub ord_status: OrdStatus,
 }
 
+/// Result of processing a cancel request.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CancelOutcome {
+    Cancelled(RestingOrder),
+    Rejected(CancelRejectReason),
+}
+
+/// A stop order waiting for trigger.
+#[derive(Debug, Clone)]
+struct PendingStopOrder {
+    order: NewOrderSingle,
+}
+
 /// Result of processing an order.
 #[derive(Debug, Clone)]
 pub struct MatchResult {
@@ -40,6 +53,7 @@ pub struct MatchResult {
 pub struct MatchingEngine {
     books: HashMap<Symbol, OrderBook>,
     order_index: HashMap<ClientOrderId, Symbol>,
+    pending_stops: HashMap<Symbol, Vec<PendingStopOrder>>,
     fill_seq: u64,
 }
 
@@ -54,6 +68,7 @@ impl MatchingEngine {
         Self {
             books: HashMap::new(),
             order_index: HashMap::new(),
+            pending_stops: HashMap::new(),
             fill_seq: 0,
         }
     }
@@ -71,8 +86,151 @@ impl MatchingEngine {
             .or_insert_with(|| OrderBook::new(symbol.clone()))
     }
 
+    fn now_nanos() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i64
+    }
+
+    fn validate_order(&self, order: &NewOrderSingle) -> Option<String> {
+        if let Some(expire) = order.expire_time {
+            if order.time_in_force == TimeInForce::Gtd && expire <= Self::now_nanos() {
+                return Some("Order expired".to_string());
+            }
+        }
+        match order.order_type {
+            OrderType::Stop | OrderType::StopLimit if order.stop_price.is_none() => {
+                Some("Stop orders require stop_price".to_string())
+            }
+            OrderType::Limit | OrderType::StopLimit if order.price.is_none() => {
+                Some("Limit orders require price".to_string())
+            }
+            _ => None,
+        }
+    }
+
+    fn available_liquidity(&mut self, order: &NewOrderSingle) -> f64 {
+        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+        let book = self.book_for(&order.symbol);
+        let opposite_side = if is_buy { &book.asks } else { &book.bids };
+        let mut available = 0.0;
+        for level in opposite_side.levels() {
+            if order.order_type == OrderType::Limit || order.order_type == OrderType::StopLimit {
+                if is_buy && level.price.0 > order.price.as_ref().map_or(f64::MAX, |p| p.0) {
+                    break;
+                }
+                if !is_buy && level.price.0 < order.price.as_ref().map_or(0.0, |p| p.0) {
+                    break;
+                }
+            }
+            available += level.orders.iter().map(|o| o.leaves_qty.0).sum::<f64>();
+        }
+        available
+    }
+
+    fn trigger_stops(&mut self, symbol: &Symbol) -> Vec<MatchResult> {
+        let mut results = Vec::new();
+        let Some(stops) = self.pending_stops.get(symbol) else {
+            return results;
+        };
+        if stops.is_empty() {
+            return results;
+        }
+
+        let reference = self.reference_price(symbol);
+        let Some(reference) = reference else {
+            return results;
+        };
+
+        let pending = self.pending_stops.remove(symbol).unwrap_or_default();
+        let mut remaining = Vec::new();
+
+        for stop in pending {
+            let stop_px = stop.order.stop_price.as_ref().map(|p| p.0).unwrap_or(0.0);
+            let is_buy = matches!(stop.order.side, Side::Buy | Side::SellShortExempt);
+            let triggered = if is_buy {
+                reference >= stop_px
+            } else {
+                reference <= stop_px
+            };
+
+            if !triggered {
+                remaining.push(stop);
+                continue;
+            }
+
+            let mut triggered_order = stop.order.clone();
+            triggered_order.order_type = match triggered_order.order_type {
+                OrderType::Stop => OrderType::Market,
+                OrderType::StopLimit => OrderType::Limit,
+                other => other,
+            };
+            results.push(self.process_new_order_inner(&triggered_order, false));
+        }
+
+        if !remaining.is_empty() {
+            self.pending_stops.insert(symbol.clone(), remaining);
+        }
+        results
+    }
+
+    fn reference_price(&self, symbol: &Symbol) -> Option<f64> {
+        let book = self.books.get(symbol)?;
+        book.asks.best_price().map(|p| p.0).or_else(|| book.bids.best_price().map(|p| p.0))
+    }
+
     /// Process a new order. Returns fills and any resting order.
     pub fn process_new_order(&mut self, order: &NewOrderSingle) -> MatchResult {
+        let mut result = self.process_new_order_inner(order, true);
+        for triggered in self.trigger_stops(&order.symbol) {
+            result.fills.extend(triggered.fills);
+            if triggered.resting_order.is_some() {
+                result.resting_order = triggered.resting_order;
+            }
+            if triggered.reject_reason.is_some() {
+                result.reject_reason = triggered.reject_reason;
+            }
+        }
+        result
+    }
+
+    fn process_new_order_inner(&mut self, order: &NewOrderSingle, allow_stop_rest: bool) -> MatchResult {
+        if let Some(reason) = self.validate_order(order) {
+            return MatchResult {
+                fills: vec![],
+                resting_order: None,
+                reject_reason: Some(reason),
+            };
+        }
+
+        if matches!(order.order_type, OrderType::Stop | OrderType::StopLimit) && allow_stop_rest {
+            self.pending_stops
+                .entry(order.symbol.clone())
+                .or_default()
+                .push(PendingStopOrder {
+                    order: order.clone(),
+                });
+            self.order_index
+                .insert(order.cl_ord_id.clone(), order.symbol.clone());
+            return MatchResult {
+                fills: vec![],
+                resting_order: None,
+                reject_reason: None,
+            };
+        }
+
+        if order.time_in_force == TimeInForce::Fok {
+            let available = self.available_liquidity(order);
+            if available < order.order_qty.0 {
+                return MatchResult {
+                    fills: vec![],
+                    resting_order: None,
+                    reject_reason: Some("FOK not fully fillable".to_string()),
+                };
+            }
+        }
+
         let mut fills = Vec::new();
         let mut remaining_qty = order.order_qty.0;
         let mut cum_qty = 0.0;
@@ -95,7 +253,7 @@ impl MatchingEngine {
                 }
 
                 // For limit orders, check if the price crosses
-                if order.order_type == OrderType::Limit {
+                if order.order_type == OrderType::Limit || order.order_type == OrderType::StopLimit {
                     if is_buy && level.price.0 > order.price.as_ref().map_or(f64::MAX, |p| p.0) {
                         break;
                     }
@@ -131,6 +289,9 @@ impl MatchingEngine {
                     &mut book.bids
                 };
                 opposite_side.reduce(cl_ord_id, *fill_qty);
+                if opposite_side.order_count() == 0 || !opposite_side.contains(cl_ord_id) {
+                    self.order_index.remove(cl_ord_id);
+                }
 
                 remaining_qty -= fill_qty;
                 cum_qty += fill_qty;
@@ -166,9 +327,13 @@ impl MatchingEngine {
             }
         }
 
+        let can_rest = remaining_qty > 0.0
+            && order.order_type == OrderType::Limit
+            && !matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok);
+
         // If there's remaining qty and it's a limit order, rest it on the book
-        let resting_order = if remaining_qty > 0.0 && order.order_type == OrderType::Limit {
-            let mut resting = RestingOrder {
+        let resting_order = if can_rest {
+            let resting = RestingOrder {
                 order_id: format!("OX-{}", order.cl_ord_id),
                 cl_ord_id: order.cl_ord_id.clone(),
                 side: order.side.clone(),
@@ -177,33 +342,27 @@ impl MatchingEngine {
                 qty: order.order_qty.clone(),
                 leaves_qty: Quantity(remaining_qty),
                 time_in_force: order.time_in_force.clone(),
+                expire_time: order.expire_time,
                 account: order.account.clone(),
                 seq: 0,
             };
             self.order_index
                 .insert(order.cl_ord_id.clone(), order.symbol.clone());
             let book = self.book_for(&order.symbol);
-            book.add_order(resting);
-            // Return a clone for the caller to inspect
-            resting = RestingOrder {
-                order_id: format!("OX-{}", order.cl_ord_id),
-                cl_ord_id: order.cl_ord_id.clone(),
-                side: order.side.clone(),
-                symbol: order.symbol.clone(),
-                price: order.price.clone().unwrap_or(Price(0.0)),
-                qty: order.order_qty.clone(),
-                leaves_qty: Quantity(remaining_qty),
-                time_in_force: order.time_in_force.clone(),
-                account: order.account.clone(),
-                seq: 0,
-            };
+            book.add_order(resting.clone());
             Some(resting)
         } else {
             None
         };
 
         let reject_reason = if fills.is_empty() && resting_order.is_none() {
-            Some("No liquidity".to_string())
+            if matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok) {
+                Some("No liquidity".to_string())
+            } else if matches!(order.order_type, OrderType::Market) {
+                Some("No liquidity".to_string())
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -215,23 +374,61 @@ impl MatchingEngine {
         }
     }
 
-    /// Process a cancel request. Returns the cancelled order or None.
-    pub fn process_cancel(&mut self, cancel: &CancelRequest) -> Option<RestingOrder> {
-        let symbol = self.order_index.get(&cancel.orig_cl_ord_id)?;
-        let book = self.books.get_mut(symbol)?;
-        book.cancel_order(&cancel.orig_cl_ord_id)
+    /// Process a cancel request.
+    pub fn process_cancel(&mut self, cancel: &CancelRequest) -> CancelOutcome {
+        if let Some(stops) = self.pending_stops.get_mut(&cancel.symbol) {
+            if let Some(idx) = stops
+                .iter()
+                .position(|s| s.order.cl_ord_id == cancel.orig_cl_ord_id)
+            {
+                stops.remove(idx);
+                self.order_index.remove(&cancel.orig_cl_ord_id);
+                return CancelOutcome::Cancelled(RestingOrder {
+                    order_id: format!("OX-{}", cancel.orig_cl_ord_id),
+                    cl_ord_id: cancel.orig_cl_ord_id.clone(),
+                    side: cancel.side.clone(),
+                    symbol: cancel.symbol.clone(),
+                    price: Price(0.0),
+                    qty: Quantity(0.0),
+                    leaves_qty: Quantity(0.0),
+                    time_in_force: TimeInForce::Day,
+                    expire_time: None,
+                    account: None,
+                    seq: 0,
+                });
+            }
+        }
+
+        let Some(symbol) = self.order_index.get(&cancel.orig_cl_ord_id).cloned() else {
+            return CancelOutcome::Rejected(CancelRejectReason::OrderNotFound);
+        };
+
+        let book = match self.books.get_mut(&symbol) {
+            Some(b) => b,
+            None => return CancelOutcome::Rejected(CancelRejectReason::OrderNotFound),
+        };
+
+        if let Some(order) = book.cancel_order(&cancel.orig_cl_ord_id) {
+            self.order_index.remove(&cancel.orig_cl_ord_id);
+            CancelOutcome::Cancelled(order)
+        } else {
+            CancelOutcome::Rejected(CancelRejectReason::AlreadyFilled)
+        }
     }
 
     /// Process a cancel/replace request. Cancels the old order and adds a new one.
     pub fn process_replace(&mut self, replace: &CancelReplaceRequest) -> MatchResult {
         // First cancel the old order
-        let old_order = self.process_cancel(&CancelRequest {
+        let old_order = match self.process_cancel(&CancelRequest {
             cl_ord_id: replace.cl_ord_id.clone(),
             orig_cl_ord_id: replace.orig_cl_ord_id.clone(),
             symbol: replace.symbol.clone(),
             side: replace.side.clone(),
             order_qty: None,
-        });
+        }) {
+            CancelOutcome::Cancelled(order) => Some(order),
+            CancelOutcome::Rejected(_) => None,
+        };
 
         // Then submit the new order
         let new_order = NewOrderSingle {
@@ -239,6 +436,7 @@ impl MatchingEngine {
             side: replace.side.clone(),
             order_qty: replace.order_qty.clone(),
             price: replace.price.clone(),
+            stop_price: None,
             symbol: replace.symbol.clone(),
             order_type: OrderType::Limit,
             time_in_force: TimeInForce::Day,
@@ -282,6 +480,7 @@ mod tests {
             side,
             order_qty: Quantity(qty),
             price: Some(Price(price)),
+            stop_price: None,
             symbol: symbol.to_string(),
             order_type: OrderType::Limit,
             time_in_force: TimeInForce::Day,
@@ -297,6 +496,7 @@ mod tests {
             side,
             order_qty: Quantity(qty),
             price: None,
+            stop_price: None,
             symbol: symbol.to_string(),
             order_type: OrderType::Market,
             time_in_force: TimeInForce::Day,
@@ -402,10 +602,71 @@ mod tests {
         };
 
         let cancelled = engine.process_cancel(&cancel);
-        assert!(cancelled.is_some());
-        assert_eq!(cancelled.unwrap().cl_ord_id, "S1");
+        assert!(matches!(cancelled, CancelOutcome::Cancelled(_)));
+        if let CancelOutcome::Cancelled(order) = cancelled {
+            assert_eq!(order.cl_ord_id, "S1");
+        }
 
         let book = engine.get_book(&"AAPL".to_string()).unwrap();
         assert_eq!(book.asks.order_count(), 0);
+    }
+
+    #[test]
+    fn test_ioc_cancels_unfilled_remainder() {
+        let mut engine = MatchingEngine::new();
+        let sell = make_limit_order("S1", Side::Sell, "AAPL", 100.00, 50.0);
+        engine.process_new_order(&sell);
+
+        let mut buy = make_limit_order("B1", Side::Buy, "AAPL", 99.00, 30.0);
+        buy.time_in_force = TimeInForce::Ioc;
+        let result = engine.process_new_order(&buy);
+
+        assert!(result.fills.is_empty());
+        assert!(result.resting_order.is_none());
+    }
+
+    #[test]
+    fn test_fok_rejects_partial_liquidity() {
+        let mut engine = MatchingEngine::new();
+        let sell = make_limit_order("S1", Side::Sell, "AAPL", 100.00, 10.0);
+        engine.process_new_order(&sell);
+
+        let mut buy = make_limit_order("B1", Side::Buy, "AAPL", 101.00, 50.0);
+        buy.time_in_force = TimeInForce::Fok;
+        let result = engine.process_new_order(&buy);
+
+        assert!(result.fills.is_empty());
+        assert_eq!(result.reject_reason.as_deref(), Some("FOK not fully fillable"));
+    }
+
+    #[test]
+    fn test_stop_order_rests_until_triggered() {
+        let mut engine = MatchingEngine::new();
+        let mut stop = make_limit_order("STOP-1", Side::Buy, "AAPL", 105.0, 10.0);
+        stop.order_type = OrderType::Stop;
+        stop.price = None;
+        stop.stop_price = Some(Price(105.0));
+        let result = engine.process_new_order(&stop);
+        assert!(result.fills.is_empty());
+
+        let sell = make_limit_order("S1", Side::Sell, "AAPL", 105.0, 10.0);
+        let triggered = engine.process_new_order(&sell);
+        assert!(!triggered.fills.is_empty());
+    }
+
+    #[test]
+    fn test_cancel_unknown_order_rejected() {
+        let mut engine = MatchingEngine::new();
+        let cancel = CancelRequest {
+            cl_ord_id: "C1".to_string(),
+            orig_cl_ord_id: "MISSING".to_string(),
+            symbol: "AAPL".to_string(),
+            side: Side::Buy,
+            order_qty: None,
+        };
+        assert!(matches!(
+            engine.process_cancel(&cancel),
+            CancelOutcome::Rejected(CancelRejectReason::OrderNotFound)
+        ));
     }
 }

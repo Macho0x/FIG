@@ -362,9 +362,11 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
             Ok(cancel) => {
                 info!("CancelRequest: {}", cancel.orig_cl_ord_id);
                 let mut engine = state.engine.lock().await;
-                let cancelled = engine.process_cancel(&cancel);
+                use crate::matching::CancelOutcome;
+                let outcome = engine.process_cancel(&cancel);
 
-                let response = if let Some(_order) = cancelled {
+                let response = match outcome {
+                    CancelOutcome::Cancelled(_order) => {
                     let report = ExecutionReport {
                         cl_ord_id: cancel.cl_ord_id.clone(),
                         order_id: format!("OX-{}", cancel.orig_cl_ord_id),
@@ -392,8 +394,24 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     } else {
                         make_error_frame(frame.channel_id, frame.stream_seq, "ENCODE_ERROR")
                     }
-                } else {
-                    make_error_frame(frame.channel_id, frame.stream_seq, "ORDER_NOT_FOUND")
+                    }
+                    CancelOutcome::Rejected(reason) => {
+                        let reject = CancelReject {
+                            cl_ord_id: cancel.cl_ord_id.clone(),
+                            orig_cl_ord_id: cancel.orig_cl_ord_id.clone(),
+                            reject_reason: reason,
+                            symbol: cancel.symbol.clone(),
+                        };
+                        if let Ok(payload) = codec::encode_cbor(&reject) {
+                            Frame::new(FrameType::Response, frame.channel_id)
+                                .with_seq(frame.stream_seq)
+                                .with_schema_id(schema_id::TRADING_ORDERS)
+                                .with_extension(Extension::u16(ExtensionTag::StatusCode, 409))
+                                .with_payload(payload)
+                        } else {
+                            make_error_frame(frame.channel_id, frame.stream_seq, "ENCODE_ERROR")
+                        }
+                    }
                 };
                 let mut responses = vec![response];
                 responses.extend(push_book_depth(state, &cancel.symbol).await);

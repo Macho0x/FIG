@@ -390,6 +390,12 @@ impl NewOrderSingleEncoder {
             write_str(&mut buf, strategy_id);
         }
 
+        // stop_price: optional f64
+        buf.push(if order.stop_price.is_some() { 1 } else { 0 });
+        if let Some(ref stop_price) = order.stop_price {
+            write_f64(&mut buf, stop_price.0);
+        }
+
         buf
     }
 }
@@ -452,11 +458,20 @@ impl NewOrderSingleDecoder {
             None
         };
 
+        let has_stop_price = buf[pos];
+        pos += 1;
+        let stop_price = if has_stop_price == 1 {
+            Some(Price(read_f64(buf, &mut pos)))
+        } else {
+            None
+        };
+
         Ok(NewOrderSingle {
             cl_ord_id,
             side,
             order_qty,
             price,
+            stop_price,
             symbol,
             order_type,
             time_in_force,
@@ -944,6 +959,7 @@ mod tests {
             side: Side::Buy,
             order_qty: Quantity(100.0),
             price: Some(Price(50.25)),
+            stop_price: None,
             symbol: "AAPL".to_string(),
             order_type: OrderType::Limit,
             time_in_force: TimeInForce::Day,
@@ -1152,6 +1168,7 @@ mod tests {
             side: Side::SellShort,
             order_qty: Quantity(500.0),
             price: Some(Price(75.50)),
+            stop_price: None,
             symbol: "MSFT".to_string(),
             order_type: OrderType::Stop,
             time_in_force: TimeInForce::Gtc,
@@ -1185,6 +1202,7 @@ mod tests {
             side: Side::Buy,
             order_qty: Quantity(1000.0),
             price: None,
+            stop_price: None,
             symbol: "TSLA".to_string(),
             order_type: OrderType::Market,
             time_in_force: TimeInForce::Ioc,
@@ -1328,6 +1346,7 @@ mod tests {
             side: Side::Buy,
             order_qty: Quantity(50.0),
             price: None,
+            stop_price: None,
             symbol: "TEST".to_string(),
             order_type: OrderType::Market,
             time_in_force: TimeInForce::Ioc,

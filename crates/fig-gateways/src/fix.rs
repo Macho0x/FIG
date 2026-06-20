@@ -18,8 +18,8 @@ use thiserror::Error;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CancelRequest, ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price,
-    Quantity, Side, TimeInForce,
+    CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, ExecType,
+    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, Side, TimeInForce,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -138,6 +138,237 @@ pub enum FixConvertError {
 
 /// Convenience type alias for FIX↔FIG conversion operations.
 pub type FixConvertResult<T> = Result<T, FixConvertError>;
+
+/// Session header fields required on outbound FIX application messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FixOutboundContext {
+    pub sender_comp_id: String,
+    pub target_comp_id: String,
+    pub msg_seq_num: u32,
+}
+
+impl Default for FixOutboundContext {
+    fn default() -> Self {
+        Self {
+            sender_comp_id: "FIG".to_string(),
+            target_comp_id: "CLIENT".to_string(),
+            msg_seq_num: 1,
+        }
+    }
+}
+
+/// Response target for a FIX OrderCancelReject (tag 434).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixCxlRejResponseTo {
+    OrderCancelRequest = 1,
+    OrderCancelReplaceRequest = 2,
+}
+
+/// Split a byte buffer into complete FIX messages (each ending with `10=NNN\x01`).
+pub fn split_fix_messages(input: &[u8]) -> Vec<Vec<u8>> {
+    let mut messages = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i + 4 <= input.len() {
+        if input[i..].starts_with(b"10=") {
+            let end = (i + 4..input.len()).find(|&j| input[j] == SOH).map(|j| j + 1);
+            if let Some(end) = end {
+                messages.push(input[start..end].to_vec());
+                start = end;
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    messages
+}
+
+/// Format a nanosecond epoch timestamp as FIX UTCTimestamp (`YYYYMMDD-HH:MM:SS.sss`).
+pub fn format_fix_utc_timestamp(nanos: i64) -> String {
+    let secs = nanos / 1_000_000_000;
+    let millis = ((nanos % 1_000_000_000).abs() / 1_000_000) as u32;
+    let datetime = chrono_from_epoch_secs(secs);
+    format!(
+        "{:04}{:02}{:02}-{:02}:{:02}:{:02}.{:03}",
+        datetime.year,
+        datetime.month,
+        datetime.day,
+        datetime.hour,
+        datetime.minute,
+        datetime.second,
+        millis
+    )
+}
+
+/// Parse FIX UTCTimestamp (tags 60, 432) into nanoseconds since Unix epoch.
+pub fn parse_fix_utc_timestamp(value: &str) -> FixResult<i64> {
+    if value.len() < 17 {
+        return Err(FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        });
+    }
+    let year: i32 = value[0..4]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let month: u32 = value[4..6]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let day: u32 = value[6..8]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let hour: u32 = value[9..11]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let minute: u32 = value[12..14]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let second: u32 = value[15..17]
+        .parse()
+        .map_err(|_| FixError::InvalidTagValueData {
+            tag: 60,
+            value: value.to_string(),
+        })?;
+    let millis: u32 = if value.len() >= 21 && value.as_bytes().get(17) == Some(&b'.') {
+        value[18..21]
+            .parse()
+            .map_err(|_| FixError::InvalidTagValueData {
+                tag: 60,
+                value: value.to_string(),
+            })?
+    } else {
+        0
+    };
+
+    let secs = epoch_secs_from_utc(year, month, day, hour, minute, second);
+    Ok(secs * 1_000_000_000 + millis as i64 * 1_000_000)
+}
+
+struct UtcDateTime {
+    year: i32,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
+}
+
+fn days_from_civil(year: i32, month: u32, day: u32) -> i32 {
+    let y = year - i32::from(month <= 2);
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if month <= 2 {
+        month as i32 + 9
+    } else {
+        month as i32 - 3
+    }) + 2)
+        / 5
+        + i32::try_from(day).unwrap_or(0)
+        - 1
+        + yoe * 365
+        + yoe / 4
+        - yoe / 100;
+    era * 146097 + doy - 719468
+}
+
+fn civil_from_days(z: i32) -> (i32, u32, u32) {
+    let z = z + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = mp + if mp < 10 { 3 } else { -9 };
+    let y = y + if m <= 2 { 1 } else { 0 };
+    (y, m as u32, d as u32)
+}
+
+fn chrono_from_epoch_secs(secs: i64) -> UtcDateTime {
+    let days = (secs / 86400) as i32;
+    let rem = ((secs % 86400) + 86400) % 86400;
+    let (year, month, day) = civil_from_days(days);
+    UtcDateTime {
+        year,
+        month,
+        day: day as u32,
+        hour: (rem / 3600) as u32,
+        minute: ((rem % 3600) / 60) as u32,
+        second: (rem % 60) as u32,
+    }
+}
+
+fn epoch_secs_from_utc(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
+    i64::from(days_from_civil(year, month, day)) * 86400
+        + i64::from(hour) * 3600
+        + i64::from(minute) * 60
+        + i64::from(second)
+}
+
+fn build_outbound_fix_message(
+    ctx: &FixOutboundContext,
+    msg_type: &str,
+    body_tags: Vec<(u32, String)>,
+) -> Vec<u8> {
+    let sending_time = format_fix_utc_timestamp(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as i64,
+    );
+
+    let mut tags: Vec<(u32, String)> = vec![
+        (8, "FIX.4.4".to_string()),
+        (9, "0".to_string()),
+        (35, msg_type.to_string()),
+        (49, ctx.sender_comp_id.clone()),
+        (56, ctx.target_comp_id.clone()),
+        (34, ctx.msg_seq_num.to_string()),
+        (52, sending_time),
+    ];
+    tags.extend(body_tags);
+
+    let body_tags: Vec<&(u32, String)> = tags
+        .iter()
+        .filter(|(t, _)| *t != 8 && *t != 9 && *t != 10)
+        .collect();
+
+    let mut body_buf = Vec::new();
+    for (tag, value) in &body_tags {
+        body_buf.extend_from_slice(format!("{}={}", tag, value).as_bytes());
+        body_buf.push(SOH);
+    }
+    let body_length = body_buf.len();
+
+    let mut final_buf = Vec::new();
+    final_buf.extend_from_slice(b"8=FIX.4.4\x01");
+    final_buf.extend_from_slice(format!("9={}", body_length).as_bytes());
+    final_buf.push(SOH);
+    final_buf.extend_from_slice(&body_buf);
+
+    let checksum = compute_checksum(&final_buf);
+    final_buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
+    final_buf.push(SOH);
+
+    final_buf
+}
 
 // ─── Parsing ─────────────────────────────────────────────────────
 
@@ -288,9 +519,11 @@ fn compute_checksum(bytes: &[u8]) -> u8 {
 /// | 54      | Side         | side        |
 /// | 38      | OrderQty     | order_qty   |
 /// | 44      | Price        | price       |
+/// | 99      | StopPx       | stop_price  |
 /// | 55      | Symbol       | symbol      |
 /// | 40      | OrdType      | order_type  |
 /// | 59      | TimeInForce  | time_in_force|
+/// | 432     | ExpireTime   | expire_time |
 /// | 1       | Account      | account     |
 pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
     // Validate MsgType
@@ -321,20 +554,59 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
         })
         .transpose()?;
 
+    let stop_price = find_tag(tags, 99)
+        .map(|v| {
+            v.parse::<f64>()
+                .map(Price)
+                .map_err(|_| FixError::InvalidTagValueData {
+                    tag: 99,
+                    value: v.to_string(),
+                })
+        })
+        .transpose()?;
+
     let order_type = parse_fix_order_type(require_tag(tags, 40, "D")?)?;
     let time_in_force = parse_fix_time_in_force(find_tag(tags, 59).unwrap_or("0"))?;
 
+    let expire_time = find_tag(tags, 432)
+        .map(parse_fix_utc_timestamp)
+        .transpose()?;
+
     let account = find_tag(tags, 1).map(|s| s.to_string());
+
+    match order_type {
+        OrderType::Stop | OrderType::StopLimit if stop_price.is_none() => {
+            return Err(FixError::MissingTag {
+                tag: 99,
+                msg_type: "D".to_string(),
+            });
+        }
+        OrderType::Limit | OrderType::StopLimit if price.is_none() => {
+            return Err(FixError::MissingTag {
+                tag: 44,
+                msg_type: "D".to_string(),
+            });
+        }
+        _ => {}
+    }
+
+    if time_in_force == TimeInForce::Gtd && expire_time.is_none() {
+        return Err(FixError::MissingTag {
+            tag: 432,
+            msg_type: "D".to_string(),
+        });
+    }
 
     Ok(NewOrderSingle {
         cl_ord_id,
         side,
         order_qty,
         price,
+        stop_price,
         symbol,
         order_type,
         time_in_force,
-        expire_time: None,
+        expire_time,
         account,
         strategy_id: None,
     })
@@ -346,18 +618,19 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
 ///
 /// | FIX Tag | Field            | FIG Field       |
 /// |---------|-----------------|----------------|
-/// | 41      | OrigClOrdID     | cl_ord_id      |
-/// | 37      | OrderID         | orig_cl_ord_id |
+/// | 11      | ClOrdID         | cl_ord_id      |
+/// | 41      | OrigClOrdID     | orig_cl_ord_id |
 /// | 55      | Symbol          | symbol         |
 /// | 54      | Side            | side           |
+/// | 38      | OrderQty        | order_qty (opt)|
 pub fn fix_to_fig_cancel(tags: &[(u32, String)]) -> FixResult<CancelRequest> {
     let msg_type = require_tag(tags, 35, "CancelRequest")?;
     if msg_type != "F" {
         return Err(FixError::UnsupportedMsgType(msg_type.to_string()));
     }
 
-    let cl_ord_id = require_tag(tags, 41, "F")?.to_string();
-    let orig_cl_ord_id = require_tag(tags, 37, "F")?.to_string();
+    let cl_ord_id = require_tag(tags, 11, "F")?.to_string();
+    let orig_cl_ord_id = require_tag(tags, 41, "F")?.to_string();
     let symbol = require_tag(tags, 55, "F")?.to_string();
     let side = parse_fix_side(require_tag(tags, 54, "F")?)?;
 
@@ -382,32 +655,53 @@ pub fn fix_to_fig_cancel(tags: &[(u32, String)]) -> FixResult<CancelRequest> {
     })
 }
 
+/// Convert a FIX OrderCancelReplaceRequest (35=G) to a FIG `CancelReplaceRequest`.
+pub fn fix_to_fig_cancel_replace(tags: &[(u32, String)]) -> FixResult<CancelReplaceRequest> {
+    let msg_type = require_tag(tags, 35, "CancelReplaceRequest")?;
+    if msg_type != "G" {
+        return Err(FixError::UnsupportedMsgType(msg_type.to_string()));
+    }
+
+    let cl_ord_id = require_tag(tags, 11, "G")?.to_string();
+    let orig_cl_ord_id = require_tag(tags, 41, "G")?.to_string();
+    let symbol = require_tag(tags, 55, "G")?.to_string();
+    let side = parse_fix_side(require_tag(tags, 54, "G")?)?;
+    let order_qty = Quantity(require_tag(tags, 38, "G")?.parse::<f64>().map_err(|_| {
+        FixError::InvalidTagValueData {
+            tag: 38,
+            value: find_tag(tags, 38).unwrap_or("").to_string(),
+        }
+    })?);
+
+    let price = find_tag(tags, 44)
+        .map(|v| {
+            v.parse::<f64>()
+                .map(Price)
+                .map_err(|_| FixError::InvalidTagValueData {
+                    tag: 44,
+                    value: v.to_string(),
+                })
+        })
+        .transpose()?;
+
+    Ok(CancelReplaceRequest {
+        cl_ord_id,
+        orig_cl_ord_id,
+        symbol,
+        side,
+        order_qty,
+        price,
+    })
+}
+
 // ─── FIG → FIX Conversion ────────────────────────────────────────
 
 /// Convert a FIG `ExecutionReport` to a FIX ExecutionReport (35=8) wire-format message.
-///
-/// # Tag mappings
-///
-/// | FIX Tag | FIG Field     |
-/// |---------|--------------|
-/// | 11      | cl_ord_id    |
-/// | 37      | order_id     |
-/// | 17      | exec_id      |
-/// | 150     | exec_type    |
-/// | 39      | ord_status   |
-/// | 54      | side         |
-/// | 32      | last_qty     |
-/// | 31      | last_price   |
-/// | 151     | leaves_qty   |
-/// | 14      | cum_qty      |
-/// | 6       | avg_price    |
-/// | 55      | symbol       |
-/// | 60      | transact_time|
-pub fn fig_to_fix_execution_report(report: &ExecutionReport) -> Vec<u8> {
-    let mut tags: Vec<(u32, String)> = vec![
-        (8, "FIX.4.4".to_string()),
-        (9, "0".to_string()),  // BodyLength — placeholder, will recalc
-        (35, "8".to_string()), // MsgType = ExecutionReport
+pub fn fig_to_fix_execution_report(
+    report: &ExecutionReport,
+    ctx: &FixOutboundContext,
+) -> Vec<u8> {
+    let mut body = vec![
         (11, report.cl_ord_id.clone()),
         (37, report.order_id.clone()),
         (17, report.exec_id.clone()),
@@ -416,48 +710,64 @@ pub fn fig_to_fix_execution_report(report: &ExecutionReport) -> Vec<u8> {
         (54, fix_side(&report.side)),
     ];
 
-    // Quantities and prices
     if let Some(ref last_qty) = report.last_qty {
-        tags.push((32, fmt_quantity(last_qty)));
+        body.push((32, fmt_quantity(last_qty)));
     }
     if let Some(ref last_price) = report.last_price {
-        tags.push((31, fmt_price(last_price)));
+        body.push((31, fmt_price(last_price)));
     }
-    tags.push((151, fmt_quantity(&report.leaves_qty)));
-    tags.push((14, fmt_quantity(&report.cum_qty)));
-    tags.push((6, fmt_price(&report.avg_price)));
+    body.push((151, fmt_quantity(&report.leaves_qty)));
+    body.push((14, fmt_quantity(&report.cum_qty)));
+    body.push((6, fmt_price(&report.avg_price)));
+    body.push((55, report.symbol.clone()));
+    body.push((60, format_fix_utc_timestamp(report.transact_time)));
 
-    // Symbol and timestamp
-    tags.push((55, report.symbol.clone()));
-    tags.push((60, report.transact_time.to_string()));
+    build_outbound_fix_message(ctx, "8", body)
+}
 
-    // Compute BodyLength (tag 9): length of everything after "9=XXX\x01" to before checksum.
-    // Build the body tags (everything except 8=BeginString, 9=BodyLength, 10=CheckSum),
-    // compute body length, then prepend header.
-    let body_tags: Vec<&(u32, String)> = tags
-        .iter()
-        .filter(|(t, _)| *t != 8 && *t != 9 && *t != 10)
-        .collect();
+/// Convert a FIG `NewOrderSingle` to FIX NewOrderSingle (35=D) wire-format bytes.
+pub fn fig_to_fix_new_order_single(order: &NewOrderSingle, ctx: &FixOutboundContext) -> Vec<u8> {
+    let mut body = vec![
+        (11, order.cl_ord_id.clone()),
+        (54, fix_side(&order.side)),
+        (38, fmt_quantity(&order.order_qty)),
+        (55, order.symbol.clone()),
+        (40, fix_order_type(&order.order_type)),
+        (59, fix_time_in_force(&order.time_in_force)),
+    ];
 
-    let mut body_buf = Vec::new();
-    for (tag, value) in &body_tags {
-        body_buf.extend_from_slice(format!("{}={}", tag, value).as_bytes());
-        body_buf.push(SOH);
+    if let Some(ref price) = order.price {
+        body.push((44, fmt_price(price)));
     }
-    let body_length = body_buf.len();
+    if let Some(ref stop_price) = order.stop_price {
+        body.push((99, fmt_price(stop_price)));
+    }
+    if let Some(ref account) = order.account {
+        body.push((1, account.clone()));
+    }
+    if let Some(expire_time) = order.expire_time {
+        body.push((432, format_fix_utc_timestamp(expire_time)));
+    }
 
-    let mut final_buf = Vec::new();
-    final_buf.extend_from_slice(b"8=FIX.4.4\x01");
-    final_buf.extend_from_slice(format!("9={}", body_length).as_bytes());
-    final_buf.push(SOH);
-    final_buf.extend_from_slice(&body_buf);
+    build_outbound_fix_message(ctx, "D", body)
+}
 
-    // Compute checksum
-    let checksum = compute_checksum(&final_buf);
-    final_buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
-    final_buf.push(SOH);
+/// Convert a FIG `CancelReject` to FIX OrderCancelReject (35=9) wire-format bytes.
+pub fn fig_to_fix_cancel_reject(
+    reject: &CancelReject,
+    ctx: &FixOutboundContext,
+    response_to: FixCxlRejResponseTo,
+) -> Vec<u8> {
+    let body = vec![
+        (11, reject.cl_ord_id.clone()),
+        (41, reject.orig_cl_ord_id.clone()),
+        (39, fix_ord_status(&OrdStatus::Rejected)),
+        (434, (response_to as u8).to_string()),
+        (102, fix_cancel_reject_reason(&reject.reject_reason)),
+        (55, reject.symbol.clone()),
+    ];
 
-    final_buf
+    build_outbound_fix_message(ctx, "9", body)
 }
 
 // ─── FIX Logon ↔ FIG STREAM_OPEN ─────────────────────────────────
@@ -646,6 +956,17 @@ fn parse_fix_order_type(value: &str) -> FixResult<OrderType> {
     }
 }
 
+/// Convert a FIG OrderType to FIX order type (tag 40).
+fn fix_order_type(order_type: &OrderType) -> String {
+    match order_type {
+        OrderType::Market => "1",
+        OrderType::Limit => "2",
+        OrderType::Stop => "3",
+        OrderType::StopLimit => "4",
+    }
+    .to_string()
+}
+
 /// Parse a FIX time-in-force (tag 59).
 fn parse_fix_time_in_force(value: &str) -> FixResult<TimeInForce> {
     match value {
@@ -656,6 +977,29 @@ fn parse_fix_time_in_force(value: &str) -> FixResult<TimeInForce> {
         "6" => Ok(TimeInForce::Gtd),
         _ => Err(FixError::UnknownTimeInForce(value.to_string())),
     }
+}
+
+/// Convert a FIG TimeInForce to FIX time-in-force (tag 59).
+fn fix_time_in_force(tif: &TimeInForce) -> String {
+    match tif {
+        TimeInForce::Day => "0",
+        TimeInForce::Gtc => "1",
+        TimeInForce::Ioc => "3",
+        TimeInForce::Fok => "4",
+        TimeInForce::Gtd => "6",
+    }
+    .to_string()
+}
+
+/// Convert a FIG CancelRejectReason to FIX CxlRejReason (tag 102).
+fn fix_cancel_reject_reason(reason: &CancelRejectReason) -> String {
+    match reason {
+        CancelRejectReason::TooLateToCancel => "0",
+        CancelRejectReason::OrderNotFound => "1",
+        CancelRejectReason::AlreadyFilled => "2",
+        CancelRejectReason::AlreadyCanceled => "6",
+    }
+    .to_string()
 }
 
 /// Convert a FIG ExecType to a FIX exec type value (tag 150).
@@ -863,8 +1207,8 @@ mod tests {
     fn test_fix_to_fig_cancel() {
         let mut buf = Vec::new();
         buf.extend_from_slice(b"8=FIX.4.4\x019=80\x0135=F\x01");
-        buf.extend_from_slice(b"41=ORD-CXL-001\x01");
-        buf.extend_from_slice(b"37=ORD-BUY-001\x01");
+        buf.extend_from_slice(b"11=ORD-CXL-001\x01");
+        buf.extend_from_slice(b"41=ORD-BUY-001\x01");
         buf.extend_from_slice(b"55=MSFT\x01");
         buf.extend_from_slice(b"54=2\x01");
 
@@ -879,6 +1223,79 @@ mod tests {
         assert_eq!(cancel.orig_cl_ord_id, "ORD-BUY-001");
         assert_eq!(cancel.symbol, "MSFT");
         assert_eq!(cancel.side, Side::Sell);
+    }
+
+    #[test]
+    fn test_fix_to_fig_stop_order_requires_stop_px() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"8=FIX.4.4\x019=80\x0135=D\x01");
+        buf.extend_from_slice(b"11=STOP-001\x01");
+        buf.extend_from_slice(b"54=1\x01");
+        buf.extend_from_slice(b"38=100\x01");
+        buf.extend_from_slice(b"55=AAPL\x01");
+        buf.extend_from_slice(b"40=3\x01");
+        buf.extend_from_slice(b"59=0\x01");
+        let checksum = compute_checksum(&buf);
+        buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
+        buf.push(SOH);
+
+        let tags = parse_fix_message(&buf).unwrap();
+        assert!(matches!(
+            fix_to_fig_order(&tags),
+            Err(FixError::MissingTag { tag: 99, .. })
+        ));
+    }
+
+    #[test]
+    fn test_fix_to_fig_gtd_requires_expire_time() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"8=FIX.4.4\x019=100\x0135=D\x01");
+        buf.extend_from_slice(b"11=GTD-001\x01");
+        buf.extend_from_slice(b"54=1\x01");
+        buf.extend_from_slice(b"38=100\x01");
+        buf.extend_from_slice(b"44=50\x01");
+        buf.extend_from_slice(b"55=AAPL\x01");
+        buf.extend_from_slice(b"40=2\x01");
+        buf.extend_from_slice(b"59=6\x01");
+        let checksum = compute_checksum(&buf);
+        buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
+        buf.push(SOH);
+
+        let tags = parse_fix_message(&buf).unwrap();
+        assert!(matches!(
+            fix_to_fig_order(&tags),
+            Err(FixError::MissingTag { tag: 432, .. })
+        ));
+    }
+
+    #[test]
+    fn test_fix_to_fig_cancel_replace() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"8=FIX.4.4\x019=100\x0135=G\x01");
+        buf.extend_from_slice(b"11=REP-001\x01");
+        buf.extend_from_slice(b"41=ORD-001\x01");
+        buf.extend_from_slice(b"55=AAPL\x01");
+        buf.extend_from_slice(b"54=1\x01");
+        buf.extend_from_slice(b"38=200\x01");
+        buf.extend_from_slice(b"44=151\x01");
+        let checksum = compute_checksum(&buf);
+        buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
+        buf.push(SOH);
+
+        let tags = parse_fix_message(&buf).unwrap();
+        let replace = fix_to_fig_cancel_replace(&tags).unwrap();
+        assert_eq!(replace.cl_ord_id, "REP-001");
+        assert_eq!(replace.orig_cl_ord_id, "ORD-001");
+        assert_eq!(replace.order_qty, Quantity(200.0));
+        assert_eq!(replace.price, Some(Price(151.0)));
+    }
+
+    #[test]
+    fn test_fix_utc_timestamp_round_trip() {
+        let nanos = 1_700_000_000_000_000_000i64;
+        let formatted = format_fix_utc_timestamp(nanos);
+        let parsed = parse_fix_utc_timestamp(&formatted).unwrap();
+        assert!((parsed - nanos).abs() < 1_000_000_000);
     }
 
     // ── FIG → FIX ExecutionReport ────────────────────────────
@@ -901,7 +1318,7 @@ mod tests {
             transact_time: 1700000000000000000,
         };
 
-        let encoded = fig_to_fix_execution_report(&report);
+        let encoded = fig_to_fix_execution_report(&report, &FixOutboundContext::default());
 
         // Parse it back to verify correctness
         let parsed = parse_fix_message(&encoded).unwrap();
@@ -927,7 +1344,71 @@ mod tests {
         assert_eq!(find(14), "100");
         assert_eq!(find(6), "50.25");
         assert_eq!(find(55), "AAPL");
-        assert_eq!(find(60), "1700000000000000000");
+        assert!(find(60).contains('-'));
+        assert_eq!(find(49), "FIG");
+        assert_eq!(find(56), "CLIENT");
+        assert_eq!(find(34), "1");
+    }
+
+    #[test]
+    fn test_fig_to_fix_new_order_single_round_trip() {
+        let order = NewOrderSingle {
+            cl_ord_id: "ORD-001".to_string(),
+            side: Side::Buy,
+            order_qty: Quantity(100.0),
+            price: Some(Price(50.25)),
+            stop_price: None,
+            symbol: "AAPL".to_string(),
+            order_type: OrderType::Limit,
+            time_in_force: TimeInForce::Day,
+            expire_time: None,
+            account: Some("ACC".to_string()),
+            strategy_id: None,
+        };
+
+        let encoded = fig_to_fix_new_order_single(&order, &FixOutboundContext::default());
+        let tags = parse_fix_message(&encoded).unwrap();
+        let decoded = fix_to_fig_order(&tags).unwrap();
+        assert_eq!(decoded, order);
+    }
+
+    #[test]
+    fn test_fig_to_fix_cancel_reject() {
+        let reject = CancelReject {
+            cl_ord_id: "CXL-1".to_string(),
+            orig_cl_ord_id: "ORD-1".to_string(),
+            reject_reason: CancelRejectReason::OrderNotFound,
+            symbol: "AAPL".to_string(),
+        };
+        let encoded = fig_to_fix_cancel_reject(
+            &reject,
+            &FixOutboundContext::default(),
+            FixCxlRejResponseTo::OrderCancelRequest,
+        );
+        let tags = parse_fix_message(&encoded).unwrap();
+        let find = |tag: u32| -> String {
+            tags.iter()
+                .find(|(t, _)| *t == tag)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(find(35), "9");
+        assert_eq!(find(11), "CXL-1");
+        assert_eq!(find(41), "ORD-1");
+        assert_eq!(find(102), "1");
+        assert_eq!(find(434), "1");
+    }
+
+    #[test]
+    fn test_split_fix_messages() {
+        let msg1 = serialize_fix_message(&[(8, "FIX.4.4".into()), (35, "0".into())]);
+        let msg2 = serialize_fix_message(&[(8, "FIX.4.4".into()), (35, "A".into())]);
+        let mut buf = msg1.clone();
+        buf.extend_from_slice(&msg2);
+        let split = split_fix_messages(&buf);
+        assert_eq!(split.len(), 2);
+        assert_eq!(parse_fix_message(&split[0]).unwrap()[1].1, "0");
+        assert_eq!(parse_fix_message(&split[1]).unwrap()[1].1, "A");
     }
 
     // ── Logon ↔ STREAM_OPEN Conversion ────────────────────────

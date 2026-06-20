@@ -13,6 +13,7 @@ fn make_limit_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) ->
         side,
         order_qty: Quantity(qty),
         price: Some(Price(price)),
+        stop_price: None,
         symbol: symbol.to_string(),
         order_type: OrderType::Limit,
         time_in_force: TimeInForce::Day,
@@ -28,6 +29,7 @@ fn make_market_order(id: &str, side: Side, symbol: &str, qty: f64) -> NewOrderSi
         side,
         order_qty: Quantity(qty),
         price: None,
+        stop_price: None,
         symbol: symbol.to_string(),
         order_type: OrderType::Market,
         time_in_force: TimeInForce::Ioc,
@@ -47,6 +49,7 @@ fn make_resting_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) 
         qty: Quantity(qty),
         leaves_qty: Quantity(qty),
         time_in_force: TimeInForce::Day,
+        expire_time: None,
         account: None,
         seq: 0,
     }

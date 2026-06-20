@@ -446,6 +446,12 @@ pub fn encode_new_order_single(order: &NewOrderSingle) -> Vec<u8> {
         enc.write_str(strategy_id);
     }
 
+    // Optional: stop_price
+    enc.write_u8(if order.stop_price.is_some() { 1 } else { 0 });
+    if let Some(ref stop_price) = order.stop_price {
+        enc.write_f64(stop_price.0);
+    }
+
     enc.finish()
 }
 
@@ -546,11 +552,19 @@ pub fn decode_new_order_single(buf: &[u8]) -> Result<NewOrderSingle, SbeError> {
         None
     };
 
+    let has_stop_price = dec.read_u8();
+    let stop_price = if has_stop_price == 1 {
+        Some(Price(dec.read_f64()))
+    } else {
+        None
+    };
+
     Ok(NewOrderSingle {
         cl_ord_id,
         side,
         order_qty,
         price,
+        stop_price,
         symbol,
         order_type,
         time_in_force,
@@ -747,6 +761,7 @@ mod tests {
             side: Side::Buy,
             order_qty: Quantity(100.0),
             price: Some(Price(50.25)),
+            stop_price: None,
             symbol: "AAPL".to_string(),
             order_type: OrderType::Limit,
             time_in_force: TimeInForce::Day,
@@ -839,6 +854,7 @@ mod tests {
             side: Side::Buy,
             order_qty: Quantity(50.0),
             price: None,
+            stop_price: None,
             symbol: "TEST".to_string(),
             order_type: OrderType::Market,
             time_in_force: TimeInForce::Ioc,
@@ -861,6 +877,7 @@ mod tests {
             side: Side::SellShort,
             order_qty: Quantity(200.0),
             price: Some(Price(99.99)),
+            stop_price: None,
             symbol: "GOOG".to_string(),
             order_type: OrderType::StopLimit,
             time_in_force: TimeInForce::Gtd,
@@ -979,6 +996,7 @@ mod tests {
             side: Side::Sell,
             order_qty: Quantity(1000.0),
             price: None, // No price (market order)
+            stop_price: None,
             symbol: "TSLA".to_string(),
             order_type: OrderType::Market,
             time_in_force: TimeInForce::Ioc,

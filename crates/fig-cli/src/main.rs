@@ -61,6 +61,7 @@ async fn main() -> Result<()> {
         side: Side::Buy,
         order_qty: Quantity(100.0),
         price: Some(Price(50.25)),
+        stop_price: None,
         symbol: "AAPL".to_string(),
         order_type: OrderType::Limit,
         time_in_force: TimeInForce::Day,

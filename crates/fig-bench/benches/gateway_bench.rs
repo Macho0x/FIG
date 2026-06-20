@@ -6,6 +6,7 @@ use fig_core::messages::{
 
 use fig_gateways::fix::{
     fig_to_fix_execution_report, fix_to_fig_order, parse_fix_message, serialize_fix_message,
+    FixOutboundContext,
 };
 use fig_gateways::rest::{parse_http_request, serialize_http_response, HttpResponse};
 use fig_gateways::ws::{parse_ws_frame, serialize_ws_frame, WsFrame, WsOpcode};
@@ -106,7 +107,7 @@ fn bench_fig_to_fix_execution_report(c: &mut Criterion) {
     let report = make_execution_report();
     c.bench_function("fig_to_fix_execution_report", |b| {
         b.iter(|| {
-            let msg = fig_to_fix_execution_report(black_box(&report));
+            let msg = fig_to_fix_execution_report(black_box(&report), &FixOutboundContext::default());
             black_box(msg);
         })
     });
