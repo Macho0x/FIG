@@ -73,95 +73,93 @@ Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md).
 
 ## Worked examples
 
-All five patterns run over **one TREE connection** with per-channel multiplexing.
-Native paths are canonical; gateways map legacy FIX/REST/WS shapes to the same
-frames. Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+Rust snippets using `fig_core` — same patterns as [`fig-cli`](crates/fig-cli/src/main.rs).
+Each frame is sent on a TREE bidirectional stream (`conn.open_bi()` → `encode()` →
+`FrameDecoder`). Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+```rust
+use fig_core::codec;
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{Frame, FrameType};
+use fig_core::messages::*;
+```
 
 ### 1. Live market data (public subscribe)
 
-No auth. Stream OHLCV bars as trades arrive.
-
-```text
-Client                              Exchange
-  SUBSCRIBE  ChannelPath: marketdata/AAPL/candles/5m
-             RoutingKey:  marketdata/AAPL/candles/5m
-  ───────────────────────────────────────────────►
-  STREAM_ITEM  CandleBarEvent (partial bar)
-  ◄───────────────────────────────────────────────
-  STREAM_ITEM  CandleBarEvent (bar close)
-  ◄───────────────────────────────────────────────
+```rust
+let candles = Frame::new(FrameType::Subscribe, 2)
+    .with_extension(Extension::text(ExtensionTag::RoutingKey, "marketdata/AAPL/candles/5m"))
+    .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL/candles/5m"));
+// → STREAM_ITEM (CandleBarEvent)
 ```
 
-Gateway WS alias: `aapl@kline_5m` → same path ([docs/STREAMING.md](docs/STREAMING.md)).
+### 2. Order entry
 
-### 2. Order entry (request + execution stream)
-
-Session-oriented flow; SBE on the hot path in production.
-
-```text
-Client                              Exchange
-  REQUEST POST  ChannelPath: trading/accounts/DEMO-ACCT/orders
-                Payload: NewOrderSingle (AAPL, Buy, 100 @ 150.25)
-  ───────────────────────────────────────────────►
-  STREAM_ITEM   ExecutionReport (fill or ack)
-  ◄───────────────────────────────────────────────
-  RESPONSE      200
-  ◄───────────────────────────────────────────────
+```rust
+let order = NewOrderSingle {
+    cl_ord_id: "CLI-001".into(), side: Side::Buy, symbol: "AAPL".into(),
+    order_qty: Quantity(100.0), price: Some(Price(150.25)),
+    order_type: OrderType::Limit, time_in_force: TimeInForce::Day,
+    account: Some("DEMO-ACCT".into()),
+    stop_price: None, expire_time: None, strategy_id: None,
+    security_id: None, id_source: None, security_exchange: None,
+};
+let order_frame = Frame::new(FrameType::Request, 1)
+    .with_extension(Extension::text(ExtensionTag::ChannelPath, "trading/accounts/DEMO-ACCT/orders"))
+    .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+    .with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-DEMO-ACCT"))
+    .with_payload(codec::encode_cbor(&order)?);
+// → STREAM_ITEM (ExecutionReport)
 ```
-
-FIX equivalent: MsgType `D` → `ExecutionReport` (35=8). See [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ### 3. Private account stream (wire auth)
 
-`AUTH_TOKEN` on every private frame; principal must match `{account}` in the path.
-The simulator uses test token `fig-dev-{account}` — not a key-issuance API.
-
-```text
-Client                              Exchange
-  SUBSCRIBE  ChannelPath: accounts/DEMO-ACCT/balances
-             AuthToken:   fig-dev-DEMO-ACCT
-  ───────────────────────────────────────────────►
-  STREAM_ITEM  BalanceSnapshot (is_snapshot: true)
-  ◄───────────────────────────────────────────────
-  STREAM_ITEM  BalanceUpdate (on change)
-  ◄───────────────────────────────────────────────
+```rust
+let balances = Frame::new(FrameType::Subscribe, 3)
+    .with_extension(Extension::text(ExtensionTag::RoutingKey, "accounts/DEMO-ACCT/balances"))
+    .with_extension(Extension::text(ExtensionTag::ChannelPath, "accounts/DEMO-ACCT/balances"))
+    .with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-DEMO-ACCT"));
+// → STREAM_ITEM (BalanceSnapshot, then BalanceUpdate)
 ```
 
-Spec: [SPEC.md §9.3](SPEC.md). Set `FIG_DEV_OPEN=1` on the sim to skip auth locally.
+Simulator test token only — see [SPEC.md §9.3](SPEC.md). `FIG_DEV_OPEN=1` skips auth locally.
 
-### 4. Historical query (request-response)
+### 4. Historical query, then resume live
 
-Pull a batch, then resume live subscribe on the same connection.
-
-```text
-Client                              Exchange
-  REQUEST GET  ChannelPath: marketdata/AAPL/candles/5m
-               Payload: CandleBarRequest { limit: 100 }
-  ───────────────────────────────────────────────►
-  RESPONSE     CandleBarBatch
-  ◄───────────────────────────────────────────────
-  SUBSCRIBE    marketdata/AAPL/candles/5m   (resume live)
-  ───────────────────────────────────────────────►
+```rust
+let history = Frame::new(FrameType::Request, 4)
+    .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL/candles/5m"))
+    .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+    .with_payload(codec::encode_cbor(&CandleBarRequest {
+        symbol: "AAPL".into(),
+        interval: "5m".into(),
+        start_time: None,
+        end_time: None,
+        limit: Some(100),
+        cursor: None,
+    })?);
+// → RESPONSE (CandleBarBatch); then re-use example 1 SUBSCRIBE on the same connection
 ```
 
-REST alias: `GET /marketdata/AAPL/candles/5m?limit=100` via `fig-gateway`.
+### 5. Legacy migration (gateway adapters)
 
-### 5. Legacy migration (gateway proxy)
+Translate REST or WebSocket client shapes to native FIG frames before proxying
+to your backend ([docs/GATEWAY.md](docs/GATEWAY.md)).
 
-Existing REST or WebSocket clients talk to `fig-gateway`; the gateway forwards
-native FIG frames to your venue. No client rewrite required for incremental rollout.
+```rust
+use fig_gateways::rest::{HttpRequest, parse_http_request};
+use fig_gateways::rest_query::http_get_to_fig_request;
+use fig_gateways::ws_catalog::legacy_ws_json_to_fig_subscribe;
 
-```text
-REST client                         fig-gateway                    FIG backend
-  GET /marketdata/AAPL/ticker  ──►  REQUEST (native path)  ──►  exchange-sim
-  ◄── JSON ◄──────────────────  RESPONSE (CBOR→JSON)  ◄──────
+let get = parse_http_request(b"GET /marketdata/AAPL/ticker HTTP/1.1\r\nHost: localhost\r\n\r\n")?;
+let ticker = http_get_to_fig_request(&get)?;
 
-WS client                           fig-gateway                    FIG backend
-  {"method":"SUBSCRIBE",           SUBSCRIBE (mapped path)  ──►  STREAM_ITEM
-   "params":["aapl@ticker"]}  ──►  ───────────────────────  ◄──  (legacy JSON out)
+let ws_sub = legacy_ws_json_to_fig_subscribe(
+    r#"{"method":"SUBSCRIBE","params":["aapl@ticker"]}"#,
+    1,
+)?;
+// Forward `ticker` / `ws_sub` to FIG backend via fig_gateways::backend
 ```
-
-Deploy notes: [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ---
 
