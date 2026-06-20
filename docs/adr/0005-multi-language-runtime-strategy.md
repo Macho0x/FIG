@@ -36,10 +36,22 @@ Use generated frame/channel/control libraries **only** where FFI is unacceptable
 
 Python, C#, Go, OCaml, and TypeScript **do not** get hand-ported `fig-core` clones in v1.
 
+### TypeScript (Node, Bun, Deno)
+
+Trading bots and desk tools target **server-side** runtimes only:
+
+- **Native FIG client:** N-API addon (Node + Bun) or Deno FFI over `libfig_ffi` / `fig.h`.
+- **No WASM** — we do not compile `fig-core` to `wasm32` for TS clients.
+- **Browser:** use `fig-gateway` (REST/WebSocket) for operational parity; not Tier 4 native FIG.
+
+This matches the FFI-first default: one Rust runtime, thin TS bindings, conformance vectors
+for parity.
+
 ### Gateway proxy (Track B option 3)
 
 - `fig-gateway --fig-backend` forwards translated FIX/REST to a native FIG server.
 - Browser and migration scenarios use the gateway; it is **not** counted as Tier 4 native parity.
+- TypeScript in the browser is gateway-only; server-side TS uses native addon/FFI (see above).
 
 ## Consequences
 

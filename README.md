@@ -23,6 +23,7 @@ and matching engines belong in your venue stack, outside the protocol.
 | **Venues & brokers** | One native connection for order entry, live market data, and private account streams |
 | **Integration teams** | Replace FIX + REST + WebSocket glue with one client library and one auth model |
 | **Gateway operators** | Proxy legacy clients to a FIG backend with `fig-gateway` (`--fig-backend`) |
+| **Trading bot authors (TS)** | Native FIG on **Node, Bun, Deno** via N-API/FFI over `fig-ffi` — no WASM |
 | **Schema / tooling authors** | FSL schemas compile to Rust, SBE, Protobuf, JSON Schema, and FIX mappings |
 
 ---
@@ -196,14 +197,19 @@ Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** ship
 | **C++** | 🔶 Thin wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | 🔶 enums + nested structs | Frame encode/decode + CBOR order helpers only |
 | **C#** | 🔶 Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | 🔶 enums + nested classes | Frame encode/decode + CBOR order helpers only |
 | **Go** | 🔶 Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | 🔶 structs + JSON tags | Frame encode/decode + CBOR order helpers only |
-| **TypeScript** | ⬜ Planned | — | 🔶 interfaces (types only) | Gateway for browser; Node addon or WASM TBD |
+| **TypeScript** | ⬜ Planned | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | 🔶 interfaces (types only) | N-API / Deno FFI on **Node, Bun, Deno** (no WASM) |
 | **OCaml** | ⬜ Planned | — | 🔶 records (flat shapes) | ctypes → `fig-ffi` TBD |
 | **Zig** | ⬜ Planned | — | 🔶 structs (flat shapes) | `@cImport fig.h` or pure Zig codec TBD |
 | **Java** | ⬜ Planned | — | ⬜ not in `ftlc` yet | JNI → `fig-ffi` TBD |
 
-**C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md) — shared foundation for C++, C#, Go, and future OCaml/Zig.
+**C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md) — shared foundation for C++, C#, Go, TypeScript (N-API), and future OCaml/Zig.
 
-Languages without a native TREE client can use [`fig-gateway`](crates/fig-gateways/) (REST/WS/FIX) against a FIG backend while SDK work continues.
+**TypeScript trading bots** run natively on Node, Bun, or Deno via a native addon over
+`fig-ffi` (same model as Go/C#). We do **not** ship a WASM build. Browser clients use
+[`fig-gateway`](crates/fig-gateways/) (REST/WebSocket) instead of an in-browser FIG stack.
+
+Languages without a native TREE client yet can use `fig-gateway` against a FIG backend
+while SDK work continues.
 
 ---
 

@@ -359,7 +359,7 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 | 🔶 | Go: structs + JSON/CBOR tags | High | `GoCodegen` structs + JSON tags; CBOR lib + serializers still ⬜ |
 | 🔶 | C++: structs + CBOR/JSON helpers | High | `CppCodegen` enums + nested structs; CBOR/JSON helpers still ⬜ |
 | 🔶 | C#: classes + System.Text.Json + CBOR | High | `CsharpCodegen` enums + nested classes; serializers still ⬜ |
-| ⬜ | TypeScript: interfaces + CBOR encode/decode | Medium | Browser vs Node packaging |
+| ⬜ | TypeScript: interfaces + CBOR encode/decode | Medium | FSL types + runtime CBOR via native addon (not generated serializers alone) |
 | ⬜ | OCaml: records + variant enums + CBOR | Low | yojson/cbor ppx or hand-rolled |
 | ⬜ | Zig: structs + CBOR helpers | Medium | std/json or `@cImport` to shared C codec |
 | ⬜ | SBE encode/decode codegen per language | Medium | Extend beyond Rust-only `sbe_codegen.rs`, or document + verify `sbe-xml` → SBE tool pipeline |
@@ -384,7 +384,7 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 | 🔶 | `fig-cpp` (header + link staticlib) | Medium | Header-only RAII helpers in `bindings/cpp/include/fig` |
 | ⬜ | `fig-ocaml` (ctypes) | Low | ctypes binding over `fig-ffi` |
 | ⬜ | `fig-zig` (`@cImport fig.h`) | Low | Comptime-friendly thin wrapper |
-| ⬜ | TypeScript / Node native addon or WASM | Medium | Browser → gateway; Node → addon or WASM build of `fig-core` |
+| ⬜ | TypeScript / Node native addon (N-API) | Medium | `fig-ffi` via N-API for **Node, Bun, Deno** trading bots — **no WASM**; browser → gateway only |
 | ✅ | Binding conformance tests | High | Python binding runs §16.1 + §17 vectors in CI |
 
 High-level client API (all bindings):
@@ -451,7 +451,7 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 | C# | classes + System.Text.Json | P/Invoke → `fig-ffi` | Common in trading |
 | C++ | full structs + SBE | Generated protocol or cbindgen | Low-latency HFT |
 | Go | structs + tags + CBOR | cgo or pure Go port | `--lang go` exists |
-| TypeScript | interfaces + CBOR | WASM or Node native addon | Browser uses gateway |
+| TypeScript | interfaces + CBOR | N-API / Deno FFI → `fig-ffi` (Node, Bun, Deno) | No WASM; browser uses gateway |
 | OCaml | variant enums + CBOR | ctypes → `fig-ffi` | Quant/research |
 | Zig | struct layout + comptime | `@cImport fig.h` or pure Zig | Comptime-friendly codegen |
 | Java | add `--lang java` first | JNI → `fig-ffi` | SPEC lists; not in `ftlc` yet |
