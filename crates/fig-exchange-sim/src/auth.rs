@@ -1,4 +1,8 @@
-//! Private stream and query authentication for the exchange simulator.
+//! Private path auth for the exchange simulator (test harness only).
+//!
+//! Checks `AUTH_TOKEN` = `fig-dev-{account}` so integration tests can exercise
+//! SPEC §9.3 path scoping without a credential store. Not a production key
+//! issuance or validation service.
 
 use fig_core::auth::verify_token;
 use fig_core::ext::{Extension, ExtensionTag};

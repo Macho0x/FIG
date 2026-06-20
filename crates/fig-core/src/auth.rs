@@ -1,14 +1,12 @@
-//! Authentication support for FIG connections.
+//! Authentication support for FIG connections (wire semantics).
 //!
-//! FIG supports two authentication mechanisms:
-//! - **Token-based**: Bearer tokens (API keys or JWT) carried in the
-//!   `AUTH_TOKEN` extension field.
-//! - **mTLS**: Mutual TLS authentication using client certificates,
-//!   with the Common Name (CN) and certificate fingerprint used for
-//!   identity verification.
+//! FIG defines how credentials are carried and verified on frames — not how
+//! they are issued. Bearer tokens and JWTs use the `AUTH_TOKEN` extension;
+//! mTLS uses client certificate CN at the TLS layer.
 //!
-//! The authentication method is advertised via the `AUTH_METHOD`
-//! extension tag during connection setup.
+//! Reference helpers here validate tokens for tests and conformance. Production
+//! venues plug their own identity systems (key stores, JWT issuers, IdP) behind
+//! the same on-wire contract (SPEC §9.3).
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,7 +17,7 @@ use uuid::Uuid;
 pub enum AuthMethod {
     /// No authentication (development only).
     None,
-    /// Token-based authentication (API key or JWT).
+    /// Token-based authentication (bearer or JWT on the wire).
     Token(String),
     /// mTLS authentication (client certificate CN).
     Mtls {
@@ -69,17 +67,16 @@ impl AuthResult {
 
 /// Verify a token against the expected value using constant-time comparison.
 ///
-/// For production deployments, replace this with HMAC verification or
-/// JWT signature validation against a trusted issuer.
+/// For production deployments, compare against a hash lookup or JWT signature
+/// from your venue's identity system — FIG does not define credential issuance.
 pub fn verify_token(token: &str, expected: &str) -> bool {
     // Constant-time comparison to prevent timing attacks
     token.len() == expected.len() && token.bytes().zip(expected.bytes()).all(|(a, b)| a == b)
 }
 
-/// Generate a simple bearer token (for development only).
+/// Generate a simple bearer token (for development/testing only).
 ///
-/// Production systems should use a proper token management system
-/// (e.g., JWT with RS256, or a secure token generator).
+/// Not a production key-issuance API — venues own credential lifecycle.
 pub fn generate_dev_token() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let ts = SystemTime::now()
@@ -96,7 +93,7 @@ pub fn generate_dev_token() -> String {
 pub enum AuthToken {
     /// A development token (for testing only).
     DevToken(String),
-    /// A bearer token (API key or JWT).
+    /// A bearer token (JWT or opaque string on the wire).
     BearerToken(String),
 }
 

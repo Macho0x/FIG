@@ -13,6 +13,11 @@ over TREE. It is designed to compete with FIX/REST/WebSocket as a new standard
 on its own merits — with gateway adapters providing backwards compatibility as
 a migration path, not as the protocol's identity.
 
+FIG specifies **how messages move and how credentials ride on the wire** (like
+FIX Logon or an HTTP `Authorization` header). It does **not** specify API key
+generation, account portals, or matching engines — those belong in your venue
+stack, outside the protocol.
+
 ---
 
 ## Table of Contents
@@ -161,8 +166,10 @@ The CLI demonstrates:
 5. **Account / ticker / funding / ledger queries** — native FIG `REQUEST`/`RESPONSE`
 6. **PING/PONG** — control frame heartbeat
 
-Private paths on the exchange simulator require an `AUTH_TOKEN` extension
-(`fig-dev-{account}`). Set `FIG_DEV_OPEN=1` to disable auth checks locally.
+Private paths require an `AUTH_TOKEN` extension on each frame (SPEC §9.3).
+The reference simulator accepts a predictable test token (`fig-dev-{account}`)
+— not a production issuance flow. Set `FIG_DEV_OPEN=1` to disable auth checks
+locally.
 
 All over a single TREE connection with per-stream multiplexing.
 
@@ -279,7 +286,7 @@ and WebSocket are gateway edges over the same FSL types — see
 | `marketdata/{sym}/mark` | `MarkPriceUpdate` | `@markPrice` |
 | `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
 
-**Private live streams** (auth required — `fig-dev-{account}` on simulator)
+**Private live streams** (auth required — `AUTH_TOKEN` scoped to `{acct}`; simulator uses `fig-dev-{acct}` for tests)
 
 | Path | FSL payload |
 |---|---|
@@ -528,7 +535,7 @@ Run `cargo test --workspace` for the full suite (~360 tests). Key areas:
 | Channel management | Open/close, unidirectional channels, sequence numbers, TREE stream mapping, credits |
 | Session management | UUID, auth token, seq tracking, memory/file/Redis/etcd stores, TTL expiry |
 | SBE + CBOR codec | Round-trips for all trading message types |
-| Auth & security | Token, mTLS, JWT, OAuth dev validator, per-channel auth, rate limits, DoS guard |
+| Auth & security (wire) | AUTH_TOKEN scoping, mTLS, JWT/OAuth validators, per-channel policy, rate limits, DoS guard — not credential issuance |
 | Gateway adapters | FIX session machine, REST JSON↔CBOR, WebSocket opcodes, SSE round-trip |
 | FSL | Parser, Rust/SBE codegen, 12 target codegen languages, CLI |
 | Exchange sim | Order book, matching engine, CancelReplace, depth streaming, integration tests |

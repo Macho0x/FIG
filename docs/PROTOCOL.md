@@ -44,18 +44,22 @@ See `fig_core::migration` for token format and validation. Session stores
 (`MemorySessionStore`, `FileSessionStore`, `RedisSessionStore`, `EtcdSessionStore`)
 persist channel and sequence state across restarts.
 
-## Security Primitives
+## Security Primitives (wire validation)
+
+FIG libraries include **validators** for credentials already issued by your
+venue. They do not implement key generation, admin APIs, or account onboarding.
 
 | Module | Purpose |
 |---|---|
-| `fig_core::jwt` | HS256 JWT bearer tokens |
-| `fig_core::oauth` | OAuth2/OIDC dev token introspection |
+| `fig_core::jwt` | JWT bearer decode/verify (HS256 for tests; venues use RS256 + KMS) |
+| `fig_core::oauth` | OAuth2/OIDC dev introspection stub |
 | `fig_core::channel_auth` | Per-channel permission requirements |
 | `fig_core::rate_limit` | Token-bucket per-channel rate limiting |
 | `fig_core::dos` | Connection-level DoS guard and flood detection |
 
 Private account paths require `AUTH_TOKEN` whose principal matches the
-`{account}` segment in `ChannelPath`. See SPEC §9.3.
+`{account}` segment in `ChannelPath`. See SPEC §9.3. Credential lifecycle
+(issue, rotate, revoke) is venue infrastructure — outside FIG.
 
 ## Worked Example: Order Entry
 
@@ -121,8 +125,9 @@ Client (channel 3)                    Exchange (fig-exchange-sim)
 
 ## Worked Example: Private Account Subscribe (Balances + Executions)
 
-Account `DEMO-ACCT` requires `AUTH_TOKEN: fig-dev-DEMO-ACCT` on subscribe frames
-(simulator dev token). Production venues use JWT or mTLS per SPEC §9.3.
+Account `DEMO-ACCT` requires `AUTH_TOKEN` on subscribe frames, scoped to that
+account in the path. The simulator uses test token `fig-dev-DEMO-ACCT`; production
+venues verify JWT or mTLS per SPEC §9.3 (credentials issued outside FIG).
 
 ```text
 Client (channel 5)                    Exchange

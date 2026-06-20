@@ -14,9 +14,13 @@ references.
 
 ## Authentication
 
+FIG specifies **wire auth** (`AUTH_TOKEN`, path scoping, mTLS). Credential
+issuance (API keys, JWT signing services, admin UI) is venue infrastructure —
+outside this checklist.
+
 - [x] Constant-time token comparison
-- [x] JWT HS256 validation
-- [x] OAuth2/OIDC dev validator (production: wire real introspection)
+- [x] JWT HS256 validation (reference; production venues use RS256 + KMS)
+- [x] OAuth2/OIDC dev validator stub (production: wire real introspection)
 - [x] Per-channel auth policy
 
 ## DoS / Abuse

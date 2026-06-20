@@ -1,8 +1,9 @@
-//! JWT authentication support for FIG bearer tokens.
+//! JWT authentication support for FIG bearer tokens (wire validation).
 //!
 //! Spec §6: bearer tokens may be JWTs. This module provides HS256
-//! encode/decode for development and testing; production deployments
-//! should use RS256 with a proper key management system.
+//! encode/decode for development, tests, and conformance; production venues
+//! verify RS256 (or similar) JWTs their own identity service signed — FIG does
+//! not define JWT issuance or key management.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

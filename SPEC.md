@@ -42,6 +42,16 @@ streaming) into a single wire format.
 | **Extension** | — | A typed key-value pair in the extension header (TLV). |
 | **Schema** | — | A versioned message definition in FSL, identified by a Schema ID. |
 
+### 1.3 Scope
+
+FIG is a **messaging protocol** — framing, transport, schemas, and wire-level
+security — at the same layer as FIX, REST, and WebSocket. It does **not**
+define account onboarding, API key generation, credential storage, matching
+engines, or ledger logic. Venues own that infrastructure; FIG defines how an
+already-issued credential is carried on frames, validated, and scoped to
+`ChannelPath` segments (see §9.3). This is analogous to FIX Logon carrying
+username/password without specifying how passwords are created.
+
 ---
 
 ## 2. Transport
@@ -485,6 +495,12 @@ request bodies via `fig_gateways::rest_query`. See [docs/QUERY.md](docs/QUERY.md
 
 ### 9.3 Private stream auth and scoping
 
+**Protocol scope:** FIG specifies the `AUTH_TOKEN` extension, scoping rules, and
+error semantics for private paths. **Credential issuance** (admin UI, key
+rotation, JWT signing services, account databases) is venue infrastructure —
+outside this specification. Gateways and brokers verify credentials their own
+systems issued; FIG only defines the on-wire contract.
+
 Private paths under `accounts/{account}/…` and `trading/accounts/{account}/…`
 require authentication on every frame that opens or uses the channel:
 
@@ -521,6 +537,11 @@ Four-layer model, all protocol-native:
 | **Session** | AUTH_TOKEN (JWT/OAuth2) in STREAM_OPEN; refresh via CONTROL(AUTH_REFRESH) | Session | Yes |
 | **Channel** | SCOPE extension in STREAM_OPEN: `trading:orders:write` | Channel | Optional |
 | **Message** | ENCRYPTED flag + per-message symmetric key (E2E through gateways) | Payload | Optional |
+
+Reference libraries (`fig_core::auth`, `jwt`, `oauth`) provide **validators**
+for implementers (constant-time compare, JWT decode, introspection hooks).
+They do not constitute a credential-issuance product. Production venues plug
+their own identity systems behind the same `AUTH_TOKEN` + path-scoping rules.
 
 ---
 

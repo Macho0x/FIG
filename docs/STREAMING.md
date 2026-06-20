@@ -36,8 +36,10 @@ Intervals use FIG names: `1m`, `5m`, `1h`, `1d` (not “klines”).
 
 ## Private account paths
 
-All private paths require `AUTH_TOKEN` whose account matches the path segment.
-See SPEC §9.3.
+Private paths require `AUTH_TOKEN` on every frame, with the authenticated
+principal matching `{account}` in the path (SPEC §9.3). FIG defines this wire
+contract; **credential issuance** (API keys, JWT signing, admin UI) is venue
+infrastructure — not part of the protocol.
 
 | Stream | Native `CHANNEL_PATH` | FSL payload |
 |---|---|---|
@@ -49,7 +51,8 @@ See SPEC §9.3.
 | Ledger | `accounts/{account}/ledger` | `LedgerUpdate` |
 | User liquidations | `accounts/{account}/liquidations` | `UserLiquidation` (push on breach) |
 
-Dev token for `fig-exchange-sim`: `fig-dev-{account}` (e.g. `fig-dev-DEMO-ACCT`).
+**Simulator test harness:** `fig-exchange-sim` accepts `fig-dev-{account}` for
+local integration tests only — not a production key-issuance flow.
 
 ## Subscribe example (conceptual)
 
@@ -59,7 +62,8 @@ Dev token for `fig-exchange-sim`: `fig-dev-{account}` (e.g. `fig-dev-DEMO-ACCT`)
    - `ChannelPath`: `marketdata/BTC/candles/5m`
 3. Receive `STREAM_ITEM` frames with CBOR `CandleBarEvent` bodies.
 
-For private streams, add `AUTH_TOKEN` extension matching `{account}` in the path.
+For private streams, attach `AUTH_TOKEN` on the frame; the receiver verifies a
+credential your venue already issued and rejects path/account mismatches.
 
 ## Gateway WebSocket
 

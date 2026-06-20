@@ -43,9 +43,9 @@ cargo doc --workspace --no-deps --open
 | [`compression`](../crates/fig-core/src/compression.rs) | zstd payload compression |
 | [`fragment`](../crates/fig-core/src/fragment.rs) | Payload fragmentation and reassembly |
 | [`control`](../crates/fig-core/src/control.rs) | CONTROL frame dispatcher (PING, AUTH_REFRESH, SEQ_RESET, …) |
-| [`auth`](../crates/fig-core/src/auth.rs) | Token and mTLS authentication |
-| [`jwt`](../crates/fig-core/src/jwt.rs) | HS256 JWT encode/decode |
-| [`oauth`](../crates/fig-core/src/oauth.rs) | OAuth2/OIDC dev token validator |
+| [`auth`](../crates/fig-core/src/auth.rs) | Wire auth: token/mTLS types, constant-time verify, refresh hooks — not credential issuance |
+| [`jwt`](../crates/fig-core/src/jwt.rs) | JWT bearer decode/verify (HS256 for tests/conformance) |
+| [`oauth`](../crates/fig-core/src/oauth.rs) | OAuth2/OIDC dev introspection stub (venues wire real IdP) |
 | [`channel_auth`](../crates/fig-core/src/channel_auth.rs) | Per-channel permission policy |
 | [`rate_limit`](../crates/fig-core/src/rate_limit.rs) | Token-bucket rate limiter |
 | [`dos`](../crates/fig-core/src/dos.rs) | Connection-level DoS guard and flood detector |
@@ -113,7 +113,7 @@ Supported `--lang` values: `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csha
 | [`broker_api`](../crates/fig-exchange-sim/src/broker_api.rs) | §17 query/subscribe routing and post-fill fan-out |
 | [`market_data`](../crates/fig-exchange-sim/src/market_data.rs) | Candles, trades, BBO, ticker aggregation |
 | [`account_state`](../crates/fig-exchange-sim/src/account_state.rs) | Balances, positions, funding, ledger |
-| [`auth`](../crates/fig-exchange-sim/src/auth.rs) | Private path auth (`fig-dev-{account}`) |
+| [`auth`](../crates/fig-exchange-sim/src/auth.rs) | Simulator test harness: `fig-dev-{account}` path scoping (not production issuance) |
 | [`matching`](../crates/fig-exchange-sim/src/matching.rs) | Price-time matching engine |
 | [`orderbook`](../crates/fig-exchange-sim/src/orderbook.rs) | Limit order book |
 
@@ -125,7 +125,8 @@ Default listen address: `127.0.0.1:8443` (UDP/TREE).
 
 Native FIG client connecting to `127.0.0.1:8443`. Demonstrates order entry,
 candle/balance subscribe, historical candle query, account/ticker/funding/ledger
-queries, and PING/PONG. Uses `fig-dev-DEMO-ACCT` auth tokens on private paths.
+queries, and PING/PONG. Attaches simulator test token `fig-dev-DEMO-ACCT` on
+private paths (see SPEC §9.3 wire semantics; not a key-issuance API).
 
 ---
 

@@ -3,6 +3,11 @@
 This guide walks through connecting to the FIG exchange simulator, placing
 an order, and subscribing to market data.
 
+FIG is a **messaging protocol** (frames, paths, gateways). Credential issuance
+(API keys, account portals) is venue infrastructure — not part of FIG. Private
+frames carry an `AUTH_TOKEN` extension; your broker verifies credentials it
+already issued (see §7 and [SPEC.md](../SPEC.md) §9.3).
+
 ## Prerequisites
 
 - Rust 1.75+ (`rustup` recommended)
@@ -42,9 +47,11 @@ The client connects to `127.0.0.1:8443` (override with `FIG_SERVER=host:port`)
 and runs six demos: order entry, candle subscribe, balance subscribe,
 historical candle query, account/ticker/funding/ledger queries, and PING/PONG.
 
-Private account paths require an `AUTH_TOKEN` extension. The simulator accepts
-`fig-dev-{account}` (e.g. `fig-dev-DEMO-ACCT` for the CLI default account).
-Set `FIG_DEV_OPEN=1` on the server to skip auth during local development.
+Private account paths require an `AUTH_TOKEN` extension on each frame (SPEC
+§9.3). The reference simulator uses a **test harness token**
+`fig-dev-{account}` (e.g. `fig-dev-DEMO-ACCT` for the CLI default account) —
+not a key-issuance API. Set `FIG_DEV_OPEN=1` on the server to skip auth during
+local development.
 
 ## 3. Run the legacy gateway (optional)
 
@@ -118,9 +125,17 @@ use fig_core::tcp::{FigTcpConnection, FigTcpServer};
 
 See `fig_core::tcp` module documentation and unit tests for round-trip examples.
 
-## 7. Authentication
+## 7. Authentication (wire semantics)
 
-### Bearer / JWT
+FIG defines **how credentials travel on frames** and **how receivers scope them
+to paths** — the same layer as FIX Logon or REST `Authorization:`. Key
+generation, storage, and admin UI are **not** FIG; your venue issues credentials
+out of band and verifies them when private frames arrive.
+
+### Validating bearer / JWT (reference helpers)
+
+`fig_core::jwt` provides encode/decode for tests and conformance — production
+venues verify JWTs their own identity service signed:
 
 ```rust
 use fig_core::jwt::{encode_jwt, verify_jwt_bearer, FigJwtClaims};
@@ -128,9 +143,10 @@ use fig_core::jwt::{encode_jwt, verify_jwt_bearer, FigJwtClaims};
 let claims = FigJwtClaims::new("trader-1", exp_unix_secs, vec!["orders:write".into()]);
 let token = encode_jwt(&claims, "shared-secret")?;
 let auth = verify_jwt_bearer(&token, "shared-secret")?;
+// Attach `token` in ExtensionTag::AuthToken on private frames; map claims.sub → {account} in path
 ```
 
-### OAuth2 (dev introspection)
+### OAuth2 (dev introspection stub)
 
 ```rust
 use fig_core::oauth::{OAuthValidator, OAuthTokenInfo};
@@ -140,7 +156,9 @@ let validator = OAuthValidator::new("https://auth.example.com")
 let auth = validator.validate("access-token")?;
 ```
 
-### Per-channel permissions
+Production venues wire real OAuth/OIDC introspection; FIG does not define the IdP.
+
+### Per-channel permissions (optional)
 
 ```rust
 use fig_core::ChannelAuthPolicy;
@@ -150,10 +168,11 @@ let policy = ChannelAuthPolicy::new()
 assert!(policy.authorize(5, &auth));
 ```
 
-### Exchange simulator dev tokens
+### Exchange simulator test tokens
 
-Private streams and queries on `fig-exchange-sim` require an `AUTH_TOKEN`
-extension matching `fig-dev-{account}`. Example for account `DEMO-ACCT`:
+The reference server (`fig-exchange-sim`) checks a predictable dev token so
+integration tests can run without a credential store. This is **not** part of
+the FIG protocol product:
 
 ```rust
 frame.with_extension(Extension::text(
@@ -216,7 +235,8 @@ legacy aliases when running `fig-gateway --fig-backend`.
 | Ledger | `accounts/{acct}/ledger` | `LedgerUpdate` | HL `ledgerUpdates` |
 | User liq | `accounts/{acct}/liquidations` | `UserLiquidation` | HL `liquidation` |
 
-Private rows require `AUTH_TOKEN: fig-dev-{acct}` (or production JWT/mTLS).
+Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
+(production: JWT bearer or mTLS; simulator test harness: `fig-dev-{acct}`).
 
 ### Historical queries (`REQUEST` → `RESPONSE` or `STREAM_ITEM` × N)
 

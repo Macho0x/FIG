@@ -85,9 +85,14 @@ across all handlers is still partial in the reference broker.
 
 ## Auth
 
-Private queries (`accounts/{account}/…`, `trading/accounts/{account}/…`) require
-the same auth as private streams (`AUTH_TOKEN` = `fig-dev-{account}` on the
-simulator). Cross-account reads are rejected. See SPEC §9.3.
+Private queries (`accounts/{account}/…`, `trading/accounts/{account}/…`) use
+the same **wire auth** as private streams: `AUTH_TOKEN` on each frame, principal
+must match `{account}` in the path. Cross-account reads are rejected. See SPEC
+§9.3.
+
+The reference simulator checks `fig-dev-{account}` as a **test harness** only.
+Production venues verify bearer/JWT/mTLS credentials their own systems issued;
+FIG does not define key generation or storage.
 
 ## See also
 
