@@ -1,81 +1,167 @@
 # FIG — Fast Interchange Gateway
 
 > A schema-native, multiplexed, zero-RTT binary protocol for trading systems.
-> Unifies and supersedes FIX, REST, and WebSocket over TREE.
+> Unifies FIX, REST, and WebSocket over TREE (QUIC).
 
 [![CI](https://github.com/Macho0x/fig/actions/workflows/ci.yml/badge.svg)](https://github.com/Macho0x/fig/actions/workflows/ci.yml)
 [![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
 
-FIG is a single binary protocol that combines the strengths of FIX (financial
-session semantics, sequence numbers, market data), REST (resource-oriented
-request-response), and WebSocket (bidirectional streaming) into one wire format
-over TREE. It is designed to compete with FIX/REST/WebSocket as a new standard
-on its own merits — with gateway adapters providing backwards compatibility as
-a migration path, not as the protocol's identity.
+**FIG is a wire protocol** — one binary format for orders, market data, and
+account streams over a single encrypted connection. Gateway adapters translate
+legacy FIX/REST/WebSocket clients for migration; they are not the product.
 
-FIG specifies **how messages move and how credentials ride on the wire** (like
-FIX Logon or an HTTP `Authorization` header). It does **not** specify API key
-generation, account portals, or matching engines — those belong in your venue
-stack, outside the protocol.
+FIG specifies how messages move and how credentials ride on the wire (like FIX
+Logon or an HTTP `Authorization` header). API key issuance, account portals,
+and matching engines belong in your venue stack, outside the protocol.
 
 ---
 
-## Table of Contents
+## Who uses FIG?
 
-- [Why FIG?](#why-fig)
-- [Architecture](#architecture)
-- [Crates](#crates)
-- [Quick Start](#quick-start)
-- [Protocol Overview](#protocol-overview)
-- [Gateway Adapters](#gateway-adapters)
-- [FSL — Fig Schema Language](#fsl--fig-schema-language)
-- [Benchmarks](#benchmarks)
-- [Testing](#testing)
-- [Documentation](#documentation)
-- [Project Stats](#project-stats)
-- [License](#license)
+| Persona | What you get |
+|---|---|
+| **Venues & brokers** | One native connection for order entry, live market data, and private account streams |
+| **Integration teams** | Replace FIX + REST + WebSocket glue with one client library and one auth model |
+| **Gateway operators** | Proxy legacy clients to a FIG backend with `fig-gateway` (`--fig-backend`) |
+| **Schema / tooling authors** | FSL schemas compile to Rust, SBE, Protobuf, JSON Schema, and FIX mappings |
 
 ---
 
 ## Why FIG?
 
-### Terminology
-
-| Term | Expansion | What it is |
-|------|-----------|------------|
-| **FIG** | Fast Interchange Gateway | The protocol — a schema-native, multiplexed binary protocol for trading systems. Unifies FIX, REST, and WebSocket semantics over a single transport. |
-| **TREE** | Trunked Reliable Encrypted Exchange | FIG's mandatory transport layer (implementation: quinn crate). Provides 0-RTT resumption, 65,535 concurrent channels per connection, and mandatory TLS 1.3 encryption. |
-| **FSL** | Fig Schema Language | FIG's schema definition language (IDL). Defines messages, channels, and gateway mappings. Compiles to Rust, Go, SBE, Protobuf, JSON Schema, and FIX mappings. |
-
 | Problem with status quo | FIG solution |
 |---|---|
 | FIX needs 4 RTTs to connect (TCP + TLS + Logon) | TREE 0-RTT session resumption — 1 RTT new, 0 RTT resumed |
-| FIX is ASCII, 200-500 bytes header overhead | Binary 16-byte fixed header + compact TLV extensions |
+| FIX is ASCII, 200–500 bytes header overhead | Binary 16-byte fixed header + compact TLV extensions |
 | REST is stateless — no session, no sequencing | Three channel modes: stateless, session, affinity |
 | WebSocket has no built-in schema or semantics | Schema-native framing — every frame carries a Schema ID |
 | Each protocol needs its own auth, error, observability | One auth model, one error model, one tracing pipeline |
 | No multiplexing — one session per FIX/TCP connection | 65,535 concurrent channels per TREE connection |
-| JSON parsing is 10-50μs; FIX ASCII parsing is 5-20μs | SBE zero-copy decode: ~205ns (25-250x faster) |
+| JSON parsing is 10–50 μs; FIX ASCII parsing is 5–20 μs | SBE zero-copy decode: **~205 ns** |
 
-**SBE vs CBOR**: SBE (Simple Binary Encoding) is a zero-copy, fixed-offset binary format used for hot-path trading messages (NewOrderSingle, ExecutionReport, etc.). It requires a pre-shared schema and offers ~25-250× faster decode than JSON. CBOR (Concise Binary Object Representation) is a self-describing binary format used for TLV extensions (AUTH_TOKEN, SCHEMA_FINGERPRINT, etc.) where the receiver may not know the schema in advance. FIG uses both: SBE for immutable exchange schemas on the critical path, CBOR for flexible metadata extensions. |
+### At a glance
 
-### Key Features
+| | FIG (SBE) | FIX ASCII | HTTP + JSON |
+|---|---|---|---|
+| Order decode | **205 ns** | 5–20 μs | 10–50 μs |
+| Min header | **16 B** | 200–500 B | 200–800 B |
+| Reconnect | **0-RTT** | full Logon | stateless |
 
-- **One connection, all patterns** — orders, market data, and account queries
-  flow over a single TREE connection with per-stream flow control.
-- **Schema-native** — every frame carries a Schema ID; messages are validated
-  at the protocol layer, not in application code.
-- **Free observability** — Trace ID, Correlation ID, and nanosecond timestamps
-  live in the fixed header, readable without parsing the payload.
-- **Zero-RTT session continuity** — sessions survive disconnects; reconnect
-  with 0-RTT and resume all open channels.
-- **Backwards compatible** — gateway adapters translate to/from FIX, REST,
-  and WebSocket for incremental migration.
-- **Dual encoding** — CBOR for self-describing development, SBE for
-  zero-alloc production hot paths.
-- **Per-channel flow control** — credit-based backpressure prevents one slow
-  consumer from blocking others.
-- **Single mental model** — one auth, one error model, one codegen pipeline.
+Full Criterion results: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+**Terms:** **FIG** = protocol · **TREE** = QUIC transport (TLS 1.3, ALPN `fig/1`) · **FSL** = schema IDL ([SPEC.md](SPEC.md) §1).
+
+---
+
+## Try it in 60 seconds
+
+```bash
+git clone https://github.com/Macho0x/fig.git && cd fig
+cargo run -p fig-exchange-sim          # terminal 1 — server on 127.0.0.1:8443
+cargo run -p fig-cli                   # terminal 2 — six demos, one connection
+```
+
+Optional legacy gateway (REST `:8080`, WS `:8090`, FIX `:9876`):
+
+```bash
+cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+```
+
+Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md).
+
+---
+
+## Worked examples
+
+All five patterns run over **one TREE connection** with per-channel multiplexing.
+Native paths are canonical; gateways map legacy FIX/REST/WS shapes to the same
+frames. Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+### 1. Live market data (public subscribe)
+
+No auth. Stream OHLCV bars as trades arrive.
+
+```text
+Client                              Exchange
+  SUBSCRIBE  ChannelPath: marketdata/AAPL/candles/5m
+             RoutingKey:  marketdata/AAPL/candles/5m
+  ───────────────────────────────────────────────►
+  STREAM_ITEM  CandleBarEvent (partial bar)
+  ◄───────────────────────────────────────────────
+  STREAM_ITEM  CandleBarEvent (bar close)
+  ◄───────────────────────────────────────────────
+```
+
+Gateway WS alias: `aapl@kline_5m` → same path ([docs/STREAMING.md](docs/STREAMING.md)).
+
+### 2. Order entry (request + execution stream)
+
+Session-oriented flow; SBE on the hot path in production.
+
+```text
+Client                              Exchange
+  REQUEST POST  ChannelPath: trading/accounts/DEMO-ACCT/orders
+                Payload: NewOrderSingle (AAPL, Buy, 100 @ 150.25)
+  ───────────────────────────────────────────────►
+  STREAM_ITEM   ExecutionReport (fill or ack)
+  ◄───────────────────────────────────────────────
+  RESPONSE      200
+  ◄───────────────────────────────────────────────
+```
+
+FIX equivalent: MsgType `D` → `ExecutionReport` (35=8). See [docs/GATEWAY.md](docs/GATEWAY.md).
+
+### 3. Private account stream (wire auth)
+
+`AUTH_TOKEN` on every private frame; principal must match `{account}` in the path.
+The simulator uses test token `fig-dev-{account}` — not a key-issuance API.
+
+```text
+Client                              Exchange
+  SUBSCRIBE  ChannelPath: accounts/DEMO-ACCT/balances
+             AuthToken:   fig-dev-DEMO-ACCT
+  ───────────────────────────────────────────────►
+  STREAM_ITEM  BalanceSnapshot (is_snapshot: true)
+  ◄───────────────────────────────────────────────
+  STREAM_ITEM  BalanceUpdate (on change)
+  ◄───────────────────────────────────────────────
+```
+
+Spec: [SPEC.md §9.3](SPEC.md). Set `FIG_DEV_OPEN=1` on the sim to skip auth locally.
+
+### 4. Historical query (request-response)
+
+Pull a batch, then resume live subscribe on the same connection.
+
+```text
+Client                              Exchange
+  REQUEST GET  ChannelPath: marketdata/AAPL/candles/5m
+               Payload: CandleBarRequest { limit: 100 }
+  ───────────────────────────────────────────────►
+  RESPONSE     CandleBarBatch
+  ◄───────────────────────────────────────────────
+  SUBSCRIBE    marketdata/AAPL/candles/5m   (resume live)
+  ───────────────────────────────────────────────►
+```
+
+REST alias: `GET /marketdata/AAPL/candles/5m?limit=100` via `fig-gateway`.
+
+### 5. Legacy migration (gateway proxy)
+
+Existing REST or WebSocket clients talk to `fig-gateway`; the gateway forwards
+native FIG frames to your venue. No client rewrite required for incremental rollout.
+
+```text
+REST client                         fig-gateway                    FIG backend
+  GET /marketdata/AAPL/ticker  ──►  REQUEST (native path)  ──►  exchange-sim
+  ◄── JSON ◄──────────────────  RESPONSE (CBOR→JSON)  ◄──────
+
+WS client                           fig-gateway                    FIG backend
+  {"method":"SUBSCRIBE",           SUBSCRIBE (mapped path)  ──►  STREAM_ITEM
+   "params":["aapl@ticker"]}  ──►  ───────────────────────  ◄──  (legacy JSON out)
+```
+
+Deploy notes: [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ---
 
@@ -83,503 +169,46 @@ stack, outside the protocol.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        FIG Client                            │
-│  (fig-cli or native app using fig-core)                      │
+│  FIG client (fig-cli, fig-core, bindings)                    │
 └────────────────────────┬────────────────────────────────────┘
-                         │ TREE (ALPN: fig/1)
-                         │ 65,535 channels, 0-RTT, TLS 1.3
-                         │
+                         │ TREE — TLS 1.3, 0-RTT, 65k channels
 ┌────────────────────────▼────────────────────────────────────┐
-│                     FIG Server                               │
-│  (fig-exchange-sim or native venue)                          │
-│  ┌──────────┐  ┌───────────┐  ┌────────────┐  ┌──────────┐ │
-│  │ Frame    │  │ Channel   │  │ Session    │  │ Auth     │ │
-│  │ Parser   │  │ Manager   │  │ Store      │  │ (mTLS/   │ │
-│  │ (16B+TLV)│  │ (65535)   │  │ (0-RTT)    │  │  token)  │ │
-│  └────┬─────┘  └─────┬─────┘  └─────┬──────┘  └────┬─────┘ │
-│       │               │              │              │       │
-│  ┌────▼─────┐  ┌──────▼──────┐  ┌────▼──────┐  ┌───▼─────┐ │
-│  │ SBE/CBOR │  │ Flow Control│  │ Observability│ │ Codec   │ │
-│  │ Codec    │  │ (credits)   │  │ (spans+metrics)│ │ (serde)│ │
-│  └──────────┘  └─────────────┘  └─────────────┘  └─────────┘ │
-└─────────────────────────────────────────────────────────────┘
-
-         ┌─────────────────────────────────────┐
-         │        Gateway Adapters              │
-         │  ┌─────────┐ ┌─────┐ ┌────────────┐ │
-         │  │ FIX 4.4 │ │REST │ │ WebSocket  │ │
-         │  │ adapter │ │adptr│ │  adapter   │ │
-         │  └────┬────┘ └──┬──┘ └─────┬──────┘ │
-         │       │         │           │       │
-         │  Legacy FIX   HTTP/JSON   WS clients │
-         │  clients      clients      clients   │
-         └─────────────────────────────────────┘
+│  FIG server (your venue or fig-exchange-sim reference)       │
+│  frames · channels · sessions · SBE/CBOR · auth on wire      │
+└────────────────────────┬────────────────────────────────────┘
+                         │ optional
+         ┌───────────────▼───────────────────┐
+         │  Gateway: FIX · REST · WebSocket   │
+         │  legacy clients → native FIG       │
+         └───────────────────────────────────┘
 ```
+
+Reference crates: [`fig-core`](crates/fig-core/) (protocol) · [`fig-gateways`](crates/fig-gateways/) (adapters) · [`fig-exchange-sim`](crates/fig-exchange-sim/) (demo server) · [`fig-fsl`](crates/fig-fsl/) (schemas). Module index: [docs/API.md](docs/API.md).
 
 ---
-
-## Crates
-
-| Crate | Description | Tests | Key Modules |
-|---|---|---|---|
-| [`fig-core`](crates/fig-core/) | Frame parser, channel manager, session model, TREE transport, SBE/CBOR codec, auth, migration, observability | 233 | `frame`, `ext`, `channel`, `session`, `transport`, `sbe`, `auth`, `migration`, `observability` |
-| [`fig-fsl`](crates/fig-fsl/) | FSL parser, multi-target codegen, and `ftlc` CLI | 43 | `ast`, `parser`, `codegen`, `target_codegen`, `bin/ftlc` |
-| [`fig-gateways`](crates/fig-gateways/) | Gateway adapters: FIX, REST, WebSocket, SSE ↔ FIG; `fig-gateway` binary | 90+ | `fix`, `rest`, `rest_query`, `ws`, `ws_catalog`, `backend` |
-| [`fig-exchange-sim`](crates/fig-exchange-sim/) | Native FIG exchange simulator with order book and matching engine | 18 | `orderbook`, `matching`, `server` |
-| [`fig-cli`](crates/fig-cli/) | Native FIG trading client demo | — | `main` |
-| [`fig-bench`](crates/fig-bench/) | Criterion benchmarks for all components | 6 suites | `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` |
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Rust 1.75+ (stable)
-- Linux, macOS, or Windows
-
-### Build and Run
-
-```bash
-# Clone
-git clone https://github.com/Macho0x/fig.git
-cd fig
-
-# Build everything
-cargo build --workspace
-
-# Run the exchange simulator (FIG server on 127.0.0.1:8443)
-cargo run -p fig-exchange-sim
-
-# In another terminal, run the trading client
-cargo run -p fig-cli
-
-# Optional: run the legacy gateway (REST + FIX + WebSocket; proxy with --fig-backend)
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
-```
-
-The CLI demonstrates:
-1. **Order entry** — NewOrderSingle with auth token → ExecutionReport
-2. **Candle subscribe** — `SUBSCRIBE marketdata/AAPL/candles/5m`
-3. **Balance subscribe** — private `accounts/DEMO-ACCT/balances` (requires `fig-dev-DEMO-ACCT`)
-4. **Historical query** — GET `CandleBarRequest` batch
-5. **Account / ticker / funding / ledger queries** — native FIG `REQUEST`/`RESPONSE`
-6. **PING/PONG** — control frame heartbeat
-
-Private paths require an `AUTH_TOKEN` extension on each frame (SPEC §9.3).
-The reference simulator accepts a predictable test token (`fig-dev-{account}`)
-— not a production issuance flow. Set `FIG_DEV_OPEN=1` to disable auth checks
-locally.
-
-All over a single TREE connection with per-stream multiplexing.
-
-### Schema Compilation
-
-```bash
-# Compile an FSL schema to Rust
-cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out /tmp/fig-gen
-
-# Validate an FSL schema
-cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
-```
-
-### Run Benchmarks
-
-```bash
-# Run all benchmarks
-cargo bench -p fig-bench
-
-# Run a specific benchmark suite
-cargo bench -p fig-bench --bench codec_bench
-
-# Allocation benchmarks (pre-allocated buffer comparison)
-cargo bench -p fig-bench --features alloc --bench alloc_bench
-```
-
----
-
-## Protocol Overview
-
-### Wire Format
-
-```
- 0                   1                   2                   3
- 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                            Length (32)                        |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|   Type (8)   |  Flags (8)   |        Channel ID (16)         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|                        Stream Seq (32)                        |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|  HeaderCount |   SchemaID   |          reserved (16)         |
-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|   Extension TLV (variable)  |   Payload (variable)           |
-```
-
-**16-byte fixed header** + TLV extensions + schema-aware payload. The fixed
-header is always the same size, so gateways can route frames without parsing
-extensions or payloads. Extensions carry protocol-level metadata (URI, method,
-status code, session ID, routing key, etc.) — the same frame serves all three
-legacy protocols by varying which extensions are populated.
-
-### Frame Types
-
-| Type | Code | Description |
-|---|---|---|
-| CONTROL | 0x00 | Ping/pong, settings, sequence reset, goaway |
-| REQUEST | 0x01 | Request-response (REST parity) |
-| RESPONSE | 0x02 | Response to REQUEST |
-| SUBSCRIBE | 0x03 | Subscribe to a routing key (pub/sub) |
-| UNSUBSCRIBE | 0x04 | Unsubscribe |
-| STREAM_OPEN | 0x05 | Open a bidirectional stream (FIX/WS parity) |
-| STREAM_ITEM | 0x06 | Data frame within a stream |
-| STREAM_CLOSE | 0x07 | Close a stream |
-| STREAM_ERROR | 0x08 | Error on a stream |
-| ONE_WAY | 0x09 | Fire-and-forget (no response expected) |
-| ACK_RANGE | 0x0A | Acknowledge a range of sequence numbers |
-| FLOW_CONTROL | 0x0B | Credit grant/update |
-| REDIRECT | 0x0C | Redirect to another server |
-
-### Channel Modes
-
-| Mode | Description | Legacy equivalent |
-|---|---|---|
-| `stateless` | Each request is independent, no session state | REST |
-| `session` | Durable session with sequence numbers, survives reconnects | FIX |
-| `affinity` | Sticky to a backend, state implicit in connection | WebSocket |
-
-### Payload Encodings
-
-| Encoding | Content-Type | Encode | Decode | Use Case |
-|---|---|---|---|---|
-| CBOR | `application/cbor` | ~927ns | ~2.38μs | Self-describing, serde-compatible (default) |
-| SBE | `application/fig+sbe` | ~361ns | ~205ns | Zero-alloc, fixed-offset (production hot path) |
-
-### Compliance Tiers
-
-| Tier | Required features | Covers |
-|---|---|---|
-| **1 — Core** | Fixed header, REQUEST/RESPONSE, CHANNEL_PATH, STATUS_CODE, CONTENT_TYPE | REST parity |
-| **2 — Session** | + SESSION_ID, SEQUENCE_NUM, TIMESTAMP, STREAM_OPEN/CLOSE, CONTROL | FIX parity |
-| **3 — Pub/Sub** | + ROUTING_KEY, SUBSCRIBE/UNSUBSCRIBE, STREAM_ITEM streaming | Market data |
-| **4 — Advanced** | + ACK_RANGE, FLOW_CONTROL, REDIRECT, FRAGMENTED, COMPRESSION | Full protocol |
-
-### Broker API (native FIG)
-
-Native FIG is canonical: live data uses `SUBSCRIBE` → `STREAM_ITEM`; historical
-data uses `REQUEST` → `RESPONSE` (or `STREAM_ITEM` × N for large ranges). REST
-and WebSocket are gateway edges over the same FSL types — see
-[ADR 0006](docs/adr/0006-broker-api-parity.md).
-
-**Public live streams**
-
-| Path | FSL payload | Gateway WS |
-|---|---|---|
-| `marketdata/{sym}/book` | `OrderBookSnapshot`, `OrderBookDelta` | `@depth` |
-| `marketdata/{sym}/bbo` | `BestBidOffer` | `@bookTicker` |
-| `marketdata/{sym}/trades` | `PublicTradeEvent` | `@trade` |
-| `marketdata/{sym}/aggtrades` | `AggregateTradeEvent` | `@aggTrade` |
-| `marketdata/{sym}/candles/{iv}` | `CandleBarEvent` | `@kline_{iv}` |
-| `marketdata/{sym}/ticker` | `SymbolTicker` | `@ticker` |
-| `marketdata/ticker/all` | `MiniTicker` | `@miniTicker` |
-| `marketdata/{sym}/mark` | `MarkPriceUpdate` | `@markPrice` |
-| `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
-
-**Private live streams** (auth required — `AUTH_TOKEN` scoped to `{acct}`; simulator uses `fig-dev-{acct}` for tests)
-
-| Path | FSL payload |
-|---|---|
-| `trading/accounts/{acct}/executions` | `ExecutionReport` |
-| `accounts/{acct}/balances` | `BalanceSnapshot`, `BalanceUpdate` |
-| `accounts/{acct}/positions` | `PositionSnapshot`, `PositionUpdate` |
-| `accounts/{acct}/margin` | `MarginUpdate` |
-| `accounts/{acct}/funding` | `FundingPayment` |
-| `accounts/{acct}/ledger` | `LedgerUpdate` |
-| `accounts/{acct}/liquidations` | `UserLiquidation` |
-
-**Historical queries** (selected — full list in [docs/QUERY.md](docs/QUERY.md))
-
-| Path | Request → response |
-|---|---|
-| `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` |
-| `marketdata/{sym}/candles/{iv}` | `CandleBarRequest` → `CandleBarBatch` |
-| `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` |
-| `accounts/{acct}/fills` | `FillHistoryRequest` → `FillHistoryBatch` |
-
-Normative catalog: [SPEC.md §9](SPEC.md). Worked sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
-
----
-
-## Gateway Adapters
-
-FIG includes gateway adapters that translate between legacy protocols and FIG
-frames. These are **migration tools** — the protocol stands on its own without
-them.
-
-### FIX 4.4 Adapter
-
-Translates between FIX tag=value ASCII messages and FIG frames:
-
-| FIX concept | FIG equivalent |
-|---|---|
-| MsgSeqNum (34=) | Stream Seq + SEQUENCE_NUM extension |
-| MsgType (35=) | Schema ID |
-| SenderCompID/TargetCompID | SESSION_ID |
-| Logon (35=A) | STREAM_OPEN + AUTH_TOKEN |
-| Logout (35=5) | STREAM_CLOSE |
-| Heartbeat (35=0) | CONTROL(PING/PONG) |
-| NewOrderSingle (35=D) | STREAM_ITEM, Schema ID 0x01, SBE payload |
-| ExecutionReport (35=8) | STREAM_ITEM, Schema ID 0x02 |
-
-Features: FIX checksum computation (mod 256), tag=value parsing, message type
-mapping, side/order type/time-in-force enum mapping.
-
-### REST Adapter
-
-Translates between HTTP/1.1 requests and FIG frames:
-
-| HTTP concept | FIG equivalent |
-|---|---|
-| Method | METHOD extension |
-| URI | CHANNEL_PATH / REQUEST_URI extension |
-| Headers | Extension tags |
-| Body | Payload (CBOR ↔ JSON) |
-| Status code | STATUS_CODE extension |
-| Chunked transfer | STREAM_ITEM frames |
-| SSE | `fig_gateways::sse` → STREAM_ITEM with `text/event-stream` |
-
-The `fig-gateway` binary listens on REST `:8080`, WebSocket `:8090`, and FIX
-`:9876`. With `--fig-backend`, REST GET and WS subscribe frames proxy to a
-native FIG server (exchange-sim). SSE adapters remain library modules for
-custom gateway services.
-
-See [docs/GATEWAY.md](docs/GATEWAY.md), [docs/STREAMING.md](docs/STREAMING.md),
-and [docs/QUERY.md](docs/QUERY.md).
-
-### WebSocket Adapter
-
-Translates between WebSocket frames (RFC 6455) and FIG stream items:
-
-| WebSocket concept | FIG equivalent |
-|---|---|
-| Upgrade handshake | TREE handshake + ALPN |
-| Text frame | STREAM_ITEM, CONTENT_TYPE "text/plain" |
-| Binary frame | STREAM_ITEM, CONTENT_TYPE "application/octet-stream" |
-| Close frame | STREAM_CLOSE |
-| Ping/Pong | CONTROL(PING/PONG) |
-
-Features: RFC 6455 frame parsing (FIN, opcode, masking, payload length),
-client/server masking, text/binary/close/ping/pong opcodes.
-
----
-
-## FSL — Fig Schema Language
-
-FSL is an IDL that defines messages, channels, and gateway mappings in one
-schema file:
-
-```
-schema trading.orders v1 {
-    type Symbol = string(max_len: 16)
-    
-    message NewOrderSingle {
-        @number 1  cl_ord_id: string(max_len: 32)
-        @number 2  side: Side
-        @number 3  order_qty: decimal64
-        @number 4  price: optional decimal64
-        @number 5  symbol: Symbol
-        @number 6  order_type: OrderType
-        @number 7  time_in_force: TimeInForce
-        @number 8  account: optional string(max_len: 32)
-        
-        channel_type: session
-        correlation_field: cl_ord_id
-        priority: high
-        idempotent: true
-        
-        gateway fix {
-            message NewOrderSingle -> MsgType: "D" {
-                cl_ord_id -> tag: 11
-                side -> tag: 54 values: { buy: "1", sell: "2" }
-                order_qty -> tag: 38
-                price -> tag: 44
-                symbol -> tag: 55
-            }
-        }
-        
-        gateway rest {
-            message NewOrderSingle -> method: POST path: "/accounts/{account}/orders"
-        }
-    }
-}
-```
-
-### Codegen Targets
-
-| Target | Status | Output | `ftlc --lang` |
-|---|---|---|---|
-| Rust | ✅ | Structs + serde (`RustCodegen`) | `rust` |
-| Rust SBE | ✅ | Encode/decode impls | `sbe` |
-| Go | 🔶 | Structs + JSON tags (types only) | `go` |
-| Python | 🔶 | Dataclasses (types only) | `python` |
-| TypeScript | 🔶 | Interfaces (types only) | `typescript` |
-| OCaml | 🔶 | Record types (types only) | `ocaml` |
-| Zig | 🔶 | Struct definitions (types only) | `zig` |
-| C++ | 🔶 | Header structs (types only) | `cpp` |
-| C# | 🔶 | Classes (types only) | `csharp` |
-| Protobuf | ✅ | `.proto` file | `proto` |
-| SBE XML | ✅ | `.sbe.xml` schema | `sbe-xml` |
-| JSON Schema | ✅ | `.schema.json` | `json-schema` |
-| FIX mapping | ✅ | `.fix.yaml` gateway config | `fix-yaml` |
-
-🔶 = message shapes only; full serializers and protocol clients tracked in
-[TODO.md §16](TODO.md) and [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
-
-See [SPEC.md](SPEC.md) for the full protocol specification,
-[schemas/orders.fsl](schemas/orders.fsl) for a complete example,
-[docs/TUTORIAL.md](docs/TUTORIAL.md) for codegen walkthroughs, and
-[docs/adr/0004-fsl-single-source-of-truth.md](docs/adr/0004-fsl-single-source-of-truth.md)
-for schema evolution and multi-language update policy.
-
----
-
-## Benchmarks
-
-All benchmarks run with [Criterion](https://bheisler.github.io/criterion.rs/)
-on the release profile. Results below are from the reference development
-machine — your numbers will vary.
-
-### Frame Encode/Decode
-
-| Benchmark | Time | Description |
-|---|---|---|
-| `frame_encode` | **574 ns** | Encode a Request frame with extensions + payload |
-| `frame_decode` | **649 ns** | Decode a Request frame from bytes |
-| `frame_decoder_streaming` | **670 ns** | FrameDecoder with chunked input |
-| `frame_encode_large_payload` | **529 ns** | Encode frame with 10KB payload |
-
-### Codec: CBOR vs SBE
-
-| Benchmark | Time | Description |
-|---|---|---|
-| `cbor_encode_order` | **927 ns** | CBOR encode NewOrderSingle |
-| `cbor_decode_order` | **2.38 μs** | CBOR decode NewOrderSingle |
-| `sbe_encode_order` | **361 ns** | SBE encode NewOrderSingle |
-| `sbe_decode_order` | **205 ns** | SBE decode NewOrderSingle |
-| `cbor_encode_execution_report` | **1.16 μs** | CBOR encode ExecutionReport |
-| `sbe_encode_execution_report` | **437 ns** | SBE encode ExecutionReport |
-
-**SBE is 2.6x faster to encode and 11.6x faster to decode than CBOR.**
-SBE's zero-copy decode (205ns) is 25-250x faster than JSON parsing (10-50μs)
-and 25-100x faster than FIX ASCII parsing (5-20μs).
-
-### Gateway Adapters
-
-| Benchmark | Time | Description |
-|---|---|---|
-| `fix_parse` | **2.37 μs** | Parse FIX NewOrderSingle (tag=value) |
-| `fix_serialize` | **2.67 μs** | Serialize FIX ExecutionReport |
-| `fix_to_fig_order` | **695 ns** | Convert FIX → FIG NewOrderSingle |
-| `rest_parse_request` | **1.19 μs** | Parse HTTP/1.1 request |
-| `rest_serialize_response` | **1.21 μs** | Serialize HTTP/1.1 response |
-| `ws_parse_text_frame` | **52 ns** | Parse WebSocket text frame |
-| `ws_serialize_text_frame` | **182 ns** | Serialize WebSocket text frame |
-
-### Matching Engine
-
-| Benchmark | Time | Description |
-|---|---|---|
-| `order_book_add` | **530 μs** | Add 1000 orders to the order book |
-| `matching_engine_process_order` | **805 μs** | Process market order against full book |
-| `matching_engine_cancel` | **1.21 μs** | Cancel an order |
-
-### Performance Comparison
-
-| Metric | FIG (native SBE) | FIX ASCII | HTTP/1.1+JSON | WebSocket |
-|---|---|---|---|---|
-| Min header overhead | 16 bytes | 200-500 bytes | 200-800 bytes | 2-10 bytes |
-| Decode speed | ~205 ns | ~5-20 μs | ~10-50 μs | N/A |
-| Handshake RTTs | 1 (TREE) / 0 (resumed) | 4 (TCP+TLS+Logon) | 3-5 (DNS+TCP+TLS+HTTP) | 2-3 (upgrade+TLS) |
-| Multiplexing | 65,535 channels/conn | 1 session/conn | 6 (browser) / HTTP/2 | 1/conn |
-| Session resumption | 0-RTT | Full reconnect | N/A (stateless) | Full reconnect |
-
----
-
-## Testing
-
-```bash
-# Run all tests (~360)
-cargo test --workspace
-
-# Run tests for a specific crate
-cargo test -p fig-core          # 233 tests
-cargo test -p fig-fsl           # 43 tests (lib + CLI + codegen)
-cargo test -p fig-gateways      # 66 tests
-cargo test -p fig-exchange-sim  # 18 tests (lib + integration)
-
-# Run integration tests (end-to-end over TREE)
-cargo test -p fig-exchange-sim --test integration
-
-# Run benchmarks
-cargo bench -p fig-bench
-```
-
-### Test Coverage by Area
-
-Run `cargo test --workspace` for the full suite (~360 tests). Key areas:
-
-| Area | What's covered |
-|---|---|
-| Frame encode/decode | All 13 frame types, flags, extensions, streaming decoder, reserved field validation |
-| Channel management | Open/close, unidirectional channels, sequence numbers, TREE stream mapping, credits |
-| Session management | UUID, auth token, seq tracking, memory/file/Redis/etcd stores, TTL expiry |
-| SBE + CBOR codec | Round-trips for all trading message types |
-| Auth & security (wire) | AUTH_TOKEN scoping, mTLS, JWT/OAuth validators, per-channel policy, rate limits, DoS guard — not credential issuance |
-| Gateway adapters | FIX session machine, REST JSON↔CBOR, WebSocket opcodes, SSE round-trip |
-| FSL | Parser, Rust/SBE codegen, 12 target codegen languages, CLI |
-| Exchange sim | Order book, matching engine, CancelReplace, depth streaming, integration tests |
-
----
-
-## Project Stats
-
-| Metric | Value |
-|---|---|
-| Rust source lines | ~21,000 |
-| Crates | 6 |
-| Tests | ~360 passing |
-| Benchmark suites | 6 |
-| Dependencies | quinn 0.11, rustls 0.23, ciborium, criterion, rcgen, uuid, serde, tokio, tracing |
-| Transport | TREE (ALPN: `fig/1`) + optional TCP downgrade |
-| Wire format | 16-byte header + TLV extensions + SBE/CBOR payload |
-| Max channels | 65,535 per connection |
-| Session resumption | 0-RTT via TREE + pluggable session stores |
 
 ## Documentation
 
 | Document | Description |
 |---|---|
 | [SPEC.md](SPEC.md) | Normative protocol specification |
-| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started guide |
-| [docs/API.md](docs/API.md) | Module index and API reference |
-| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Design rationale and integration patterns |
-| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment (REST, WS, FIX) |
-| [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and gateway WS catalog |
-| [docs/QUERY.md](docs/QUERY.md) | Historical query paths and REST GET mapping |
-| [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Pre-1.0 security checklist |
-| [docs/adr/README.md](docs/adr/README.md) | Architecture decision records |
-| [docs/adr/0004-fsl-single-source-of-truth.md](docs/adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
-| [docs/adr/0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) | Broker API parity (native FIG first) |
+| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started and CLI walkthrough |
+| [docs/PROTOCOL.md](docs/PROTOCOL.md) | Worked sequences and integration patterns |
+| [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and WS catalog |
+| [docs/QUERY.md](docs/QUERY.md) | Historical queries and REST GET mapping |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Full Criterion results |
+| [docs/API.md](docs/API.md) | Crate and module index |
+| [schemas/orders.fsl](schemas/orders.fsl) | Example FSL schema |
 | [TODO.md](TODO.md) | Implementation roadmap |
+
+```bash
+cargo test --workspace          # ~360 tests
+cargo bench -p fig-bench        # performance suites
+```
 
 ---
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
-
+Dual-licensed under MIT or Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).
