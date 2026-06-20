@@ -16,7 +16,7 @@ impl RustCodegen {
         ));
         out.push_str(&format!("// {}\n\n", desc));
 
-        out.push_str("use serde::{{Deserialize, Serialize}};\n\n");
+        out.push_str("use serde::{Deserialize, Serialize};\n\n");
 
         // Schema-level constants
         if let Some(id) = schema.well_known_id {
@@ -114,6 +114,10 @@ impl RustCodegen {
             out.push('\n');
         }
 
+        while out.ends_with('\n') {
+            out.pop();
+        }
+        out.push('\n');
         out
     }
 
