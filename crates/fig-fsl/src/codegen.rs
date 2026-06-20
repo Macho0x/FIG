@@ -190,15 +190,19 @@ impl RustCodegen {
         }
 
         out.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
-        out.push_str(&format!("pub struct {} {{\n", msg.name));
+        if msg.fields.is_empty() {
+            out.push_str(&format!("pub struct {} {{}}\n\n", msg.name));
+        } else {
+            out.push_str(&format!("pub struct {} {{\n", msg.name));
 
-        for field in &msg.fields {
-            out.push_str(&Self::generate_message_field_decl(
-                field, msg, enum_names, "    ",
-            ));
+            for field in &msg.fields {
+                out.push_str(&Self::generate_message_field_decl(
+                    field, msg, enum_names, "    ",
+                ));
+            }
+
+            out.push_str("}\n\n");
         }
-
-        out.push_str("}\n\n");
 
         // Associated constants
         out.push_str(&format!("impl {} {{\n", msg.name));

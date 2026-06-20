@@ -780,8 +780,7 @@ impl MiniTicker {
 
 /// Message: AllMidsRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AllMidsRequest {
-}
+pub struct AllMidsRequest {}
 
 impl AllMidsRequest {
     /// Channel type for this message
@@ -1450,8 +1449,7 @@ impl OrderHistoryBatch {
 
 /// Message: CapabilitiesRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CapabilitiesRequest {
-}
+pub struct CapabilitiesRequest {}
 
 impl CapabilitiesRequest {
     /// Channel type for this message
