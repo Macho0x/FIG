@@ -24,7 +24,10 @@ use crate::broker_session::{
     parse_order_history_path, parse_position_query_path, persist_subscription,
     restore_session_subscriptions, session_id_from_frame,
 };
-use crate::market_data::{MarketDataHub, StreamSubscription};
+use crate::market_data::{
+    parse_agg_trade_query_path, parse_all_mids_path, parse_mark_query_path, MarketDataHub,
+    StreamSubscription,
+};
 use crate::matching::MatchingEngine;
 
 /// Well-known schema IDs for trading messages.
@@ -287,9 +290,13 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
             || parse_open_orders_path(channel_path).is_some()
             || parse_order_history_path(channel_path).is_some()
             || parse_position_query_path(channel_path).is_some()
+            || parse_agg_trade_query_path(channel_path).is_some()
+            || parse_mark_query_path(channel_path).is_some()
+            || parse_all_mids_path(channel_path)
             || channel_path.contains("/candles/")
             || channel_path.contains("/ticker")
             || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
+            || channel_path.contains("/aggtrades")
             || channel_path.ends_with("/fills")
             || channel_path.ends_with("/funding")
             || channel_path.ends_with("/ledger")
@@ -626,6 +633,8 @@ pub async fn handle_subscribe(
     if channel_path.contains("/executions")
         || channel_path.contains("/balances")
         || channel_path.contains("/positions")
+        || channel_path.ends_with("/margin")
+        || channel_path.ends_with("/liquidations")
         || channel_path.ends_with("/funding")
         || channel_path.ends_with("/ledger")
     {
@@ -634,7 +643,10 @@ pub async fn handle_subscribe(
         || routing_key.contains("quotes")
         || routing_key.contains("candles")
         || routing_key.contains("trades")
+        || routing_key.contains("aggtrades")
         || routing_key.contains("ticker")
+        || routing_key.contains("liquidations")
+        || routing_key.contains("mark")
         || channel_path.starts_with("marketdata/")
     {
         frames.extend(crate::broker_api::handle_market_subscribe(frame.clone(), state).await);
@@ -673,26 +685,12 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
     }
 
     let engine = state.engine.lock().await;
-    let Some(book) = engine.get_book(&symbol.to_string()) else {
+    let Some(delta) = engine.order_book_delta(symbol) else {
         return Vec::new();
     };
-
-    let snapshot = MarketDataSnapshot {
-        symbol: symbol.to_string(),
-        exchange: "SIM".to_string(),
-        bids: book.bid_depth(5),
-        asks: book.ask_depth(5),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as i64,
-        sequence: Some(book.book_sequence()),
-        is_snapshot: Some(true),
-    };
-
     drop(engine);
 
-    let Ok(payload) = codec::encode_cbor(&snapshot) else {
+    let Ok(payload) = codec::encode_cbor(&delta) else {
         return Vec::new();
     };
 
@@ -701,6 +699,10 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
             Frame::new(FrameType::StreamItem, sub.channel_id)
                 .with_schema_id(schema_id::TRADING_ORDERS)
                 .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
+                .with_extension(Extension::text(
+                    ExtensionTag::ChannelPath,
+                    "marketdata/book",
+                ))
                 .with_extension(Extension::text(
                     ExtensionTag::ContentType,
                     "application/cbor",

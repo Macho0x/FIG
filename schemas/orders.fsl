@@ -200,8 +200,20 @@ schema trading.orders v1.0.0 {
         message OpenOrdersRequest -> method: GET path: "/trading/accounts/{account}/orders/open"
         message OrderHistoryRequest -> method: GET path: "/trading/accounts/{account}/orders"
         message OrderBookRequest -> method: GET path: "/marketdata/{symbol}/book"
+        message AggregateTradeRequest -> method: GET path: "/marketdata/{symbol}/aggtrades"
+        message AllMidsRequest -> method: GET path: "/marketdata/ticker/all"
+        message MarkPriceRequest -> method: GET path: "/marketdata/{symbol}/mark"
         message CapabilitiesRequest -> method: GET path: "/.well-known/capabilities"
         message PositionRequest -> method: GET path: "/accounts/{account}/positions"
+        message OrderBookSnapshot -> method: SSE path: "/marketdata/{symbol}/book"
+        message OrderBookDelta -> method: SSE path: "/marketdata/{symbol}/book"
+        message AggregateTradeEvent -> method: SSE path: "/marketdata/{symbol}/aggtrades"
+        message MiniTicker -> method: SSE path: "/marketdata/ticker/all"
+        message MarkPriceUpdate -> method: SSE path: "/marketdata/{symbol}/mark"
+        message LiquidationTradeEvent -> method: SSE path: "/marketdata/liquidations"
+        message MarginUpdate -> method: SSE path: "/accounts/{account}/margin"
+        message UserLiquidation -> method: SSE path: "/accounts/{account}/liquidations"
+        message OrderListStatus -> method: SSE path: "/trading/accounts/{account}/orderlists"
     }
 
     // gateway ws (declarative; parsed by ws_catalog.rs until FSL codegen supports ws block)

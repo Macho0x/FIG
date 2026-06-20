@@ -30,12 +30,20 @@ pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
     let symbol = symbol.to_lowercase();
     let channel_path = if let Some(interval) = stream.strip_prefix("kline_") {
         format!("marketdata/{symbol}/candles/{interval}")
-    } else if stream == "trade" || stream == "aggTrade" {
+    } else if stream == "trade" {
         format!("marketdata/{symbol}/trades")
+    } else if stream == "aggTrade" {
+        format!("marketdata/{symbol}/aggtrades")
     } else if stream == "bookTicker" {
         format!("marketdata/{symbol}/bbo")
-    } else if stream == "ticker" || stream == "markPrice" {
+    } else if stream == "ticker" {
         format!("marketdata/{symbol}/ticker")
+    } else if stream == "miniTicker" {
+        "marketdata/ticker/all".to_string()
+    } else if stream == "markPrice" {
+        format!("marketdata/{symbol}/mark")
+    } else if stream == "forceOrder" {
+        "marketdata/liquidations".to_string()
     } else if stream == "depth" || stream.starts_with("depth@") {
         format!("marketdata/{symbol}/quotes")
     } else {
@@ -116,6 +124,42 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
             (
                 format!("accounts/{user}/ledger"),
                 format!("hl.ledger.{user}"),
+            )
+        }
+        "liquidation" | "userLiquidation" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("accounts/{user}/liquidations"),
+                format!("hl.liquidation.{user}"),
+            )
+        }
+        "activeAssetCtx" | "markPrice" => (
+            format!("marketdata/{symbol}/mark"),
+            format!("hl.mark.{symbol}"),
+        ),
+        "allMids" | "miniTicker" => (
+            "marketdata/ticker/all".to_string(),
+            "hl.allMids".to_string(),
+        ),
+        "aggTrades" => (
+            format!("marketdata/{symbol}/aggtrades"),
+            format!("hl.aggTrades.{symbol}"),
+        ),
+        "liquidations" | "forceOrder" => (
+            "marketdata/liquidations".to_string(),
+            "hl.liquidations".to_string(),
+        ),
+        "margin" | "clearinghouseMargin" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("accounts/{user}/margin"),
+                format!("hl.margin.{user}"),
             )
         }
         _ => return None,
@@ -258,8 +302,12 @@ mod tests {
         let topics = [
             "btcusdt@kline_5m",
             "ethusdt@trade",
+            "btcusdt@aggTrade",
             "btcusdt@bookTicker",
             "btcusdt@ticker",
+            "btcusdt@miniTicker",
+            "btcusdt@markPrice",
+            "btcusdt@forceOrder",
             "btcusdt@depth",
         ];
         for topic in topics {

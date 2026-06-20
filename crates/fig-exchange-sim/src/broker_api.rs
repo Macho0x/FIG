@@ -17,8 +17,9 @@ use crate::broker_session::{
     stream_order_history,
 };
 use crate::market_data::{
-    parse_candle_query_path, parse_md_subscription, parse_ticker_query_path,
-    parse_trade_query_path, StreamSubscription, SubscriptionKind,
+    parse_agg_trade_query_path, parse_all_mids_path, parse_candle_query_path,
+    parse_mark_query_path, parse_md_subscription, parse_ticker_query_path, parse_trade_query_path,
+    StreamSubscription, SubscriptionKind,
 };
 use crate::matching::Fill;
 use crate::server::{make_error_frame, schema_id, ExchangeState};
@@ -36,6 +37,36 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         if let Some(err) = authorize_private(&frame, &account) {
             return vec![err];
         }
+    }
+
+    if let Some(symbol) = parse_mark_query_path(&channel_path) {
+        let md = state.market_data.lock().await;
+        let mark = md.mark_price(&symbol);
+        drop(md);
+        return respond_cbor(frame, &mark, None);
+    }
+
+    if parse_all_mids_path(&channel_path) {
+        let md = state.market_data.lock().await;
+        let batch = md.all_mini_tickers();
+        drop(md);
+        return respond_cbor(frame, &batch, None);
+    }
+
+    if let Some(symbol) = parse_agg_trade_query_path(&channel_path) {
+        let req = decode_or(
+            &frame.payload,
+            AggregateTradeRequest {
+                symbol: symbol.clone(),
+                start_time: None,
+                end_time: None,
+                limit: Some(500),
+            },
+        );
+        let md = state.market_data.lock().await;
+        let batch = md.query_agg_trades(&req.symbol, req.start_time, req.end_time, req.limit);
+        drop(md);
+        return ok_response(frame, &batch);
     }
 
     if let Some(symbol) = parse_ticker_query_path(&channel_path) {
@@ -60,8 +91,8 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         let depth = req.depth.unwrap_or(20) as usize;
         let engine = state.engine.lock().await;
         let snap = engine
-            .order_book_snapshot(&req.symbol, depth)
-            .unwrap_or(MarketDataSnapshot {
+            .order_book_snapshot_typed(&req.symbol, depth)
+            .unwrap_or(OrderBookSnapshot {
                 symbol: req.symbol.clone(),
                 exchange: "SIM".to_string(),
                 bids: vec![],
@@ -319,15 +350,31 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
 
     match kind {
         SubscriptionKind::Quotes { symbol } => {
-            let mut frames: Vec<Frame> = crate::server::build_market_data_push(state, &symbol)
-                .await
-                .into_iter()
-                .filter(|f| f.channel_id == frame.channel_id)
-                .collect();
-            if frames.is_empty() {
-                frames.push(ack_subscribe(frame));
+            let engine = state.engine.lock().await;
+            let snap = engine
+                .order_book_snapshot_typed(&symbol, 20)
+                .unwrap_or(OrderBookSnapshot {
+                    symbol: symbol.clone(),
+                    exchange: "SIM".to_string(),
+                    bids: vec![],
+                    asks: vec![],
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as i64,
+                    sequence: Some(0),
+                    is_snapshot: Some(true),
+                });
+            drop(engine);
+            if let Ok(payload) = codec::encode_cbor(&snap) {
+                return vec![stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "marketdata/book",
+                )];
             }
-            frames
+            vec![ack_subscribe(frame)]
         }
         SubscriptionKind::Candles { symbol, interval } => {
             let md = state.market_data.lock().await;
@@ -410,6 +457,94 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
                 )];
             }
             vec![ack_subscribe(frame)]
+        }
+        SubscriptionKind::AggTrades { symbol } => {
+            let md = state.market_data.lock().await;
+            let batch = md.query_agg_trades(&symbol, None, None, Some(50));
+            drop(md);
+            let mut frames = Vec::new();
+            for trade in batch.trades {
+                if let Ok(payload) = codec::encode_cbor(&AggregateTradeEvent { trade }) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "marketdata/aggtrades",
+                    ));
+                }
+            }
+            if frames.is_empty() {
+                frames.push(ack_subscribe(frame));
+            }
+            frames
+        }
+        SubscriptionKind::MiniTicker { symbol } => {
+            let md = state.market_data.lock().await;
+            let mut frames = Vec::new();
+            if let Some(sym) = symbol {
+                let mut mini = md.mini_ticker(&sym);
+                mini.is_snapshot = Some(true);
+                if let Ok(payload) = codec::encode_cbor(&mini) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "marketdata/miniticker",
+                    ));
+                }
+            } else {
+                for mut mini in md.all_mini_tickers().tickers {
+                    mini.is_snapshot = Some(true);
+                    if let Ok(payload) = codec::encode_cbor(&mini) {
+                        frames.push(stream_item(
+                            frame.channel_id,
+                            &routing_key,
+                            payload,
+                            "marketdata/ticker/all",
+                        ));
+                    }
+                }
+            }
+            drop(md);
+            if frames.is_empty() {
+                frames.push(ack_subscribe(frame));
+            }
+            frames
+        }
+        SubscriptionKind::MarkPrice { symbol } => {
+            let md = state.market_data.lock().await;
+            let mut mark = md.mark_price(&symbol);
+            mark.is_snapshot = Some(true);
+            drop(md);
+            if let Ok(payload) = codec::encode_cbor(&mark) {
+                return vec![stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "marketdata/mark",
+                )];
+            }
+            vec![ack_subscribe(frame)]
+        }
+        SubscriptionKind::Liquidations => {
+            let md = state.market_data.lock().await;
+            let liqs = md.recent_liquidations(20);
+            drop(md);
+            let mut frames = Vec::new();
+            for trade in liqs {
+                if let Ok(payload) = codec::encode_cbor(&LiquidationTradeEvent { trade }) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "marketdata/liquidations",
+                    ));
+                }
+            }
+            if frames.is_empty() {
+                frames.push(ack_subscribe(frame));
+            }
+            frames
         }
     }
 }
@@ -512,6 +647,18 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
                 }
             }
         }
+        AccountSubscriptionKind::Margin => {
+            let update = acct.margin_update(true);
+            if let Ok(payload) = codec::encode_cbor(&update) {
+                frames.push(stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "accounts/margin",
+                ));
+            }
+        }
+        AccountSubscriptionKind::Liquidations => {}
     }
     drop(accounts);
     if frames.is_empty() {
@@ -528,10 +675,13 @@ pub async fn post_fill_updates(
     reports: &[ExecutionReport],
 ) -> Vec<Frame> {
     let mut frames = Vec::new();
+    let mut public_liquidation: Option<LiquidationTrade> = None;
     {
         let mut md = state.market_data.lock().await;
         for fill in fills {
-            md.on_trade(symbol, fill.fill_price.0, fill.fill_qty.0, fill.side);
+            if let Some(liq) = md.on_trade(symbol, fill.fill_price.0, fill.fill_qty.0, fill.side) {
+                public_liquidation = Some(liq);
+            }
         }
     }
 
@@ -540,7 +690,8 @@ pub async fn post_fill_updates(
         let acct = accounts.get_or_create(account);
         let subs: Vec<AccountSubscription> = state.account_subscriptions.lock().await.clone();
         for report in reports {
-            let balance_update = acct.record_fill(report.clone());
+            let (balance_update, position_update, user_liquidation) =
+                acct.record_fill(report.clone());
             for sub in subs.iter().filter(|s| s.account == account) {
                 match sub.kind {
                     AccountSubscriptionKind::Executions => {
@@ -564,20 +715,38 @@ pub async fn post_fill_updates(
                         }
                     }
                     AccountSubscriptionKind::Positions => {
-                        let update = PositionUpdate {
-                            account: account.to_string(),
-                            symbol: report.symbol.clone(),
-                            qty: report.leaves_qty.clone(),
-                            entry_price: report.avg_price.clone(),
-                            unrealized_pnl: 0.0,
-                        };
+                        if let Some(update) = &position_update {
+                            if let Ok(payload) = codec::encode_cbor(update) {
+                                frames.push(stream_item(
+                                    sub.channel_id,
+                                    &sub.routing_key,
+                                    payload,
+                                    "accounts/positions",
+                                ));
+                            }
+                        }
+                    }
+                    AccountSubscriptionKind::Margin => {
+                        let update = acct.margin_update(false);
                         if let Ok(payload) = codec::encode_cbor(&update) {
                             frames.push(stream_item(
                                 sub.channel_id,
                                 &sub.routing_key,
                                 payload,
-                                "accounts/positions",
+                                "accounts/margin",
                             ));
+                        }
+                    }
+                    AccountSubscriptionKind::Liquidations => {
+                        if let Some(liq) = &user_liquidation {
+                            if let Ok(payload) = codec::encode_cbor(liq) {
+                                frames.push(stream_item(
+                                    sub.channel_id,
+                                    &sub.routing_key,
+                                    payload,
+                                    "accounts/liquidations",
+                                ));
+                            }
                         }
                     }
                     AccountSubscriptionKind::Funding => {}
@@ -674,6 +843,66 @@ pub async fn post_fill_updates(
                             &sub.routing_key,
                             payload,
                             "marketdata/ticker",
+                        ));
+                    }
+                }
+            }
+            SubscriptionKind::AggTrades { symbol: sym } if sym == symbol => {
+                let md = state.market_data.lock().await;
+                if let Some(trade) = md.last_agg_trade(symbol) {
+                    if let Ok(payload) = codec::encode_cbor(&AggregateTradeEvent { trade }) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "marketdata/aggtrades",
+                        ));
+                    }
+                }
+            }
+            SubscriptionKind::MiniTicker { symbol: sym_opt } => {
+                let md = state.market_data.lock().await;
+                if let Some(sym) = sym_opt {
+                    if sym == symbol {
+                        if let Ok(payload) = codec::encode_cbor(&md.mini_ticker(symbol)) {
+                            frames.push(stream_item(
+                                sub.channel_id,
+                                &sub.routing_key,
+                                payload,
+                                "marketdata/ticker/all",
+                            ));
+                        }
+                    }
+                } else if let Ok(payload) = codec::encode_cbor(&md.mini_ticker(symbol)) {
+                    frames.push(stream_item(
+                        sub.channel_id,
+                        &sub.routing_key,
+                        payload,
+                        "marketdata/ticker/all",
+                    ));
+                }
+            }
+            SubscriptionKind::MarkPrice { symbol: sym } if sym == symbol => {
+                let md = state.market_data.lock().await;
+                if let Ok(payload) = codec::encode_cbor(&md.mark_price(symbol)) {
+                    frames.push(stream_item(
+                        sub.channel_id,
+                        &sub.routing_key,
+                        payload,
+                        "marketdata/mark",
+                    ));
+                }
+            }
+            SubscriptionKind::Liquidations => {
+                if let Some(trade) = &public_liquidation {
+                    if let Ok(payload) = codec::encode_cbor(&LiquidationTradeEvent {
+                        trade: trade.clone(),
+                    }) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "marketdata/liquidations",
                         ));
                     }
                 }

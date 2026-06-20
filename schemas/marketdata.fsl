@@ -39,6 +39,113 @@ schema trading.orders v1.0.0 {
         depth: uint32 @2 optional
     }
 
+    message OrderBookSnapshot {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        exchange: string(max_len: 16) @2
+        bids: list<PriceLevel> @3
+        asks: list<PriceLevel> @4
+        timestamp: TradeTimestamp @5
+        sequence: uint64 @6 optional
+        is_snapshot: bool @7 optional
+    }
+
+    message OrderBookDelta {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        updates: list<MarketDataUpdate> @2
+        timestamp: TradeTimestamp @3
+        sequence: uint64 @4 optional
+    }
+
+    type AggregateTrade {
+        symbol: Symbol
+        agg_trade_id: string(max_len: 32)
+        price: Price
+        qty: Quantity
+        side: enum { buy, sell }
+        first_trade_id: string(max_len: 32)
+        last_trade_id: string(max_len: 32)
+        timestamp: TradeTimestamp
+    }
+
+    message AggregateTradeEvent {
+        channel_type: stream_item
+
+        trade: AggregateTrade @1
+    }
+
+    message AggregateTradeRequest {
+        channel_type: request_response
+
+        symbol: Symbol @1
+        start_time: TradeTimestamp @2 optional
+        end_time: TradeTimestamp @3 optional
+        limit: uint32 @4 optional
+    }
+
+    message AggregateTradeBatch {
+        channel_type: request_response
+
+        symbol: Symbol @1
+        trades: list<AggregateTrade> @2
+        has_more: bool @3
+        next_cursor: string(max_len: 64) @4 optional
+    }
+
+    message MiniTicker {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        last_price: Price @2
+        volume: Quantity @3
+        timestamp: TradeTimestamp @4
+        is_snapshot: bool @5 optional
+    }
+
+    message AllMidsRequest {
+        channel_type: request_response
+    }
+
+    message AllMidsBatch {
+        channel_type: request_response
+
+        tickers: list<MiniTicker> @1
+    }
+
+    message MarkPriceUpdate {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        mark_price: Price @2
+        index_price: Price @3 optional
+        funding_rate: decimal64(precision: 8) @4 optional
+        timestamp: TradeTimestamp @5
+        is_snapshot: bool @6 optional
+    }
+
+    message MarkPriceRequest {
+        channel_type: request_response
+
+        symbol: Symbol @1
+    }
+
+    type LiquidationTrade {
+        symbol: Symbol
+        side: enum { buy, sell }
+        price: Price
+        qty: Quantity
+        timestamp: TradeTimestamp
+    }
+
+    message LiquidationTradeEvent {
+        channel_type: stream_item
+
+        trade: LiquidationTrade @1
+    }
+
     type PriceLevel {
         price: Price
         qty: Quantity

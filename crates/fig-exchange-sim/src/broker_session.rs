@@ -42,6 +42,36 @@ pub fn capabilities_response() -> CapabilitiesResponse {
                 auth_required: true,
             },
             CapabilityPath {
+                path: "marketdata/{symbol}/aggtrades".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: false,
+            },
+            CapabilityPath {
+                path: "marketdata/ticker/all".to_string(),
+                pattern: CapabilityPathPattern::RequestResponse,
+                auth_required: false,
+            },
+            CapabilityPath {
+                path: "marketdata/{symbol}/mark".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: false,
+            },
+            CapabilityPath {
+                path: "marketdata/liquidations".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: false,
+            },
+            CapabilityPath {
+                path: "accounts/{account}/margin".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: true,
+            },
+            CapabilityPath {
+                path: "accounts/{account}/liquidations".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: true,
+            },
+            CapabilityPath {
                 path: ".well-known/capabilities".to_string(),
                 pattern: CapabilityPathPattern::RequestResponse,
                 auth_required: false,
@@ -78,8 +108,10 @@ pub fn persist_subscription(state: &Arc<ExchangeState>, session_id: Uuid, frame:
             AccountSubscriptionKind::Executions => "executions",
             AccountSubscriptionKind::Balances => "balances",
             AccountSubscriptionKind::Positions => "positions",
+            AccountSubscriptionKind::Margin => "margin",
             AccountSubscriptionKind::Funding => "funding",
             AccountSubscriptionKind::Ledger => "ledger",
+            AccountSubscriptionKind::Liquidations => "liquidations",
         };
         format!("acct:{account}:{tag}")
     } else if parse_md_subscription(&routing_key, &channel_path).is_some() {

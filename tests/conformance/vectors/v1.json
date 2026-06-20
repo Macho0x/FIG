@@ -252,6 +252,46 @@
       "channel": null
     },
     {
+      "id": "cbor.order_book_snapshot.demo",
+      "category": "cbor",
+      "description": "OrderBookSnapshot CBOR",
+      "message_type": "OrderBookSnapshot",
+      "expected_hex": "a76673796d626f6c644141504c6865786368616e67656353494d646269647381a3657072696365f9564063717479f945006b6f726465725f636f756e74016461736b73806974696d657374616d701b17979cfe362a00006873657175656e6365182a6b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.aggregate_trade.demo",
+      "category": "cbor",
+      "description": "AggregateTrade CBOR",
+      "message_type": "AggregateTrade",
+      "expected_hex": "a86673796d626f6c644141504c6c6167675f74726164655f696463412d31657072696365f9564063717479f945006473696465634275796e66697273745f74726164655f696463542d316d6c6173745f74726164655f696463542d316974696d657374616d701b17979cfe362a0000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.mini_ticker.demo",
+      "category": "cbor",
+      "description": "MiniTicker CBOR",
+      "message_type": "MiniTicker",
+      "expected_hex": "a56673796d626f6c644141504c6a6c6173745f7072696365f9564066766f6c756d65f952406974696d657374616d701b17979cfe362a00006b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.mark_price_update.demo",
+      "category": "cbor",
+      "description": "MarkPriceUpdate CBOR",
+      "message_type": "MarkPriceUpdate",
+      "expected_hex": "a66673796d626f6c644141504c6a6d61726b5f7072696365fb405900a3d70a3d716b696e6465785f7072696365f956406c66756e64696e675f72617465fb3f1a36e2eb1c432d6974696d657374616d701b17979cfe362a00006b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "channel.stream_id.client_server",
       "category": "channel",
       "description": "Client stream = channel*4+0, server = channel*4+1",

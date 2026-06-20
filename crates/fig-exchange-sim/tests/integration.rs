@@ -826,3 +826,147 @@ async fn test_order_history_request_stream() {
         .iter()
         .any(|f| f.frame_type == FrameType::StreamClose));
 }
+
+#[tokio::test]
+async fn test_order_book_snapshot_on_subscribe() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sub = make_subscribe_frame(1, "marketdata/AAPL/quotes", "marketdata/AAPL/book");
+    let responses = send_and_receive(&conn, sub).await.expect("subscribe");
+    let item = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem)
+        .expect("stream item");
+    let snap: OrderBookSnapshot = codec::decode_cbor(&item.payload).expect("decode");
+    assert_eq!(snap.symbol, "AAPL");
+    assert!(snap.is_snapshot.unwrap_or(false));
+}
+
+#[tokio::test]
+async fn test_agg_trades_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let order = make_order(
+        "AT-1",
+        Side::Buy,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        10.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &order).unwrap())
+        .await
+        .expect("resting");
+    let taker = make_order("AT-2", Side::Sell, "AAPL", OrderType::Market, None, 5.0);
+    send_and_receive(&conn, make_order_frame(1, &taker).unwrap())
+        .await
+        .expect("fill");
+
+    let query = make_get_query_frame(2, "marketdata/AAPL/aggtrades", None);
+    let responses = send_and_receive(&conn, query).await.expect("query");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response");
+    let batch: AggregateTradeBatch = codec::decode_cbor(&resp.payload).expect("decode");
+    assert!(!batch.trades.is_empty());
+}
+
+#[tokio::test]
+async fn test_mark_price_and_all_mids_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let order = make_order("MP-1", Side::Buy, "AAPL", OrderType::Limit, Some(50.0), 1.0);
+    send_and_receive(&conn, make_order_frame(1, &order).unwrap())
+        .await
+        .expect("resting");
+    let taker = make_order("MP-2", Side::Sell, "AAPL", OrderType::Market, None, 1.0);
+    send_and_receive(&conn, make_order_frame(1, &taker).unwrap())
+        .await
+        .expect("fill");
+
+    let mark = make_get_query_frame(2, "marketdata/AAPL/mark", None);
+    let mark_resp = send_and_receive(&conn, mark).await.expect("mark");
+    let mark_frame = mark_resp
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("mark response");
+    let _: MarkPriceUpdate = codec::decode_cbor(&mark_frame.payload).expect("mark decode");
+
+    let all_mids = make_get_query_frame(3, "marketdata/ticker/all", None);
+    let mids_resp = send_and_receive(&conn, all_mids).await.expect("all mids");
+    let mids_frame = mids_resp
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("mids response");
+    let batch: AllMidsBatch = codec::decode_cbor(&mids_frame.payload).expect("mids decode");
+    assert!(!batch.tickers.is_empty());
+}
+
+#[tokio::test]
+async fn test_margin_subscribe_snapshot() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let mut frame = make_subscribe_frame(1, "accounts/TEST/margin", "accounts/TEST/margin");
+    frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
+    let responses = send_and_receive(&conn, frame).await.expect("margin sub");
+    let item = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem)
+        .expect("margin stream");
+    let update: MarginUpdate = codec::decode_cbor(&item.payload).expect("margin decode");
+    assert_eq!(update.account, "TEST");
+    assert!(update.is_snapshot.unwrap_or(false));
+}
+
+#[tokio::test]
+async fn test_position_delta_on_fill() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let mut pos_frame =
+        make_subscribe_frame(1, "accounts/TEST/positions", "accounts/TEST/positions");
+    pos_frame = pos_frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
+    send_and_receive(&conn, pos_frame)
+        .await
+        .expect("positions sub");
+
+    let sell = make_order(
+        "PD-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(2, &sell).unwrap())
+        .await
+        .expect("resting");
+    let buy = make_order("PD-2", Side::Buy, "AAPL", OrderType::Market, None, 5.0);
+    let fill_resp = send_and_receive(&conn, make_order_frame(2, &buy).unwrap())
+        .await
+        .expect("fill");
+    assert!(fill_resp.iter().any(|f| {
+        f.frame_type == FrameType::StreamItem
+            && codec::decode_cbor::<PositionUpdate>(&f.payload).is_ok()
+    }));
+}

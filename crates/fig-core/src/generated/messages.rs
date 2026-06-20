@@ -31,6 +31,29 @@ pub type TradeTimestamp = i64;
 /// Constraints: max_len: 8
 pub type CandleInterval = String;
 
+/// Struct type: AggregateTrade
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AggregateTrade {
+    pub symbol: Symbol,
+    pub agg_trade_id: String,
+    pub price: Price,
+    pub qty: Quantity,
+    pub side: Side,
+    pub first_trade_id: String,
+    pub last_trade_id: String,
+    pub timestamp: TradeTimestamp,
+}
+
+/// Struct type: LiquidationTrade
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LiquidationTrade {
+    pub symbol: Symbol,
+    pub side: Side,
+    pub price: Price,
+    pub qty: Quantity,
+    pub timestamp: TradeTimestamp,
+}
+
 /// Struct type: PriceLevel
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PriceLevel {
@@ -93,6 +116,14 @@ pub struct PositionEntry {
     pub qty: Quantity,
     pub entry_price: Price,
     pub unrealized_pnl: f64,
+}
+
+/// Struct type: PageInfo
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageInfo {
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
 }
 
 /// Struct type: CapabilityPath
@@ -294,6 +325,28 @@ impl OrdStatus {
             10 => Some(OrdStatus::PendingNew),
             11 => Some(OrdStatus::Expired),
             12 => Some(OrdStatus::Replaced),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum OrderListStatusStatus {
+    Executing = 1,
+    AllDone = 2,
+    Reject = 3,
+}
+
+impl OrderListStatusStatus {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(OrderListStatusStatus::Executing),
+            2 => Some(OrderListStatusStatus::AllDone),
+            3 => Some(OrderListStatusStatus::Reject),
             _ => None,
         }
     }
@@ -608,6 +661,205 @@ impl OrderBookRequest {
     pub const IDEMPOTENT: bool = true;
 }
 
+/// Message: OrderBookSnapshot (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderBookSnapshot {
+    pub symbol: Symbol,
+    pub exchange: String,
+    pub bids: Vec<PriceLevel>,
+    pub asks: Vec<PriceLevel>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl OrderBookSnapshot {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OrderBookDelta (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderBookDelta {
+    pub symbol: Symbol,
+    pub updates: Vec<MarketDataUpdate>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+}
+
+impl OrderBookDelta {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AggregateTradeEvent (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AggregateTradeEvent {
+    pub trade: AggregateTrade,
+}
+
+impl AggregateTradeEvent {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AggregateTradeRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AggregateTradeRequest {
+    pub symbol: Symbol,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl AggregateTradeRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AggregateTradeBatch (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AggregateTradeBatch {
+    pub symbol: Symbol,
+    pub trades: Vec<AggregateTrade>,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+impl AggregateTradeBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: MiniTicker (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MiniTicker {
+    pub symbol: Symbol,
+    pub last_price: Price,
+    pub volume: Quantity,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl MiniTicker {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AllMidsRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AllMidsRequest {
+}
+
+impl AllMidsRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AllMidsBatch (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AllMidsBatch {
+    pub tickers: Vec<MiniTicker>,
+}
+
+impl AllMidsBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: MarkPriceUpdate (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarkPriceUpdate {
+    pub symbol: Symbol,
+    pub mark_price: Price,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_price: Option<Price>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub funding_rate: Option<f64>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl MarkPriceUpdate {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: MarkPriceRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarkPriceRequest {
+    pub symbol: Symbol,
+}
+
+impl MarkPriceRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: LiquidationTradeEvent (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LiquidationTradeEvent {
+    pub trade: LiquidationTrade,
+}
+
+impl LiquidationTradeEvent {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
 /// Message: CandleBarEvent (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CandleBarEvent {
@@ -900,6 +1152,62 @@ impl PositionUpdate {
     pub const IDEMPOTENT: bool = true;
 }
 
+/// Message: MarginUpdate (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MarginUpdate {
+    pub account: String,
+    pub summary: MarginSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl MarginUpdate {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: UserLiquidation (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserLiquidation {
+    pub account: String,
+    pub symbol: Symbol,
+    pub qty: Quantity,
+    pub price: Price,
+    pub timestamp: TradeTimestamp,
+}
+
+impl UserLiquidation {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OrderListStatus (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderListStatus {
+    pub account: String,
+    pub list_id: String,
+    pub status: OrderListStatusStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+}
+
+impl OrderListStatus {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
 /// Message: FillHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FillHistoryRequest {
@@ -1142,7 +1450,8 @@ impl OrderHistoryBatch {
 
 /// Message: CapabilitiesRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CapabilitiesRequest {}
+pub struct CapabilitiesRequest {
+}
 
 impl CapabilitiesRequest {
     /// Channel type for this message

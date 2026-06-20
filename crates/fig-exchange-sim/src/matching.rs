@@ -564,6 +564,50 @@ impl MatchingEngine {
             is_snapshot: Some(true),
         })
     }
+
+    pub fn order_book_snapshot_typed(
+        &self,
+        symbol: &str,
+        depth: usize,
+    ) -> Option<OrderBookSnapshot> {
+        let book = self.books.get(symbol)?;
+        Some(OrderBookSnapshot {
+            symbol: symbol.to_string(),
+            exchange: "SIM".to_string(),
+            bids: book.bid_depth(depth),
+            asks: book.ask_depth(depth),
+            timestamp: Self::now_nanos(),
+            sequence: Some(book.book_sequence()),
+            is_snapshot: Some(true),
+        })
+    }
+
+    pub fn order_book_delta(&self, symbol: &str) -> Option<OrderBookDelta> {
+        let book = self.books.get(symbol)?;
+        let mut updates = Vec::new();
+        if let Some((price, qty)) = book.best_bid() {
+            updates.push(MarketDataUpdate {
+                side: Side::Buy,
+                action: MarketDataAction::Change,
+                price: price.clone(),
+                qty: qty.clone(),
+            });
+        }
+        if let Some((price, qty)) = book.best_ask() {
+            updates.push(MarketDataUpdate {
+                side: Side::Sell,
+                action: MarketDataAction::Change,
+                price: price.clone(),
+                qty: qty.clone(),
+            });
+        }
+        Some(OrderBookDelta {
+            symbol: symbol.to_string(),
+            updates,
+            timestamp: Self::now_nanos(),
+            sequence: Some(book.book_sequence()),
+        })
+    }
 }
 
 fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {

@@ -89,6 +89,37 @@ fn log_frames(label: &str, frames: &[Frame]) {
                 batch.account,
                 batch.entries.len()
             );
+        } else if let Ok(snap) = codec::decode_cbor::<OrderBookSnapshot>(&frame.payload) {
+            info!(
+                "  OrderBookSnapshot: {} bids={} asks={} seq={:?}",
+                snap.symbol,
+                snap.bids.len(),
+                snap.asks.len(),
+                snap.sequence
+            );
+        } else if let Ok(delta) = codec::decode_cbor::<OrderBookDelta>(&frame.payload) {
+            info!(
+                "  OrderBookDelta: {} updates={} seq={:?}",
+                delta.symbol,
+                delta.updates.len(),
+                delta.sequence
+            );
+        } else if let Ok(event) = codec::decode_cbor::<AggregateTradeEvent>(&frame.payload) {
+            info!(
+                "  AggregateTrade: {} @ {}",
+                event.trade.symbol, event.trade.price.0
+            );
+        } else if let Ok(mini) = codec::decode_cbor::<MiniTicker>(&frame.payload) {
+            info!("  MiniTicker: {} last={}", mini.symbol, mini.last_price.0);
+        } else if let Ok(mark) = codec::decode_cbor::<MarkPriceUpdate>(&frame.payload) {
+            info!("  MarkPrice: {} mark={}", mark.symbol, mark.mark_price.0);
+        } else if let Ok(update) = codec::decode_cbor::<MarginUpdate>(&frame.payload) {
+            info!(
+                "  MarginUpdate: {} equity={}",
+                update.account, update.summary.equity
+            );
+        } else if let Ok(pos) = codec::decode_cbor::<PositionUpdate>(&frame.payload) {
+            info!("  PositionUpdate: {} qty={}", pos.symbol, pos.qty.0);
         }
     }
 }
@@ -226,8 +257,42 @@ async fn main() -> Result<()> {
         .with_extension(auth_ext(ACCOUNT));
     log_frames("ledger", &send_and_read(&conn, ledger_get).await?);
 
-    // Demo 6: PING
-    info!("=== Demo 6: PING/PONG ===");
+    // Demo 6: advanced MD + margin streams
+    info!("=== Demo 6: agg trades, mark price, margin ===");
+    let agg_sub = Frame::new(FrameType::Subscribe, 9)
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            "marketdata/AAPL/aggtrades",
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/aggtrades",
+        ));
+    log_frames("aggtrades", &send_and_read(&conn, agg_sub).await?);
+
+    let mark_get = Frame::new(FrameType::Request, 10)
+        .with_schema_id(schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/mark",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    log_frames("mark", &send_and_read(&conn, mark_get).await?);
+
+    let margin_sub = Frame::new(FrameType::Subscribe, 11)
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            format!("accounts/{ACCOUNT}/margin"),
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            format!("accounts/{ACCOUNT}/margin"),
+        ))
+        .with_extension(auth_ext(ACCOUNT));
+    log_frames("margin", &send_and_read(&conn, margin_sub).await?);
+
+    // Demo 7: PING
+    info!("=== Demo 7: PING/PONG ===");
     log_frames("ping", &send_and_read(&conn, Frame::ping()).await?);
 
     info!("=== Demo complete ===");

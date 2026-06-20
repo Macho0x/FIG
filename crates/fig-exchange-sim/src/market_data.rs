@@ -39,8 +39,12 @@ pub enum SubscriptionKind {
     Quotes { symbol: String },
     Candles { symbol: String, interval: String },
     Trades { symbol: String },
+    AggTrades { symbol: String },
     Bbo { symbol: String },
     Ticker { symbol: String },
+    MiniTicker { symbol: Option<String> },
+    MarkPrice { symbol: String },
+    Liquidations,
 }
 
 #[derive(Debug, Clone)]
@@ -53,20 +57,32 @@ pub struct StreamSubscription {
 #[derive(Default)]
 pub struct MarketDataHub {
     trades: HashMap<String, Vec<PublicTrade>>,
+    agg_trades: HashMap<String, Vec<AggregateTrade>>,
     closed_candles: HashMap<(String, String), Vec<CandleBar>>,
     partial_candles: HashMap<(String, String), CandleBar>,
     last_bbo: HashMap<String, BestBidOffer>,
     tickers: HashMap<String, SymbolTicker>,
+    mini_tickers: HashMap<String, MiniTicker>,
+    mark_prices: HashMap<String, MarkPriceUpdate>,
+    liquidations: Vec<LiquidationTrade>,
     trade_seq: u64,
+    agg_seq: u64,
 }
 
 impl MarketDataHub {
-    pub fn on_trade(&mut self, symbol: &str, price: f64, qty: f64, side: Side) {
+    pub fn on_trade(
+        &mut self,
+        symbol: &str,
+        price: f64,
+        qty: f64,
+        side: Side,
+    ) -> Option<LiquidationTrade> {
         let ts = now_ns();
         self.trade_seq += 1;
+        let trade_id = format!("T-{}", self.trade_seq);
         let trade = PublicTrade {
             symbol: symbol.to_string(),
-            trade_id: format!("T-{}", self.trade_seq),
+            trade_id: trade_id.clone(),
             price: Price(price),
             qty: Quantity(qty),
             side: match side {
@@ -80,10 +96,47 @@ impl MarketDataHub {
             .or_default()
             .push(trade);
 
+        self.agg_seq += 1;
+        let agg = AggregateTrade {
+            symbol: symbol.to_string(),
+            agg_trade_id: format!("A-{}", self.agg_seq),
+            price: Price(price),
+            qty: Quantity(qty),
+            side: match side {
+                Side::Buy => Side::Buy,
+                _ => Side::Sell,
+            },
+            first_trade_id: trade_id.clone(),
+            last_trade_id: trade_id,
+            timestamp: ts,
+        };
+        self.agg_trades
+            .entry(symbol.to_string())
+            .or_default()
+            .push(agg);
+
         for interval in ["1m", "5m"] {
             self.update_candle(symbol, interval, price, qty, ts);
         }
         self.update_ticker(symbol, price, qty, ts);
+        self.update_mini_ticker(symbol, price, qty, ts);
+        self.update_mark_price(symbol, price, ts);
+
+        if qty >= 500.0 {
+            let liq = LiquidationTrade {
+                symbol: symbol.to_string(),
+                side: match side {
+                    Side::Buy => Side::Buy,
+                    _ => Side::Sell,
+                },
+                price: Price(price),
+                qty: Quantity(qty),
+                timestamp: ts,
+            };
+            self.liquidations.push(liq.clone());
+            return Some(liq);
+        }
+        None
     }
 
     fn update_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
@@ -115,6 +168,108 @@ impl MarketDataHub {
         };
         entry.timestamp = ts;
         entry.is_snapshot = Some(false);
+    }
+
+    fn update_mini_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
+        let entry = self
+            .mini_tickers
+            .entry(symbol.to_string())
+            .or_insert_with(|| MiniTicker {
+                symbol: symbol.to_string(),
+                last_price: Price(price),
+                volume: Quantity(0.0),
+                timestamp: ts,
+                is_snapshot: None,
+            });
+        entry.last_price = Price(price);
+        entry.volume = Quantity(entry.volume.0 + qty);
+        entry.timestamp = ts;
+        entry.is_snapshot = Some(false);
+    }
+
+    fn update_mark_price(&mut self, symbol: &str, price: f64, ts: i64) {
+        self.mark_prices.insert(
+            symbol.to_string(),
+            MarkPriceUpdate {
+                symbol: symbol.to_string(),
+                mark_price: Price(price * 1.0001),
+                index_price: Some(Price(price)),
+                funding_rate: Some(0.0001),
+                timestamp: ts,
+                is_snapshot: Some(false),
+            },
+        );
+    }
+
+    pub fn mark_price(&self, symbol: &str) -> MarkPriceUpdate {
+        self.mark_prices
+            .get(symbol)
+            .cloned()
+            .unwrap_or(MarkPriceUpdate {
+                symbol: symbol.to_string(),
+                mark_price: Price(0.0),
+                index_price: Some(Price(0.0)),
+                funding_rate: Some(0.0),
+                timestamp: now_ns(),
+                is_snapshot: Some(true),
+            })
+    }
+
+    pub fn all_mini_tickers(&self) -> AllMidsBatch {
+        AllMidsBatch {
+            tickers: self.mini_tickers.values().cloned().collect(),
+        }
+    }
+
+    pub fn mini_ticker(&self, symbol: &str) -> MiniTicker {
+        self.mini_tickers
+            .get(symbol)
+            .cloned()
+            .unwrap_or(MiniTicker {
+                symbol: symbol.to_string(),
+                last_price: Price(0.0),
+                volume: Quantity(0.0),
+                timestamp: now_ns(),
+                is_snapshot: Some(true),
+            })
+    }
+
+    pub fn query_agg_trades(
+        &self,
+        symbol: &str,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        limit: Option<u32>,
+    ) -> AggregateTradeBatch {
+        let mut trades = self.agg_trades.get(symbol).cloned().unwrap_or_default();
+        if let Some(st) = start_time {
+            trades.retain(|t| t.timestamp >= st);
+        }
+        if let Some(et) = end_time {
+            trades.retain(|t| t.timestamp <= et);
+        }
+        let limit = limit.unwrap_or(500) as usize;
+        let has_more = trades.len() > limit;
+        trades.truncate(limit);
+        AggregateTradeBatch {
+            symbol: symbol.to_string(),
+            trades,
+            has_more,
+            next_cursor: None,
+        }
+    }
+
+    pub fn last_agg_trade(&self, symbol: &str) -> Option<AggregateTrade> {
+        self.agg_trades.get(symbol).and_then(|t| t.last().cloned())
+    }
+
+    pub fn recent_liquidations(&self, limit: usize) -> Vec<LiquidationTrade> {
+        self.liquidations
+            .iter()
+            .rev()
+            .take(limit)
+            .cloned()
+            .collect()
     }
 
     pub fn ticker(&self, symbol: &str) -> Option<SymbolTicker> {
@@ -264,6 +419,12 @@ impl MarketDataHub {
 }
 
 pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<SubscriptionKind> {
+    if parse_liquidations_subscription(routing_key, channel_path) {
+        return Some(SubscriptionKind::Liquidations);
+    }
+    if let Some(symbol) = parse_mini_ticker_subscription(routing_key, channel_path) {
+        return Some(SubscriptionKind::MiniTicker { symbol });
+    }
     let path = if !channel_path.is_empty() {
         channel_path.to_string()
     } else {
@@ -281,10 +442,60 @@ pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<Su
             Some(SubscriptionKind::Candles { symbol, interval })
         }
         Some("trades") => Some(SubscriptionKind::Trades { symbol }),
+        Some("aggtrades") => Some(SubscriptionKind::AggTrades { symbol }),
         Some("bbo") => Some(SubscriptionKind::Bbo { symbol }),
         Some("ticker") => Some(SubscriptionKind::Ticker { symbol }),
+        Some("mark") => Some(SubscriptionKind::MarkPrice { symbol }),
         _ => None,
     }
+}
+
+pub fn parse_all_mids_path(path: &str) -> bool {
+    path == "marketdata/ticker/all"
+}
+
+pub fn parse_mark_query_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "mark" {
+        return Some(parts[1].to_string());
+    }
+    None
+}
+
+pub fn parse_agg_trade_query_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "aggtrades" {
+        return Some(parts[1].to_string());
+    }
+    None
+}
+
+pub fn parse_liquidations_subscription(routing_key: &str, channel_path: &str) -> bool {
+    let path = if !channel_path.is_empty() {
+        channel_path.to_string()
+    } else {
+        routing_key.replace('.', "/")
+    };
+    path == "marketdata/liquidations"
+}
+
+pub fn parse_mini_ticker_subscription(
+    routing_key: &str,
+    channel_path: &str,
+) -> Option<Option<String>> {
+    let path = if !channel_path.is_empty() {
+        channel_path.to_string()
+    } else {
+        routing_key.replace('.', "/")
+    };
+    if path == "marketdata/ticker/all" {
+        return Some(None);
+    }
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "miniticker" {
+        return Some(Some(parts[1].to_string()));
+    }
+    None
 }
 
 pub fn parse_ticker_query_path(path: &str) -> Option<String> {

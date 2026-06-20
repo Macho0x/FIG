@@ -8,8 +8,9 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    schema_id, CandleBarRequest, FillHistoryRequest, FundingHistoryRequest, LedgerHistoryRequest,
-    OpenOrdersRequest, OrderBookRequest, OrderHistoryRequest, TradeHistoryRequest,
+    schema_id, AggregateTradeRequest, AllMidsRequest, CandleBarRequest, FillHistoryRequest,
+    FundingHistoryRequest, LedgerHistoryRequest, MarkPriceRequest, OpenOrdersRequest,
+    OrderBookRequest, OrderHistoryRequest, TradeHistoryRequest,
 };
 
 use crate::rest::{HttpRequest, RestError, RestResult};
@@ -95,6 +96,32 @@ fn build_query_payload(
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if let Some(symbol) = parse_agg_trade_path(channel_path) {
+        let req = AggregateTradeRequest {
+            symbol,
+            start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
+            end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
+            limit: parse_limit_param(query),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if channel_path == "marketdata/ticker/all" {
+        return Ok(Some(
+            encode_cbor(&AllMidsRequest {})
+                .map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if let Some(symbol) = parse_mark_path(channel_path) {
+        return Ok(Some(
+            encode_cbor(&MarkPriceRequest { symbol })
+                .map_err(|e| RestError::CborEncodeError(e.to_string()))?,
         ));
     }
 
@@ -225,6 +252,24 @@ fn parse_trade_path(path: &str) -> Option<String> {
     }
 }
 
+fn parse_agg_trade_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "aggtrades" {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_mark_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "mark" {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
 fn parse_query_string(path: &str) -> Vec<(String, String)> {
     let Some(qs) = path.split('?').nth(1) else {
         return Vec::new();
@@ -322,11 +367,15 @@ mod tests {
         let paths = [
             "/marketdata/BTC/ticker",
             "/marketdata/BTC/trades",
+            "/marketdata/BTC/aggtrades",
+            "/marketdata/BTC/mark",
+            "/marketdata/ticker/all",
             "/accounts/DEMO",
             "/accounts/DEMO/fills",
             "/accounts/DEMO/funding",
             "/accounts/DEMO/ledger",
             "/accounts/DEMO/positions",
+            "/accounts/DEMO/margin",
             "/trading/accounts/DEMO/orders/open",
             "/trading/accounts/DEMO/orders",
             "/marketdata/BTC/book",

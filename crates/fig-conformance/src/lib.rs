@@ -13,8 +13,9 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    BalanceSnapshot, CandleBar, CapabilitiesResponse, MarketDataSnapshot, NewOrderSingle,
-    OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price, Quantity, Side, TimeInForce,
+    AggregateTrade, BalanceSnapshot, CandleBar, CapabilitiesResponse, MarkPriceUpdate,
+    MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrderBookSnapshot,
+    OrderHistoryRequest, OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -81,6 +82,17 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
             "OrderHistoryRequest" => encode_cbor(&sample_order_history_request())
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OrderBookSnapshot" => encode_cbor(&sample_order_book_snapshot())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "AggregateTrade" => {
+                encode_cbor(&sample_aggregate_trade()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "MiniTicker" => {
+                encode_cbor(&sample_mini_ticker()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "MarkPriceUpdate" => {
+                encode_cbor(&sample_mark_price_update()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
             other => return Err(anyhow!("unsupported cbor message_type: {other}")),
         };
     assert_hex(&vector.expected_hex, &encoded)?;
@@ -161,6 +173,57 @@ fn sample_order_history_request() -> OrderHistoryRequest {
         start_time: None,
         end_time: None,
         limit: Some(100),
+    }
+}
+
+fn sample_order_book_snapshot() -> OrderBookSnapshot {
+    use fig_core::messages::PriceLevel;
+    OrderBookSnapshot {
+        symbol: "AAPL".to_string(),
+        exchange: "SIM".to_string(),
+        bids: vec![PriceLevel {
+            price: Price(100.0),
+            qty: Quantity(5.0),
+            order_count: Some(1),
+        }],
+        asks: vec![],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(42),
+        is_snapshot: Some(true),
+    }
+}
+
+fn sample_aggregate_trade() -> AggregateTrade {
+    AggregateTrade {
+        symbol: "AAPL".to_string(),
+        agg_trade_id: "A-1".to_string(),
+        price: Price(100.0),
+        qty: Quantity(5.0),
+        side: Side::Buy,
+        first_trade_id: "T-1".to_string(),
+        last_trade_id: "T-1".to_string(),
+        timestamp: 1_700_000_000_000_000_000,
+    }
+}
+
+fn sample_mini_ticker() -> MiniTicker {
+    MiniTicker {
+        symbol: "AAPL".to_string(),
+        last_price: Price(100.0),
+        volume: Quantity(50.0),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    }
+}
+
+fn sample_mark_price_update() -> MarkPriceUpdate {
+    MarkPriceUpdate {
+        symbol: "AAPL".to_string(),
+        mark_price: Price(100.01),
+        index_price: Some(Price(100.0)),
+        funding_rate: Some(0.0001),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
     }
 }
 

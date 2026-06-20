@@ -116,6 +116,38 @@ schema trading.orders v1.0.0 {
         unrealized_pnl: decimal64(precision: 2) @5
     }
 
+    message MarginUpdate {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        summary: MarginSummary @2
+        is_snapshot: bool @3 optional
+    }
+
+    message UserLiquidation {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2
+        qty: Quantity @3
+        price: Price @4
+        timestamp: TradeTimestamp @5
+    }
+
+    message OrderListStatus {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        list_id: string(max_len: 32) @2
+        status: enum { executing, all_done, reject } @3
+        symbol: Symbol @4 optional
+    }
+
+    type PageInfo {
+        has_more: bool
+        next_cursor: string(max_len: 64) optional
+    }
+
     message FillHistoryRequest {
         channel_type: request_response
 

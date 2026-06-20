@@ -9,8 +9,10 @@ pub enum AccountSubscriptionKind {
     Executions,
     Balances,
     Positions,
+    Margin,
     Funding,
     Ledger,
+    Liquidations,
 }
 
 #[derive(Debug, Clone)]
@@ -96,13 +98,27 @@ impl SimAccount {
         }
     }
 
-    pub fn record_fill(&mut self, report: ExecutionReport) -> BalanceUpdate {
+    pub fn margin_update(&self, is_snapshot: bool) -> MarginUpdate {
+        MarginUpdate {
+            account: self.account.clone(),
+            summary: self.margin_summary(),
+            is_snapshot: Some(is_snapshot),
+        }
+    }
+
+    pub fn record_fill(
+        &mut self,
+        report: ExecutionReport,
+    ) -> (
+        BalanceUpdate,
+        Option<PositionUpdate>,
+        Option<UserLiquidation>,
+    ) {
         self.fills.push(report.clone());
-        let delta = report
-            .last_qty
-            .as_ref()
-            .map(|q| q.0 * report.last_price.as_ref().map(|p| p.0).unwrap_or(0.0))
-            .unwrap_or(0.0)
+        let fill_qty = report.last_qty.as_ref().map(|q| q.0).unwrap_or(0.0);
+        let fill_price = report.last_price.as_ref().map(|p| p.0).unwrap_or(0.0);
+        let delta = fill_qty
+            * fill_price
             * match report.side {
                 Side::Buy => -1.0,
                 _ => 1.0,
@@ -113,14 +129,73 @@ impl SimAccount {
             entry.total = self.balance;
             entry.available = self.buying_power;
         }
-        BalanceUpdate {
+
+        let position_update = self.update_position(&report);
+
+        let balance_update = BalanceUpdate {
             account: self.account.clone(),
             asset: "USD".to_string(),
             delta,
             total: self.balance,
             available: self.buying_power,
             reason: BalanceUpdateReason::Trade,
+        };
+
+        let user_liquidation = if self.balance < 0.0 && fill_qty > 0.0 {
+            Some(UserLiquidation {
+                account: self.account.clone(),
+                symbol: report.symbol.clone(),
+                qty: Quantity(fill_qty),
+                price: Price(fill_price),
+                timestamp: report.transact_time,
+            })
+        } else {
+            None
+        };
+
+        (balance_update, position_update, user_liquidation)
+    }
+
+    fn update_position(&mut self, report: &ExecutionReport) -> Option<PositionUpdate> {
+        let qty = report.last_qty.as_ref()?.0;
+        if qty <= 0.0 {
+            return None;
         }
+        let price = report.last_price.as_ref().map(|p| p.0).unwrap_or(0.0);
+        let entry = self
+            .positions
+            .entry(report.symbol.clone())
+            .or_insert_with(|| PositionEntry {
+                symbol: report.symbol.clone(),
+                qty: Quantity(0.0),
+                entry_price: Price(price),
+                unrealized_pnl: 0.0,
+            });
+        let signed = match report.side {
+            Side::Buy => qty,
+            _ => -qty,
+        };
+        let new_qty = entry.qty.0 + signed;
+        if new_qty.abs() < f64::EPSILON {
+            self.positions.remove(&report.symbol);
+            return Some(PositionUpdate {
+                account: self.account.clone(),
+                symbol: report.symbol.clone(),
+                qty: Quantity(0.0),
+                entry_price: Price(price),
+                unrealized_pnl: 0.0,
+            });
+        }
+        entry.qty = Quantity(new_qty);
+        entry.entry_price = Price(price);
+        entry.unrealized_pnl = (price - entry.entry_price.0) * new_qty;
+        Some(PositionUpdate {
+            account: self.account.clone(),
+            symbol: report.symbol.clone(),
+            qty: entry.qty.clone(),
+            entry_price: entry.entry_price.clone(),
+            unrealized_pnl: entry.unrealized_pnl,
+        })
     }
 
     pub fn record_funding(&mut self, payment: FundingPayment) {
@@ -249,6 +324,14 @@ pub fn parse_account_subscription(
     if path.starts_with("accounts/") && path.ends_with("/positions") {
         let account = path.split('/').nth(1)?.to_string();
         return Some((account, AccountSubscriptionKind::Positions));
+    }
+    if path.starts_with("accounts/") && path.ends_with("/margin") {
+        let account = path.split('/').nth(1)?.to_string();
+        return Some((account, AccountSubscriptionKind::Margin));
+    }
+    if path.starts_with("accounts/") && path.ends_with("/liquidations") {
+        let account = path.split('/').nth(1)?.to_string();
+        return Some((account, AccountSubscriptionKind::Liquidations));
     }
     if path.starts_with("accounts/") && path.ends_with("/funding") {
         let account = path.split('/').nth(1)?.to_string();
