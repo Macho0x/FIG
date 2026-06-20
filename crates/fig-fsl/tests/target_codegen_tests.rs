@@ -68,6 +68,8 @@ fn test_cpp_codegen_orders() {
     assert!(code.contains("struct NewOrderSingle"));
     assert!(code.contains("struct CancelRequest"));
     assert!(code.contains("struct ExecutionReport"));
+    assert!(code.contains("struct PriceLevel"));
+    assert!(code.contains("enum class Side"));
     assert!(code.contains("cl_ord_id"));
     assert!(code.contains("#include <string>"));
 }
@@ -80,6 +82,8 @@ fn test_csharp_codegen_orders() {
     assert!(code.contains("public class NewOrderSingle"));
     assert!(code.contains("public class CancelRequest"));
     assert!(code.contains("public class ExecutionReport"));
+    assert!(code.contains("public class PriceLevel"));
+    assert!(code.contains("public enum Side"));
     assert!(code.contains("namespace Generated"));
     assert!(code.contains("ClOrdId"));
 }

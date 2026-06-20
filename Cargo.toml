@@ -52,6 +52,7 @@ sha2 = "0.10"
 base64 = "0.22"
 # Internal crates
 fig-core = { path = "crates/fig-core" }
+fig-conformance = { path = "crates/fig-conformance" }
 fig-gateways = { path = "crates/fig-gateways" }
 fig-ffi = { path = "crates/fig-ffi" }
 hex = "0.4"

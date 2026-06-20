@@ -13,8 +13,8 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    BalanceSnapshot, CandleBar, CapabilitiesResponse, NewOrderSingle, OpenOrdersSnapshot,
-    OrderType, Price, Quantity, Side, TimeInForce,
+    BalanceSnapshot, CandleBar, CapabilitiesResponse, MarketDataSnapshot, NewOrderSingle,
+    OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -77,6 +77,10 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
             "OpenOrdersSnapshot" => encode_cbor(&sample_open_orders_snapshot())
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "MarketDataSnapshot" => encode_cbor(&sample_market_data_snapshot())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OrderHistoryRequest" => encode_cbor(&sample_order_history_request())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
             other => return Err(anyhow!("unsupported cbor message_type: {other}")),
         };
     assert_hex(&vector.expected_hex, &encoded)?;
@@ -130,6 +134,33 @@ fn sample_open_orders_snapshot() -> OpenOrdersSnapshot {
         account: "DEMO".to_string(),
         orders: vec![],
         is_snapshot: Some(true),
+    }
+}
+
+fn sample_market_data_snapshot() -> MarketDataSnapshot {
+    use fig_core::messages::PriceLevel;
+    MarketDataSnapshot {
+        symbol: "AAPL".to_string(),
+        exchange: "SIM".to_string(),
+        bids: vec![PriceLevel {
+            price: Price(100.0),
+            qty: Quantity(5.0),
+            order_count: Some(1),
+        }],
+        asks: vec![],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(42),
+        is_snapshot: Some(true),
+    }
+}
+
+fn sample_order_history_request() -> OrderHistoryRequest {
+    OrderHistoryRequest {
+        account: "DEMO".to_string(),
+        symbol: None,
+        start_time: None,
+        end_time: None,
+        limit: Some(100),
     }
 }
 
@@ -208,6 +239,7 @@ fn parse_extension(spec: &ExtensionSpec) -> Result<Extension> {
         "ContentType" => ExtensionTag::ContentType,
         "Method" => ExtensionTag::Method,
         "RequestUri" => ExtensionTag::RequestUri,
+        "RoutingKey" => ExtensionTag::RoutingKey,
         other => return Err(anyhow!("unsupported extension tag: {other}")),
     };
     Ok(match &spec.value {

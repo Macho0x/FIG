@@ -217,11 +217,43 @@ impl CppCodegen {
         out.push_str("#include <string>\n");
         out.push_str("#include <vector>\n\n");
 
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("enum class {name} : uint8_t {{\n"));
+            for (i, variant) in variants.iter().enumerate() {
+                out.push_str(&format!("    {} = {},\n", pascal_case(variant), i + 1));
+            }
+            out.push_str("};\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("// Struct: {}\n", td.name));
+                out.push_str(&format!("struct {} {{\n", td.name));
+                for field in fields {
+                    let cpp_type = cpp_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!("    {} {};\n", cpp_type, field.name));
+                }
+                out.push_str("};\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             out.push_str(&format!("// Message: {}\n", msg.name));
             out.push_str(&format!("struct {} {{\n", msg.name));
             for field in &msg.fields {
-                let cpp_type = cpp_field_type(&field.field_type, schema, &msg.name, field.optional);
+                let cpp_type = cpp_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 out.push_str(&format!("    {} {};\n", cpp_type, field.name));
             }
             out.push_str("};\n\n");
@@ -242,13 +274,50 @@ impl CsharpCodegen {
         out.push_str("using System.Collections.Generic;\n\n");
         out.push_str("namespace Generated\n{\n");
 
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("    public enum {}\n", name));
+            out.push_str("    {\n");
+            for (i, variant) in variants.iter().enumerate() {
+                out.push_str(&format!("        {} = {},\n", pascal_case(variant), i + 1));
+            }
+            out.push_str("    }\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("    // Struct: {}\n", td.name));
+                out.push_str(&format!("    public class {}\n", td.name));
+                out.push_str("    {\n");
+                for field in fields {
+                    let cs_type = csharp_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    let prop_name = snake_to_camel(&field.name);
+                    out.push_str(&format!(
+                        "        public {} {} {{ get; set; }}\n",
+                        cs_type, prop_name
+                    ));
+                }
+                out.push_str("    }\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             out.push_str(&format!("    // Message: {}\n", msg.name));
             out.push_str(&format!("    public class {}\n", msg.name));
             out.push_str("    {\n");
             for field in &msg.fields {
-                let cs_type =
-                    csharp_field_type(&field.field_type, schema, &msg.name, field.optional);
+                let cs_type = csharp_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 let prop_name = snake_to_camel(&field.name);
                 out.push_str(&format!(
                     "        public {} {} {{ get; set; }}\n",
@@ -552,10 +621,22 @@ fn cpp_base_type(bt: &BaseType) -> String {
     }
 }
 
-fn cpp_field_type(ft: &FieldType, schema: &Schema, msg_name: &str, optional: bool) -> String {
+fn cpp_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
     let base = match ft {
         FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
                 cpp_base_type(&bt)
             } else {
                 match name.as_str() {
@@ -565,14 +646,14 @@ fn cpp_field_type(ft: &FieldType, schema: &Schema, msg_name: &str, optional: boo
                 }
             }
         }
-        FieldType::Enum(_) => "uint8_t".to_string(),
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
         FieldType::List(inner) => {
             format!(
                 "std::vector<{}>",
-                cpp_field_type(inner, schema, msg_name, false)
+                cpp_field_type_named(inner, schema, parent, false, field_name)
             )
         }
-        FieldType::InlineStruct(_) => format!("{}{}", msg_name, pascal_case("inline")),
+        FieldType::InlineStruct(_) => parent.to_string(),
         FieldType::InlineBase(bt, _) => cpp_base_type(bt),
     };
     if optional {
@@ -601,10 +682,22 @@ fn csharp_base_type(bt: &BaseType) -> String {
     }
 }
 
-fn csharp_field_type(ft: &FieldType, schema: &Schema, msg_name: &str, optional: bool) -> String {
+fn csharp_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
     let base = match ft {
         FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
                 csharp_base_type(&bt)
             } else {
                 match name.as_str() {
@@ -614,14 +707,14 @@ fn csharp_field_type(ft: &FieldType, schema: &Schema, msg_name: &str, optional: 
                 }
             }
         }
-        FieldType::Enum(_) => "int".to_string(),
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
         FieldType::List(inner) => {
             format!(
                 "List<{}>",
-                csharp_field_type(inner, schema, msg_name, false)
+                csharp_field_type_named(inner, schema, parent, false, field_name)
             )
         }
-        FieldType::InlineStruct(_) => format!("{}{}", msg_name, pascal_case("inline")),
+        FieldType::InlineStruct(_) => parent.to_string(),
         FieldType::InlineBase(bt, _) => csharp_base_type(bt),
     };
     if optional {

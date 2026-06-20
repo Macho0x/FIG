@@ -1142,8 +1142,7 @@ impl OrderHistoryBatch {
 
 /// Message: CapabilitiesRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CapabilitiesRequest {
-}
+pub struct CapabilitiesRequest {}
 
 impl CapabilitiesRequest {
     /// Channel type for this message

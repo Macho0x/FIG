@@ -62,13 +62,7 @@ fn run_codegen(check: bool) -> Result<()> {
 
 fn run_check_gateway() -> Result<()> {
     let status = Command::new("cargo")
-        .args([
-            "test",
-            "-p",
-            "fig-gateways",
-            "--lib",
-            "catalog",
-        ])
+        .args(["test", "-p", "fig-gateways", "--lib", "catalog"])
         .status()?;
     if !status.success() {
         bail!("gateway catalog completeness check failed");

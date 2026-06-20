@@ -120,6 +120,108 @@
       "channel": null
     },
     {
+      "id": "cbor.market_data_snapshot.demo",
+      "category": "cbor",
+      "description": "MarketDataSnapshot CBOR with sequence",
+      "message_type": "MarketDataSnapshot",
+      "expected_hex": "a76673796d626f6c644141504c6865786368616e67656353494d646269647381a3657072696365f9564063717479f945006b6f726465725f636f756e74016461736b73806974696d657374616d701b17979cfe362a00006873657175656e6365182a6b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.order_history_request.demo",
+      "category": "cbor",
+      "description": "OrderHistoryRequest CBOR",
+      "message_type": "OrderHistoryRequest",
+      "expected_hex": "a2676163636f756e746444454d4f656c696d69741864",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "frame.request.capabilities",
+      "category": "frame",
+      "description": "GET capabilities discovery path",
+      "message_type": "CapabilitiesRequest",
+      "expected_hex": "00000033010100030000000102010000001700182e77656c6c2d6b6e6f776e2f6361706162696c6974696573000d0003474554",
+      "frame": {
+        "frame_type": "Request",
+        "channel_id": 3,
+        "stream_seq": 1,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": ".well-known/capabilities"
+          },
+          {
+            "tag": "Method",
+            "value": "GET"
+          }
+        ],
+        "payload_hex": null
+      },
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "frame.request.open_orders",
+      "category": "frame",
+      "description": "GET open orders query",
+      "message_type": "OpenOrdersRequest",
+      "expected_hex": "0000005e0101000400000001030100000017002174726164696e672f6163636f756e74732f44454d4f2f6f72646572732f6f70656e000d0003474554000300106170706c69636174696f6e2f63626f72a1676163636f756e746444454d4f",
+      "frame": {
+        "frame_type": "Request",
+        "channel_id": 4,
+        "stream_seq": 1,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": "trading/accounts/DEMO/orders/open"
+          },
+          {
+            "tag": "Method",
+            "value": "GET"
+          },
+          {
+            "tag": "ContentType",
+            "value": "application/cbor"
+          }
+        ],
+        "payload_hex": "a1676163636f756e746444454d4f"
+      },
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "frame.subscribe.quotes",
+      "category": "frame",
+      "description": "SUBSCRIBE to order book quotes",
+      "message_type": "",
+      "expected_hex": "00000044080100010000000102010000001700166d61726b6574646174612f4141504c2f71756f746573000a00166d61726b6574646174612e4141504c2e71756f746573",
+      "frame": {
+        "frame_type": "Subscribe",
+        "channel_id": 1,
+        "stream_seq": 1,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": "marketdata/AAPL/quotes"
+          },
+          {
+            "tag": "RoutingKey",
+            "value": "marketdata.AAPL.quotes"
+          }
+        ],
+        "payload_hex": null
+      },
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "frame.request.candle_bar_query",
       "category": "frame",
       "description": "GET CandleBarRequest on marketdata path",

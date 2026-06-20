@@ -25,6 +25,10 @@ jobs:
         run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test --workspace --all-features
       - name: Conformance vectors
         run: cargo run -p fig-conformance --bin fig-conformance
+      - name: Python binding conformance
+        run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python binding_conformance
+      - name: Build fig-cli
+        run: cargo build -p fig-cli --all-features
       - name: Codegen drift check
         run: cargo run -p xtask -- codegen --check
       - name: Gateway catalog completeness

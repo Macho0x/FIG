@@ -12,8 +12,9 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest, CapabilitiesResponse,
-    CapabilityPath, CapabilityPathPattern, NewOrderSingle, OpenOrdersSnapshot, OrderType, Price,
-    Quantity, Side, TimeInForce,
+    CapabilityPath, CapabilityPathPattern, MarketDataSnapshot, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price, PriceLevel, Quantity, Side,
+    TimeInForce,
 };
 use fig_core::sbe::encode_new_order_single;
 
@@ -141,6 +142,62 @@ fn build_suite() -> Result<ConformanceSuite> {
         orders: vec![],
         is_snapshot: Some(true),
     };
+    let md_snap = MarketDataSnapshot {
+        symbol: "AAPL".to_string(),
+        exchange: "SIM".to_string(),
+        bids: vec![PriceLevel {
+            price: Price(100.0),
+            qty: Quantity(5.0),
+            order_count: Some(1),
+        }],
+        asks: vec![],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(42),
+        is_snapshot: Some(true),
+    };
+    let order_hist_req = OrderHistoryRequest {
+        account: "DEMO".to_string(),
+        symbol: None,
+        start_time: None,
+        end_time: None,
+        limit: Some(100),
+    };
+    let open_orders_req = OpenOrdersRequest {
+        account: "DEMO".to_string(),
+        symbol: None,
+    };
+    let caps_query_frame = Frame::new(FrameType::Request, 3)
+        .with_seq(1)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            ".well-known/capabilities",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    let open_orders_frame = Frame::new(FrameType::Request, 4)
+        .with_seq(1)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/DEMO/orders/open",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/cbor",
+        ))
+        .with_payload(encode_cbor(&open_orders_req)?);
+    let subscribe_frame = Frame::new(FrameType::Subscribe, 1)
+        .with_seq(1)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/quotes",
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            "marketdata.AAPL.quotes",
+        ));
 
     Ok(ConformanceSuite {
         version: 1,
@@ -233,6 +290,110 @@ fn build_suite() -> Result<ConformanceSuite> {
                 message_type: "OpenOrdersSnapshot".into(),
                 expected_hex: hex::encode(encode_cbor(&open_orders)?),
                 frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.market_data_snapshot.demo".into(),
+                category: "cbor".into(),
+                description: "MarketDataSnapshot CBOR with sequence".into(),
+                message_type: "MarketDataSnapshot".into(),
+                expected_hex: hex::encode(encode_cbor(&md_snap)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.order_history_request.demo".into(),
+                category: "cbor".into(),
+                description: "OrderHistoryRequest CBOR".into(),
+                message_type: "OrderHistoryRequest".into(),
+                expected_hex: hex::encode(encode_cbor(&order_hist_req)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "frame.request.capabilities".into(),
+                category: "frame".into(),
+                description: "GET capabilities discovery path".into(),
+                message_type: "CapabilitiesRequest".into(),
+                expected_hex: hex::encode(caps_query_frame.encode()?),
+                frame: Some(FrameSpec {
+                    frame_type: "Request".into(),
+                    channel_id: 3,
+                    stream_seq: 1,
+                    schema_id: 0x01,
+                    extensions: vec![
+                        ExtensionSpec {
+                            tag: "ChannelPath".into(),
+                            value: ExtensionValueSpec::Text(".well-known/capabilities".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "Method".into(),
+                            value: ExtensionValueSpec::Text("GET".into()),
+                        },
+                    ],
+                    payload_hex: None,
+                }),
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "frame.request.open_orders".into(),
+                category: "frame".into(),
+                description: "GET open orders query".into(),
+                message_type: "OpenOrdersRequest".into(),
+                expected_hex: hex::encode(open_orders_frame.encode()?),
+                frame: Some(FrameSpec {
+                    frame_type: "Request".into(),
+                    channel_id: 4,
+                    stream_seq: 1,
+                    schema_id: 0x01,
+                    extensions: vec![
+                        ExtensionSpec {
+                            tag: "ChannelPath".into(),
+                            value: ExtensionValueSpec::Text(
+                                "trading/accounts/DEMO/orders/open".into(),
+                            ),
+                        },
+                        ExtensionSpec {
+                            tag: "Method".into(),
+                            value: ExtensionValueSpec::Text("GET".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "ContentType".into(),
+                            value: ExtensionValueSpec::Text("application/cbor".into()),
+                        },
+                    ],
+                    payload_hex: Some(hex::encode(encode_cbor(&open_orders_req)?)),
+                }),
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "frame.subscribe.quotes".into(),
+                category: "frame".into(),
+                description: "SUBSCRIBE to order book quotes".into(),
+                message_type: String::new(),
+                expected_hex: hex::encode(subscribe_frame.encode()?),
+                frame: Some(FrameSpec {
+                    frame_type: "Subscribe".into(),
+                    channel_id: 1,
+                    stream_seq: 1,
+                    schema_id: 0x01,
+                    extensions: vec![
+                        ExtensionSpec {
+                            tag: "ChannelPath".into(),
+                            value: ExtensionValueSpec::Text("marketdata/AAPL/quotes".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "RoutingKey".into(),
+                            value: ExtensionValueSpec::Text("marketdata.AAPL.quotes".into()),
+                        },
+                    ],
+                    payload_hex: None,
+                }),
                 payload: None,
                 channel: None,
             },

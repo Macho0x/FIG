@@ -260,10 +260,10 @@ All medium-priority items complete ✅ (§1–15 Rust core)
 All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
-- **§16** — Multi-language SDK parity (FFI-first; base conformance vectors landed)
-- **§17** — Broker ↔ client API parity — **core complete** (schema split, capabilities, open orders, order history, book sequence, UNSUBSCRIBE, session resume, request_stream, gateway CI gate); remaining: agg trades, §16 binding tests
+- **§16** — Multi-language SDK parity — **core landed** (§17 vectors, C++/C# enum/nested codegen, expanded `fig-ffi`, `fig-python` reference SDK + CI binding tests, Go/C++/C# thin wrappers)
+- **§17** — Broker ↔ client API parity — **core complete** (schema split, capabilities, open orders, order history, book sequence, UNSUBSCRIBE, session resume, request_stream, gateway CI gate); remaining: agg trades
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — in progress. Broker ↔ client API parity (§17) — core complete; remaining advanced rows (agg trades, mini ticker) and §16 binding tests.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — core landed (Python reference + FFI + thin wrappers). Broker ↔ client API parity (§17) — core complete; remaining advanced rows (agg trades, mini ticker).**
 
 ---
 
@@ -377,14 +377,14 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 |---|---|---|---|
 | ⬜ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; staticlib + cdylib |
 | ⬜ | FFI API surface spec | High | `fig_client_connect`, `fig_frame_encode/decode`, send/recv/close, … |
-| ⬜ | `fig-python` (PyO3 / maturin) | High | Reference SDK; `pip install fig` target |
+| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe`), binding conformance |
 | ⬜ | `fig-csharp` (P/Invoke) | Medium | Common in trading desks |
 | ⬜ | `fig-go` (cgo) | Medium | cgo wrapper over `fig-ffi` |
 | ⬜ | `fig-cpp` (header + link staticlib) | Medium | Low-latency client path |
 | ⬜ | `fig-ocaml` (ctypes) | Low | ctypes binding over `fig-ffi` |
 | ⬜ | `fig-zig` (`@cImport fig.h`) | Low | Comptime-friendly thin wrapper |
 | ⬜ | TypeScript / Node native addon or WASM | Medium | Browser → gateway; Node → addon or WASM build of `fig-core` |
-| ⬜ | Binding conformance tests | High | Each binding passes §16.1 vectors |
+| ✅ | Binding conformance tests | High | Python binding runs §16.1 + §17 vectors in CI |
 
 High-level client API (all bindings):
 
@@ -856,7 +856,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | 🔶 | E2E: native historical REQUEST suite | High | `test_ticker_query` + query handlers; candle/fill history E2E pending |
 | ⬜ | E2E: gateway REST GET round-trip | High | `rest_query` unit tests only |
 | ⬜ | E2E: gateway WS round-trip | Medium | WS listener + `--fig-backend`; no CI E2E yet |
-| ⬜ | §16 binding tests for new types | Medium | Python/FFI first |
+| ⬜ | §16 binding tests for new types | Medium | Extend to Go/C#/C++ compile smoke |
 
 ---
 
