@@ -96,6 +96,9 @@ fn make_order(
         expire_time: None,
         account: Some("TEST".to_string()),
         strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
     }
 }
 

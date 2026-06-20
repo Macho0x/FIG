@@ -111,12 +111,13 @@ impl MatchingEngine {
     }
 
     fn available_liquidity(&mut self, order: &NewOrderSingle) -> f64 {
+        let order_type = Self::effective_match_type(&order.order_type);
         let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
         let book = self.book_for(&order.symbol);
         let opposite_side = if is_buy { &book.asks } else { &book.bids };
         let mut available = 0.0;
         for level in opposite_side.levels() {
-            if order.order_type == OrderType::Limit || order.order_type == OrderType::StopLimit {
+            if order_type == OrderType::Limit || order_type == OrderType::StopLimit {
                 if is_buy && level.price.0 > order.price.as_ref().map_or(f64::MAX, |p| p.0) {
                     break;
                 }
@@ -195,6 +196,15 @@ impl MatchingEngine {
         result
     }
 
+    fn effective_match_type(order_type: &OrderType) -> OrderType {
+        match order_type {
+            OrderType::MarketOnClose => OrderType::Market,
+            OrderType::LimitOnClose => OrderType::Limit,
+            OrderType::Pegged => OrderType::Limit,
+            other => other.clone(),
+        }
+    }
+
     fn process_new_order_inner(&mut self, order: &NewOrderSingle, allow_stop_rest: bool) -> MatchResult {
         if let Some(reason) = self.validate_order(order) {
             return MatchResult {
@@ -231,8 +241,12 @@ impl MatchingEngine {
             }
         }
 
+        let match_type = Self::effective_match_type(&order.order_type);
+        let mut match_order = order.clone();
+        match_order.order_type = match_type;
+
         let mut fills = Vec::new();
-        let mut remaining_qty = order.order_qty.0;
+        let mut remaining_qty = match_order.order_qty.0;
         let mut cum_qty = 0.0;
         let mut total_value = 0.0;
 
@@ -253,7 +267,9 @@ impl MatchingEngine {
                 }
 
                 // For limit orders, check if the price crosses
-                if order.order_type == OrderType::Limit || order.order_type == OrderType::StopLimit {
+                if match_order.order_type == OrderType::Limit
+                    || match_order.order_type == OrderType::StopLimit
+                {
                     if is_buy && level.price.0 > order.price.as_ref().map_or(f64::MAX, |p| p.0) {
                         break;
                     }
@@ -328,7 +344,7 @@ impl MatchingEngine {
         }
 
         let can_rest = remaining_qty > 0.0
-            && order.order_type == OrderType::Limit
+            && match_order.order_type == OrderType::Limit
             && !matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok);
 
         // If there's remaining qty and it's a limit order, rest it on the book
@@ -358,7 +374,7 @@ impl MatchingEngine {
         let reject_reason = if fills.is_empty() && resting_order.is_none() {
             if matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok) {
                 Some("No liquidity".to_string())
-            } else if matches!(order.order_type, OrderType::Market) {
+            } else if matches!(match_order.order_type, OrderType::Market) {
                 Some("No liquidity".to_string())
             } else {
                 None
@@ -443,6 +459,9 @@ impl MatchingEngine {
             expire_time: None,
             account: old_order.as_ref().and_then(|o| o.account.clone()),
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         self.process_new_order(&new_order)
@@ -487,6 +506,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         }
     }
 
@@ -503,6 +525,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         }
     }
 

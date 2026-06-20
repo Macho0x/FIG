@@ -15,7 +15,7 @@
 
 use crate::messages::{
     CancelRequest, ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price,
-    Quantity, Side, TimeInForce,
+    Quantity, SecurityIdSource, Side, TimeInForce,
 };
 
 // ─── Error Types ─────────────────────────────────────────────────
@@ -291,6 +291,9 @@ fn order_type_to_u8(ot: &OrderType) -> u8 {
         OrderType::Limit => 2,
         OrderType::Stop => 3,
         OrderType::StopLimit => 4,
+        OrderType::MarketOnClose => 5,
+        OrderType::LimitOnClose => 6,
+        OrderType::Pegged => 7,
     }
 }
 
@@ -300,8 +303,35 @@ fn order_type_from_u8(v: u8) -> Result<OrderType, SbeError> {
         2 => Ok(OrderType::Limit),
         3 => Ok(OrderType::Stop),
         4 => Ok(OrderType::StopLimit),
+        5 => Ok(OrderType::MarketOnClose),
+        6 => Ok(OrderType::LimitOnClose),
+        7 => Ok(OrderType::Pegged),
         _ => Err(SbeError::InvalidEnumValue {
             field: "order_type",
+            value: v,
+        }),
+    }
+}
+
+fn security_id_source_to_u8(source: &SecurityIdSource) -> u8 {
+    match source {
+        SecurityIdSource::Cusip => 1,
+        SecurityIdSource::Sedol => 2,
+        SecurityIdSource::Isin => 4,
+        SecurityIdSource::Ric => 5,
+        SecurityIdSource::ExchangeSymbol => 8,
+    }
+}
+
+fn security_id_source_from_u8(v: u8) -> Result<SecurityIdSource, SbeError> {
+    match v {
+        1 => Ok(SecurityIdSource::Cusip),
+        2 => Ok(SecurityIdSource::Sedol),
+        4 => Ok(SecurityIdSource::Isin),
+        5 => Ok(SecurityIdSource::Ric),
+        8 => Ok(SecurityIdSource::ExchangeSymbol),
+        _ => Err(SbeError::InvalidEnumValue {
+            field: "id_source",
             value: v,
         }),
     }
@@ -452,6 +482,19 @@ pub fn encode_new_order_single(order: &NewOrderSingle) -> Vec<u8> {
         enc.write_f64(stop_price.0);
     }
 
+    enc.write_u8(if order.security_id.is_some() { 1 } else { 0 });
+    if let Some(ref security_id) = order.security_id {
+        enc.write_str(security_id);
+    }
+    enc.write_u8(if order.id_source.is_some() { 1 } else { 0 });
+    if let Some(ref id_source) = order.id_source {
+        enc.write_u8(security_id_source_to_u8(id_source));
+    }
+    enc.write_u8(if order.security_exchange.is_some() { 1 } else { 0 });
+    if let Some(ref security_exchange) = order.security_exchange {
+        enc.write_str(security_exchange);
+    }
+
     enc.finish()
 }
 
@@ -559,6 +602,25 @@ pub fn decode_new_order_single(buf: &[u8]) -> Result<NewOrderSingle, SbeError> {
         None
     };
 
+    let has_security_id = dec.read_u8();
+    let security_id = if has_security_id == 1 {
+        Some(dec.read_str().to_string())
+    } else {
+        None
+    };
+    let has_id_source = dec.read_u8();
+    let id_source = if has_id_source == 1 {
+        Some(security_id_source_from_u8(dec.read_u8())?)
+    } else {
+        None
+    };
+    let has_security_exchange = dec.read_u8();
+    let security_exchange = if has_security_exchange == 1 {
+        Some(dec.read_str().to_string())
+    } else {
+        None
+    };
+
     Ok(NewOrderSingle {
         cl_ord_id,
         side,
@@ -571,6 +633,9 @@ pub fn decode_new_order_single(buf: &[u8]) -> Result<NewOrderSingle, SbeError> {
         expire_time,
         account,
         strategy_id,
+        security_id,
+        id_source,
+        security_exchange,
     })
 }
 
@@ -768,6 +833,9 @@ mod tests {
             expire_time: None,
             account: Some("ACCT-123".to_string()),
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = encode_new_order_single(&order);
@@ -861,6 +929,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = encode_new_order_single(&order_no_optional);
@@ -884,6 +955,9 @@ mod tests {
             expire_time: Some(1700000000000000000),
             account: Some("ACCT-999".to_string()),
             strategy_id: Some("STRAT-001".to_string()),
+            security_id: Some("037833100".to_string()),
+            id_source: Some(SecurityIdSource::Cusip),
+            security_exchange: Some("XNAS".to_string()),
         };
 
         let encoded = encode_new_order_single(&order_all_optional);
@@ -1003,6 +1077,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = encode_new_order_single(&order);

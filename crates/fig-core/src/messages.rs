@@ -35,6 +35,18 @@ pub enum OrderType {
     Limit,
     Stop,
     StopLimit,
+    MarketOnClose,
+    LimitOnClose,
+    Pegged,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SecurityIdSource {
+    Cusip,
+    Sedol,
+    Isin,
+    Ric,
+    ExchangeSymbol,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -108,6 +120,9 @@ pub struct NewOrderSingle {
     pub expire_time: Option<TradeTimestamp>,
     pub account: Option<String>,
     pub strategy_id: Option<String>,
+    pub security_id: Option<String>,
+    pub id_source: Option<SecurityIdSource>,
+    pub security_exchange: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -235,6 +250,9 @@ mod tests {
             expire_time: None,
             account: Some("ACCT-123".to_string()),
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         // CBOR round-trip

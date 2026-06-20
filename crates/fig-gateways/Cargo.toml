@@ -19,6 +19,9 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
+rustls = { workspace = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

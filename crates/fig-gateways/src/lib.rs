@@ -17,7 +17,9 @@
 //! ```
 
 pub mod fix;
+pub mod fix_seq_store;
 pub mod fix_session;
+pub mod fix_tls;
 pub mod rest;
 pub mod sse;
 pub mod ws;

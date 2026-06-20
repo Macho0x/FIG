@@ -19,7 +19,8 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, ExecType,
-    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, Side, TimeInForce,
+    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, SecurityIdSource,
+    Side, TimeInForce,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -162,6 +163,28 @@ impl Default for FixOutboundContext {
 pub enum FixCxlRejResponseTo {
     OrderCancelRequest = 1,
     OrderCancelReplaceRequest = 2,
+}
+
+/// Business-level reject reasons (FIX tag 380 / 102 on MsgType=j).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BusinessRejectReason {
+    Other,
+    UnknownId,
+    UnknownSecurity,
+    UnsupportedMessageType,
+    ApplicationNotAvailable,
+    ConditionallyRequiredFieldMissing,
+    NotAuthorized,
+    DeliverToUnavailable,
+}
+
+/// Payload for a FIX BusinessMessageReject (35=j).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BusinessMessageReject {
+    pub ref_msg_type: String,
+    pub ref_seq_num: Option<u32>,
+    pub reason: BusinessRejectReason,
+    pub text: Option<String>,
 }
 
 /// Split a byte buffer into complete FIX messages (each ending with `10=NNN\x01`).
@@ -573,6 +596,11 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
         .transpose()?;
 
     let account = find_tag(tags, 1).map(|s| s.to_string());
+    let security_id = find_tag(tags, 48).map(|s| s.to_string());
+    let id_source = find_tag(tags, 22)
+        .map(parse_fix_id_source)
+        .transpose()?;
+    let security_exchange = find_tag(tags, 207).map(|s| s.to_string());
 
     match order_type {
         OrderType::Stop | OrderType::StopLimit if stop_price.is_none() => {
@@ -581,7 +609,11 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
                 msg_type: "D".to_string(),
             });
         }
-        OrderType::Limit | OrderType::StopLimit if price.is_none() => {
+        OrderType::Limit
+        | OrderType::StopLimit
+        | OrderType::LimitOnClose
+        | OrderType::Pegged if price.is_none() =>
+        {
             return Err(FixError::MissingTag {
                 tag: 44,
                 msg_type: "D".to_string(),
@@ -609,6 +641,9 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
         expire_time,
         account,
         strategy_id: None,
+        security_id,
+        id_source,
+        security_exchange,
     })
 }
 
@@ -748,8 +783,35 @@ pub fn fig_to_fix_new_order_single(order: &NewOrderSingle, ctx: &FixOutboundCont
     if let Some(expire_time) = order.expire_time {
         body.push((432, format_fix_utc_timestamp(expire_time)));
     }
+    if let Some(ref security_id) = order.security_id {
+        body.push((48, security_id.clone()));
+    }
+    if let Some(ref id_source) = order.id_source {
+        body.push((22, fix_id_source(id_source)));
+    }
+    if let Some(ref security_exchange) = order.security_exchange {
+        body.push((207, security_exchange.clone()));
+    }
 
     build_outbound_fix_message(ctx, "D", body)
+}
+
+/// Convert a business reject to FIX BusinessMessageReject (35=j) wire-format bytes.
+pub fn fig_to_fix_business_message_reject(
+    reject: &BusinessMessageReject,
+    ctx: &FixOutboundContext,
+) -> Vec<u8> {
+    let mut body = vec![
+        (372, reject.ref_msg_type.clone()),
+        (380, fix_business_reject_reason(&reject.reason)),
+    ];
+    if let Some(seq) = reject.ref_seq_num {
+        body.push((45, seq.to_string()));
+    }
+    if let Some(ref text) = reject.text {
+        body.push((58, text.clone()));
+    }
+    build_outbound_fix_message(ctx, "j", body)
 }
 
 /// Convert a FIG `CancelReject` to FIX OrderCancelReject (35=9) wire-format bytes.
@@ -952,6 +1014,9 @@ fn parse_fix_order_type(value: &str) -> FixResult<OrderType> {
         "2" => Ok(OrderType::Limit),
         "3" => Ok(OrderType::Stop),
         "4" => Ok(OrderType::StopLimit),
+        "5" => Ok(OrderType::MarketOnClose),
+        "B" | "b" => Ok(OrderType::LimitOnClose),
+        "P" | "p" => Ok(OrderType::Pegged),
         _ => Err(FixError::UnknownOrderType(value.to_string())),
     }
 }
@@ -963,6 +1028,48 @@ fn fix_order_type(order_type: &OrderType) -> String {
         OrderType::Limit => "2",
         OrderType::Stop => "3",
         OrderType::StopLimit => "4",
+        OrderType::MarketOnClose => "5",
+        OrderType::LimitOnClose => "B",
+        OrderType::Pegged => "P",
+    }
+    .to_string()
+}
+
+fn parse_fix_id_source(value: &str) -> FixResult<SecurityIdSource> {
+    match value {
+        "1" => Ok(SecurityIdSource::Cusip),
+        "2" => Ok(SecurityIdSource::Sedol),
+        "4" => Ok(SecurityIdSource::Isin),
+        "5" => Ok(SecurityIdSource::Ric),
+        "8" => Ok(SecurityIdSource::ExchangeSymbol),
+        _ => Err(FixError::InvalidTagValueData {
+            tag: 22,
+            value: value.to_string(),
+        }),
+    }
+}
+
+fn fix_id_source(source: &SecurityIdSource) -> String {
+    match source {
+        SecurityIdSource::Cusip => "1",
+        SecurityIdSource::Sedol => "2",
+        SecurityIdSource::Isin => "4",
+        SecurityIdSource::Ric => "5",
+        SecurityIdSource::ExchangeSymbol => "8",
+    }
+    .to_string()
+}
+
+fn fix_business_reject_reason(reason: &BusinessRejectReason) -> String {
+    match reason {
+        BusinessRejectReason::Other => "0",
+        BusinessRejectReason::UnknownId => "1",
+        BusinessRejectReason::UnknownSecurity => "2",
+        BusinessRejectReason::UnsupportedMessageType => "3",
+        BusinessRejectReason::ApplicationNotAvailable => "4",
+        BusinessRejectReason::ConditionallyRequiredFieldMissing => "5",
+        BusinessRejectReason::NotAuthorized => "6",
+        BusinessRejectReason::DeliverToUnavailable => "7",
     }
     .to_string()
 }
@@ -1364,6 +1471,9 @@ mod tests {
             expire_time: None,
             account: Some("ACC".to_string()),
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = fig_to_fix_new_order_single(&order, &FixOutboundContext::default());
@@ -1409,6 +1519,55 @@ mod tests {
         assert_eq!(split.len(), 2);
         assert_eq!(parse_fix_message(&split[0]).unwrap()[1].1, "0");
         assert_eq!(parse_fix_message(&split[1]).unwrap()[1].1, "A");
+    }
+
+    #[test]
+    fn test_fig_to_fix_business_message_reject() {
+        let reject = BusinessMessageReject {
+            ref_msg_type: "D".to_string(),
+            ref_seq_num: Some(7),
+            reason: BusinessRejectReason::UnsupportedMessageType,
+            text: Some("bad field".to_string()),
+        };
+        let encoded = fig_to_fix_business_message_reject(&reject, &FixOutboundContext::default());
+        let tags = parse_fix_message(&encoded).unwrap();
+        let find = |tag: u32| -> String {
+            tags.iter()
+                .find(|(t, _)| *t == tag)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(find(35), "j");
+        assert_eq!(find(372), "D");
+        assert_eq!(find(45), "7");
+        assert_eq!(find(380), "3");
+        assert_eq!(find(58), "bad field");
+    }
+
+    #[test]
+    fn test_extended_order_types_and_symbology() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"8=FIX.4.4\x019=120\x0135=D\x01");
+        buf.extend_from_slice(b"11=EXT-001\x01");
+        buf.extend_from_slice(b"54=1\x01");
+        buf.extend_from_slice(b"38=100\x01");
+        buf.extend_from_slice(b"44=10\x01");
+        buf.extend_from_slice(b"55=AAPL\x01");
+        buf.extend_from_slice(b"40=B\x01");
+        buf.extend_from_slice(b"59=0\x01");
+        buf.extend_from_slice(b"48=US0378331005\x01");
+        buf.extend_from_slice(b"22=4\x01");
+        buf.extend_from_slice(b"207=XNAS\x01");
+        let checksum = compute_checksum(&buf);
+        buf.extend_from_slice(format!("10={:03}", checksum).as_bytes());
+        buf.push(SOH);
+
+        let tags = parse_fix_message(&buf).unwrap();
+        let order = fix_to_fig_order(&tags).unwrap();
+        assert_eq!(order.order_type, OrderType::LimitOnClose);
+        assert_eq!(order.security_id.as_deref(), Some("US0378331005"));
+        assert_eq!(order.id_source, Some(SecurityIdSource::Isin));
+        assert_eq!(order.security_exchange.as_deref(), Some("XNAS"));
     }
 
     // ── Logon ↔ STREAM_OPEN Conversion ────────────────────────

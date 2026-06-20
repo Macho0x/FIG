@@ -44,6 +44,17 @@ mod order_type_values {
     pub const LIMIT: u8 = 2;
     pub const STOP: u8 = 3;
     pub const STOP_LIMIT: u8 = 4;
+    pub const MARKET_ON_CLOSE: u8 = 5;
+    pub const LIMIT_ON_CLOSE: u8 = 6;
+    pub const PEGGED: u8 = 7;
+}
+
+mod security_id_source_values {
+    pub const CUSIP: u8 = 1;
+    pub const SEDOL: u8 = 2;
+    pub const ISIN: u8 = 4;
+    pub const RIC: u8 = 5;
+    pub const EXCHANGE_SYMBOL: u8 = 8;
 }
 
 mod time_in_force_values {
@@ -124,6 +135,9 @@ fn order_type_to_u8(ot: &OrderType) -> u8 {
         OrderType::Limit => order_type_values::LIMIT,
         OrderType::Stop => order_type_values::STOP,
         OrderType::StopLimit => order_type_values::STOP_LIMIT,
+        OrderType::MarketOnClose => order_type_values::MARKET_ON_CLOSE,
+        OrderType::LimitOnClose => order_type_values::LIMIT_ON_CLOSE,
+        OrderType::Pegged => order_type_values::PEGGED,
     }
 }
 
@@ -133,6 +147,30 @@ fn order_type_from_u8(v: u8) -> Option<OrderType> {
         v if v == order_type_values::LIMIT => Some(OrderType::Limit),
         v if v == order_type_values::STOP => Some(OrderType::Stop),
         v if v == order_type_values::STOP_LIMIT => Some(OrderType::StopLimit),
+        v if v == order_type_values::MARKET_ON_CLOSE => Some(OrderType::MarketOnClose),
+        v if v == order_type_values::LIMIT_ON_CLOSE => Some(OrderType::LimitOnClose),
+        v if v == order_type_values::PEGGED => Some(OrderType::Pegged),
+        _ => None,
+    }
+}
+
+fn security_id_source_to_u8(source: &SecurityIdSource) -> u8 {
+    match source {
+        SecurityIdSource::Cusip => security_id_source_values::CUSIP,
+        SecurityIdSource::Sedol => security_id_source_values::SEDOL,
+        SecurityIdSource::Isin => security_id_source_values::ISIN,
+        SecurityIdSource::Ric => security_id_source_values::RIC,
+        SecurityIdSource::ExchangeSymbol => security_id_source_values::EXCHANGE_SYMBOL,
+    }
+}
+
+fn security_id_source_from_u8(v: u8) -> Option<SecurityIdSource> {
+    match v {
+        v if v == security_id_source_values::CUSIP => Some(SecurityIdSource::Cusip),
+        v if v == security_id_source_values::SEDOL => Some(SecurityIdSource::Sedol),
+        v if v == security_id_source_values::ISIN => Some(SecurityIdSource::Isin),
+        v if v == security_id_source_values::RIC => Some(SecurityIdSource::Ric),
+        v if v == security_id_source_values::EXCHANGE_SYMBOL => Some(SecurityIdSource::ExchangeSymbol),
         _ => None,
     }
 }
@@ -396,6 +434,19 @@ impl NewOrderSingleEncoder {
             write_f64(&mut buf, stop_price.0);
         }
 
+        buf.push(if order.security_id.is_some() { 1 } else { 0 });
+        if let Some(ref security_id) = order.security_id {
+            write_str(&mut buf, security_id);
+        }
+        buf.push(if order.id_source.is_some() { 1 } else { 0 });
+        if let Some(ref id_source) = order.id_source {
+            buf.push(security_id_source_to_u8(id_source));
+        }
+        buf.push(if order.security_exchange.is_some() { 1 } else { 0 });
+        if let Some(ref security_exchange) = order.security_exchange {
+            write_str(&mut buf, security_exchange);
+        }
+
         buf
     }
 }
@@ -466,6 +517,33 @@ impl NewOrderSingleDecoder {
             None
         };
 
+        let has_security_id = buf[pos];
+        pos += 1;
+        let security_id = if has_security_id == 1 {
+            Some(read_str(buf, &mut pos))
+        } else {
+            None
+        };
+        let has_id_source = buf[pos];
+        pos += 1;
+        let id_source = if has_id_source == 1 {
+            let v = buf[pos];
+            pos += 1;
+            Some(
+                security_id_source_from_u8(v)
+                    .ok_or_else(|| format!("invalid id_source: {v}"))?,
+            )
+        } else {
+            None
+        };
+        let has_security_exchange = buf[pos];
+        pos += 1;
+        let security_exchange = if has_security_exchange == 1 {
+            Some(read_str(buf, &mut pos))
+        } else {
+            None
+        };
+
         Ok(NewOrderSingle {
             cl_ord_id,
             side,
@@ -478,6 +556,9 @@ impl NewOrderSingleDecoder {
             expire_time,
             account,
             strategy_id,
+            security_id,
+            id_source,
+            security_exchange,
         })
     }
 }
@@ -966,6 +1047,9 @@ mod tests {
             expire_time: None,
             account: Some("ACCT-123".to_string()),
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = NewOrderSingleEncoder::encode(&order);
@@ -1175,6 +1259,9 @@ mod tests {
             expire_time: Some(1700000000000000000),
             account: Some("ACCT-X".to_string()),
             strategy_id: Some("STRAT-Y".to_string()),
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         // Encode with hand-written
@@ -1209,6 +1296,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         // Encode with generated
@@ -1353,6 +1443,9 @@ mod tests {
             expire_time: None,
             account: None,
             strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
         };
 
         let encoded = NewOrderSingleEncoder::encode(&order);

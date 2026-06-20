@@ -16,11 +16,13 @@
 //!
 //! Any connection error or timeout also transitions any state to `LoggedOut`.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
 use crate::fix::FixMessage;
+use crate::fix_seq_store::{FixSeqState, FixSeqStore};
 
 // ─── State ───────────────────────────────────────────────────────
 
@@ -81,7 +83,6 @@ pub enum FixSessionError {
 ///
 /// Tracks connection state, message sequence numbers, and heartbeat
 /// timers for a single FIX session.
-#[derive(Debug)]
 pub struct FixSession {
     state: FixSessionState,
     expected_recv_seq: u32,
@@ -90,6 +91,7 @@ pub struct FixSession {
     last_received: Instant,
     sender_comp_id: String,
     target_comp_id: String,
+    seq_store: Option<Arc<dyn FixSeqStore>>,
 }
 
 impl FixSession {
@@ -106,7 +108,41 @@ impl FixSession {
             last_received: Instant::now(),
             sender_comp_id,
             target_comp_id,
+            seq_store: None,
         }
+    }
+
+    /// Attach a shared sequence store for multi-node session continuity.
+    pub fn with_seq_store(mut self, store: Arc<dyn FixSeqStore>) -> Self {
+        self.seq_store = Some(store);
+        self
+    }
+
+    /// Session key used for sequence persistence (`SenderCompID:TargetCompID`).
+    pub fn session_key(&self) -> String {
+        format!("{}:{}", self.sender_comp_id, self.target_comp_id)
+    }
+
+    /// Load persisted sequence numbers if available.
+    pub fn restore_from_store(&mut self) {
+        let Some(store) = &self.seq_store else {
+            return;
+        };
+        if let Ok(Some(state)) = store.get(&self.session_key()) {
+            self.expected_recv_seq = state.expected_recv_seq;
+            self.next_send_seq = state.next_send_seq;
+            if state.logged_in {
+                self.state = FixSessionState::LoggedIn;
+            }
+        }
+    }
+
+    fn persist_to_store(&self) {
+        let Some(store) = &self.seq_store else {
+            return;
+        };
+        let state = FixSeqState::from_session(self.expected_recv_seq, self.next_send_seq, self.state);
+        let _ = store.put(&self.session_key(), &state);
     }
 
     // ── State Queries ─────────────────────────────────────────
@@ -119,6 +155,24 @@ impl FixSession {
     /// Returns the current session state.
     pub fn state(&self) -> FixSessionState {
         self.state
+    }
+
+    pub fn sender_comp_id(&self) -> &str {
+        &self.sender_comp_id
+    }
+
+    pub fn target_comp_id(&self) -> &str {
+        &self.target_comp_id
+    }
+
+    /// Current outbound sequence number without incrementing.
+    pub fn next_send_seq(&self) -> u32 {
+        self.next_send_seq
+    }
+
+    /// Expected inbound sequence number.
+    pub fn expected_recv_seq(&self) -> u32 {
+        self.expected_recv_seq
     }
 
     /// Set the heartbeat interval.
@@ -277,6 +331,10 @@ impl FixSession {
         match msg_type {
             "A" => {
                 // ── Logon ──
+                let reset_seq = msg.get_tag(141) != Some("N");
+                if !reset_seq {
+                    self.restore_from_store();
+                }
                 match self.state {
                     FixSessionState::LoggedOut | FixSessionState::LogonSent => {
                         self.state = FixSessionState::LoggedIn;
@@ -376,6 +434,7 @@ impl FixSession {
             }
         }
 
+        self.persist_to_store();
         Ok(actions)
     }
 
@@ -796,5 +855,25 @@ mod tests {
         let mut session = FixSession::new("CLIENT".into(), "SERVER".into());
         session.set_heartbeat_interval(Duration::from_secs(60));
         assert_eq!(session.heartbeat_interval(), Duration::from_secs(60));
+    }
+
+    #[test]
+    fn test_seq_store_persists_across_sessions() {
+        use std::sync::Arc;
+
+        use crate::fix_seq_store::MemoryFixSeqStore;
+
+        let store: Arc<dyn crate::fix_seq_store::FixSeqStore> = Arc::new(MemoryFixSeqStore::new());
+
+        let mut session = FixSession::new("GW".into(), "CLIENT".into()).with_seq_store(store.clone());
+        session.send_logon();
+        session.process_incoming(&fix_msg("A", 1)).unwrap();
+        session.process_incoming(&fix_msg("0", 2)).unwrap();
+
+        let mut resumed = FixSession::new("GW".into(), "CLIENT".into()).with_seq_store(store);
+        resumed.restore_from_store();
+        assert_eq!(resumed.next_send_seq(), session.next_send_seq());
+        assert_eq!(resumed.expected_recv_seq(), session.expected_recv_seq());
+        assert!(resumed.is_logged_in());
     }
 }

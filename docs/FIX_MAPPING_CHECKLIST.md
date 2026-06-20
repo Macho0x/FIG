@@ -14,10 +14,13 @@ Status key: **Done** | **Partial** | **N/A** (not in FIG schema)
 | price | 44 | Done | Done | Required for Limit/StopLimit |
 | stop_price | 99 | Done | Done | Required for Stop/StopLimit |
 | symbol | 55 | Done | Done | Required |
-| order_type | 40 | Done | Done | 1–4 only (FIG subset) |
+| order_type | 40 | Done | Done | 1–4, 5 (MOC), B (LOC), P (Pegged) |
 | time_in_force | 59 | Done | Done | 0/1/3/4/6 |
 | expire_time | 432 | Done | Done | Required when TIF=GTD |
 | account | 1 | Done | Done | Optional |
+| security_id | 48 | Done | Done | Optional symbology |
+| id_source | 22 | Done | Done | CUSIP/SEDOL/ISIN/RIC/ExchangeSymbol |
+| security_exchange | 207 | Done | Done | Optional MIC |
 | strategy_id | — | N/A | N/A | No standard FIX tag |
 
 ## CancelRequest (35=F)
@@ -71,6 +74,17 @@ Status key: **Done** | **Partial** | **N/A** (not in FIG schema)
 | CxlRejResponseTo | 434 | Partial | Done | 1=cancel, 2=replace |
 | ord_status | 39 | N/A | Done | Always Rejected (8) |
 
+## BusinessMessageReject (35=j)
+
+| FIG field | FIX tag | FSL | fix.rs | Notes |
+|-----------|---------|-----|--------|-------|
+| ref_msg_type | 372 | N/A | Done | Referenced application msg type |
+| ref_seq_num | 45 | N/A | Done | Referenced MsgSeqNum |
+| business_reject_reason | 380 | N/A | Done | Mapped to `BusinessRejectReason` |
+| text | 58 | N/A | Done | Human-readable detail |
+
+Gateway sends BMR on FIX→FIG translation failures (`fig-gateway.rs`).
+
 ## Session / infrastructure
 
 | Feature | Status | Location |
@@ -81,6 +95,9 @@ Status key: **Done** | **Partial** | **N/A** (not in FIG schema)
 | Gateway session loop | Done | `fig-gateway.rs` |
 | Message framing | Done | `split_fix_messages` |
 | Checksum validate/serialize | Done | `parse_fix_message` / `serialize_fix_message` |
+| TLS FIX acceptor | Done | `fix_tls.rs`, `--fix-tls` on `fig-gateway` |
+| Multi-node seq persistence | Done | `fix_seq_store.rs`, `FixSession::with_seq_store` |
+| BusinessMessageReject on translate errors | Done | `fig-gateway.rs` |
 
 ## Matching engine semantics
 
@@ -92,12 +109,10 @@ Status key: **Done** | **Partial** | **N/A** (not in FIG schema)
 | FOK | Done | All-or-nothing reject |
 | GTD expire at entry | Done | Validates `expire_time` |
 | CancelReject on failed cancel | Done | `server.rs` + `CancelOutcome` |
+| MOC / LOC / Pegged | Done | Mapped to Market/Limit/Limit in `matching.rs` |
 
 ## Still out of scope (production FIX venues)
 
-- Extended order types (MOC, Pegged, etc.)
-- SecurityDefinition / symbology tags (22, 48, 207)
-- BusinessMessageReject (35=j), session Reject (35=3)
+- SecurityDefinition reference data workflow
+- Session Reject (35=3) application-level handling beyond ignore
 - Drop copy, allocations, locates
-- TLS acceptor on FIX TCP port
-- Multi-node persistent seq store wired to gateway

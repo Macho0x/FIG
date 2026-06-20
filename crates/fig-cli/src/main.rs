@@ -68,6 +68,9 @@ async fn main() -> Result<()> {
         expire_time: None,
         account: Some("DEMO-ACCT".to_string()),
         strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
     };
 
     let payload = codec::encode_cbor(&order)?;
