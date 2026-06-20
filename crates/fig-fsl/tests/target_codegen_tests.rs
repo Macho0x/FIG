@@ -30,6 +30,8 @@ fn test_go_codegen_orders() {
     assert!(code.contains("type NewOrderSingle struct"));
     assert!(code.contains("type CancelRequest struct"));
     assert!(code.contains("type ExecutionReport struct"));
+    assert!(code.contains("type Side int32"));
+    assert!(code.contains("type PriceLevel struct"));
     assert!(code.contains("`json:\"cl_ord_id\""));
     assert!(code.contains("package generated"));
 }
@@ -109,6 +111,8 @@ fn test_python_codegen_orders() {
     let code = PythonCodegen::generate(&schema);
     assert!(code.contains("@dataclass"));
     assert!(code.contains("class NewOrderSingle"));
+    assert!(code.contains("class Side(Enum)"));
+    assert!(code.contains("class PriceLevel:"));
 }
 
 #[test]

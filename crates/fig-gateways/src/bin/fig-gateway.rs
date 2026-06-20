@@ -17,6 +17,11 @@ use fig_gateways::fix_seq_store::{build_seq_store, FixSeqStoreBackend};
 use fig_gateways::fix_session::{FixAction, FixSession};
 use fig_gateways::fix_tls::{accept_tls, build_tls_acceptor, FixGatewayStream, FixTlsAcceptor};
 use fig_gateways::rest::{http_to_fig_frame, parse_http_request};
+use fig_core::codec::encode_cbor;
+use fig_core::ext::{Extension, ExtensionTag};
+use fig_core::frame::{Frame, FrameType};
+use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
+use fig_core::transport::FigClient;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
@@ -42,6 +47,9 @@ struct Args {
     /// Redis/etcd URL for shared FIX sequence store
     #[arg(long, default_value = "redis://127.0.0.1:6379/fig")]
     fix_seq_url: String,
+    /// Optional FIG backend to proxy translated FIX orders (host:port)
+    #[arg(long)]
+    fig_backend: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -69,7 +77,12 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let rest = tokio::spawn(run_rest_gateway(args.rest_addr));
-    let fix = tokio::spawn(run_fix_gateway(args.fix_addr, tls_acceptor, seq_store));
+    let fix = tokio::spawn(run_fix_gateway(
+        args.fix_addr,
+        tls_acceptor,
+        seq_store,
+        args.fig_backend,
+    ));
 
     tokio::select! {
         r = rest => r??,
@@ -124,6 +137,7 @@ async fn run_fix_gateway(
     addr: SocketAddr,
     tls_acceptor: Option<FixTlsAcceptor>,
     seq_store: Arc<dyn fig_gateways::fix_seq_store::FixSeqStore>,
+    fig_backend: Option<SocketAddr>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("FIX gateway listening on {}", addr);
@@ -132,6 +146,7 @@ async fn run_fix_gateway(
         let (stream, peer) = listener.accept().await?;
         let acceptor = tls_acceptor.clone();
         let store = seq_store.clone();
+        let backend = fig_backend;
         tokio::spawn(async move {
             let gateway_stream = match acceptor {
                 Some(acceptor) => {
@@ -145,7 +160,7 @@ async fn run_fix_gateway(
                 }
                 None => FixGatewayStream::from_plain(stream),
             };
-            if let Err(e) = handle_fix_connection(gateway_stream, store).await {
+            if let Err(e) = handle_fix_connection(gateway_stream, store, backend).await {
                 warn!("FIX connection from {} failed: {}", peer, e);
             }
         });
@@ -155,7 +170,13 @@ async fn run_fix_gateway(
 async fn handle_fix_connection(
     mut stream: FixGatewayStream,
     seq_store: Arc<dyn fig_gateways::fix_seq_store::FixSeqStore>,
+    fig_backend: Option<SocketAddr>,
 ) -> anyhow::Result<()> {
+    let backend_conn = if let Some(addr) = fig_backend {
+        Some(connect_fig_backend(addr).await?)
+    } else {
+        None
+    };
     let mut session = FixSession::new("FIG-GW".into(), "CLIENT".into()).with_seq_store(seq_store);
     let mut read_buf = Vec::new();
     let mut tmp = vec![0u8; 65536];
@@ -188,25 +209,46 @@ async fn handle_fix_connection(
                     frame.frame_type, frame.channel_id
                 );
             } else if session.is_logged_in() {
-                let translate_result = match msg_type.as_str() {
-                    "D" => fix_to_fig_order(&fix_msg.tags).map(|order| {
+                let translate_result: Result<(), fig_gateways::fix::FixError> = match msg_type.as_str() {
+                    "D" => {
+                        let order = fix_to_fig_order(&fix_msg.tags)?;
                         info!(
                             "Translated FIX NewOrderSingle → FIG {} {:?} {}",
                             order.cl_ord_id, order.side, order.symbol
                         );
-                    }),
-                    "F" => fix_to_fig_cancel(&fix_msg.tags).map(|cancel| {
+                        if let Some(conn) = backend_conn.as_ref() {
+                            if let Err(e) = forward_new_order(conn, &order).await {
+                                warn!("FIG backend forward failed: {}", e);
+                            }
+                        }
+                        Ok(())
+                    }
+                    "F" => {
+                        let cancel = fix_to_fig_cancel(&fix_msg.tags)?;
                         info!(
                             "Translated FIX CancelRequest → FIG {} -> {}",
                             cancel.cl_ord_id, cancel.orig_cl_ord_id
                         );
-                    }),
-                    "G" => fix_to_fig_cancel_replace(&fix_msg.tags).map(|replace| {
+                        if let Some(conn) = backend_conn.as_ref() {
+                            if let Err(e) = forward_cancel(conn, &cancel).await {
+                                warn!("FIG backend forward failed: {}", e);
+                            }
+                        }
+                        Ok(())
+                    }
+                    "G" => {
+                        let replace = fix_to_fig_cancel_replace(&fix_msg.tags)?;
                         info!(
                             "Translated FIX CancelReplace → FIG {} -> {}",
                             replace.cl_ord_id, replace.orig_cl_ord_id
                         );
-                    }),
+                        if let Some(conn) = backend_conn.as_ref() {
+                            if let Err(e) = forward_cancel_replace(conn, &replace).await {
+                                warn!("FIG backend forward failed: {}", e);
+                            }
+                        }
+                        Ok(())
+                    }
                     _ => Ok(()),
                 };
 
@@ -246,5 +288,71 @@ async fn handle_fix_connection(
         }
     }
 
+    Ok(())
+}
+
+async fn connect_fig_backend(
+    addr: SocketAddr,
+) -> anyhow::Result<fig_core::transport::FigConnection> {
+    let config = fig_core::transport::client_config()
+        .map_err(|e| anyhow::anyhow!("client config: {e}"))?;
+    let client = FigClient::new(config)?;
+    info!("Connecting FIG gateway backend at {}", addr);
+    client.connect(addr, "localhost").await.map_err(Into::into)
+}
+
+async fn forward_new_order(
+    conn: &fig_core::transport::FigConnection,
+    order: &NewOrderSingle,
+) -> anyhow::Result<()> {
+    let account = order.account.as_deref().unwrap_or("DEFAULT");
+    let payload = encode_cbor(order)?;
+    let frame = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(messages::schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            format!("trading/accounts/{account}/orders"),
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+        .with_extension(Extension::text(ExtensionTag::ContentType, "application/cbor"))
+        .with_payload(payload);
+    conn.send_frame(1, &frame).await?;
+    Ok(())
+}
+
+async fn forward_cancel(
+    conn: &fig_core::transport::FigConnection,
+    cancel: &CancelRequest,
+) -> anyhow::Result<()> {
+    let payload = encode_cbor(cancel)?;
+    let frame = Frame::new(FrameType::Request, 1)
+        .with_seq(2)
+        .with_schema_id(messages::schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/DEFAULT/orders/cancel",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "DELETE"))
+        .with_payload(payload);
+    conn.send_frame(1, &frame).await?;
+    Ok(())
+}
+
+async fn forward_cancel_replace(
+    conn: &fig_core::transport::FigConnection,
+    replace: &CancelReplaceRequest,
+) -> anyhow::Result<()> {
+    let payload = encode_cbor(replace)?;
+    let frame = Frame::new(FrameType::Request, 1)
+        .with_seq(3)
+        .with_schema_id(messages::schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/DEFAULT/orders/replace",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "PUT"))
+        .with_payload(payload);
+    conn.send_frame(1, &frame).await?;
     Ok(())
 }

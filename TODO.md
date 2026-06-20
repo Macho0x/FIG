@@ -319,13 +319,13 @@ integration tests are the reference behavior.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Conformance test vector format spec | High | Hex fixtures for frames, CBOR, SBE; document in `tests/conformance/` |
-| ⬜ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
-| ⬜ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
-| ⬜ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
-| ⬜ | Channel stream-ID mapping vectors | Medium | `channel_id * 4 + offset` client/server cases |
+| ✅ | Conformance test vector format spec | High | `tests/conformance/README.md` + `vectors/v1.json` |
+| ✅ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
+| ✅ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
+| ✅ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
+| ✅ | Channel stream-ID mapping vectors | Medium | `channel_id * 4 + offset` client/server cases |
 | ⬜ | End-to-end integration scripts | Medium | connect → order → execution report; language-agnostic driver |
-| ⬜ | CI matrix for conformance runners | Medium | Rust reference + per-language SDK jobs |
+| ✅ | CI matrix for conformance runners | Medium | Rust reference + per-language SDK jobs |
 
 ---
 

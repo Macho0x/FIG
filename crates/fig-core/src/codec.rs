@@ -56,6 +56,51 @@ pub fn cbor_to_json(cbor: &[u8]) -> Result<String, FrameError> {
     serde_json::to_string(&value).map_err(|e| FrameError::CborEncodeError(e.to_string()))
 }
 
+/// Extract the payload content type from frame extensions (defaults to CBOR).
+pub fn frame_content_type(frame: &crate::frame::Frame) -> &str {
+    use crate::ext::ExtensionTag;
+    frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ContentType)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("application/cbor")
+}
+
+/// Decode a `NewOrderSingle` from a FIG frame (CBOR or SBE).
+pub fn decode_new_order_single_frame(
+    frame: &crate::frame::Frame,
+) -> Result<crate::messages::NewOrderSingle, FrameError> {
+    match frame_content_type(frame) {
+        "application/fig+sbe" | "application/sbe" => {
+            crate::sbe::decode_new_order_single(&frame.payload).map_err(|e| {
+                FrameError::CborDecodeError(format!("sbe decode: {e}"))
+            })
+        }
+        "application/x-protobuf" | "application/protobuf" => {
+            let json = crate::protobuf::protobuf_to_json(&frame.payload)?;
+            serde_json::from_str(&json).map_err(|e| FrameError::CborDecodeError(e.to_string()))
+        }
+        _ => decode_cbor(&frame.payload),
+    }
+}
+
+/// Encode a `NewOrderSingle` for the given content type.
+pub fn encode_new_order_single_payload(
+    order: &crate::messages::NewOrderSingle,
+    content_type: &str,
+) -> Result<Vec<u8>, FrameError> {
+    match content_type {
+        "application/fig+sbe" | "application/sbe" => Ok(crate::sbe::encode_new_order_single(order)),
+        "application/x-protobuf" | "application/protobuf" => {
+            let json = serde_json::to_string(order)
+                .map_err(|e| FrameError::CborEncodeError(e.to_string()))?;
+            crate::protobuf::json_to_protobuf(&json)
+        }
+        _ => encode_cbor(order),
+    }
+}
+
 // ─── Unit Tests ──────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -249,5 +294,41 @@ mod tests {
     fn test_json_to_cbor_rejects_invalid_json() {
         let result = json_to_cbor("{broken");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decode_new_order_single_sbe_frame() {
+        use crate::ext::{Extension, ExtensionTag};
+        use crate::frame::{Frame, FrameType};
+        use crate::messages::{
+            NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
+        };
+
+        let order = NewOrderSingle {
+            cl_ord_id: "SBE-1".into(),
+            side: Side::Buy,
+            order_qty: Quantity(10.0),
+            price: Some(Price(1.25)),
+            stop_price: None,
+            symbol: "AAPL".into(),
+            order_type: OrderType::Limit,
+            time_in_force: TimeInForce::Day,
+            expire_time: None,
+            account: None,
+            strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
+        };
+        let payload = crate::sbe::encode_new_order_single(&order);
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_schema_id(0x01)
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/fig+sbe",
+            ))
+            .with_payload(payload);
+        let decoded = decode_new_order_single_frame(&frame).unwrap();
+        assert_eq!(decoded.cl_ord_id, "SBE-1");
     }
 }

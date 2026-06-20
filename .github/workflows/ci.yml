@@ -22,7 +22,11 @@ jobs:
       - name: Build
         run: cargo build --workspace --all-features
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test --workspace --all-features
+      - name: Conformance vectors
+        run: cargo run -p fig-conformance --bin fig-conformance
+      - name: Codegen drift check
+        run: cargo run -p xtask -- codegen --check
       - name: Clippy
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Format check

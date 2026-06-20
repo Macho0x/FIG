@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "suite": "fig-conformance-v1",
+  "vectors": [
+    {
+      "id": "frame.request.limit_order_cbor",
+      "category": "frame",
+      "description": "REQUEST with CBOR NewOrderSingle payload",
+      "message_type": "",
+      "expected_hex": "000000ae010100010000002a030100000017001c74726164696e672f6163636f756e74732f44454d4f2f6f7264657273000d0004504f5354000300106170706c69636174696f6e2f63626f72a769636c5f6f72645f696468434f4e462d303031647369646563427579696f726465725f717479f95640657072696365f952486673796d626f6c644141504c6a6f726465725f74797065654c696d69746d74696d655f696e5f666f72636563446179",
+      "frame": {
+        "frame_type": "Request",
+        "channel_id": 1,
+        "stream_seq": 42,
+        "schema_id": 1,
+        "extensions": [
+          {
+            "tag": "ChannelPath",
+            "value": "trading/accounts/DEMO/orders"
+          },
+          {
+            "tag": "Method",
+            "value": "POST"
+          },
+          {
+            "tag": "ContentType",
+            "value": "application/cbor"
+          }
+        ],
+        "payload_hex": "a769636c5f6f72645f696468434f4e462d303031647369646563427579696f726465725f717479f95640657072696365f952486673796d626f6c644141504c6a6f726465725f74797065654c696d69746d74696d655f696e5f666f72636563446179"
+      },
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.new_order_single.limit_buy",
+      "category": "cbor",
+      "description": "Canonical limit buy NewOrderSingle CBOR",
+      "message_type": "NewOrderSingle",
+      "expected_hex": "a769636c5f6f72645f696468434f4e462d303031647369646563427579696f726465725f717479f95640657072696365f952486673796d626f6c644141504c6a6f726465725f74797065654c696d69746d74696d655f696e5f666f72636563446179",
+      "frame": null,
+      "payload": {
+        "cl_ord_id": "CONF-001",
+        "order_qty": 100.0,
+        "order_type": "Limit",
+        "price": 50.25,
+        "side": "Buy",
+        "symbol": "AAPL",
+        "time_in_force": "Day"
+      },
+      "channel": null
+    },
+    {
+      "id": "sbe.new_order_single.limit_buy",
+      "category": "sbe",
+      "description": "Canonical limit buy NewOrderSingle SBE",
+      "message_type": "NewOrderSingle",
+      "expected_hex": "00010001000100000008434f4e462d30303101405900000000000040492000000000000100044141504c020000000000000000",
+      "frame": null,
+      "payload": {
+        "cl_ord_id": "CONF-001",
+        "order_qty": 100.0,
+        "order_type": "Limit",
+        "price": 50.25,
+        "side": "Buy",
+        "symbol": "AAPL",
+        "time_in_force": "Day"
+      },
+      "channel": null
+    },
+    {
+      "id": "channel.stream_id.client_server",
+      "category": "channel",
+      "description": "Client stream = channel*4+0, server = channel*4+1",
+      "message_type": "",
+      "expected_hex": "",
+      "frame": null,
+      "payload": null,
+      "channel": {
+        "channel_id": 1,
+        "client_stream_id": 4,
+        "server_stream_id": 5
+      }
+    }
+  ]
+}

@@ -7,6 +7,10 @@ members = [
     "crates/fig-exchange-sim",
     "crates/fig-cli",
     "crates/fig-bench",
+    "crates/fig-conformance",
+    "crates/fig-ffi",
+    "crates/fig-python",
+    "xtask",
 ]
 
 [workspace.package]
@@ -49,6 +53,8 @@ base64 = "0.22"
 # Internal crates
 fig-core = { path = "crates/fig-core" }
 fig-gateways = { path = "crates/fig-gateways" }
+fig-ffi = { path = "crates/fig-ffi" }
+hex = "0.4"
 
 [profile.release]
 opt-level = 3

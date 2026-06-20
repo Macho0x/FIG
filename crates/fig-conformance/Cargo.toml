@@ -1,0 +1,22 @@
+[package]
+name = "fig-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FIG cross-language conformance test vectors and reference runner"
+
+[dependencies]
+fig-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = "0.4"
+anyhow = { workspace = true }
+clap = { workspace = true }
+
+[[bin]]
+name = "fig-conformance"
+path = "src/bin/runner.rs"
+
+[[bin]]
+name = "fig-conformance-gen"
+path = "src/bin/gen.rs"

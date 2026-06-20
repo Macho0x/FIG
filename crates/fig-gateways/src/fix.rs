@@ -326,12 +326,12 @@ fn civil_from_days(z: i32) -> (i32, u32, u32) {
 
 fn chrono_from_epoch_secs(secs: i64) -> UtcDateTime {
     let days = (secs / 86400) as i32;
-    let rem = ((secs % 86400) + 86400) % 86400;
+    let rem = secs.rem_euclid(86400);
     let (year, month, day) = civil_from_days(days);
     UtcDateTime {
         year,
         month,
-        day: day as u32,
+        day,
         hour: (rem / 3600) as u32,
         minute: ((rem % 3600) / 60) as u32,
         second: (rem % 60) as u32,

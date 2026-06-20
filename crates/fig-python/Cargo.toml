@@ -1,0 +1,15 @@
+[package]
+name = "fig-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for FIG (PyO3 reference SDK)"
+
+[lib]
+name = "fig_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+fig-core = { workspace = true }
+fig-ffi = { workspace = true }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38"] }

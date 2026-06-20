@@ -42,29 +42,23 @@ impl RustCodegen {
             }
         }
 
-        // Collect all inline enums for forward generation
-        // From messages: name = MessageName + FieldName (e.g., NewOrderSingleSide)
+        // Collect shared enums (deduplicated by canonical field name)
         let mut enum_names = std::collections::HashMap::new();
         for msg in &schema.messages {
             for field in &msg.fields {
                 if let FieldType::Enum(enum_def) = &field.field_type {
-                    let enum_name = format!("{}{}", msg.name, pascal_case(&field.name));
-                    enum_names
-                        .entry(enum_name)
-                        .or_insert_with(|| enum_def.clone());
+                    let enum_name = Self::canonical_enum_name(&field.name, &msg.name);
+                    Self::merge_enum_def(&mut enum_names, enum_name, enum_def);
                 }
             }
         }
 
-        // From struct type definitions: name = TypeName + FieldName
         for td in &schema.type_defs {
             if let Some(fields) = &td.fields {
                 for field in fields {
                     if let FieldType::Enum(enum_def) = &field.field_type {
-                        let enum_name = format!("{}{}", td.name, pascal_case(&field.name));
-                        enum_names
-                            .entry(enum_name)
-                            .or_insert_with(|| enum_def.clone());
+                        let enum_name = Self::canonical_enum_name(&field.name, &td.name);
+                        Self::merge_enum_def(&mut enum_names, enum_name, enum_def);
                     }
                 }
             }
@@ -95,14 +89,18 @@ impl RustCodegen {
             }
         }
 
-        // Generate enums
-        for (name, enum_def) in &enum_names {
+        // Generate enums (sorted for deterministic output)
+        let mut enum_entries: Vec<_> = enum_names.iter().collect();
+        enum_entries.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, enum_def) in enum_entries {
             out.push_str(&Self::generate_enum(name, &enum_def.variants));
             out.push('\n');
         }
 
-        // Generate inline structs
-        for (name, fields) in &inline_struct_names {
+        // Generate inline structs (sorted)
+        let mut struct_entries: Vec<_> = inline_struct_names.iter().collect();
+        struct_entries.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, fields) in struct_entries {
             out.push_str(&Self::generate_inline_struct(name, fields));
             out.push('\n');
         }
@@ -144,7 +142,12 @@ impl RustCodegen {
             .map(Self::base_type_to_rust)
             .unwrap_or_else(|| "String".to_string());
 
-        out.push_str(&format!("pub type {} = {};\n", td.name, rust_type));
+        if matches!(td.name.as_str(), "Price" | "Quantity") {
+            out.push_str("#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]\n");
+            out.push_str(&format!("pub struct {}(pub {});\n", td.name, rust_type));
+        } else {
+            out.push_str(&format!("pub type {} = {};\n", td.name, rust_type));
+        }
         out
     }
 
@@ -153,7 +156,7 @@ impl RustCodegen {
         let fields = td.fields.as_ref().unwrap();
 
         out.push_str(&format!("/// Struct type: {}\n", td.name));
-        out.push_str("#[derive(Debug, Clone, Serialize, Deserialize)]\n");
+        out.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
         out.push_str(&format!("pub struct {} {{\n", td.name));
 
         for field in fields {
@@ -182,7 +185,7 @@ impl RustCodegen {
             out.push_str("/// NOT idempotent\n");
         }
 
-        out.push_str("#[derive(Debug, Clone, Serialize, Deserialize)]\n");
+        out.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
         out.push_str(&format!("pub struct {} {{\n", msg.name));
 
         for field in &msg.fields {
@@ -221,9 +224,7 @@ impl RustCodegen {
     fn generate_field_decl(field: &Field, parent_name: &str, indent: &str) -> String {
         let mut out = String::new();
         let rust_type = match &field.field_type {
-            FieldType::Enum(_) => {
-                format!("{}{}", parent_name, pascal_case(&field.name))
-            }
+            FieldType::Enum(_) => Self::canonical_enum_name(&field.name, parent_name),
             FieldType::InlineStruct(_) => {
                 format!("{}{}", parent_name, pascal_case(&field.name))
             }
@@ -256,7 +257,7 @@ impl RustCodegen {
         // For inline enums and inline structs, the generated name is based on message + field
         let rust_type = match &field.field_type {
             FieldType::Enum(_) => {
-                let enum_name = format!("{}{}", msg.name, pascal_case(&field.name));
+                let enum_name = Self::canonical_enum_name(&field.name, &msg.name);
                 if enum_names.contains_key(&enum_name) {
                     enum_name
                 } else {
@@ -288,7 +289,6 @@ impl RustCodegen {
     fn generate_enum(name: &str, variants: &[String]) -> String {
         let mut out = String::new();
         out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]\n");
-        out.push_str("#[serde(rename_all = \"snake_case\")]\n");
         out.push_str(&format!("pub enum {} {{\n", name));
         for (i, v) in variants.iter().enumerate() {
             let pascal = pascal_case(v);
@@ -314,7 +314,7 @@ impl RustCodegen {
         out.push_str("    }\n\n");
         out.push_str("    pub fn to_value(self) -> u8 {\n");
         out.push_str("        self as u8\n");
-        out.push_str("    }}\n");
+        out.push_str("    }\n");
         out.push_str("}\n");
         out
     }
@@ -353,6 +353,36 @@ impl RustCodegen {
     }
 
     // ── Type mapping helpers ──────────────────────────────────
+
+    fn canonical_enum_name(field_name: &str, parent: &str) -> String {
+        match field_name {
+            "side" => "Side".to_string(),
+            "order_type" => "OrderType".to_string(),
+            "time_in_force" => "TimeInForce".to_string(),
+            "id_source" => "SecurityIdSource".to_string(),
+            "exec_type" => "ExecType".to_string(),
+            "ord_status" => "OrdStatus".to_string(),
+            "reject_reason" => "CancelRejectReason".to_string(),
+            "action" if parent.contains("MarketData") => "MarketDataAction".to_string(),
+            other => format!("{}{}", parent, pascal_case(other)),
+        }
+    }
+
+    fn merge_enum_def(
+        map: &mut std::collections::HashMap<String, EnumDef>,
+        name: String,
+        incoming: &EnumDef,
+    ) {
+        map.entry(name)
+            .and_modify(|existing| {
+                for variant in &incoming.variants {
+                    if !existing.variants.contains(variant) {
+                        existing.variants.push(variant.clone());
+                    }
+                }
+            })
+            .or_insert_with(|| incoming.clone());
+    }
 
     fn base_type_to_rust(bt: &BaseType) -> String {
         match bt {
@@ -500,7 +530,6 @@ mod tests {
         assert!(code.contains("    En = 1,"));
         assert!(code.contains("    Fr = 2,"));
         assert!(code.contains("    De = 3,"));
-        assert!(code.contains("#[serde(rename_all = \"snake_case\")]"));
         assert!(code.contains("pub const SCHEMA_ID: u8 = 0x01;"));
         assert!(code.contains("pub const CHANNEL_TYPE: &str = \"request_response\";"));
     }
@@ -551,8 +580,8 @@ mod tests {
 
         // Verify key types and messages are generated
         assert!(code.contains("pub type ClientOrderId = String;"));
-        assert!(code.contains("pub type Price = f64;"));
-        assert!(code.contains("pub type Quantity = f64;"));
+        assert!(code.contains("pub struct Price(pub f64);"));
+        assert!(code.contains("pub struct Quantity(pub f64);"));
         assert!(code.contains("pub type Symbol = String;"));
         assert!(code.contains("pub type TradeTimestamp = i64;"));
         assert!(code.contains("pub struct NewOrderSingle"));
@@ -561,8 +590,8 @@ mod tests {
         assert!(code.contains("pub struct MarketDataSnapshot"));
         assert!(code.contains("pub struct PriceLevel"));
         assert!(code.contains("pub struct MarketDataUpdate"));
-        assert!(code.contains("pub enum NewOrderSingleSide"));
-        assert!(code.contains("pub enum NewOrderSingleOrderType"));
+        assert!(code.contains("pub enum Side"));
+        assert!(code.contains("pub enum OrderType"));
         assert!(code.contains("pub cl_ord_id: ClientOrderId,"));
         assert!(code.contains("pub order_qty: Quantity,"));
     }
@@ -588,7 +617,7 @@ mod tests {
         let code = RustCodegen::generate(&schema);
 
         // Verify derive macros are present on all types
-        assert!(code.contains("#[derive(Debug, Clone, Serialize, Deserialize)]"));
+        assert!(code.contains("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]"));
         // Verify idempotent const
         assert!(code.contains("pub const IDEMPOTENT: bool = false;"));
         // Verify correlation field

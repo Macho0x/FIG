@@ -49,7 +49,7 @@ pub async fn accept_tls(
 /// Type alias for a FIX gateway connection (plain or TLS).
 pub enum FixGatewayStream {
     Plain(TcpStream),
-    Tls(TlsStream<TcpStream>),
+    Tls(Box<TlsStream<TcpStream>>),
 }
 
 impl FixGatewayStream {
@@ -58,7 +58,7 @@ impl FixGatewayStream {
     }
 
     pub fn from_tls(stream: TlsStream<TcpStream>) -> Self {
-        Self::Tls(stream)
+        Self::Tls(Box::new(stream))
     }
 }
 

@@ -49,11 +49,57 @@ impl GoCodegen {
         out.push_str(&format!("// {}\n\n", desc));
         out.push_str("package generated\n\n");
 
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("type {name} int32\n\n"));
+            out.push_str("const (\n");
+            for (i, variant) in variants.iter().enumerate() {
+                out.push_str(&format!(
+                    "    {}{} = {}\n",
+                    name,
+                    pascal_case(variant),
+                    i + 1
+                ));
+            }
+            out.push_str(")\n\n");
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("// Struct: {}\n", td.name));
+                out.push_str(&format!("type {} struct {{\n", td.name));
+                for field in fields {
+                    let go_type = go_field_type_named(
+                        &field.field_type,
+                        schema,
+                        &td.name,
+                        field.optional,
+                        &field.name,
+                    );
+                    out.push_str(&format!(
+                        "    {} {}\n",
+                        pascal_case(&field.name),
+                        go_type
+                    ));
+                }
+                out.push_str("}\n\n");
+            }
+        }
+
         for msg in &schema.messages {
             out.push_str(&format!("// Message: {}\n", msg.name));
+            out.push_str(&format!("// CHANNEL_TYPE: {:?}\n", msg.channel_type));
+            if let Some(cf) = &msg.correlation_field {
+                out.push_str(&format!("// CORRELATION_FIELD: {cf}\n"));
+            }
             out.push_str(&format!("type {} struct {{\n", msg.name));
             for field in &msg.fields {
-                let go_type = go_field_type(&field.field_type, schema, &msg.name, field.optional);
+                let go_type = go_field_type_named(
+                    &field.field_type,
+                    schema,
+                    &msg.name,
+                    field.optional,
+                    &field.name,
+                );
                 let field_name = pascal_case(&field.name);
                 out.push_str(&format!(
                     "    {} {} `json:\"{}\"`\n",
@@ -222,6 +268,132 @@ impl CsharpCodegen {
 
 // ── Shared helpers ──────────────────────────────────────────────
 
+fn canonical_enum_name(field_name: &str, parent: &str) -> String {
+    match field_name {
+        "side" => "Side".to_string(),
+        "order_type" => "OrderType".to_string(),
+        "time_in_force" => "TimeInForce".to_string(),
+        "id_source" => "SecurityIdSource".to_string(),
+        "exec_type" => "ExecType".to_string(),
+        "ord_status" => "OrdStatus".to_string(),
+        "reject_reason" => "CancelRejectReason".to_string(),
+        "action" if parent.contains("MarketData") => "MarketDataAction".to_string(),
+        other => format!("{}{}", parent, pascal_case(other)),
+    }
+}
+
+fn merge_enum_variants(map: &mut std::collections::HashMap<String, Vec<String>>, name: String, variants: &[String]) {
+    map.entry(name)
+        .and_modify(|existing| {
+            for v in variants {
+                if !existing.contains(v) {
+                    existing.push(v.clone());
+                }
+            }
+        })
+        .or_insert_with(|| variants.to_vec());
+}
+
+fn collect_shared_enums(schema: &Schema) -> Vec<(String, Vec<String>)> {
+    let mut enums = std::collections::HashMap::new();
+    for msg in &schema.messages {
+        for field in &msg.fields {
+            if let FieldType::Enum(enum_def) = &field.field_type {
+                let name = canonical_enum_name(&field.name, &msg.name);
+                merge_enum_variants(&mut enums, name, &enum_def.variants);
+            }
+        }
+    }
+    for td in &schema.type_defs {
+        if let Some(fields) = &td.fields {
+            for field in fields {
+                if let FieldType::Enum(enum_def) = &field.field_type {
+                    let name = canonical_enum_name(&field.name, &td.name);
+                    merge_enum_variants(&mut enums, name, &enum_def.variants);
+                }
+            }
+        }
+    }
+    let mut out: Vec<_> = enums.into_iter().collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+fn python_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    optional: bool,
+    parent: &str,
+    field_name: &str,
+) -> String {
+    let base = match ft {
+        FieldType::Named(name) => {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
+                python_base_type(&bt)
+            } else {
+                "str".to_string()
+            }
+        }
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => format!(
+            "list[{}]",
+            python_field_type_named(inner, schema, false, parent, field_name)
+        ),
+        FieldType::InlineStruct(_) => "dict".to_string(),
+        FieldType::InlineBase(bt, _) => python_base_type(bt),
+    };
+    if optional {
+        format!("Optional[{base}]")
+    } else {
+        base
+    }
+}
+
+fn go_field_type_named(
+    ft: &FieldType,
+    schema: &Schema,
+    parent: &str,
+    optional: bool,
+    field_name: &str,
+) -> String {
+    let base = match ft {
+        FieldType::Named(name) => {
+            if schema
+                .type_defs
+                .iter()
+                .any(|td| td.name == *name && td.fields.is_some())
+            {
+                name.clone()
+            } else if let Some(bt) = resolve_named_type(name, schema) {
+                go_base_type(&bt)
+            } else {
+                match name.as_str() {
+                    "Price" | "Quantity" => "float64".to_string(),
+                    "TradeTimestamp" => "int64".to_string(),
+                    _ => "string".to_string(),
+                }
+            }
+        }
+        FieldType::Enum(_) => canonical_enum_name(field_name, parent),
+        FieldType::List(inner) => {
+            format!("[]{}", go_field_type_named(inner, schema, parent, false, field_name))
+        }
+        FieldType::InlineStruct(_) => parent.to_string(),
+        FieldType::InlineBase(bt, _) => go_base_type(bt),
+    };
+    if optional {
+        format!("*{base}")
+    } else {
+        base
+    }
+}
+
 fn pascal_case(s: &str) -> String {
     s.split('_')
         .map(|word| {
@@ -278,31 +450,6 @@ fn go_base_type(bt: &BaseType) -> String {
         BaseType::Bool => "bool".to_string(),
         BaseType::Bytes => "[]byte".to_string(),
         BaseType::List(inner) => format!("[]{}", go_base_type(inner)),
-    }
-}
-
-fn go_field_type(ft: &FieldType, schema: &Schema, msg_name: &str, optional: bool) -> String {
-    let base = match ft {
-        FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
-                go_base_type(&bt)
-            } else {
-                match name.as_str() {
-                    "Price" | "Quantity" => "float64".to_string(),
-                    "TradeTimestamp" => "int64".to_string(),
-                    _ => "string".to_string(),
-                }
-            }
-        }
-        FieldType::Enum(_) => "int32".to_string(),
-        FieldType::List(inner) => format!("[]{}", go_field_type(inner, schema, msg_name, false)),
-        FieldType::InlineStruct(_) => format!("{}{}", msg_name, pascal_case("inline")),
-        FieldType::InlineBase(bt, _) => go_base_type(bt),
-    };
-    if optional {
-        format!("*{}", base)
-    } else {
-        base
     }
 }
 
@@ -489,13 +636,47 @@ impl PythonCodegen {
             schema.name, schema.version
         ));
         out.push_str("from dataclasses import dataclass\n");
+        out.push_str("from enum import Enum\n");
         out.push_str("from typing import Optional\n\n");
+
+        for (name, variants) in collect_shared_enums(schema) {
+            out.push_str(&format!("class {name}(Enum):\n"));
+            for (i, variant) in variants.iter().enumerate() {
+                out.push_str(&format!("    {} = {}\n", pascal_case(variant), i + 1));
+            }
+            out.push('\n');
+        }
+
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                out.push_str(&format!("# Struct: {}\n", td.name));
+                out.push_str("# @dataclass\n");
+                out.push_str(&format!("class {}:\n", td.name));
+                for field in fields {
+                    let py_type = python_field_type_named(
+                        &field.field_type,
+                        schema,
+                        field.optional,
+                        &td.name,
+                        &field.name,
+                    );
+                    out.push_str(&format!("    {}: {}\n", field.name, py_type));
+                }
+                out.push('\n');
+            }
+        }
 
         for msg in &schema.messages {
             out.push_str(&format!("# Message: {}\n", msg.name));
             out.push_str(&format!("@dataclass\nclass {}:\n", msg.name));
             for field in &msg.fields {
-                let py_type = python_field_type(&field.field_type, schema, field.optional);
+                let py_type = python_field_type_named(
+                    &field.field_type,
+                    schema,
+                    field.optional,
+                    &msg.name,
+                    &field.name,
+                );
                 out.push_str(&format!("    {}: {}\n", field.name, py_type));
             }
             out.push('\n');
@@ -641,27 +822,6 @@ fn python_base_type(bt: &BaseType) -> String {
         | BaseType::UInt32
         | BaseType::UInt64 => "int".to_string(),
         BaseType::List(_) => "list".to_string(),
-    }
-}
-
-fn python_field_type(ft: &FieldType, schema: &Schema, optional: bool) -> String {
-    let base = match ft {
-        FieldType::Named(name) => {
-            if let Some(bt) = resolve_named_type(name, schema) {
-                python_base_type(&bt)
-            } else {
-                "str".to_string()
-            }
-        }
-        FieldType::Enum(_) => "int".to_string(),
-        FieldType::List(inner) => format!("list[{}]", python_field_type(inner, schema, false)),
-        FieldType::InlineStruct(_) => "dict".to_string(),
-        FieldType::InlineBase(bt, _) => python_base_type(bt),
-    };
-    if optional {
-        format!("Optional[{}]", base)
-    } else {
-        base
     }
 }
 

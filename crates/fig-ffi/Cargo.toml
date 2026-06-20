@@ -1,0 +1,16 @@
+[package]
+name = "fig-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C ABI for FIG core — stable FFI surface for language bindings"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+fig-core = { workspace = true }
+libc = "0.2"
+
+[build-dependencies]
+cbindgen = "0.27"

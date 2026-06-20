@@ -201,7 +201,7 @@ impl MatchingEngine {
             OrderType::MarketOnClose => OrderType::Market,
             OrderType::LimitOnClose => OrderType::Limit,
             OrderType::Pegged => OrderType::Limit,
-            other => other.clone(),
+            other => *other,
         }
     }
 
@@ -318,7 +318,7 @@ impl MatchingEngine {
                     fill_id,
                     cl_ord_id: order.cl_ord_id.clone(),
                     contra_cl_ord_id: cl_ord_id.clone(),
-                    side: order.side.clone(),
+                    side: order.side,
                     symbol: order.symbol.clone(),
                     fill_price: price.clone(),
                     fill_qty: Quantity(*fill_qty),
@@ -352,12 +352,12 @@ impl MatchingEngine {
             let resting = RestingOrder {
                 order_id: format!("OX-{}", order.cl_ord_id),
                 cl_ord_id: order.cl_ord_id.clone(),
-                side: order.side.clone(),
+                side: order.side,
                 symbol: order.symbol.clone(),
                 price: order.price.clone().unwrap_or(Price(0.0)),
                 qty: order.order_qty.clone(),
                 leaves_qty: Quantity(remaining_qty),
-                time_in_force: order.time_in_force.clone(),
+                time_in_force: order.time_in_force,
                 expire_time: order.expire_time,
                 account: order.account.clone(),
                 seq: 0,
@@ -372,9 +372,9 @@ impl MatchingEngine {
         };
 
         let reject_reason = if fills.is_empty() && resting_order.is_none() {
-            if matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok) {
-                Some("No liquidity".to_string())
-            } else if matches!(match_order.order_type, OrderType::Market) {
+            if matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok)
+                || matches!(match_order.order_type, OrderType::Market)
+            {
                 Some("No liquidity".to_string())
             } else {
                 None
@@ -402,7 +402,7 @@ impl MatchingEngine {
                 return CancelOutcome::Cancelled(RestingOrder {
                     order_id: format!("OX-{}", cancel.orig_cl_ord_id),
                     cl_ord_id: cancel.orig_cl_ord_id.clone(),
-                    side: cancel.side.clone(),
+                    side: cancel.side,
                     symbol: cancel.symbol.clone(),
                     price: Price(0.0),
                     qty: Quantity(0.0),
@@ -439,7 +439,7 @@ impl MatchingEngine {
             cl_ord_id: replace.cl_ord_id.clone(),
             orig_cl_ord_id: replace.orig_cl_ord_id.clone(),
             symbol: replace.symbol.clone(),
-            side: replace.side.clone(),
+            side: replace.side,
             order_qty: None,
         }) {
             CancelOutcome::Cancelled(order) => Some(order),
@@ -449,7 +449,7 @@ impl MatchingEngine {
         // Then submit the new order
         let new_order = NewOrderSingle {
             cl_ord_id: replace.cl_ord_id.clone(),
-            side: replace.side.clone(),
+            side: replace.side,
             order_qty: replace.order_qty.clone(),
             price: replace.price.clone(),
             stop_price: None,

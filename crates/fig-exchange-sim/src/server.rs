@@ -289,7 +289,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
         && !channel_path.contains("/replace")
     {
         // New order
-        match codec::decode_cbor::<NewOrderSingle>(&frame.payload) {
+        match codec::decode_new_order_single_frame(&frame) {
             Ok(order) => {
                 info!(
                     "NewOrderSingle: {} {:?} {} @ {:?}",
@@ -309,9 +309,9 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         cl_ord_id: order.cl_ord_id.clone(),
                         order_id: fill.fill_id.clone(),
                         exec_id: format!("EX-{}", Uuid::new_v4()),
-                        exec_type: fill.exec_type.clone(),
-                        ord_status: fill.ord_status.clone(),
-                        side: fill.side.clone(),
+                        exec_type: fill.exec_type,
+                        ord_status: fill.ord_status,
+                        side: fill.side,
                         last_qty: Some(fill.fill_qty.clone()),
                         last_price: Some(fill.fill_price.clone()),
                         leaves_qty: fill.leaves_qty.clone(),
@@ -373,7 +373,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         exec_id: format!("EX-{}", Uuid::new_v4()),
                         exec_type: ExecType::Canceled,
                         ord_status: OrdStatus::Canceled,
-                        side: cancel.side.clone(),
+                        side: cancel.side,
                         last_qty: None,
                         last_price: None,
                         leaves_qty: Quantity(0.0),
@@ -443,9 +443,9 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         cl_ord_id: replace.cl_ord_id.clone(),
                         order_id: fill.fill_id.clone(),
                         exec_id: format!("EX-{}", Uuid::new_v4()),
-                        exec_type: fill.exec_type.clone(),
-                        ord_status: fill.ord_status.clone(),
-                        side: fill.side.clone(),
+                        exec_type: fill.exec_type,
+                        ord_status: fill.ord_status,
+                        side: fill.side,
                         last_qty: Some(fill.fill_qty.clone()),
                         last_price: Some(fill.fill_price.clone()),
                         leaves_qty: fill.leaves_qty.clone(),
