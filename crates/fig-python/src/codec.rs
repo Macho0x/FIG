@@ -83,6 +83,10 @@ pub fn encode_subscribe_frame(
         .with_schema_id(1)
         .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
         .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            stream_seq.to_string(),
+        ))
         .encode()
         .map_err(|e| e.to_string())
 }

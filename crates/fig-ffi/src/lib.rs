@@ -159,8 +159,13 @@ pub unsafe extern "C" fn fig_frame_encode_subscribe(
     };
     let frame = Frame::new(FrameType::Subscribe, channel_id)
         .with_seq(stream_seq)
+        .with_schema_id(0x01)
         .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
-        .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key));
+        .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            stream_seq.to_string(),
+        ));
     match frame.encode() {
         Ok(bytes) => {
             *out = into_buffer(bytes);
