@@ -185,6 +185,28 @@ Reference crates: [`fig-core`](crates/fig-core/) (protocol) · [`fig-gateways`](
 
 ---
 
+## Language SDKs
+
+Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** shipped · **🔶** partial · **⬜** planned.
+
+| Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
+|---|---|---|---|---|
+| **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — complete runtime |
+| **Python** | 🔶 Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | 🔶 enums + nested structs | Tier 1–2 — connect, request, subscribe; [CI conformance](crates/fig-python/tests/binding_conformance.rs) |
+| **C++** | 🔶 Thin wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | 🔶 enums + nested structs | Frame encode/decode + CBOR order helpers only |
+| **C#** | 🔶 Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | 🔶 enums + nested classes | Frame encode/decode + CBOR order helpers only |
+| **Go** | 🔶 Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | 🔶 structs + JSON tags | Frame encode/decode + CBOR order helpers only |
+| **TypeScript** | ⬜ Planned | — | 🔶 interfaces (types only) | Gateway for browser; Node addon or WASM TBD |
+| **OCaml** | ⬜ Planned | — | 🔶 records (flat shapes) | ctypes → `fig-ffi` TBD |
+| **Zig** | ⬜ Planned | — | 🔶 structs (flat shapes) | `@cImport fig.h` or pure Zig codec TBD |
+| **Java** | ⬜ Planned | — | ⬜ not in `ftlc` yet | JNI → `fig-ffi` TBD |
+
+**C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md) — shared foundation for C++, C#, Go, and future OCaml/Zig.
+
+Languages without a native TREE client can use [`fig-gateway`](crates/fig-gateways/) (REST/WS/FIX) against a FIG backend while SDK work continues.
+
+---
+
 ## Documentation
 
 | Document | Description |
