@@ -75,6 +75,12 @@ Client                              Server
 | Protobuf | Schema-evolving enterprise integrations |
 | JSON | REST gateway edge only |
 
+## Session resume and gap fill
+
+- **Resume:** persisted subscriptions are replayed when the client sends `SUBSCRIBE` with `Method: RESUME` and `ChannelPath: .well-known/resume` (same `SESSION_ID` as before disconnect when available).
+- **Gap fill:** after a sequence gap on a live book or candle stream, issue `OrderBookRequest` or `CandleBarRequest` for a snapshot, then resume the subscription.
+- **`request_stream`:** large historical responses (order history, candles) may arrive as multiple `STREAM_ITEM` frames plus `STREAM_CLOSE` instead of one `RESPONSE`.
+
 ## Further Reading
 
 - [SPEC.md](../SPEC.md) — normative wire format

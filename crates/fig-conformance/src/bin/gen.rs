@@ -11,7 +11,8 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest, NewOrderSingle, OrderType, Price,
+    BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest, CapabilitiesResponse,
+    CapabilityPath, CapabilityPathPattern, NewOrderSingle, OpenOrdersSnapshot, OrderType, Price,
     Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::encode_new_order_single;
@@ -125,6 +126,21 @@ fn build_suite() -> Result<ConformanceSuite> {
         }],
         is_snapshot: Some(true),
     };
+    let caps = CapabilitiesResponse {
+        schema_ids: vec![1, 2, 3],
+        paths: vec![CapabilityPath {
+            path: "marketdata/AAPL/candles/5m".to_string(),
+            pattern: CapabilityPathPattern::PubSub,
+            auth_required: false,
+        }],
+        symbols: vec!["AAPL".to_string()],
+        intervals: vec!["5m".to_string()],
+    };
+    let open_orders = OpenOrdersSnapshot {
+        account: "DEMO".to_string(),
+        orders: vec![],
+        is_snapshot: Some(true),
+    };
 
     Ok(ConformanceSuite {
         version: 1,
@@ -196,6 +212,26 @@ fn build_suite() -> Result<ConformanceSuite> {
                 description: "BalanceSnapshot CBOR for private stream conformance".into(),
                 message_type: "BalanceSnapshot".into(),
                 expected_hex: hex::encode(encode_cbor(&balance_snap)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.capabilities_response.demo".into(),
+                category: "cbor".into(),
+                description: "CapabilitiesResponse CBOR".into(),
+                message_type: "CapabilitiesResponse".into(),
+                expected_hex: hex::encode(encode_cbor(&caps)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.open_orders_snapshot.demo".into(),
+                category: "cbor".into(),
+                description: "OpenOrdersSnapshot CBOR".into(),
+                message_type: "OpenOrdersSnapshot".into(),
+                expected_hex: hex::encode(encode_cbor(&open_orders)?),
                 frame: None,
                 payload: None,
                 channel: None,

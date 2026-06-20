@@ -27,6 +27,8 @@ jobs:
         run: cargo run -p fig-conformance --bin fig-conformance
       - name: Codegen drift check
         run: cargo run -p xtask -- codegen --check
+      - name: Gateway catalog completeness
+        run: cargo run -p xtask -- check-gateway
       - name: Clippy
         run: cargo clippy --workspace --all-features -- -D warnings
       - name: Format check

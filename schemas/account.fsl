@@ -1,0 +1,254 @@
+// FIG Schema Language — Account Schema
+// Merged by `cargo xtask codegen` with orders.fsl (well-known id 0x01).
+
+schema trading.orders v1.0.0 {
+    description: "Private account and query messages (§17.4)"
+    well_known_id: 0x01
+
+    type ClientOrderId: string(max_len: 20, pattern: "[A-Za-z0-9\\-]+")
+    type Price: decimal64(precision: 8, min: 0)
+    type Quantity: decimal64(precision: 0, min: 0, max: 999999999)
+    type Symbol: string(max_len: 8, uppercase: true)
+    type TradeTimestamp: int64
+
+    // --- §17 Account / Portfolio ---
+
+    message AccountSummary {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        balance: decimal64(precision: 2) @2
+        buying_power: decimal64(precision: 2) @3
+        currency: string(max_len: 3) @4
+    }
+
+    type CandleInterval: string(max_len: 8)
+
+    message ExecutionReport {
+        channel_type: stream_item
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        order_id: string(max_len: 32) @2
+        exec_id: string(max_len: 20) @3
+        exec_type: enum {
+            new, partial_fill, fill, done_for_day,
+            canceled, replaced, pending_cancel, stopped,
+            rejected, suspended, pending_new, expired
+        } @4
+        ord_status: enum {
+            new, partially_filled, filled, done_for_day,
+            canceled, pending_cancel, stopped, rejected,
+            suspended, pending_new, expired, replaced
+        } @5
+        side: enum { buy, sell, sell_short } @6
+        last_qty: Quantity @7 optional
+        last_price: Price @8 optional
+        leaves_qty: Quantity @9
+        cum_qty: Quantity @10
+        avg_price: Price @11
+        symbol: Symbol @12
+        transact_time: TradeTimestamp @13
+
+        priority: high
+    }
+
+    message MarginSummary {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        balance: decimal64(precision: 2) @2
+        buying_power: decimal64(precision: 2) @3
+        equity: decimal64(precision: 2) @4
+        margin_used: decimal64(precision: 2) @5
+        available: decimal64(precision: 2) @6
+        currency: string(max_len: 3) @7
+    }
+
+    type BalanceEntry {
+        asset: string(max_len: 16)
+        total: decimal64(precision: 8)
+        available: decimal64(precision: 8)
+        hold: decimal64(precision: 8)
+    }
+
+    message BalanceSnapshot {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        balances: list<BalanceEntry> @2
+        is_snapshot: bool @3 optional
+    }
+
+    message BalanceUpdate {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        asset: string(max_len: 16) @2
+        delta: decimal64(precision: 8) @3
+        total: decimal64(precision: 8) @4
+        available: decimal64(precision: 8) @5
+        reason: enum { trade, deposit, withdrawal, transfer, fee } @6
+    }
+
+    type PositionEntry {
+        symbol: Symbol
+        qty: Quantity
+        entry_price: Price
+        unrealized_pnl: decimal64(precision: 2)
+    }
+
+    message PositionSnapshot {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        positions: list<PositionEntry> @2
+        is_snapshot: bool @3 optional
+    }
+
+    message PositionUpdate {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2
+        qty: Quantity @3
+        entry_price: Price @4
+        unrealized_pnl: decimal64(precision: 2) @5
+    }
+
+    message FillHistoryRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2 optional
+        start_time: TradeTimestamp @3 optional
+        end_time: TradeTimestamp @4 optional
+        limit: uint32 @5 optional
+    }
+
+    message FillHistoryBatch {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        fills: list<ExecutionReport> @2
+        has_more: bool @3
+        next_cursor: string(max_len: 64) @4 optional
+    }
+
+    message FundingPayment {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2 optional
+        amount: decimal64(precision: 8) @3
+        rate: decimal64(precision: 8) @4
+        timestamp: TradeTimestamp @5
+    }
+
+    message FundingHistoryRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        start_time: TradeTimestamp @2 optional
+        end_time: TradeTimestamp @3 optional
+        limit: uint32 @4 optional
+    }
+
+    message FundingHistoryBatch {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        payments: list<FundingPayment> @2
+        has_more: bool @3
+        next_cursor: string(max_len: 64) @4 optional
+    }
+
+    message LedgerUpdate {
+        channel_type: stream_item
+
+        account: string(max_len: 32) @1
+        asset: string(max_len: 16) @2
+        delta: decimal64(precision: 8) @3
+        kind: enum { deposit, withdrawal, transfer, fee, funding } @4
+        timestamp: TradeTimestamp @5
+        reference_id: string(max_len: 64) @6 optional
+    }
+
+    message LedgerHistoryRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        start_time: TradeTimestamp @2 optional
+        end_time: TradeTimestamp @3 optional
+        limit: uint32 @4 optional
+    }
+
+    message LedgerHistoryBatch {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        entries: list<LedgerUpdate> @2
+        has_more: bool @3
+        next_cursor: string(max_len: 64) @4 optional
+    }
+
+    message OpenOrdersRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2 optional
+    }
+
+    message OpenOrdersSnapshot {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        orders: list<ExecutionReport> @2
+        is_snapshot: bool @3 optional
+    }
+
+    message OrderHistoryRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        symbol: Symbol @2 optional
+        start_time: TradeTimestamp @3 optional
+        end_time: TradeTimestamp @4 optional
+        limit: uint32 @5 optional
+    }
+
+    message OrderHistoryBatch {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+        orders: list<ExecutionReport> @2
+        has_more: bool @3
+        next_cursor: string(max_len: 64) @4 optional
+    }
+
+    type CapabilityPath {
+        path: string(max_len: 128)
+        pattern: enum { pub_sub, request_response, request_stream }
+        auth_required: bool
+    }
+
+    message CapabilitiesRequest {
+        channel_type: request_response
+    }
+
+    message CapabilitiesResponse {
+        channel_type: request_response
+
+        schema_ids: list<uint8> @1
+        paths: list<CapabilityPath> @2
+        symbols: list<Symbol> @3
+        intervals: list<CandleInterval> @4
+    }
+
+    message PositionRequest {
+        channel_type: request_response
+
+        account: string(max_len: 32) @1
+    }
+
+}

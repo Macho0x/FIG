@@ -622,3 +622,207 @@ async fn test_ticker_query() {
         .and_then(|f| codec::decode_cbor::<SymbolTicker>(&f.payload).ok());
     assert!(ticker.is_some());
 }
+
+fn make_get_query_frame(channel_id: u16, channel_path: &str, account: Option<&str>) -> Frame {
+    let mut frame = Frame::new(FrameType::Request, channel_id)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    if let Some(acct) = account {
+        frame = frame.with_extension(auth_extension(acct));
+    }
+    frame
+}
+
+/// Capabilities query returns supported paths.
+#[tokio::test]
+async fn test_capabilities_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+    let query = make_get_query_frame(1, ".well-known/capabilities", None);
+    let responses = send_and_receive(&conn, query).await.expect("send/receive");
+    let caps = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .and_then(|f| codec::decode_cbor::<CapabilitiesResponse>(&f.payload).ok());
+    assert!(caps.is_some());
+    assert!(!caps.unwrap().paths.is_empty());
+}
+
+/// Open orders query returns snapshot after resting order.
+#[tokio::test]
+async fn test_open_orders_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "OPEN-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("place order");
+
+    let query = make_get_query_frame(1, "trading/accounts/TEST/orders/open", Some("TEST"));
+    let responses = send_and_receive(&conn, query).await.expect("query");
+    let snap = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .and_then(|f| codec::decode_cbor::<OpenOrdersSnapshot>(&f.payload).ok());
+    assert!(snap.is_some());
+    assert!(!snap.unwrap().orders.is_empty());
+}
+
+/// Order book query includes sequence metadata.
+#[tokio::test]
+async fn test_order_book_query_sequence() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "BOOK-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("place order");
+
+    let query = make_get_query_frame(1, "marketdata/AAPL/book", None);
+    let responses = send_and_receive(&conn, query).await.expect("query");
+    let book = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .and_then(|f| codec::decode_cbor::<MarketDataSnapshot>(&f.payload).ok());
+    let book = book.expect("book snapshot");
+    assert_eq!(book.is_snapshot, Some(true));
+    assert!(book.sequence.unwrap_or(0) > 0);
+}
+
+/// UNSUBSCRIBE acks and closes the stream.
+#[tokio::test]
+async fn test_unsubscribe_closes_stream() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sub = make_subscribe_frame(1, "marketdata.AAPL.quotes", "marketdata/AAPL/quotes");
+    send_and_receive(&conn, sub).await.expect("subscribe");
+
+    let unsub = Frame::new(FrameType::Unsubscribe, 1)
+        .with_seq(2)
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            "marketdata.AAPL.quotes",
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/quotes",
+        ));
+    let responses = send_and_receive(&conn, unsub).await.expect("unsub");
+    assert!(responses
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamClose));
+}
+
+/// Session resume restores persisted subscriptions on the same connection.
+#[tokio::test]
+async fn test_session_resume_subscriptions() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "RESUME-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("seed book");
+
+    let sub = make_subscribe_frame(1, "marketdata.AAPL.quotes", "marketdata/AAPL/quotes");
+    let resume = Frame::new(FrameType::Subscribe, 1)
+        .with_seq(2)
+        .with_extension(Extension::text(ExtensionTag::Method, "RESUME"))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            ".well-known/resume",
+        ));
+    let responses = send_multiple_and_receive(&conn, vec![sub, resume])
+        .await
+        .expect("subscribe+resume");
+    assert!(responses
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamItem));
+}
+
+/// Order history uses request_stream when batch exceeds threshold.
+#[tokio::test]
+async fn test_order_history_request_stream() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    for i in 0..55 {
+        let sell = make_order(
+            &format!("HS-{i}"),
+            Side::Sell,
+            "AAPL",
+            OrderType::Limit,
+            Some(100.0 + i as f64),
+            1.0,
+        );
+        send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+            .await
+            .expect("sell");
+        let buy = make_order(
+            &format!("HB-{i}"),
+            Side::Buy,
+            "AAPL",
+            OrderType::Market,
+            None,
+            1.0,
+        );
+        send_and_receive(&conn, make_order_frame(1, &buy).unwrap())
+            .await
+            .expect("buy");
+    }
+
+    let query = make_get_query_frame(1, "trading/accounts/TEST/orders", Some("TEST"));
+    let responses = send_and_receive(&conn, query).await.expect("history");
+    let items: Vec<_> = responses
+        .iter()
+        .filter(|f| f.frame_type == FrameType::StreamItem)
+        .collect();
+    assert!(items.len() >= 2, "expected chunked request_stream");
+    assert!(responses
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamClose));
+}

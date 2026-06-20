@@ -100,6 +100,26 @@
       "channel": null
     },
     {
+      "id": "cbor.capabilities_response.demo",
+      "category": "cbor",
+      "description": "CapabilitiesResponse CBOR",
+      "message_type": "CapabilitiesResponse",
+      "expected_hex": "a46a736368656d615f6964738301020365706174687381a36470617468781a6d61726b6574646174612f4141504c2f63616e646c65732f356d677061747465726e665075625375626d617574685f7265717569726564f46773796d626f6c7381644141504c69696e74657276616c738162356d",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.open_orders_snapshot.demo",
+      "category": "cbor",
+      "description": "OpenOrdersSnapshot CBOR",
+      "message_type": "OpenOrdersSnapshot",
+      "expected_hex": "a3676163636f756e746444454d4f666f7264657273806b69735f736e617073686f74f5",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "frame.request.candle_bar_query",
       "category": "frame",
       "description": "GET CandleBarRequest on marketdata path",

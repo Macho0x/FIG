@@ -161,7 +161,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | Order book (price-time priority) | — | 8 tests |
 | ✅ | Matching engine (market + limit orders) | — | 8 tests |
 | ✅ | FIG server over TREE | — | Order entry, cancel, market data, account query |
-| ✅ | Integration tests (end-to-end) | — | 11 tests (orders, MD, account, candles, auth, ticker, …) |
+| ✅ | Integration tests (end-to-end) | — | 17 tests (orders, MD, account, candles, auth, ticker, capabilities, open orders, book seq, UNSUBSCRIBE, session resume, request_stream, …) |
 | ✅ | Market data streaming (push updates) | Medium | Subscription registry + build_market_data_push on trade |
 | ✅ | Historical data handlers in exchange-sim | High | See **§17.4b** — `broker_api::handle_query_request` |
 | ✅ | Candle / OHLCV bar streaming | High | See **§17.3** — `market_data` + `SubscriptionKind::Candles` |
@@ -261,9 +261,9 @@ All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
 - **§16** — Multi-language SDK parity (FFI-first; base conformance vectors landed)
-- **§17** — Broker ↔ client API parity — **foundation complete** (native paths, exchange-sim engines, gateway catalogs + `--fig-backend`, CLI demos); remaining: schema split, full matrix rows, session resume, deep conformance
+- **§17** — Broker ↔ client API parity — **core complete** (schema split, capabilities, open orders, order history, book sequence, UNSUBSCRIBE, session resume, request_stream, gateway CI gate); remaining: agg trades, §16 binding tests
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — in progress. Broker ↔ client API parity (§17) — foundation complete; advanced rows (capabilities, agg trades, order history, session resume) and §16 binding tests remain.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — in progress. Broker ↔ client API parity (§17) — core complete; remaining advanced rows (agg trades, mini ticker) and §16 binding tests.**
 
 ---
 
@@ -675,17 +675,17 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | ADR 0006: broker ↔ client API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
-| ⬜ | Split FSL schemas by domain | High | Still monolithic `orders.fsl`; split to `marketdata.fsl` / `account.fsl` pending |
+| ✅ | Split FSL schemas by domain | High | `orders.fsl` + `marketdata.fsl` + `account.fsl` merged at codegen |
 | 🔶 | Well-known schema IDs in SPEC | High | §9.1 catalog in SPEC; single schema `0x01` today |
-| 🔶 | Unified `CHANNEL_PATH` tree | High | Core §17 paths implemented; capabilities + agg trades + order history pending |
+| ✅ | Unified `CHANNEL_PATH` tree | High | Core §17 paths + capabilities + open orders + order history |
 | 🔶 | Interaction type on path | High | Documented in SPEC §9; not enforced on every path yet |
 | 🔶 | Unified `ROUTING_KEY` convention | High | Used in exchange-sim + gateway catalogs; not fully normative |
-| 🔶 | Snapshot-on-subscribe contract | High | `is_snapshot` on candles/BBO/ticker/balances; book uses MD snapshot push |
-| ⬜ | `.well-known/capabilities` stream catalog | High | Not implemented in exchange-sim |
+| ✅ | Snapshot-on-subscribe contract | High | `is_snapshot` + book `sequence` on `MarketDataSnapshot` |
+| ✅ | `.well-known/capabilities` stream catalog | High | `CapabilitiesResponse` in exchange-sim + gateway REST |
 | ✅ | Private stream auth model | High | `fig-dev-{account}` + `FIG_DEV_OPEN`; integration test `test_private_auth_required` |
 | 🔶 | `subscriptionId` / correlation | Medium | `channel_id` used; no dedicated extension |
 | 🔶 | Multi-stream per connection | Medium | Multiple channels per TREE session in exchange-sim |
-| ⬜ | UNSUBSCRIBE semantics | Medium | Not implemented |
+| ✅ | UNSUBSCRIBE semantics | Medium | `FrameType::Unsubscribe` + session store cleanup |
 | 🔶 | Schema evolution policy | Medium | ADR 0004 + ADR 0006; extend for optional stream fields |
 
 #### FSL messages — public market data (`marketdata.fsl`)
@@ -696,13 +696,13 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | `CandleBar` | High | Type + `CandleBarEvent` stream wrapper |
 | ✅ | `CandleBarRequest` → `CandleBarBatch` | High | Historical + gap backfill |
 | ✅ | `TradeHistoryRequest` → `PublicTradeBatch` | High | Trade tape query |
-| ⬜ | `OrderBookRequest` → `OrderBookSnapshot` | High | Use `MarketDataSnapshot` GET today |
+| ✅ | `OrderBookRequest` → `MarketDataSnapshot` | High | GET `marketdata/{symbol}/book` with `sequence` + `is_snapshot` |
 | ✅ | `TickerRequest` → `SymbolTicker` | Medium | 24h stats snapshot query |
 | ✅ | `PublicTrade` | High | Type + `PublicTradeEvent` stream wrapper |
 | ⬜ | `AggregateTrade` | Medium | Not in FSL yet |
 | ✅ | `BestBidOffer` | High | BBO stream |
 | 🔶 | `OrderBookSnapshot` | High | Reuse `MarketDataSnapshot`; dedicated type pending |
-| 🔶 | `OrderBookDelta` | High | Reuse `MarketDataIncrementalRefresh`; sequence fields pending |
+| 🔶 | `OrderBookDelta` | High | `MarketDataIncrementalRefresh` with `sequence` field in FSL |
 | ✅ | `SymbolTicker` | Medium | Stream + GET |
 | ⬜ | `MiniTicker` / `AllMids` | Medium | Not in FSL yet |
 | ⬜ | `MarkPriceUpdate` | Low | Not in FSL yet |
@@ -717,7 +717,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | `MarginSummary` | High | GET on `accounts/{account}/margin` |
 | ✅ | `PositionSnapshot` | High | Snapshot on subscribe |
 | 🔶 | `PositionUpdate` | High | In FSL; fill fan-out not wired |
-| ⬜ | `OpenOrdersSnapshot` | Medium | Not in FSL yet |
+| ✅ | `OpenOrdersSnapshot` | Medium | `OpenOrdersRequest` → snapshot query |
 | ✅ | `FundingPayment` | Medium | Stream + `FundingHistoryBatch` |
 | ✅ | `LedgerUpdate` | Medium | Stream + `LedgerHistoryBatch` + fee on fill |
 | ⬜ | `UserLiquidation` | Medium | Not in FSL yet |
@@ -731,20 +731,20 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | `ExecutionReport` | — | `SUBSCRIBE` on `trading/accounts/{account}/executions` + fill fan-out |
 | 🔶 | `UserFill` vs reuse `ExecutionReport` | Medium | Reusing `ExecutionReport` + `FillHistoryBatch` today |
 | 🔶 | Order update stream | High | Executions sub covers fills; full order-state transitions pending |
-| ⬜ | `OrderHistoryRequest` → `OrderHistoryBatch` | High | Not in FSL yet |
+| ✅ | `OrderHistoryRequest` → `OrderHistoryBatch` | High | GET + `request_stream` when >50 rows |
 | ✅ | `FillHistoryRequest` → `FillHistoryBatch` | High | Query on `accounts/{account}/fills` |
-| ⬜ | `OpenOrdersRequest` → `OpenOrdersSnapshot` | Medium | Not in FSL yet |
+| ✅ | `OpenOrdersRequest` → `OpenOrdersSnapshot` | Medium | GET `trading/accounts/{account}/orders/open` |
 
 #### FSL messages — historical / query (cross-schema)
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | 🔶 | Shared pagination types | High | `next_cursor` + `has_more` on batch types; no shared `PageInfo` type yet |
-| ⬜ | `CapabilitiesRequest` → `CapabilitiesResponse` | Medium | Not in FSL yet |
+| ✅ | `CapabilitiesRequest` → `CapabilitiesResponse` | Medium | `.well-known/capabilities` |
 | ✅ | `LedgerHistoryRequest` → `LedgerHistoryBatch` | Medium | Implemented |
 | ✅ | `FundingHistoryRequest` → `FundingHistoryBatch` | Low | Implemented |
 | ✅ | `*Batch` list response types | High | Candle, trade, fill, funding, ledger batches in `orders.fsl` |
-| 🔶 | `gateway rest` GET for every §17.0b row | High | Core paths in `orders.fsl`; open orders / order history / capabilities pending |
+| ✅ | `gateway rest` GET for every §17.0b row | High | `rest_query.rs` + `cargo xtask check-gateway` CI gate |
 
 ---
 
@@ -755,9 +755,9 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim; rate limit by tier pending |
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | 🔶 | Snapshot then delta | High | Candles/BBO/ticker/balances; book uses MD snapshot + incremental |
-| ⬜ | Sequence / gap detection | High | No normative gap → backfill workflow yet |
+| 🔶 | Sequence / gap detection | High | Book `sequence` field; gap-fill workflow in STREAMING.md / PROTOCOL.md |
 | 🔶 | Tier 1 SDK: native `request()` | High | `fig-cli` queries candles/fills/funding/ledger; formal SDK helpers pending |
-| ⬜ | Session resume restores subscriptions | High | Not implemented |
+| ✅ | Session resume restores subscriptions | High | `Method: RESUME` + `.well-known/resume` + session store |
 | ✅ | Heartbeat independent of data | — | PING/PONG in §3; used by `fig-cli` |
 | 🔶 | Tier 3 SDK parity definition | Medium | Native pub/sub for MD + account in exchange-sim; SDK wrappers pending |
 
@@ -817,7 +817,7 @@ FIG `REQUEST` on TREE; the REST gateway translates HTTP → same frames.
 | 🔶 | Pagination enforcement | High | `limit` + `next_cursor` on batches; rate limits pending |
 | ✅ | `fig-cli` historical demo | High | Candle + funding + ledger queries in `fig-cli` |
 | ⬜ | SDK `request_candles`, `request_fills`, … | High | Pending (§16) |
-| ⬜ | Gap-fill workflow | High | Documented in SPEC §9.2; not automated in client |
+| ✅ | Gap-fill workflow | High | Documented in STREAMING.md + PROTOCOL.md; `OrderBookRequest` / `CandleBarRequest` backfill |
 | ✅ | Auth on private queries | High | Same auth as private streams |
 
 ---
@@ -869,7 +869,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | Push account updates on fill | High | `post_fill_updates` balance + execution fan-out |
 | ✅ | Candle + trade tape from matcher | High | `market_data::MarketDataHub::on_trade` |
 | ✅ | Historical bar + trade tape store | High | In-memory `closed_candles` + trade tape |
-| ⬜ | Integration tests per §17.0b row | High | Ticker + auth + candle sub; one test per **High** query row still pending |
+| ✅ | Integration tests per §17.0b row | High | capabilities, open orders, order book, order history stream, ticker, auth |
 | 🔶 | Hyperliquid-style snapshot flag | Medium | `is_snapshot` on candles/BBO/ticker/balances |
 
 ---
@@ -881,7 +881,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | 🔶 | SPEC.md: native FIG is canonical transport | High | §9.1 catalog + gateway note; expand normative edge rules |
 | 🔶 | SPEC.md §9 stream catalog | High | Core paths documented; full §17.0 matrix not exhaustive in SPEC |
 | 🔶 | SPEC.md private vs public auth | High | §9.1 auth note; expand scoping rules |
-| 🔶 | SPEC.md §7.3 historical patterns | High | Gap-fill note in §9.2; `request_stream` detail pending |
+| ✅ | SPEC.md §7.3 historical patterns | High | Gap-fill + `request_stream` in STREAMING.md / PROTOCOL.md |
 | ✅ | `docs/QUERY.md` or STREAMING.md § query | High | [QUERY.md](docs/QUERY.md) + [STREAMING.md](docs/STREAMING.md) |
 | ✅ | `docs/WS_GATEWAY.md` or GATEWAY.md § WS catalog | High | `ws_catalog.rs` + [GATEWAY.md](docs/GATEWAY.md) update |
 | ✅ | ADR 0006 broker API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
@@ -922,7 +922,7 @@ with `--fig-backend`; not every native row has a legacy catalog entry yet.
 | Funding / ledger live | ✅ | ✅ | ⬜ | ✅ | ✅ |
 | Aggregate trades / mini ticker / mark / liquidations | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
 | Snapshot-on-subscribe | 🔶 | 🔶 | 🔶 | ✅ | 🔶 |
-| Session resume / gap fill | ⬜ | ⬜ | ⬜ | — | ⬜ |
+| Session resume / gap fill | ✅ | ✅ | ✅ | — | 🔶 |
 | Conformance vectors | 🔶 | 🔶 | — | — | — |
 
 ---

@@ -22,12 +22,22 @@ use crate::error::SessionError;
 /// Default idle TTL for sessions (1 hour). A TTL of 0 disables expiry checks.
 pub const DEFAULT_SESSION_TTL_SECS: u64 = 3600;
 
+/// A subscription persisted on a session for resume after reconnect.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SessionSubscription {
+    pub channel_path: String,
+    pub routing_key: String,
+    pub kind: String,
+    pub account: Option<String>,
+}
+
 /// Internal struct for resumption token serialization.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResumptionTokenData {
     session_id: Uuid,
     auth_token: Option<Vec<u8>>,
     channel_ids: Vec<u16>,
+    subscriptions: Vec<SessionSubscription>,
     last_seq_sent: u32,
     last_seq_recv: u32,
     created_at: u64,
@@ -45,6 +55,9 @@ pub struct Session {
     pub auth_token: Option<Vec<u8>>,
     /// IDs of channels currently associated with this session.
     pub channels: Vec<u16>,
+    /// Active pub/sub subscriptions to restore after reconnect.
+    #[serde(default)]
+    pub subscriptions: Vec<SessionSubscription>,
     /// Last sequence number sent on any channel in this session.
     pub last_seq_sent: u32,
     /// Last sequence number received on any channel in this session.
@@ -67,6 +80,7 @@ impl Session {
             session_id: Uuid::new_v4(),
             auth_token: None,
             channels: Vec::new(),
+            subscriptions: Vec::new(),
             last_seq_sent: 0,
             last_seq_recv: 0,
             created_at: now,
@@ -91,6 +105,27 @@ impl Session {
     /// Remove a channel from this session.
     pub fn remove_channel(&mut self, channel_id: u16) {
         self.channels.retain(|&id| id != channel_id);
+        self.touch();
+    }
+
+    /// Persist a subscription for session resume.
+    pub fn add_subscription(&mut self, sub: SessionSubscription) {
+        if !self.subscriptions.iter().any(|s| {
+            s.channel_path == sub.channel_path
+                && s.routing_key == sub.routing_key
+                && s.kind == sub.kind
+        }) {
+            self.subscriptions.push(sub);
+            self.touch();
+        }
+    }
+
+    /// Drop a persisted subscription (UNSUBSCRIBE).
+    pub fn remove_subscription(&mut self, channel_path: &str, routing_key: &str) {
+        self.subscriptions.retain(|s| {
+            !(s.channel_path == channel_path
+                && (routing_key.is_empty() || s.routing_key == routing_key))
+        });
         self.touch();
     }
 
@@ -124,6 +159,7 @@ impl Session {
             session_id: self.session_id,
             auth_token: self.auth_token.clone(),
             channel_ids: self.channels.clone(),
+            subscriptions: self.subscriptions.clone(),
             last_seq_sent: self.last_seq_sent,
             last_seq_recv: self.last_seq_recv,
             created_at: self.created_at,
@@ -148,6 +184,7 @@ impl Session {
             session_id: data.session_id,
             auth_token: data.auth_token,
             channels: data.channel_ids,
+            subscriptions: data.subscriptions,
             last_seq_sent: data.last_seq_sent,
             last_seq_recv: data.last_seq_recv,
             created_at: data.created_at,

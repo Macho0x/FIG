@@ -95,6 +95,14 @@ pub struct PositionEntry {
     pub unrealized_pnl: f64,
 }
 
+/// Struct type: CapabilityPath
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilityPath {
+    pub path: String,
+    pub pattern: CapabilityPathPattern,
+    pub auth_required: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BalanceUpdateReason {
     Trade = 1,
@@ -136,6 +144,28 @@ impl CancelRejectReason {
             2 => Some(CancelRejectReason::AlreadyCanceled),
             3 => Some(CancelRejectReason::AlreadyFilled),
             4 => Some(CancelRejectReason::TooLateToCancel),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum CapabilityPathPattern {
+    PubSub = 1,
+    RequestResponse = 2,
+    RequestStream = 3,
+}
+
+impl CapabilityPathPattern {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(CapabilityPathPattern::PubSub),
+            2 => Some(CapabilityPathPattern::RequestResponse),
+            3 => Some(CapabilityPathPattern::RequestStream),
             _ => None,
         }
     }
@@ -527,6 +557,10 @@ pub struct MarketDataSnapshot {
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
     pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
 }
 
 impl MarketDataSnapshot {
@@ -544,6 +578,8 @@ pub struct MarketDataIncrementalRefresh {
     pub symbol: Symbol,
     pub updates: Vec<MarketDataUpdate>,
     pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<u64>,
 }
 
 impl MarketDataIncrementalRefresh {
@@ -555,16 +591,15 @@ impl MarketDataIncrementalRefresh {
     pub const IDEMPOTENT: bool = true;
 }
 
-/// Message: AccountSummary (channel: RequestResponse, priority: Medium)
+/// Message: OrderBookRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccountSummary {
-    pub account: String,
-    pub balance: f64,
-    pub buying_power: f64,
-    pub currency: String,
+pub struct OrderBookRequest {
+    pub symbol: Symbol,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 }
 
-impl AccountSummary {
+impl OrderBookRequest {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "request_response";
     /// Priority level
@@ -711,6 +746,64 @@ impl BestBidOffer {
     pub const IDEMPOTENT: bool = true;
 }
 
+/// Message: SymbolTicker (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SymbolTicker {
+    pub symbol: Symbol,
+    pub last_price: Price,
+    pub price_change: f64,
+    pub price_change_pct: f64,
+    pub volume: Quantity,
+    pub high: Price,
+    pub low: Price,
+    pub open: Price,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl SymbolTicker {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: TickerRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TickerRequest {
+    pub symbol: Symbol,
+}
+
+impl TickerRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: AccountSummary (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccountSummary {
+    pub account: String,
+    pub balance: f64,
+    pub buying_power: f64,
+    pub currency: String,
+}
+
+impl AccountSummary {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
 /// Message: MarginSummary (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarginSummary {
@@ -849,46 +942,6 @@ impl FillHistoryBatch {
     pub const IDEMPOTENT: bool = true;
 }
 
-/// Message: SymbolTicker (channel: StreamItem, priority: Medium)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SymbolTicker {
-    pub symbol: Symbol,
-    pub last_price: Price,
-    pub price_change: f64,
-    pub price_change_pct: f64,
-    pub volume: Quantity,
-    pub high: Price,
-    pub low: Price,
-    pub open: Price,
-    pub timestamp: TradeTimestamp,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_snapshot: Option<bool>,
-}
-
-impl SymbolTicker {
-    /// Channel type for this message
-    pub const CHANNEL_TYPE: &str = "stream_item";
-    /// Priority level
-    pub const PRIORITY: &str = "medium";
-    /// Whether this message is idempotent
-    pub const IDEMPOTENT: bool = true;
-}
-
-/// Message: TickerRequest (channel: RequestResponse, priority: Medium)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TickerRequest {
-    pub symbol: Symbol,
-}
-
-impl TickerRequest {
-    /// Channel type for this message
-    pub const CHANNEL_TYPE: &str = "request_response";
-    /// Priority level
-    pub const PRIORITY: &str = "medium";
-    /// Whether this message is idempotent
-    pub const IDEMPOTENT: bool = true;
-}
-
 /// Message: FundingPayment (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FundingPayment {
@@ -1002,6 +1055,130 @@ pub struct LedgerHistoryBatch {
 }
 
 impl LedgerHistoryBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OpenOrdersRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenOrdersRequest {
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+}
+
+impl OpenOrdersRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OpenOrdersSnapshot (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenOrdersSnapshot {
+    pub account: String,
+    pub orders: Vec<ExecutionReport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl OpenOrdersSnapshot {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OrderHistoryRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderHistoryRequest {
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<TradeTimestamp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+impl OrderHistoryRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: OrderHistoryBatch (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OrderHistoryBatch {
+    pub account: String,
+    pub orders: Vec<ExecutionReport>,
+    pub has_more: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+impl OrderHistoryBatch {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: CapabilitiesRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesRequest {
+}
+
+impl CapabilitiesRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: CapabilitiesResponse (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CapabilitiesResponse {
+    pub schema_ids: Vec<u8>,
+    pub paths: Vec<CapabilityPath>,
+    pub symbols: Vec<Symbol>,
+    pub intervals: Vec<CandleInterval>,
+}
+
+impl CapabilitiesResponse {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: PositionRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PositionRequest {
+    pub account: String,
+}
+
+impl PositionRequest {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "request_response";
     /// Priority level

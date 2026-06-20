@@ -75,6 +75,8 @@ pub struct OrderBook {
     pub asks: BookSide,
     /// Monotonically increasing sequence counter for price-time priority.
     next_seq: u64,
+    /// Monotonically increasing book update sequence (snapshot/delta contract).
+    pub book_update_seq: u64,
 }
 
 impl BookSide {
@@ -192,7 +194,16 @@ impl OrderBook {
             bids: BookSide::new(true),
             asks: BookSide::new(false),
             next_seq: 0,
+            book_update_seq: 0,
         }
+    }
+
+    fn bump_book_seq(&mut self) {
+        self.book_update_seq += 1;
+    }
+
+    pub fn book_sequence(&self) -> u64 {
+        self.book_update_seq
     }
 
     /// Allocate the next sequence number for price-time priority.
@@ -211,15 +222,21 @@ impl OrderBook {
             Side::Sell => &mut self.asks,
         };
         side.add(order);
+        self.bump_book_seq();
         seq
     }
 
     /// Cancel an order by cl_ord_id. Searches both sides.
     pub fn cancel_order(&mut self, cl_ord_id: &str) -> Option<RestingOrder> {
-        if let Some(order) = self.bids.cancel(cl_ord_id) {
-            return Some(order);
+        let removed = if let Some(order) = self.bids.cancel(cl_ord_id) {
+            Some(order)
+        } else {
+            self.asks.cancel(cl_ord_id)
+        };
+        if removed.is_some() {
+            self.bump_book_seq();
         }
-        self.asks.cancel(cl_ord_id)
+        removed
     }
 
     /// Get the best bid price and quantity.
@@ -265,6 +282,14 @@ impl OrderBook {
     /// Total number of resting orders in the book.
     pub fn total_orders(&self) -> usize {
         self.bids.order_count() + self.asks.order_count()
+    }
+
+    /// Iterate all resting orders in the book.
+    pub fn resting_orders(&self) -> impl Iterator<Item = &RestingOrder> {
+        self.bids
+            .levels()
+            .flat_map(|l| l.orders.iter())
+            .chain(self.asks.levels().flat_map(|l| l.orders.iter()))
     }
 }
 

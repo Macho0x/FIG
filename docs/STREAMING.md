@@ -58,7 +58,22 @@ See [GATEWAY.md](GATEWAY.md) for deployment and [QUERY.md](QUERY.md) for histori
 
 If a live candle or book stream detects a sequence gap:
 
-1. Issue native `REQUEST` with `CandleBarRequest` (or book snapshot request).
-2. Resume `SUBSCRIBE` after backfill completes.
+1. Send `CONTROL(SEQ_RESET)` on the affected channel if the peer advertised a reset point.
+2. Issue native `REQUEST` with `CandleBarRequest` or `OrderBookRequest` (snapshot with `sequence` + `is_snapshot: true`).
+3. Resume `SUBSCRIBE` after backfill completes, or send `SUBSCRIBE` with `Method: RESUME` and `ChannelPath: .well-known/resume` to restore persisted subscriptions.
 
 Native FIG is the source of truth; do not backfill over REST-only APIs.
+
+## Session resume
+
+Subscriptions are persisted on the server session store. After reconnect, send:
+
+```text
+SUBSCRIBE  Method=RESUME  ChannelPath=.well-known/resume
+```
+
+The broker replays persisted `ChannelPath` / `RoutingKey` pairs as snapshot `STREAM_ITEM` frames before live updates continue.
+
+## Large historical ranges (`request_stream`)
+
+When a query result exceeds 50 rows (exchange-sim default), the broker emits multiple `STREAM_ITEM` chunks followed by `STREAM_CLOSE` instead of a single `RESPONSE`. Clients must merge chunks until `StreamClose`.

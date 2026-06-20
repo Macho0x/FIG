@@ -34,7 +34,7 @@ pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
         format!("marketdata/{symbol}/trades")
     } else if stream == "bookTicker" {
         format!("marketdata/{symbol}/bbo")
-    } else if stream == "ticker" {
+    } else if stream == "ticker" || stream == "markPrice" {
         format!("marketdata/{symbol}/ticker")
     } else if stream == "depth" || stream.starts_with("depth@") {
         format!("marketdata/{symbol}/quotes")
@@ -96,6 +96,26 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
             (
                 format!("accounts/{user}/positions"),
                 format!("hl.positions.{user}"),
+            )
+        }
+        "userFunding" | "fundingHistory" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("accounts/{user}/funding"),
+                format!("hl.funding.{user}"),
+            )
+        }
+        "userNonFundingLedgerUpdates" | "ledgerUpdates" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("accounts/{user}/ledger"),
+                format!("hl.ledger.{user}"),
             )
         }
         _ => return None,
@@ -205,6 +225,49 @@ mod tests {
         let sub = hyperliquid_subscribe_to_fig(&serde_json::json!({"type":"trades","coin":"BTC"}))
             .unwrap();
         assert_eq!(sub.channel_path, "marketdata/BTC/trades");
+    }
+
+    #[test]
+    fn binance_ticker_topic_maps() {
+        let sub = binance_topic_to_subscribe("btcusdt@ticker").unwrap();
+        assert_eq!(sub.channel_path, "marketdata/btcusdt/ticker");
+    }
+
+    #[test]
+    fn hyperliquid_funding_subscription() {
+        let sub = hyperliquid_subscribe_to_fig(&serde_json::json!({
+            "type": "userFunding",
+            "user": "alice"
+        }))
+        .unwrap();
+        assert_eq!(sub.channel_path, "accounts/alice/funding");
+    }
+
+    #[test]
+    fn hyperliquid_ledger_subscription() {
+        let sub = hyperliquid_subscribe_to_fig(&serde_json::json!({
+            "type": "ledgerUpdates",
+            "user": "alice"
+        }))
+        .unwrap();
+        assert_eq!(sub.channel_path, "accounts/alice/ledger");
+    }
+
+    #[test]
+    fn ws_catalog_high_priority_topics_map() {
+        let topics = [
+            "btcusdt@kline_5m",
+            "ethusdt@trade",
+            "btcusdt@bookTicker",
+            "btcusdt@ticker",
+            "btcusdt@depth",
+        ];
+        for topic in topics {
+            assert!(
+                binance_topic_to_subscribe(topic).is_some(),
+                "missing mapping for {topic}"
+            );
+        }
     }
 
     #[test]

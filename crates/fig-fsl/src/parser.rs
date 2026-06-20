@@ -822,6 +822,37 @@ impl Parser {
     }
 }
 
+/// Load and merge the split trading schema fragments used by codegen.
+pub fn load_merged_trading_schema() -> Schema {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
+    let fragments = ["orders.fsl", "marketdata.fsl", "account.fsl"];
+    let mut schemas = Vec::new();
+    for name in fragments {
+        let input =
+            std::fs::read_to_string(root.join(name)).unwrap_or_else(|e| panic!("read {name}: {e}"));
+        schemas.push(Parser::parse(&input).unwrap_or_else(|e| panic!("parse {name}: {e}")));
+    }
+    merge_schemas(schemas)
+}
+
+pub fn merge_schemas(mut schemas: Vec<Schema>) -> Schema {
+    let mut base = schemas.remove(0);
+    for other in schemas {
+        for td in other.type_defs {
+            if !base.type_defs.iter().any(|t| t.name == td.name) {
+                base.type_defs.push(td);
+            }
+        }
+        for msg in other.messages {
+            if !base.messages.iter().any(|m| m.name == msg.name) {
+                base.messages.push(msg);
+            }
+        }
+        base.gateway_mappings.extend(other.gateway_mappings);
+    }
+    base
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1061,9 +1092,7 @@ mod tests {
 
     #[test]
     fn test_parse_full_orders_fsl() {
-        let orders_path = env!("CARGO_MANIFEST_DIR").to_string() + "/../../schemas/orders.fsl";
-        let input = std::fs::read_to_string(orders_path).expect("failed to read orders.fsl");
-        let schema = Parser::parse(&input).expect("failed to parse orders.fsl");
+        let schema = load_merged_trading_schema();
         assert_eq!(schema.name, "trading.orders");
         assert_eq!(schema.version, "v1.0.0");
         assert_eq!(schema.well_known_id, Some(0x01));
@@ -1071,11 +1100,8 @@ mod tests {
             schema.description.as_deref(),
             Some("Standard order entry and execution messages")
         );
-        // Should have type defs for custom types + struct types
         assert!(schema.type_defs.len() >= 7);
-        // Should have messages
         assert!(schema.messages.len() >= 7);
-        // Should have 2 gateway blocks
         assert_eq!(schema.gateway_mappings.len(), 2);
     }
 }

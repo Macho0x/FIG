@@ -19,6 +19,11 @@ use fig_core::session::{FileSessionStore, MemorySessionStore, Session, SessionSt
 use fig_core::transport;
 
 use crate::account_state::{AccountHub, AccountSubscription};
+use crate::broker_session::{
+    handle_unsubscribe, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
+    parse_order_history_path, parse_position_query_path, persist_subscription,
+    restore_session_subscriptions, session_id_from_frame,
+};
 use crate::market_data::{MarketDataHub, StreamSubscription};
 use crate::matching::MatchingEngine;
 
@@ -147,8 +152,9 @@ pub async fn handle_connection(conn: quinn::Connection, state: Arc<ExchangeState
         };
 
         let state = state.clone();
+        let session_id = session.session_id;
         tokio::spawn(async move {
-            if let Err(e) = handle_stream(send, recv, state).await {
+            if let Err(e) = handle_stream(send, recv, state, session_id).await {
                 error!("Stream error: {}", e);
             }
         });
@@ -169,6 +175,7 @@ pub async fn handle_stream(
     mut send: quinn::SendStream,
     mut recv: quinn::RecvStream,
     state: Arc<ExchangeState>,
+    session_id: uuid::Uuid,
 ) -> Result<()> {
     let mut decoder = FrameDecoder::new();
 
@@ -201,7 +208,7 @@ pub async fn handle_stream(
 
             info!("Received: {}", frame);
 
-            let responses = handle_frame(frame, &state).await;
+            let responses = handle_frame(frame, &state, session_id).await;
             for resp_frame in responses {
                 let encoded = resp_frame.encode()?;
                 send.write_all(&encoded).await?;
@@ -213,11 +220,16 @@ pub async fn handle_stream(
     Ok(())
 }
 
-pub async fn handle_frame(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+pub async fn handle_frame(
+    frame: Frame,
+    state: &Arc<ExchangeState>,
+    session_id: uuid::Uuid,
+) -> Vec<Frame> {
     match frame.frame_type {
         FrameType::Control => handle_control(frame),
         FrameType::Request => handle_request(frame, state).await,
-        FrameType::Subscribe => handle_subscribe(frame, state).await,
+        FrameType::Subscribe => handle_subscribe(frame, state, session_id).await,
+        FrameType::Unsubscribe => handle_unsubscribe(frame, state).await,
         _ => {
             warn!("Unhandled frame type: {:?}", frame.frame_type);
             vec![make_error_frame(
@@ -268,17 +280,23 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
         .and_then(|e| e.value.as_text())
         .unwrap_or("");
 
-    let is_query = method.eq_ignore_ascii_case("GET")
-        || channel_path.contains("/candles/")
-        || channel_path.contains("/ticker")
-        || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
-        || channel_path.ends_with("/fills")
-        || channel_path.ends_with("/funding")
-        || channel_path.ends_with("/ledger")
-        || channel_path.ends_with("/margin")
-        || (channel_path.starts_with("accounts/")
-            && !channel_path.contains("/orders")
-            && channel_path.matches('/').count() == 1);
+    let is_get = method.eq_ignore_ascii_case("GET");
+    let is_query = is_get
+        && (parse_capabilities_path(channel_path)
+            || parse_order_book_path(channel_path).is_some()
+            || parse_open_orders_path(channel_path).is_some()
+            || parse_order_history_path(channel_path).is_some()
+            || parse_position_query_path(channel_path).is_some()
+            || channel_path.contains("/candles/")
+            || channel_path.contains("/ticker")
+            || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
+            || channel_path.ends_with("/fills")
+            || channel_path.ends_with("/funding")
+            || channel_path.ends_with("/ledger")
+            || channel_path.ends_with("/margin")
+            || (channel_path.starts_with("accounts/")
+                && !channel_path.contains("/orders")
+                && channel_path.matches('/').count() == 1));
 
     if is_query {
         return crate::broker_api::handle_query_request(frame, state).await;
@@ -367,6 +385,13 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                                 ))
                                 .with_payload(payload),
                         );
+                    }
+                }
+
+                {
+                    let mut engine = state.engine.lock().await;
+                    for report in &reports {
+                        engine.record_execution(account, report.clone());
                     }
                 }
 
@@ -553,7 +578,11 @@ pub async fn handle_generic_request(frame: Frame, _state: &Arc<ExchangeState>) -
     vec![response]
 }
 
-pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+pub async fn handle_subscribe(
+    frame: Frame,
+    state: &Arc<ExchangeState>,
+    session_id: uuid::Uuid,
+) -> Vec<Frame> {
     let routing_key = frame
         .extensions
         .iter()
@@ -571,28 +600,56 @@ pub async fn handle_subscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<F
 
     info!("Subscribe to: {} path={}", routing_key, channel_path);
 
+    let is_resume = frame
+        .extensions
+        .iter()
+        .any(|e| e.tag == ExtensionTag::Method && e.value.as_text() == Some("RESUME"));
+
+    let mut frames = Vec::new();
+    if is_resume {
+        if let Some(sid) = session_id_from_frame(&frame).or(Some(session_id)) {
+            if state
+                .file_sessions
+                .get(&sid)
+                .ok()
+                .flatten()
+                .is_some_and(|s| !s.subscriptions.is_empty())
+            {
+                frames.extend(restore_session_subscriptions(state, sid, frame.channel_id).await);
+            }
+        }
+        if channel_path == ".well-known/resume" {
+            return frames;
+        }
+    }
+
     if channel_path.contains("/executions")
         || channel_path.contains("/balances")
         || channel_path.contains("/positions")
         || channel_path.ends_with("/funding")
         || channel_path.ends_with("/ledger")
     {
-        return crate::broker_api::handle_account_subscribe(frame, state).await;
-    }
-
-    if routing_key.contains("marketdata")
+        frames.extend(crate::broker_api::handle_account_subscribe(frame.clone(), state).await);
+    } else if routing_key.contains("marketdata")
         || routing_key.contains("quotes")
         || routing_key.contains("candles")
         || routing_key.contains("trades")
         || routing_key.contains("ticker")
         || channel_path.starts_with("marketdata/")
     {
-        return crate::broker_api::handle_market_subscribe(frame, state).await;
+        frames.extend(crate::broker_api::handle_market_subscribe(frame.clone(), state).await);
+    } else {
+        frames.push(
+            Frame::new(FrameType::Response, frame.channel_id)
+                .with_seq(frame.stream_seq)
+                .with_extension(Extension::u16(ExtensionTag::StatusCode, 200)),
+        );
     }
 
-    vec![Frame::new(FrameType::Response, frame.channel_id)
-        .with_seq(frame.stream_seq)
-        .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))]
+    if let Some(sid) = session_id_from_frame(&frame).or(Some(session_id)) {
+        persist_subscription(state, sid, &frame);
+    }
+    frames
 }
 
 /// Build incremental market data STREAM_ITEM frames for all subscribers of a symbol.
@@ -629,6 +686,8 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos() as i64,
+        sequence: Some(book.book_sequence()),
+        is_snapshot: Some(true),
     };
 
     drop(engine);

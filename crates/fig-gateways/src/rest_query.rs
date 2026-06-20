@@ -9,7 +9,7 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     schema_id, CandleBarRequest, FillHistoryRequest, FundingHistoryRequest, LedgerHistoryRequest,
-    TradeHistoryRequest,
+    OpenOrdersRequest, OrderBookRequest, OrderHistoryRequest, TradeHistoryRequest,
 };
 
 use crate::rest::{HttpRequest, RestError, RestResult};
@@ -53,7 +53,14 @@ fn map_http_path_to_channel_path(path: &str, query: &[(String, String)]) -> Rest
         return Ok(format!("marketdata/{symbol}/candles/{interval}"));
     }
 
-    if trimmed.starts_with("marketdata/") || trimmed.starts_with("accounts/") {
+    if trimmed.starts_with("marketdata/")
+        || trimmed.starts_with("accounts/")
+        || trimmed.starts_with("trading/")
+    {
+        return Ok(trimmed.to_string());
+    }
+
+    if trimmed == ".well-known/capabilities" || trimmed == "capabilities" {
         return Ok(trimmed.to_string());
     }
 
@@ -131,7 +138,73 @@ fn build_query_payload(
         ));
     }
 
+    if let Some(account) = parse_open_orders_path(channel_path) {
+        let req = OpenOrdersRequest {
+            account,
+            symbol: query_param(query, &["symbol", "Symbol"]),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if let Some(account) = parse_order_history_path(channel_path) {
+        let req = OrderHistoryRequest {
+            account,
+            symbol: query_param(query, &["symbol", "Symbol"]),
+            start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
+            end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
+            limit: parse_limit_param(query),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if let Some(symbol) = parse_order_book_path(channel_path) {
+        let req = OrderBookRequest {
+            symbol,
+            depth: parse_limit_param(query),
+        };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
     Ok(None)
+}
+
+fn parse_open_orders_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 5
+        && parts[0] == "trading"
+        && parts[1] == "accounts"
+        && parts[3] == "orders"
+        && parts[4] == "open"
+    {
+        return Some(parts[2].to_string());
+    }
+    None
+}
+
+fn parse_order_history_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() == 4 && parts[0] == "trading" && parts[1] == "accounts" && parts[3] == "orders" {
+        return Some(parts[2].to_string());
+    }
+    None
+}
+
+fn parse_order_book_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" {
+        match parts.get(2).copied() {
+            Some("book") | Some("quotes") => Some(parts[1].to_string()),
+            _ => None,
+        }
+    } else {
+        None
+    }
 }
 
 fn parse_candle_path(path: &str) -> Option<(String, String)> {
@@ -189,32 +262,78 @@ mod tests {
     use super::*;
     use crate::rest::parse_http_request;
 
-    #[test]
-    fn native_candle_path_maps_to_fig_request() {
-        let raw = b"GET /marketdata/BTC/candles/5m?start=1000&limit=10 HTTP/1.1\r\n\r\n";
-        let req = parse_http_request(raw).unwrap();
-        let frame = http_get_to_fig_request(&req).unwrap();
-        let path = frame
+    fn get_frame(path: &str) -> Frame {
+        let raw = format!("GET {path} HTTP/1.1\r\n\r\n");
+        let req = parse_http_request(raw.as_bytes()).unwrap();
+        http_get_to_fig_request(&req).unwrap()
+    }
+
+    fn channel_path(frame: &Frame) -> &str {
+        frame
             .extensions
             .iter()
             .find(|e| e.tag == ExtensionTag::ChannelPath)
             .and_then(|e| e.value.as_text())
-            .unwrap();
-        assert_eq!(path, "marketdata/BTC/candles/5m");
+            .unwrap()
+    }
+
+    #[test]
+    fn native_candle_path_maps_to_fig_request() {
+        let frame = get_frame("/marketdata/BTC/candles/5m?start=1000&limit=10");
+        assert_eq!(channel_path(&frame), "marketdata/BTC/candles/5m");
         assert!(!frame.payload.is_empty());
     }
 
     #[test]
     fn binance_klines_alias_maps_to_native_path() {
-        let raw = b"GET /api/v3/klines?symbol=BTCUSDT&interval=5m HTTP/1.1\r\n\r\n";
-        let req = parse_http_request(raw).unwrap();
-        let frame = http_get_to_fig_request(&req).unwrap();
-        let path = frame
-            .extensions
-            .iter()
-            .find(|e| e.tag == ExtensionTag::ChannelPath)
-            .and_then(|e| e.value.as_text())
-            .unwrap();
-        assert_eq!(path, "marketdata/BTCUSDT/candles/5m");
+        let frame = get_frame("/api/v3/klines?symbol=BTCUSDT&interval=5m");
+        assert_eq!(channel_path(&frame), "marketdata/BTCUSDT/candles/5m");
+    }
+
+    #[test]
+    fn capabilities_path_maps() {
+        let frame = get_frame("/.well-known/capabilities");
+        assert_eq!(channel_path(&frame), ".well-known/capabilities");
+    }
+
+    #[test]
+    fn open_orders_path_maps_with_payload() {
+        let frame = get_frame("/trading/accounts/DEMO/orders/open");
+        assert_eq!(channel_path(&frame), "trading/accounts/DEMO/orders/open");
+        assert!(!frame.payload.is_empty());
+    }
+
+    #[test]
+    fn order_history_path_maps_with_payload() {
+        let frame = get_frame("/trading/accounts/DEMO/orders?limit=50");
+        assert_eq!(channel_path(&frame), "trading/accounts/DEMO/orders");
+        assert!(!frame.payload.is_empty());
+    }
+
+    #[test]
+    fn order_book_path_maps_with_payload() {
+        let frame = get_frame("/marketdata/BTC/book?limit=20");
+        assert_eq!(channel_path(&frame), "marketdata/BTC/book");
+        assert!(!frame.payload.is_empty());
+    }
+
+    #[test]
+    fn gateway_rest_catalog_paths_are_mappable() {
+        let paths = [
+            "/marketdata/BTC/ticker",
+            "/marketdata/BTC/trades",
+            "/accounts/DEMO",
+            "/accounts/DEMO/fills",
+            "/accounts/DEMO/funding",
+            "/accounts/DEMO/ledger",
+            "/accounts/DEMO/positions",
+            "/trading/accounts/DEMO/orders/open",
+            "/trading/accounts/DEMO/orders",
+            "/marketdata/BTC/book",
+            "/.well-known/capabilities",
+        ];
+        for path in paths {
+            get_frame(path);
+        }
     }
 }

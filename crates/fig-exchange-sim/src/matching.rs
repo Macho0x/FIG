@@ -55,6 +55,7 @@ pub struct MatchingEngine {
     order_index: HashMap<ClientOrderId, Symbol>,
     pending_stops: HashMap<Symbol, Vec<PendingStopOrder>>,
     fill_seq: u64,
+    order_history: Vec<(String, ExecutionReport)>,
 }
 
 impl Default for MatchingEngine {
@@ -70,6 +71,7 @@ impl MatchingEngine {
             order_index: HashMap::new(),
             pending_stops: HashMap::new(),
             fill_seq: 0,
+            order_history: Vec::new(),
         }
     }
 
@@ -487,6 +489,102 @@ impl MatchingEngine {
     /// List all symbols with active books.
     pub fn symbols(&self) -> Vec<Symbol> {
         self.books.keys().cloned().collect()
+    }
+
+    /// Record an execution report in per-account order history.
+    pub fn record_execution(&mut self, account: &str, report: ExecutionReport) {
+        self.order_history.push((account.to_string(), report));
+    }
+
+    /// Working orders for an account (optionally filtered by symbol).
+    pub fn open_orders(&self, account: &str, symbol: Option<&str>) -> OpenOrdersSnapshot {
+        let mut orders = Vec::new();
+        for book in self.books.values() {
+            for resting in book.resting_orders() {
+                let acct = resting.account.as_deref().unwrap_or("DEMO-ACCT");
+                if acct != account {
+                    continue;
+                }
+                if let Some(sym) = symbol {
+                    if resting.symbol != sym {
+                        continue;
+                    }
+                }
+                orders.push(resting_to_report(resting));
+            }
+        }
+        OpenOrdersSnapshot {
+            account: account.to_string(),
+            orders,
+            is_snapshot: Some(true),
+        }
+    }
+
+    /// Historical order events for an account.
+    pub fn query_order_history(
+        &self,
+        account: &str,
+        symbol: Option<&str>,
+        start_time: Option<i64>,
+        end_time: Option<i64>,
+        limit: Option<u32>,
+    ) -> OrderHistoryBatch {
+        let mut orders: Vec<ExecutionReport> = self
+            .order_history
+            .iter()
+            .filter(|(acct, r)| {
+                acct == account
+                    && symbol.is_none_or(|s| r.symbol == s)
+                    && start_time.is_none_or(|st| r.transact_time >= st)
+                    && end_time.is_none_or(|et| r.transact_time <= et)
+            })
+            .map(|(_, r)| r.clone())
+            .collect();
+        let limit = limit.unwrap_or(500) as usize;
+        let has_more = orders.len() > limit;
+        orders.truncate(limit);
+        OrderHistoryBatch {
+            account: account.to_string(),
+            orders,
+            has_more,
+            next_cursor: None,
+        }
+    }
+
+    /// Build a point-in-time order book snapshot with sequence metadata.
+    pub fn order_book_snapshot(&self, symbol: &str, depth: usize) -> Option<MarketDataSnapshot> {
+        let book = self.books.get(symbol)?;
+        Some(MarketDataSnapshot {
+            symbol: symbol.to_string(),
+            exchange: "SIM".to_string(),
+            bids: book.bid_depth(depth),
+            asks: book.ask_depth(depth),
+            timestamp: Self::now_nanos(),
+            sequence: Some(book.book_sequence()),
+            is_snapshot: Some(true),
+        })
+    }
+}
+
+fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as i64;
+    ExecutionReport {
+        cl_ord_id: resting.cl_ord_id.clone(),
+        order_id: resting.order_id.clone(),
+        exec_id: format!("OPEN-{}", resting.cl_ord_id),
+        exec_type: ExecType::New,
+        ord_status: OrdStatus::New,
+        side: resting.side,
+        last_qty: None,
+        last_price: None,
+        leaves_qty: resting.leaves_qty.clone(),
+        cum_qty: Quantity(resting.qty.0 - resting.leaves_qty.0),
+        avg_price: resting.price.clone(),
+        symbol: resting.symbol.clone(),
+        transact_time: now,
     }
 }
 

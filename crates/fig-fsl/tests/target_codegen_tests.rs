@@ -1,12 +1,11 @@
 use fig_fsl::{
-    CppCodegen, CsharpCodegen, FixYamlCodegen, GoCodegen, JsonSchemaCodegen, OcamlCodegen, Parser,
-    ProtoCodegen, PythonCodegen, SbeXmlCodegen, TypeScriptCodegen, ZigCodegen,
+    load_merged_trading_schema, CppCodegen, CsharpCodegen, FixYamlCodegen, GoCodegen,
+    JsonSchemaCodegen, OcamlCodegen, Parser, ProtoCodegen, PythonCodegen, SbeXmlCodegen,
+    TypeScriptCodegen, ZigCodegen,
 };
 
 fn orders_schema() -> fig_fsl::Schema {
-    let orders_path = format!("{}/../../schemas/orders.fsl", env!("CARGO_MANIFEST_DIR"));
-    let input = std::fs::read_to_string(orders_path).unwrap();
-    Parser::parse(&input).unwrap()
+    load_merged_trading_schema()
 }
 
 fn minimal_schema() -> fig_fsl::Schema {

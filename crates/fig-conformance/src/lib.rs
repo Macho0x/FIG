@@ -13,7 +13,8 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    BalanceSnapshot, CandleBar, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
+    BalanceSnapshot, CandleBar, CapabilitiesResponse, NewOrderSingle, OpenOrdersSnapshot,
+    OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -59,20 +60,25 @@ fn run_frame_vector(vector: &ConformanceVector) -> Result<()> {
 
 fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
     let payload = vector.payload.as_ref();
-    let encoded = match vector.message_type.as_str() {
-        "NewOrderSingle" => {
-            let payload = payload.ok_or_else(|| anyhow!("cbor vector missing `payload`"))?;
-            let order = json_to_new_order_single(payload)?;
-            encode_cbor(&order).map_err(|e| anyhow!("encode_cbor: {e}"))?
-        }
-        "CandleBar" => {
-            encode_cbor(&sample_candle_bar()).map_err(|e| anyhow!("encode_cbor: {e}"))?
-        }
-        "BalanceSnapshot" => {
-            encode_cbor(&sample_balance_snapshot()).map_err(|e| anyhow!("encode_cbor: {e}"))?
-        }
-        other => return Err(anyhow!("unsupported cbor message_type: {other}")),
-    };
+    let encoded =
+        match vector.message_type.as_str() {
+            "NewOrderSingle" => {
+                let payload = payload.ok_or_else(|| anyhow!("cbor vector missing `payload`"))?;
+                let order = json_to_new_order_single(payload)?;
+                encode_cbor(&order).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "CandleBar" => {
+                encode_cbor(&sample_candle_bar()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "BalanceSnapshot" => {
+                encode_cbor(&sample_balance_snapshot()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "CapabilitiesResponse" => encode_cbor(&sample_capabilities_response())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OpenOrdersSnapshot" => encode_cbor(&sample_open_orders_snapshot())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            other => return Err(anyhow!("unsupported cbor message_type: {other}")),
+        };
     assert_hex(&vector.expected_hex, &encoded)?;
     Ok(())
 }
@@ -102,6 +108,27 @@ fn sample_balance_snapshot() -> BalanceSnapshot {
             available: 2_000_000.0,
             hold: 0.0,
         }],
+        is_snapshot: Some(true),
+    }
+}
+
+fn sample_capabilities_response() -> CapabilitiesResponse {
+    CapabilitiesResponse {
+        schema_ids: vec![1, 2, 3],
+        paths: vec![fig_core::messages::CapabilityPath {
+            path: "marketdata/AAPL/candles/5m".to_string(),
+            pattern: fig_core::messages::CapabilityPathPattern::PubSub,
+            auth_required: false,
+        }],
+        symbols: vec!["AAPL".to_string()],
+        intervals: vec!["5m".to_string()],
+    }
+}
+
+fn sample_open_orders_snapshot() -> OpenOrdersSnapshot {
+    OpenOrdersSnapshot {
+        account: "DEMO".to_string(),
+        orders: vec![],
         is_snapshot: Some(true),
     }
 }

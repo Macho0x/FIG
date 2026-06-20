@@ -11,6 +11,11 @@ use crate::account_state::{
     parse_account_subscription, AccountSubscription, AccountSubscriptionKind,
 };
 use crate::auth::{account_from_private_path, authorize_private};
+use crate::broker_session::{
+    capabilities_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
+    parse_order_history_path, parse_position_query_path, respond_cbor, stream_candle_batch,
+    stream_order_history,
+};
 use crate::market_data::{
     parse_candle_query_path, parse_md_subscription, parse_ticker_query_path,
     parse_trade_query_path, StreamSubscription, SubscriptionKind,
@@ -37,7 +42,83 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         let md = state.market_data.lock().await;
         let ticker = md.ticker_snapshot(&symbol);
         drop(md);
-        return ok_response(frame, &ticker);
+        return respond_cbor(frame, &ticker, None);
+    }
+
+    if parse_capabilities_path(&channel_path) {
+        return respond_cbor(frame, &capabilities_response(), None);
+    }
+
+    if let Some(symbol) = parse_order_book_path(&channel_path) {
+        let req = decode_or(
+            &frame.payload,
+            OrderBookRequest {
+                symbol: symbol.clone(),
+                depth: Some(20),
+            },
+        );
+        let depth = req.depth.unwrap_or(20) as usize;
+        let engine = state.engine.lock().await;
+        let snap = engine
+            .order_book_snapshot(&req.symbol, depth)
+            .unwrap_or(MarketDataSnapshot {
+                symbol: req.symbol.clone(),
+                exchange: "SIM".to_string(),
+                bids: vec![],
+                asks: vec![],
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as i64,
+                sequence: Some(0),
+                is_snapshot: Some(true),
+            });
+        drop(engine);
+        return respond_cbor(frame, &snap, None);
+    }
+
+    if let Some(account) = parse_open_orders_path(&channel_path) {
+        let req = decode_or(
+            &frame.payload,
+            OpenOrdersRequest {
+                account: account.clone(),
+                symbol: None,
+            },
+        );
+        let engine = state.engine.lock().await;
+        let snap = engine.open_orders(&req.account, req.symbol.as_deref());
+        drop(engine);
+        return respond_cbor(frame, &snap, None);
+    }
+
+    if let Some(account) = parse_order_history_path(&channel_path) {
+        let req = decode_or(
+            &frame.payload,
+            OrderHistoryRequest {
+                account: account.clone(),
+                symbol: None,
+                start_time: None,
+                end_time: None,
+                limit: Some(500),
+            },
+        );
+        let engine = state.engine.lock().await;
+        let batch = engine.query_order_history(
+            &req.account,
+            req.symbol.as_deref(),
+            req.start_time,
+            req.end_time,
+            req.limit,
+        );
+        drop(engine);
+        return stream_order_history(frame, &batch);
+    }
+
+    if let Some(account) = parse_position_query_path(&channel_path) {
+        let mut accounts = state.accounts.lock().await;
+        let snap = accounts.get_or_create(&account).position_snapshot(true);
+        drop(accounts);
+        return respond_cbor(frame, &snap, None);
     }
 
     if method != "GET" && !frame.payload.is_empty() {
@@ -64,7 +145,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.limit,
         );
         drop(md);
-        return ok_response(frame, &batch);
+        return stream_candle_batch(frame, &batch);
     }
 
     if let Some(symbol) = parse_trade_query_path(&channel_path) {
@@ -221,6 +302,11 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
         )];
     };
 
+    state
+        .subscriptions
+        .lock()
+        .await
+        .retain(|existing| !(existing.channel_id == frame.channel_id && existing.kind == kind));
     state.subscriptions.lock().await.push(StreamSubscription {
         channel_id: frame.channel_id,
         routing_key: if routing_key.is_empty() {
@@ -344,6 +430,11 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
         return vec![err];
     }
 
+    state.account_subscriptions.lock().await.retain(|existing| {
+        !(existing.channel_id == frame.channel_id
+            && existing.account == account
+            && existing.kind == kind)
+    });
     state
         .account_subscriptions
         .lock()
@@ -472,7 +563,23 @@ pub async fn post_fill_updates(
                             ));
                         }
                     }
-                    AccountSubscriptionKind::Positions => {}
+                    AccountSubscriptionKind::Positions => {
+                        let update = PositionUpdate {
+                            account: account.to_string(),
+                            symbol: report.symbol.clone(),
+                            qty: report.leaves_qty.clone(),
+                            entry_price: report.avg_price.clone(),
+                            unrealized_pnl: 0.0,
+                        };
+                        if let Ok(payload) = codec::encode_cbor(&update) {
+                            frames.push(stream_item(
+                                sub.channel_id,
+                                &sub.routing_key,
+                                payload,
+                                "accounts/positions",
+                            ));
+                        }
+                    }
                     AccountSubscriptionKind::Funding => {}
                     AccountSubscriptionKind::Ledger => {}
                 }

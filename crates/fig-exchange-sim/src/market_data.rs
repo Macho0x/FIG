@@ -34,7 +34,7 @@ pub fn bar_start(time_ns: i64, interval: &str) -> i64 {
     (time_ns / width) * width
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SubscriptionKind {
     Quotes { symbol: String },
     Candles { symbol: String, interval: String },
