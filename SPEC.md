@@ -424,8 +424,48 @@ Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 | `accounts/{account}/liquidations` | pub/sub | `UserLiquidation` | Push on balance breach |
 | `/.well-known/capabilities` | GET | `CapabilitiesResponse` | Exchange info / path catalog |
 
-`OrderListStatus` is defined in FSL but not yet wired as a live stream in the
-reference broker.
+`OrderListStatus` is defined in FSL; live stream wiring is available on
+`trading/accounts/{account}/orderlists` in the reference broker.
+
+#### Well-known schema IDs
+
+| ID | FSL domain | Notes |
+|---|---|---|
+| `0x01` | Trading (`orders.fsl`) | Wire schema for all merged messages today |
+| `0x02` | Market data (`marketdata.fsl`) | Logical domain; advertised in capabilities |
+| `0x03` | Account (`account.fsl`) | Logical domain; advertised in capabilities |
+
+All frames currently use wire **`schema_id = 0x01`** with distinct SBE template IDs
+per message. Future releases may assign separate wire IDs per domain without
+changing `CHANNEL_PATH` semantics (see ADR 0004).
+
+#### ROUTING_KEY convention
+
+- Dot-separated legacy topics: `marketdata.AAPL.quotes`, `hl.orderUpdates.alice`.
+- Gateway WS adapters populate `ROUTING_KEY` from Binance `@topic` or Hyperliquid
+  subscription JSON; native clients may omit it when `CHANNEL_PATH` is sufficient.
+- When both are present, brokers route by path **and** fan out by routing key.
+
+#### Correlation / subscription identity
+
+- **`CORRELATION_ID` extension (tag `0x0005`)** carries the subscribing channel ID
+  (decimal string) on `SUBSCRIBE`, subscribe ack `RESPONSE`, and `STREAM_ITEM`.
+- Clients use this to multiplex many streams on one TREE session; it mirrors
+  Binance/Hyperliquid subscription ack IDs in gateway egress JSON.
+
+#### Multi-stream sessions
+
+A single TREE connection may hold many concurrent channels (public MD, private
+account, historical `REQUEST` channels). Each `SUBSCRIBE` opens a dedicated channel
+with its own sequence space and `CORRELATION_ID`.
+
+#### Snapshot-then-delta contract
+
+Stream payloads include optional **`is_snapshot: true`** on the first item after
+`SUBSCRIBE` (balances, positions, candles, BBO, ticker, order book). Subsequent
+items set `is_snapshot: false`. Order book also carries monotonic **`sequence`**
+on snapshots and deltas; gap-fill uses `OrderBookRequest` / `CandleBarRequest` with
+time ranges (§9.2).
 
 ### 9.2 Historical query patterns (§7.3)
 

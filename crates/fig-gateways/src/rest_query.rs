@@ -10,7 +10,7 @@ use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     schema_id, AggregateTradeRequest, AllMidsRequest, CandleBarRequest, FillHistoryRequest,
     FundingHistoryRequest, LedgerHistoryRequest, MarkPriceRequest, OpenOrdersRequest,
-    OrderBookRequest, OrderHistoryRequest, TradeHistoryRequest,
+    OrderBookRequest, OrderHistoryRequest, TickerRequest, TradeHistoryRequest,
 };
 
 use crate::rest::{HttpRequest, RestError, RestResult};
@@ -54,6 +54,48 @@ fn map_http_path_to_channel_path(path: &str, query: &[(String, String)]) -> Rest
         return Ok(format!("marketdata/{symbol}/candles/{interval}"));
     }
 
+    if trimmed == "api/v3/aggTrades" || trimmed == "aggTrades" {
+        let symbol = query_param(query, &["symbol", "Symbol"])
+            .ok_or_else(|| RestError::InvalidRequestLine("aggTrades requires symbol".into()))?;
+        return Ok(format!("marketdata/{symbol}/aggtrades"));
+    }
+
+    if trimmed == "api/v3/depth" || trimmed == "depth" {
+        let symbol = query_param(query, &["symbol", "Symbol"])
+            .ok_or_else(|| RestError::InvalidRequestLine("depth requires symbol".into()))?;
+        return Ok(format!("marketdata/{symbol}/book"));
+    }
+
+    if trimmed == "api/v3/ticker/24hr" || trimmed == "ticker/24hr" {
+        let symbol = query_param(query, &["symbol", "Symbol"])
+            .ok_or_else(|| RestError::InvalidRequestLine("ticker requires symbol".into()))?;
+        return Ok(format!("marketdata/{symbol}/ticker"));
+    }
+
+    if trimmed == "api/v3/exchangeInfo" || trimmed == "exchangeInfo" {
+        return Ok(".well-known/capabilities".to_string());
+    }
+
+    if trimmed == "api/v3/account" || trimmed == "account" {
+        let account = account_from_query_or_default(query);
+        return Ok(format!("accounts/{account}"));
+    }
+
+    if trimmed == "api/v3/openOrders" || trimmed == "openOrders" {
+        let account = account_from_query_or_default(query);
+        return Ok(format!("trading/accounts/{account}/orders/open"));
+    }
+
+    if trimmed == "api/v3/allOrders" || trimmed == "allOrders" {
+        let account = account_from_query_or_default(query);
+        return Ok(format!("trading/accounts/{account}/orders"));
+    }
+
+    if trimmed == "api/v3/myTrades" || trimmed == "myTrades" {
+        let account = account_from_query_or_default(query);
+        return Ok(format!("accounts/{account}/fills"));
+    }
+
     if trimmed.starts_with("marketdata/")
         || trimmed.starts_with("accounts/")
         || trimmed.starts_with("trading/")
@@ -68,6 +110,11 @@ fn map_http_path_to_channel_path(path: &str, query: &[(String, String)]) -> Rest
     Err(RestError::InvalidRequestLine(format!(
         "unsupported query path: {path}"
     )))
+}
+
+fn account_from_query_or_default(query: &[(String, String)]) -> String {
+    query_param(query, &["account", "Account", "accountId", "account_id"])
+        .unwrap_or_else(|| "DEMO".to_string())
 }
 
 fn build_query_payload(
@@ -126,6 +173,17 @@ fn build_query_payload(
             encode_cbor(&MarkPriceRequest { symbol })
                 .map_err(|e| RestError::CborEncodeError(e.to_string()))?,
         ));
+    }
+
+    if let Some(symbol) = parse_ticker_path(channel_path) {
+        let req = TickerRequest { symbol };
+        return Ok(Some(
+            encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
+        ));
+    }
+
+    if channel_path.starts_with("accounts/") && channel_path.ends_with("/positions") {
+        return Ok(None);
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/fills") {
@@ -278,6 +336,15 @@ fn parse_mark_path(path: &str) -> Option<String> {
     }
 }
 
+fn parse_ticker_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 3 && parts[0] == "marketdata" && parts[2] == "ticker" {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
 fn parse_query_string(path: &str) -> Vec<(String, String)> {
     let Some(qs) = path.split('?').nth(1) else {
         return Vec::new();
@@ -368,6 +435,36 @@ mod tests {
         let frame = get_frame("/marketdata/BTC/book?limit=20");
         assert_eq!(channel_path(&frame), "marketdata/BTC/book");
         assert!(!frame.payload.is_empty());
+    }
+
+    #[test]
+    fn binance_rest_aliases_map() {
+        let cases = [
+            (
+                "/api/v3/aggTrades?symbol=BTCUSDT",
+                "marketdata/BTCUSDT/aggtrades",
+            ),
+            ("/api/v3/depth?symbol=BTCUSDT", "marketdata/BTCUSDT/book"),
+            (
+                "/api/v3/ticker/24hr?symbol=BTCUSDT",
+                "marketdata/BTCUSDT/ticker",
+            ),
+            ("/api/v3/exchangeInfo", ".well-known/capabilities"),
+            ("/api/v3/account?account=DEMO", "accounts/DEMO"),
+            (
+                "/api/v3/openOrders?account=DEMO",
+                "trading/accounts/DEMO/orders/open",
+            ),
+            (
+                "/api/v3/allOrders?account=DEMO",
+                "trading/accounts/DEMO/orders",
+            ),
+            ("/api/v3/myTrades?account=DEMO", "accounts/DEMO/fills"),
+        ];
+        for (path, expected) in cases {
+            let frame = get_frame(path);
+            assert_eq!(channel_path(&frame), expected, "path {path}");
+        }
     }
 
     #[test]

@@ -26,7 +26,7 @@ use fig_gateways::rest::{
 };
 use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws::{fig_to_ws_frame, serialize_ws_frame, WsOpcode};
-use fig_gateways::ws_catalog::{fig_stream_item_to_legacy_json, legacy_ws_json_to_fig_subscribe};
+use fig_gateways::ws_catalog::{fig_frame_to_legacy_ws_json, legacy_ws_json_to_fig_subscribe};
 use fig_gateways::ws_listener::{
     accept_websocket, is_websocket_upgrade, read_ws_text_or_binary, write_ws_json, write_ws_pong,
 };
@@ -213,10 +213,11 @@ async fn handle_ws_connection(
                 if let Some(addr) = fig_backend {
                     let responses = proxy_frame(addr, fig).await?;
                     for resp in responses {
-                        if resp.frame_type == FrameType::StreamItem
-                            || resp.frame_type == FrameType::Response
-                        {
-                            let json = fig_stream_item_to_legacy_json(&resp)?;
+                        if matches!(
+                            resp.frame_type,
+                            FrameType::StreamItem | FrameType::Response | FrameType::StreamClose
+                        ) {
+                            let json = fig_frame_to_legacy_ws_json(&resp)?;
                             write_ws_json(stream, &json).await?;
                         } else if resp.frame_type == FrameType::Control {
                             let pong = fig_to_ws_frame(&resp)?;

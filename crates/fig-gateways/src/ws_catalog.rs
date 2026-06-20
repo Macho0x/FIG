@@ -24,8 +24,38 @@ pub struct LegacySubscribe {
 /// - `btcusdt@kline_5m` → `marketdata/btcusdt/candles/5m`
 /// - `ethusdt@trade` → `marketdata/ethusdt/trades`
 /// - `btcusdt@bookTicker` → `marketdata/btcusdt/bbo`
-/// - `btcusdt@depth` → `marketdata/btcusdt/quotes`
+/// - `btcusdt@depth` → `marketdata/btcusdt/book`
+/// - `orderlists@DEMO` → `trading/accounts/DEMO/orderlists`
 pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
+    if let Some((user, _)) = topic.split_once("@orderlists") {
+        let account = user.to_uppercase();
+        return Some(LegacySubscribe {
+            routing_key: topic.to_string(),
+            channel_path: format!("trading/accounts/{account}/orderlists"),
+        });
+    }
+    if let Some((user, _)) = topic.split_once("@executionReport") {
+        let account = user.to_uppercase();
+        return Some(LegacySubscribe {
+            routing_key: topic.to_string(),
+            channel_path: format!("trading/accounts/{account}/executions"),
+        });
+    }
+    if let Some((user, _)) = topic.split_once("@balance") {
+        let account = user.to_uppercase();
+        return Some(LegacySubscribe {
+            routing_key: topic.to_string(),
+            channel_path: format!("accounts/{account}/balances"),
+        });
+    }
+    if let Some((user, _)) = topic.split_once("@positions") {
+        let account = user.to_uppercase();
+        return Some(LegacySubscribe {
+            routing_key: topic.to_string(),
+            channel_path: format!("accounts/{account}/positions"),
+        });
+    }
+
     let (symbol, stream) = topic.split_once('@')?;
     let symbol = symbol.to_lowercase();
     let channel_path = if let Some(interval) = stream.strip_prefix("kline_") {
@@ -45,7 +75,7 @@ pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
     } else if stream == "forceOrder" {
         "marketdata/liquidations".to_string()
     } else if stream == "depth" || stream.starts_with("depth@") {
-        format!("marketdata/{symbol}/quotes")
+        format!("marketdata/{symbol}/book")
     } else {
         return None;
     };
@@ -73,10 +103,10 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
             )
         }
         "l2Book" | "bbo" => (
-            format!("marketdata/{symbol}/quotes"),
+            format!("marketdata/{symbol}/book"),
             format!("hl.l2Book.{symbol}"),
         ),
-        "orderUpdates" | "userFills" => {
+        "orderUpdates" | "userFills" | "userEvents" => {
             let user = sub
                 .get("user")
                 .and_then(|u| u.as_str())
@@ -84,6 +114,36 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
             (
                 format!("trading/accounts/{user}/executions"),
                 format!("hl.orderUpdates.{user}"),
+            )
+        }
+        "openOrders" | "orderState" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("trading/accounts/{user}/orders/open"),
+                format!("hl.openOrders.{user}"),
+            )
+        }
+        "orderLists" | "listStatus" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("trading/accounts/{user}/orderlists"),
+                format!("hl.orderLists.{user}"),
+            )
+        }
+        "balanceUpdate" => {
+            let user = sub
+                .get("user")
+                .and_then(|u| u.as_str())
+                .unwrap_or("default");
+            (
+                format!("accounts/{user}/balances"),
+                format!("hl.balanceUpdate.{user}"),
             )
         }
         "subscribeBalance" | "spotState" => {
@@ -220,6 +280,10 @@ pub fn fig_subscribe_frame(channel_id: u16, sub: &LegacySubscribe) -> Frame {
             ExtensionTag::ChannelPath,
             &sub.channel_path,
         ))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            channel_id.to_string(),
+        ))
 }
 
 /// Wrap a FIG `STREAM_ITEM` CBOR payload as legacy WS JSON for egress adapters.
@@ -236,6 +300,12 @@ pub fn fig_stream_item_to_legacy_json(frame: &Frame) -> WsResult<String> {
         .find(|e| e.tag == ExtensionTag::ChannelPath)
         .and_then(|e| e.value.as_text())
         .unwrap_or("");
+    let correlation_id = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::CorrelationId)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
 
     let payload_json = if frame.payload.is_empty() {
         Value::Null
@@ -245,12 +315,89 @@ pub fn fig_stream_item_to_legacy_json(frame: &Frame) -> WsResult<String> {
         serde_json::from_str(&json_str).map_err(|e| WsError::UnmappableFrameType(e.to_string()))?
     };
 
+    let is_snapshot = payload_json
+        .get("is_snapshot")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     let event = serde_json::json!({
         "stream": routing_key,
         "channel_path": channel_path,
+        "subscription_id": if correlation_id.is_empty() { frame.channel_id.to_string() } else { correlation_id.to_string() },
+        "is_snapshot": is_snapshot,
         "data": payload_json,
     });
     serde_json::to_string(&event).map_err(|e| WsError::UnmappableFrameType(e.to_string()))
+}
+
+/// Map FIG subscribe `RESPONSE` ack to legacy WS subscription ack JSON.
+pub fn fig_subscribe_ack_to_legacy_json(frame: &Frame) -> WsResult<String> {
+    let routing_key = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::RoutingKey)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+    let status = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::StatusCode)
+        .and_then(|e| e.value.as_u16())
+        .unwrap_or(200);
+
+    let ack = serde_json::json!({
+        "result": {
+            "subscription_id": frame.channel_id,
+            "stream": routing_key,
+            "channel_path": channel_path,
+            "status": status,
+            "is_snapshot": true,
+        },
+        "id": frame.channel_id,
+    });
+    serde_json::to_string(&ack).map_err(|e| WsError::UnmappableFrameType(e.to_string()))
+}
+
+/// Map FIG `STREAM_CLOSE` / unsubscribe to Binance `eventStreamTerminated` style JSON.
+pub fn fig_stream_close_to_legacy_json(frame: &Frame) -> WsResult<String> {
+    let routing_key = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::RoutingKey)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("");
+
+    let event = serde_json::json!({
+        "e": "eventStreamTerminated",
+        "stream": routing_key,
+        "channel_path": channel_path,
+        "subscription_id": frame.channel_id,
+    });
+    serde_json::to_string(&event).map_err(|e| WsError::UnmappableFrameType(e.to_string()))
+}
+
+/// Convert any FIG egress frame to legacy WS JSON text.
+pub fn fig_frame_to_legacy_ws_json(frame: &Frame) -> WsResult<String> {
+    match frame.frame_type {
+        FrameType::StreamItem => fig_stream_item_to_legacy_json(frame),
+        FrameType::Response => fig_subscribe_ack_to_legacy_json(frame),
+        FrameType::StreamClose => fig_stream_close_to_legacy_json(frame),
+        other => Err(WsError::UnmappableFrameType(format!(
+            "unsupported egress frame: {other:?}"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -314,6 +461,59 @@ mod tests {
             assert!(
                 binance_topic_to_subscribe(topic).is_some(),
                 "missing mapping for {topic}"
+            );
+        }
+    }
+
+    #[test]
+    fn hyperliquid_order_lists_subscription() {
+        let sub = hyperliquid_subscribe_to_fig(&serde_json::json!({
+            "type": "listStatus",
+            "user": "alice"
+        }))
+        .unwrap();
+        assert_eq!(sub.channel_path, "trading/accounts/alice/orderlists");
+    }
+
+    #[test]
+    fn binance_orderlists_topic_maps() {
+        let sub = binance_topic_to_subscribe("DEMO@orderlists").unwrap();
+        assert_eq!(sub.channel_path, "trading/accounts/DEMO/orderlists");
+    }
+
+    #[test]
+    fn stream_close_legacy_json() {
+        use fig_core::ext::{Extension, ExtensionTag};
+        use fig_core::frame::{Frame, FrameType};
+        let frame = Frame::new(FrameType::StreamClose, 7)
+            .with_extension(Extension::text(ExtensionTag::RoutingKey, "btcusdt@ticker"))
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/btcusdt/ticker",
+            ));
+        let json = fig_stream_close_to_legacy_json(&frame).unwrap();
+        assert!(json.contains("eventStreamTerminated"));
+    }
+
+    #[test]
+    fn gateway_ws_catalog_private_topics_map() {
+        let hl_topics = [
+            ("orderUpdates", "executions"),
+            ("spotState", "balances"),
+            ("clearinghouseState", "positions"),
+            ("listStatus", "orderlists"),
+            ("balanceUpdate", "balances"),
+        ];
+        for (ty, fragment) in hl_topics {
+            let sub = hyperliquid_subscribe_to_fig(&serde_json::json!({
+                "type": ty,
+                "user": "alice"
+            }))
+            .unwrap();
+            assert!(
+                sub.channel_path.contains(fragment),
+                "{ty} -> {}",
+                sub.channel_path
             );
         }
     }

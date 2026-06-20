@@ -97,6 +97,7 @@ pub mod observability;
 pub mod protobuf;
 pub mod rate_limit;
 pub mod sbe;
+pub mod sbe_stream;
 pub mod session;
 pub mod tcp;
 pub mod trace;

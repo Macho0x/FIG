@@ -13,11 +13,11 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    AggregateTrade, BalanceSnapshot, CandleBar, CapabilitiesResponse, ExecType, ExecutionReport,
-    MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker,
-    NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot,
+    AggregateTrade, BalanceSnapshot, CandleBar, CandleBarBatch, CapabilitiesResponse, ExecType,
+    ExecutionReport, MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate,
+    MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot,
     OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
-    PositionUpdate, Price, Quantity, Side, TimeInForce,
+    PositionUpdate, Price, Quantity, Side, SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -297,17 +297,61 @@ fn sample_mark_price_update() -> MarkPriceUpdate {
     }
 }
 
+fn sample_candle_bar_batch() -> CandleBarBatch {
+    CandleBarBatch {
+        symbol: "AAPL".to_string(),
+        interval: "5m".to_string(),
+        bars: vec![sample_candle_bar()],
+        has_more: false,
+        next_cursor: None,
+    }
+}
+
+fn sample_symbol_ticker() -> SymbolTicker {
+    SymbolTicker {
+        symbol: "AAPL".to_string(),
+        last_price: Price(150.5),
+        price_change: 0.5,
+        price_change_pct: 0.33,
+        volume: Quantity(1000.0),
+        high: Price(151.0),
+        low: Price(149.5),
+        open: Price(150.0),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    }
+}
+
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
-    let payload = vector
-        .payload
-        .as_ref()
-        .ok_or_else(|| anyhow!("sbe vector missing `payload`"))?;
-    let order = json_to_new_order_single(payload)?;
-    let encoded = encode_new_order_single(&order);
+    use fig_core::sbe_stream::{
+        encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
+        encode_order_book_snapshot, encode_symbol_ticker,
+    };
+
+    let encoded = match vector.message_type.as_str() {
+        "NewOrderSingle" => {
+            let payload = vector
+                .payload
+                .as_ref()
+                .ok_or_else(|| anyhow!("sbe vector missing `payload`"))?;
+            let order = json_to_new_order_single(payload)?;
+            encode_new_order_single(&order)
+        }
+        "CandleBar" => encode_candle_bar(&sample_candle_bar()),
+        "CandleBarBatch" => encode_candle_bar_batch(&sample_candle_bar_batch()),
+        "SymbolTicker" => encode_symbol_ticker(&sample_symbol_ticker()),
+        "OrderBookSnapshot" => encode_order_book_snapshot(&sample_order_book_snapshot()),
+        "BalanceSnapshot" => encode_balance_snapshot(&sample_balance_snapshot()),
+        other => return Err(anyhow!("unsupported sbe message_type: {other}")),
+    };
     assert_hex(&vector.expected_hex, &encoded)?;
-    let decoded = decode_new_order_single(&encoded).map_err(|e| anyhow!("sbe decode: {e}"))?;
-    if decoded.cl_ord_id != order.cl_ord_id {
-        return Err(anyhow!("sbe round-trip cl_ord_id mismatch"));
+    if vector.message_type == "NewOrderSingle" {
+        let payload = vector.payload.as_ref().unwrap();
+        let order = json_to_new_order_single(payload)?;
+        let decoded = decode_new_order_single(&encoded).map_err(|e| anyhow!("sbe decode: {e}"))?;
+        if decoded.cl_ord_id != order.cl_ord_id {
+            return Err(anyhow!("sbe round-trip cl_ord_id mismatch"));
+        }
     }
     Ok(())
 }
@@ -371,6 +415,7 @@ fn parse_extension(spec: &ExtensionSpec) -> Result<Extension> {
         "AuthToken" => ExtensionTag::AuthToken,
         "ChannelPath" => ExtensionTag::ChannelPath,
         "ContentType" => ExtensionTag::ContentType,
+        "CorrelationId" => ExtensionTag::CorrelationId,
         "Method" => ExtensionTag::Method,
         "RequestUri" => ExtensionTag::RequestUri,
         "RoutingKey" => ExtensionTag::RoutingKey,

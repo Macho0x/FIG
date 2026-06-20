@@ -62,6 +62,7 @@ pub struct MarketDataHub {
     partial_candles: HashMap<(String, String), CandleBar>,
     last_bbo: HashMap<String, BestBidOffer>,
     tickers: HashMap<String, SymbolTicker>,
+    ticker_trades: HashMap<String, Vec<(i64, f64, f64)>>,
     mini_tickers: HashMap<String, MiniTicker>,
     mark_prices: HashMap<String, MarkPriceUpdate>,
     liquidations: Vec<LiquidationTrade>,
@@ -141,6 +142,16 @@ impl MarketDataHub {
     }
 
     fn update_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
+        const DAY_NS: i64 = 24 * 3_600 * 1_000_000_000;
+        let window = self.ticker_trades.entry(symbol.to_string()).or_default();
+        window.push((ts, price, qty));
+        window.retain(|(t, _, _)| *t >= ts.saturating_sub(DAY_NS));
+
+        let open = window.first().map(|(_, p, _)| *p).unwrap_or(price);
+        let high = window.iter().map(|(_, p, _)| *p).fold(price, f64::max);
+        let low = window.iter().map(|(_, p, _)| *p).fold(price, f64::min);
+        let volume: f64 = window.iter().map(|(_, _, q)| *q).sum();
+
         let entry = self
             .tickers
             .entry(symbol.to_string())
@@ -152,15 +163,15 @@ impl MarketDataHub {
                 volume: Quantity(0.0),
                 high: Price(price),
                 low: Price(price),
-                open: Price(price),
+                open: Price(open),
                 timestamp: ts,
                 is_snapshot: None,
             });
-        let open = entry.open.0;
         entry.last_price = Price(price);
-        entry.high = Price(entry.high.0.max(price));
-        entry.low = Price(entry.low.0.min(price));
-        entry.volume = Quantity(entry.volume.0 + qty);
+        entry.high = Price(high);
+        entry.low = Price(low);
+        entry.open = Price(open);
+        entry.volume = Quantity(volume);
         entry.price_change = price - open;
         entry.price_change_pct = if open.abs() > f64::EPSILON {
             (price - open) / open * 100.0
@@ -404,7 +415,7 @@ impl MarketDataHub {
             ask_price: ask.map(|(p, _)| Price(p)),
             ask_qty: ask.map(|(_, q)| Quantity(q)),
             timestamp: now_ns(),
-            is_snapshot: None,
+            is_snapshot: Some(false),
         };
         self.last_bbo.insert(symbol.to_string(), bbo);
     }

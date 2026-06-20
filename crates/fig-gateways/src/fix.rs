@@ -18,9 +18,9 @@ use thiserror::Error;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, ExecType,
-    ExecutionReport, NewOrderSingle, OrdStatus, OrderType, Price, Quantity, SecurityIdSource, Side,
-    TimeInForce,
+    BestBidOffer, CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, CandleBar,
+    ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderBookSnapshot, OrderType, Price,
+    PriceLevel, Quantity, SecurityIdSource, Side, TimeInForce,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -799,6 +799,84 @@ pub fn fig_to_fix_new_order_single(order: &NewOrderSingle, ctx: &FixOutboundCont
     build_outbound_fix_message(ctx, "D", body)
 }
 
+/// Build FIX Market Data Snapshot Full Refresh (35=W) from MD entries.
+fn build_fix_md_snapshot(
+    ctx: &FixOutboundContext,
+    md_req_id: &str,
+    symbol: &str,
+    entries: Vec<(char, String, String)>,
+) -> Vec<u8> {
+    let mut body = vec![
+        (262, md_req_id.to_string()),
+        (55, symbol.to_string()),
+        (268, entries.len().to_string()),
+    ];
+    for (entry_type, px, size) in entries {
+        body.push((269, entry_type.to_string()));
+        body.push((270, px));
+        body.push((271, size));
+    }
+    build_outbound_fix_message(ctx, "W", body)
+}
+
+fn md_entry(level: &PriceLevel, entry_type: char) -> (char, String, String) {
+    (
+        entry_type,
+        fmt_price(&level.price),
+        fmt_quantity(&level.qty),
+    )
+}
+
+/// Convert FIG `BestBidOffer` to FIX MD snapshot (BBO entries).
+pub fn fig_bbo_to_fix_md_snapshot(
+    bbo: &BestBidOffer,
+    ctx: &FixOutboundContext,
+    md_req_id: &str,
+) -> Vec<u8> {
+    let mut entries = Vec::new();
+    if let (Some(bid_price), Some(bid_qty)) = (&bbo.bid_price, &bbo.bid_qty) {
+        entries.push(('0', fmt_price(bid_price), fmt_quantity(bid_qty)));
+    }
+    if let (Some(ask_price), Some(ask_qty)) = (&bbo.ask_price, &bbo.ask_qty) {
+        entries.push(('1', fmt_price(ask_price), fmt_quantity(ask_qty)));
+    }
+    build_fix_md_snapshot(ctx, md_req_id, &bbo.symbol, entries)
+}
+
+/// Convert FIG `CandleBar` OHLCV to FIX MD snapshot entries.
+pub fn fig_candle_bar_to_fix_md_snapshot(
+    bar: &CandleBar,
+    ctx: &FixOutboundContext,
+    md_req_id: &str,
+) -> Vec<u8> {
+    let entries = vec![
+        ('4', fmt_price(&bar.open), "0".to_string()),
+        ('7', fmt_price(&bar.high), "0".to_string()),
+        ('8', fmt_price(&bar.low), "0".to_string()),
+        ('5', fmt_price(&bar.close), "0".to_string()),
+        ('B', "0".to_string(), fmt_quantity(&bar.volume)),
+    ];
+    build_fix_md_snapshot(ctx, md_req_id, &bar.symbol, entries)
+}
+
+/// Convert FIG `OrderBookSnapshot` to FIX MD snapshot (bid/offer levels).
+pub fn fig_order_book_to_fix_md_snapshot(
+    book: &OrderBookSnapshot,
+    ctx: &FixOutboundContext,
+    md_req_id: &str,
+) -> Vec<u8> {
+    let mut entries: Vec<(char, String, String)> = book
+        .bids
+        .iter()
+        .map(|l| md_entry(l, '0'))
+        .chain(book.asks.iter().map(|l| md_entry(l, '1')))
+        .collect();
+    if entries.is_empty() {
+        entries.push(('J', "0".to_string(), "0".to_string()));
+    }
+    build_fix_md_snapshot(ctx, md_req_id, &book.symbol, entries)
+}
+
 /// Convert a business reject to FIX BusinessMessageReject (35=j) wire-format bytes.
 pub fn fig_to_fix_business_message_reject(
     reject: &BusinessMessageReject,
@@ -1409,6 +1487,28 @@ mod tests {
     }
 
     // ── FIG → FIX ExecutionReport ────────────────────────────
+
+    #[test]
+    fn test_fig_candle_bar_to_fix_md_snapshot() {
+        let bar = CandleBar {
+            symbol: "AAPL".to_string(),
+            interval: "5m".to_string(),
+            open: Price(150.0),
+            high: Price(151.0),
+            low: Price(149.5),
+            close: Price(150.5),
+            volume: Quantity(1000.0),
+            bar_start: 1_700_000_000_000_000_000,
+            bar_end: 1_700_000_300_000_000_000,
+            is_final: true,
+            is_snapshot: Some(true),
+        };
+        let encoded =
+            fig_candle_bar_to_fix_md_snapshot(&bar, &FixOutboundContext::default(), "MD1");
+        let msg = FixMessage::from_bytes(&encoded).unwrap();
+        assert_eq!(msg.msg_type(), Some("W"));
+        assert_eq!(msg.get_tag(55), Some("AAPL"));
+    }
 
     #[test]
     fn test_fig_to_fix_execution_report() {

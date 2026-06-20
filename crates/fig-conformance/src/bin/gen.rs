@@ -11,15 +11,19 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    AggregateTrade, BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest,
+    AggregateTrade, BalanceEntry, BalanceSnapshot, CandleBar, CandleBarBatch, CandleBarRequest,
     CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, ExecType, ExecutionReport,
     MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker,
     NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
     OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
     OrderListStatusStatus, OrderType, PositionUpdate, Price, PriceLevel, Quantity, Side,
-    TimeInForce,
+    SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::encode_new_order_single;
+use fig_core::sbe_stream::{
+    encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
+    encode_order_book_snapshot, encode_symbol_ticker,
+};
 
 #[derive(Parser)]
 #[command(
@@ -268,7 +272,40 @@ fn build_suite() -> Result<ConformanceSuite> {
         .with_extension(Extension::text(
             ExtensionTag::RoutingKey,
             "marketdata.AAPL.quotes",
-        ));
+        ))
+        .with_extension(Extension::text(ExtensionTag::CorrelationId, "1"));
+    let candle_batch = CandleBarBatch {
+        symbol: "AAPL".to_string(),
+        interval: "5m".to_string(),
+        bars: vec![candle.clone()],
+        has_more: false,
+        next_cursor: None,
+    };
+    let symbol_ticker = SymbolTicker {
+        symbol: "AAPL".to_string(),
+        last_price: Price(150.5),
+        price_change: 0.5,
+        price_change_pct: 0.33,
+        volume: Quantity(1000.0),
+        high: Price(151.0),
+        low: Price(149.5),
+        open: Price(150.0),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    };
+    let book_snap = OrderBookSnapshot {
+        symbol: "AAPL".to_string(),
+        exchange: "SIM".to_string(),
+        bids: vec![PriceLevel {
+            price: Price(100.0),
+            qty: Quantity(5.0),
+            order_count: Some(1),
+        }],
+        asks: vec![],
+        timestamp: 1_700_000_000_000_000_000,
+        sequence: Some(42),
+        is_snapshot: Some(true),
+    };
 
     Ok(ConformanceSuite {
         version: 1,
@@ -331,7 +368,7 @@ fn build_suite() -> Result<ConformanceSuite> {
                 message_type: "CandleBar".into(),
                 expected_hex: hex::encode(encode_cbor(&candle)?),
                 frame: None,
-                payload: Some(candle_payload),
+                payload: Some(candle_payload.clone()),
                 channel: None,
             },
             ConformanceVector {
@@ -481,6 +518,10 @@ fn build_suite() -> Result<ConformanceSuite> {
                         ExtensionSpec {
                             tag: "RoutingKey".into(),
                             value: ExtensionValueSpec::Text("marketdata.AAPL.quotes".into()),
+                        },
+                        ExtensionSpec {
+                            tag: "CorrelationId".into(),
+                            value: ExtensionValueSpec::Text("1".into()),
                         },
                     ],
                     payload_hex: None,
@@ -642,6 +683,56 @@ fn build_suite() -> Result<ConformanceSuite> {
                     timestamp: 1_700_000_000_000_000_000,
                     is_snapshot: Some(true),
                 })?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.candle_bar.snapshot".into(),
+                category: "sbe".into(),
+                description: "CandleBar SBE (template 21)".into(),
+                message_type: "CandleBar".into(),
+                expected_hex: hex::encode(encode_candle_bar(&candle)),
+                frame: None,
+                payload: Some(candle_payload.clone()),
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.candle_bar_batch.demo".into(),
+                category: "sbe".into(),
+                description: "CandleBarBatch SBE (template 22)".into(),
+                message_type: "CandleBarBatch".into(),
+                expected_hex: hex::encode(encode_candle_bar_batch(&candle_batch)),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.symbol_ticker.demo".into(),
+                category: "sbe".into(),
+                description: "SymbolTicker SBE (template 27)".into(),
+                message_type: "SymbolTicker".into(),
+                expected_hex: hex::encode(encode_symbol_ticker(&symbol_ticker)),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.order_book_snapshot.demo".into(),
+                category: "sbe".into(),
+                description: "OrderBookSnapshot SBE (template 9)".into(),
+                message_type: "OrderBookSnapshot".into(),
+                expected_hex: hex::encode(encode_order_book_snapshot(&book_snap)),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.balance_snapshot.demo".into(),
+                category: "sbe".into(),
+                description: "BalanceSnapshot SBE (template 30)".into(),
+                message_type: "BalanceSnapshot".into(),
+                expected_hex: hex::encode(encode_balance_snapshot(&balance_snap)),
                 frame: None,
                 payload: None,
                 channel: None,

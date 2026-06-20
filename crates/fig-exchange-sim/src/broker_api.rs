@@ -1030,13 +1030,35 @@ fn order_list_status_from_report(account: &str, report: &ExecutionReport) -> Ord
 }
 
 fn ack_subscribe(frame: Frame) -> Frame {
-    Frame::new(FrameType::Response, frame.channel_id)
+    let routing_key = extension_text(&frame, ExtensionTag::RoutingKey);
+    let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
+    let mut ack = Frame::new(FrameType::Response, frame.channel_id)
         .with_seq(frame.stream_seq)
         .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            frame.channel_id.to_string(),
+        ));
+    if !routing_key.is_empty() {
+        ack = ack.with_extension(Extension::text(ExtensionTag::RoutingKey, &routing_key));
+    }
+    if !channel_path.is_empty() {
+        ack = ack.with_extension(Extension::text(ExtensionTag::ChannelPath, &channel_path));
+    }
+    ack
 }
 
 fn stream_item(channel_id: u16, routing_key: &str, payload: Vec<u8>, path: &str) -> Frame {
-    Frame::new(FrameType::StreamItem, channel_id)
+    let seq_ext = codec::decode_cbor::<OrderBookDelta>(&payload)
+        .ok()
+        .and_then(|book| book.sequence)
+        .or_else(|| {
+            codec::decode_cbor::<OrderBookSnapshot>(&payload)
+                .ok()
+                .and_then(|book| book.sequence)
+        });
+
+    let mut frame = Frame::new(FrameType::StreamItem, channel_id)
         .with_schema_id(schema_id::TRADING_ORDERS)
         .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
         .with_extension(Extension::text(ExtensionTag::ChannelPath, path))
@@ -1044,7 +1066,15 @@ fn stream_item(channel_id: u16, routing_key: &str, payload: Vec<u8>, path: &str)
             ExtensionTag::ContentType,
             "application/cbor",
         ))
-        .with_payload(payload)
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            channel_id.to_string(),
+        ))
+        .with_payload(payload);
+    if let Some(seq) = seq_ext {
+        frame = frame.with_extension(Extension::u64(ExtensionTag::SequenceNum, seq));
+    }
+    frame
 }
 
 fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {

@@ -336,7 +336,7 @@ integration tests are the reference behavior.
 | ✅ | Frame encode/decode vectors | High | Round-trip against `fig-core::frame` golden output |
 | ✅ | CBOR payload vectors | High | `NewOrderSingle`, `ExecutionReport`, … — snake_case fields, serde enum strings (`"Buy"`) |
 | ✅ | Historical / query REQUEST-RESPONSE vectors | High | `frame.request.order_history_paginated` + candle/open-orders frames |
-| 🔶 | `CandleBar` CBOR/SBE payload vectors | High | `cbor.candle_bar.snapshot` in `v1.json`; SBE batch fixtures still ⬜ |
+| 🔶 | `CandleBar` CBOR/SBE payload vectors | High | `cbor.candle_bar.snapshot` + `sbe.candle_bar*` / `sbe.symbol_ticker` in `v1.json` (28 vectors) |
 | ✅ | Account / position / balance stream vectors | High | balance + position + order book snapshot/delta CBOR vectors |
 | ✅ | SBE payload vectors | High | `schema_id=0x01`, template IDs; verify vs `sbe_generated.rs` |
 | ✅ | Channel stream-ID mapping vectors | Medium | `channel_id * 4 + offset` client/server cases |
@@ -612,19 +612,19 @@ Use this as the completeness checklist: **if a row is ⬜, native FIG is incompl
 
 | Incumbent stream | Binance User Data event | Hyperliquid subscription | Native FIG `CHANNEL_PATH` | FSL message | Native FIG | Gateway WS |
 |---|---|---|---|---|---|---|
-| Order / execution updates | `executionReport` | `orderUpdates` / fills in `userEvents` | `trading/accounts/{account}/executions` | `ExecutionReport` | ✅ `SUBSCRIBE` + fill fan-out | 🔶 Hyperliquid `orderUpdates` / `userFills` |
-| Account balance snapshot | `outboundAccountPosition` | `spotState.balances` | `accounts/{account}/balances` | `BalanceSnapshot` | ✅ snapshot on subscribe | 🔶 Hyperliquid `spotState` |
-| Balance delta | `balanceUpdate` | balance WS (`subscribeBalance`) | `accounts/{account}/balances` | `BalanceUpdate` | ✅ on fill | 🔶 Hyperliquid `subscribeBalance` |
-| Open orders snapshot | (via REST / WS API) | order state in user channel | `trading/accounts/{account}/orders/open` | `OpenOrdersSnapshot` | ✅ | 🔶 passthrough GET |
-| Position snapshot | futures account | `clearinghouseState` / `subscribePosition` | `accounts/{account}/positions` | `PositionSnapshot` | ✅ snapshot on subscribe | 🔶 Hyperliquid `clearinghouseState` |
-| Position delta | — | position WS updates | `accounts/{account}/positions` | `PositionUpdate` | ✅ fill fan-out | 🔶 Hyperliquid passthrough |
+| Order / execution updates | `executionReport` | `orderUpdates` / fills in `userEvents` | `trading/accounts/{account}/executions` | `ExecutionReport` | ✅ `SUBSCRIBE` + fill fan-out | ✅ `@executionReport` + Hyperliquid `orderUpdates` |
+| Account balance snapshot | `outboundAccountPosition` | `spotState.balances` | `accounts/{account}/balances` | `BalanceSnapshot` | ✅ snapshot on subscribe | ✅ `@balance` + Hyperliquid `spotState` |
+| Balance delta | `balanceUpdate` | balance WS (`subscribeBalance`) | `accounts/{account}/balances` | `BalanceUpdate` | ✅ on fill | ✅ Hyperliquid `balanceUpdate` |
+| Open orders snapshot | (via REST / WS API) | order state in user channel | `trading/accounts/{account}/orders/open` | `OpenOrdersSnapshot` | ✅ | ✅ Hyperliquid `openOrders` |
+| Position snapshot | futures account | `clearinghouseState` / `subscribePosition` | `accounts/{account}/positions` | `PositionSnapshot` | ✅ snapshot on subscribe | ✅ Hyperliquid `clearinghouseState` |
+| Position delta | — | position WS updates | `accounts/{account}/positions` | `PositionUpdate` | ✅ fill fan-out | ✅ Hyperliquid passthrough |
 | Margin / account summary | account info REST | clearinghouse margin summary | `accounts/{account}/margin` | `MarginSummary` / `MarginUpdate` | ✅ GET + live stream | ✅ passthrough |
-| User fills stream | trade in `executionReport` | `userFills` | `trading/accounts/{account}/fills` | `UserFill` or reuse `ExecutionReport` | ✅ executions sub + `FillHistoryRequest` GET (reuse `ExecutionReport`) | 🔶 Hyperliquid `userFills` → executions |
+| User fills stream | trade in `executionReport` | `userFills` | `trading/accounts/{account}/fills` | `UserFill` or reuse `ExecutionReport` | ✅ executions sub + `FillHistoryRequest` GET (reuse `ExecutionReport`) | ✅ Hyperliquid `userFills` → executions |
 | Funding payments | — | `userFundings` | `accounts/{account}/funding` | `FundingPayment` | ✅ sub + history GET | ✅ WS catalog |
 | Ledger (deposit/withdraw/transfer) | — | `userNonFundingLedgerUpdates` | `accounts/{account}/ledger` | `LedgerUpdate` | ✅ sub + history GET + fee on fill | ✅ WS catalog |
-| Liquidation (user) | — | `liquidation` in `userEvents` | `accounts/{account}/liquidations` | `UserLiquidation` | ✅ on balance breach | 🔶 passthrough |
-| List / OCO status | `listStatus` | — | `trading/accounts/{account}/orderlists` | `OrderListStatus` | ✅ subscribe + fan-out on rest | ⬜ blocked |
-| Stream lifecycle | `eventStreamTerminated` | subscription ack + snapshot flag | control / `STREAM_CLOSE` | session event | ✅ `STREAM_CLOSE` on UNSUBSCRIBE + `is_snapshot` | ⬜ |
+| Liquidation (user) | — | `liquidation` in `userEvents` | `accounts/{account}/liquidations` | `UserLiquidation` | ✅ on balance breach | ✅ Hyperliquid passthrough |
+| List / OCO status | `listStatus` | — | `trading/accounts/{account}/orderlists` | `OrderListStatus` | ✅ subscribe + fan-out on rest | ✅ `@orderlists` + Hyperliquid `listStatus` |
+| Stream lifecycle | `eventStreamTerminated` | subscription ack + snapshot flag | control / `STREAM_CLOSE` | session event | ✅ `STREAM_CLOSE` on UNSUBSCRIBE + `is_snapshot` | ✅ `fig_stream_close_to_legacy_json` + subscribe ack |
 
 **Legend:** ✅ native FIG complete · 🔶 partial · ⬜ not started · **Gateway WS** blocked until native FIG ✅
 
@@ -642,17 +642,17 @@ for that query is blocked.**
 | Query | Binance REST example | Hyperliquid / other | Native FIG `CHANNEL_PATH` | Request → Response FSL | Native FIG | Gateway REST |
 |---|---|---|---|---|---|---|
 | Historical candles | Binance alias: `GET /api/v3/klines` | candle snapshot API | `marketdata/{symbol}/candles/{interval}` | `CandleBarRequest` → `CandleBarBatch` | ✅ | ✅ `/klines` alias + native path |
-| Historical public trades | `GET /api/v3/aggTrades` | — | `marketdata/{symbol}/trades` | `TradeHistoryRequest` → `PublicTradeBatch` | ✅ | 🔶 native path only |
-| Order book snapshot at time | `GET /api/v3/depth` | `l2Book` snapshot REST | `marketdata/{symbol}/book` | `OrderBookRequest` → `OrderBookSnapshot` | ✅ `at_time` + book history store | 🔶 passthrough |
-| 24h ticker snapshot | `GET /api/v3/ticker/24hr` | — | `marketdata/{symbol}/ticker` | `TickerRequest` → `SymbolTicker` | ✅ | 🔶 passthrough GET |
-| Exchange info / symbols | `GET /api/v3/exchangeInfo` | meta endpoints | `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` | ✅ | 🔶 passthrough GET |
-| Account snapshot | `GET /api/v3/account` | clearinghouse state | `accounts/{account}` | `AccountSummaryRequest` → `AccountSummary` / `MarginSummary` | ✅ | 🔶 passthrough GET |
-| Open orders | `GET /api/v3/openOrders` | open orders REST | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` | ✅ | 🔶 passthrough GET |
-| Order history | `GET /api/v3/allOrders` | — | `trading/accounts/{account}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` | ✅ | 🔶 passthrough GET |
-| User trade / fill history | `GET /api/v3/myTrades` | user fills REST | `trading/accounts/{account}/fills` | `FillHistoryRequest` → `FillHistoryBatch` | ✅ | 🔶 native path + payload mapping |
-| Ledger / deposits / withdrawals | — | ledger REST | `accounts/{account}/ledger` | `LedgerHistoryRequest` → `LedgerHistoryBatch` | ✅ | 🔶 native path + payload mapping |
-| Funding history | `GET /fundingRate` (futures) | `userFundings` history | `accounts/{account}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` | ✅ | 🔶 native path + payload mapping |
-| Position snapshot | futures account | clearinghouse REST | `accounts/{account}/positions` | `PositionRequest` → `PositionSnapshot` | ✅ GET + subscribe snapshot | 🔶 passthrough GET |
+| Historical public trades | `GET /api/v3/aggTrades` | — | `marketdata/{symbol}/trades` | `TradeHistoryRequest` → `PublicTradeBatch` | ✅ | ✅ `/api/v3/aggTrades` alias |
+| Order book snapshot at time | `GET /api/v3/depth` | `l2Book` snapshot REST | `marketdata/{symbol}/book` | `OrderBookRequest` → `OrderBookSnapshot` | ✅ `at_time` + book history store | ✅ `/api/v3/depth` alias |
+| 24h ticker snapshot | `GET /api/v3/ticker/24hr` | — | `marketdata/{symbol}/ticker` | `TickerRequest` → `SymbolTicker` | ✅ | ✅ `/api/v3/ticker/24hr` alias |
+| Exchange info / symbols | `GET /api/v3/exchangeInfo` | meta endpoints | `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` | ✅ | ✅ `/api/v3/exchangeInfo` alias |
+| Account snapshot | `GET /api/v3/account` | clearinghouse state | `accounts/{account}` | `AccountSummaryRequest` → `AccountSummary` / `MarginSummary` | ✅ | ✅ `/api/v3/account` alias |
+| Open orders | `GET /api/v3/openOrders` | open orders REST | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` | ✅ | ✅ `/api/v3/openOrders` alias |
+| Order history | `GET /api/v3/allOrders` | — | `trading/accounts/{account}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` | ✅ | ✅ `/api/v3/allOrders` alias |
+| User trade / fill history | `GET /api/v3/myTrades` | user fills REST | `trading/accounts/{account}/fills` | `FillHistoryRequest` → `FillHistoryBatch` | ✅ | ✅ `/api/v3/myTrades` alias |
+| Ledger / deposits / withdrawals | — | ledger REST | `accounts/{account}/ledger` | `LedgerHistoryRequest` → `LedgerHistoryBatch` | ✅ | ✅ native path + REST alias |
+| Funding history | `GET /fundingRate` (futures) | `userFundings` history | `accounts/{account}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` | ✅ | ✅ native path + REST alias |
+| Position snapshot | futures account | clearinghouse REST | `accounts/{account}/positions` | `PositionRequest` → `PositionSnapshot` | ✅ GET + subscribe snapshot | ✅ native path + REST alias |
 
 **Native FIG interaction patterns for historical data:**
 
@@ -677,17 +677,17 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 |---|---|---|---|
 | ✅ | ADR 0006: broker ↔ client API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
 | ✅ | Split FSL schemas by domain | High | `orders.fsl` + `marketdata.fsl` + `account.fsl` merged at codegen |
-| 🔶 | Well-known schema IDs in SPEC | High | §9.1 catalog in SPEC; single schema `0x01` today |
+| ✅ | Well-known schema IDs in SPEC | High | §9.1 domain IDs `0x01–0x03`; wire schema `0x01` + template IDs |
 | ✅ | Unified `CHANNEL_PATH` tree | High | Core §17 paths + capabilities + open orders + order history |
-| 🔶 | Interaction type on path | High | `path_policy.rs` enforces SUBSCRIBE vs GET vs POST on exchange-sim |
-| 🔶 | Unified `ROUTING_KEY` convention | High | Used in exchange-sim + gateway catalogs; not fully normative |
+| ✅ | Interaction type on path | High | `path_policy.rs` + SPEC §9.1 interaction classes |
+| ✅ | Unified `ROUTING_KEY` convention | High | Dot-separated topics; normative in SPEC §9.1 |
 | ✅ | Snapshot-on-subscribe contract | High | `is_snapshot` + book `sequence` on `MarketDataSnapshot` |
 | ✅ | `.well-known/capabilities` stream catalog | High | `CapabilitiesResponse` in exchange-sim + gateway REST |
 | ✅ | Private stream auth model | High | `fig-dev-{account}` + `FIG_DEV_OPEN`; integration test `test_private_auth_required` |
-| 🔶 | `subscriptionId` / correlation | Medium | `channel_id` used; no dedicated extension |
-| 🔶 | Multi-stream per connection | Medium | Multiple channels per TREE session in exchange-sim |
+| ✅ | `subscriptionId` / correlation | Medium | `CORRELATION_ID` extension = channel ID on SUBSCRIBE/STREAM_ITEM |
+| ✅ | Multi-stream per connection | Medium | Documented in SPEC §9.1; exchange-sim + fig-cli demos |
 | ✅ | UNSUBSCRIBE semantics | Medium | `FrameType::Unsubscribe` + session store cleanup |
-| 🔶 | Schema evolution policy | Medium | ADR 0004 + ADR 0006; extend for optional stream fields |
+| ✅ | Schema evolution policy | Medium | ADR 0004/0006 + optional `is_snapshot` stream fields |
 
 #### FSL messages — public market data (`marketdata.fsl`)
 
@@ -755,8 +755,8 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 |---|---|---|---|
 | ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim; rate limit by tier pending |
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
-| 🔶 | Snapshot then delta | High | Candles/BBO/ticker/balances; book uses MD snapshot + incremental |
-| 🔶 | Sequence / gap detection | High | Book `sequence` field; gap-fill workflow in STREAMING.md / PROTOCOL.md |
+| ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
+| ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
 | 🔶 | Tier 1 SDK: native `request()` | High | `fig-cli` queries candles/fills/funding/ledger; formal SDK helpers pending |
 | ✅ | Session resume restores subscriptions | High | `Method: RESUME` + `.well-known/resume` + session store |
 | ✅ | Heartbeat independent of data | — | PING/PONG in §3; used by `fig-cli` |
@@ -773,7 +773,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | Trade tape fan-out | High | `MarketDataHub::on_trade` + `post_fill_updates` |
 | ✅ | Candle aggregator | High | OHLCV from trades; partial + final bars |
 | ✅ | BBO stream | High | `update_bbo` + subscribe path |
-| 🔶 | Ticker aggregator | Medium | `SymbolTicker` from trade tape; simplified 24h roll-up |
+| ✅ | Ticker aggregator | Medium | 24h rolling window from trade tape in `MarketDataHub` |
 | ✅ | `fig-cli` MD demo suite | High | Candles + ticker query in `fig-cli`; book/trades/BBO via subscribe |
 | ⬜ | Client merge: order book | High | SDK helper pending |
 | ⬜ | Client merge: candles | High | SDK helper pending |
@@ -838,7 +838,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | WS topic catalog spec | High | `ws_catalog.rs`; Binance `@kline_*` / Hyperliquid topics |
 | ✅ | Inbound WS → FIG proxy | High | `legacy_ws_json_to_fig_subscribe` |
 | ✅ | Gateway `--fig-backend` for queries + streams | Medium | REST GET + WS `SUBSCRIBE` proxied via `proxy_frame` |
-| ⬜ | FIX market data (MD entries) | Low | Optional mapping for bars / BBO where venues use FIX MD |
+| ✅ | FIX market data (MD entries) | Low | `fig_bbo_to_fix_md_snapshot`, `fig_candle_bar_to_fix_md_snapshot`, `fig_order_book_to_fix_md_snapshot` |
 
 ---
 
@@ -847,9 +847,9 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
-| ⬜ | SBE templates for hot-path streams | High | Order/trade messages only; stream types CBOR-first |
-| ✅ | CBOR golden vectors per message | High | 23 vectors incl. snapshot/delta pairs + paginated history frame |
-| ⬜ | SBE golden vectors per message | High | NewOrderSingle + seed types; stream messages pending |
+| ✅ | SBE templates for hot-path streams | High | `fig-core::sbe_stream` encoders (templates 9, 21–22, 27, 30) |
+| ✅ | CBOR golden vectors per message | High | 28 vectors incl. snapshot/delta pairs + paginated history frame |
+| ✅ | SBE golden vectors per message | High | `sbe.candle_bar*`, `sbe.symbol_ticker`, `sbe.order_book_snapshot`, `sbe.balance_snapshot` |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
 | ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE/Protobuf via `ContentType`; `multi_codec.rs` + integration test |
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
@@ -871,7 +871,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | Candle + trade tape from matcher | High | `market_data::MarketDataHub::on_trade` |
 | ✅ | Historical bar + trade tape store | High | In-memory `closed_candles` + trade tape |
 | ✅ | Integration tests per §17.0b row | High | capabilities, open orders, order book, order history stream, ticker, auth |
-| 🔶 | Hyperliquid-style snapshot flag | Medium | `is_snapshot` on candles/BBO/ticker/balances |
+| ✅ | Hyperliquid-style snapshot flag | Medium | `is_snapshot` on candles/BBO/ticker/balances/margin/mark |
 
 ---
 
@@ -913,18 +913,18 @@ with `--fig-backend`; not every native row has a legacy catalog entry yet.
 | Candles (OHLCV bars) | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Public trades | ✅ | ✅ | ✅ | ✅ | ✅ |
 | BBO | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 24h ticker | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Order book (quotes) | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Order / execution updates | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Balances (snapshot + delta) | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Positions (snapshot) | ✅ | ✅ | 🔶 | ✅ | ✅ |
-| Position delta | ✅ | ✅ | 🔶 | ✅ | ✅ |
+| 24h ticker | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Order book (quotes) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Order / execution updates | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Balances (snapshot + delta) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Positions (snapshot) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Position delta | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Margin live stream | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Funding / ledger live | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Aggregate trades / mini ticker / mark / liquidations | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Snapshot-on-subscribe | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Session resume / gap fill | ✅ | ✅ | ✅ | — | ✅ |
-| Conformance vectors | ✅ | 🔶 | — | — | ✅ |
+| Conformance vectors | ✅ | ✅ | — | — | ✅ |
 
 ---
 

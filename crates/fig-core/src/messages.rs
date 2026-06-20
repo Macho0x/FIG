@@ -6,9 +6,15 @@
 mod generated;
 pub use generated::*;
 
-/// Well-known schema IDs for the trading messages.
+/// Well-known schema IDs for FIG FSL domains (SPEC §9.1).
+///
+/// All merged FSL artifacts share wire schema `0x01` today; logical domain IDs
+/// are advertised via `CapabilitiesResponse.schema_ids` and documentation.
 pub mod schema_id {
     pub const TRADING_ORDERS: u8 = super::SCHEMA_ID;
+    pub const DOMAIN_TRADING: u8 = 0x01;
+    pub const DOMAIN_MARKET_DATA: u8 = 0x02;
+    pub const DOMAIN_ACCOUNT: u8 = 0x03;
 }
 
 /// Well-known channel paths for the exchange simulator.
