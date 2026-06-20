@@ -400,6 +400,21 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     for report in &reports {
                         engine.record_execution(account, report.clone());
                     }
+                    if let Some(resting) = &result.resting_order {
+                        let new_report = crate::matching::resting_to_report(resting);
+                        engine.record_execution(account, new_report.clone());
+                        drop(engine);
+                        responses.extend(
+                            crate::broker_api::post_execution_reports(
+                                state,
+                                account,
+                                &[new_report],
+                            )
+                            .await,
+                        );
+                    } else {
+                        drop(engine);
+                    }
                 }
 
                 if let Some(reject) = &result.reject_reason {
@@ -440,6 +455,8 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 let mut engine = state.engine.lock().await;
                 use crate::matching::CancelOutcome;
                 let outcome = engine.process_cancel(&cancel);
+                let account = "TEST";
+                let mut cancel_report: Option<ExecutionReport> = None;
 
                 let response = match outcome {
                     CancelOutcome::Cancelled(_order) => {
@@ -461,6 +478,8 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                                 .unwrap()
                                 .as_nanos() as i64,
                         };
+                        engine.record_execution(account, report.clone());
+                        cancel_report = Some(report.clone());
                         if let Ok(payload) = codec::encode_cbor(&report) {
                             Frame::new(FrameType::Response, frame.channel_id)
                                 .with_seq(frame.stream_seq)
@@ -489,7 +508,13 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         }
                     }
                 };
+                drop(engine);
                 let mut responses = vec![response];
+                if let Some(report) = cancel_report {
+                    responses.extend(
+                        crate::broker_api::post_execution_reports(state, account, &[report]).await,
+                    );
+                }
                 responses.extend(push_book_depth(state, &cancel.symbol).await);
                 responses
             }
@@ -635,6 +660,7 @@ pub async fn handle_subscribe(
         || channel_path.contains("/positions")
         || channel_path.ends_with("/margin")
         || channel_path.ends_with("/liquidations")
+        || channel_path.ends_with("/orderlists")
         || channel_path.ends_with("/funding")
         || channel_path.ends_with("/ledger")
     {

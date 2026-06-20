@@ -81,6 +81,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -93,6 +94,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -105,6 +107,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -133,6 +136,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -146,6 +150,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -159,6 +164,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,
@@ -182,6 +188,7 @@ fn build_query_payload(
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
             limit: parse_limit_param(query),
+            cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
             encode_cbor(&req).map_err(|e| RestError::CborEncodeError(e.to_string()))?,

@@ -140,6 +140,26 @@
       "channel": null
     },
     {
+      "id": "cbor.order_history_batch.demo",
+      "category": "cbor",
+      "description": "OrderHistoryBatch CBOR with pagination cursor",
+      "message_type": "OrderHistoryBatch",
+      "expected_hex": "a4676163636f756e746444454d4f666f726465727381ab69636c5f6f72645f696466484953542d31686f726465725f6964613167657865635f696466657865632d3169657865635f74797065634e65776a6f72645f737461747573634e65776473696465634275796a6c65617665735f717479f949006763756d5f717479f90000696176675f7072696365f900006673796d626f6c644141504c6d7472616e736163745f74696d651b17979cfe362a0000686861735f6d6f7265f56b6e6578745f637572736f7266657865632d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "cbor.order_list_status.demo",
+      "category": "cbor",
+      "description": "OrderListStatus CBOR for order list stream",
+      "message_type": "OrderListStatus",
+      "expected_hex": "a4676163636f756e746444454d4f676c6973745f6964644f4c2d316673746174757369457865637574696e676673796d626f6c644141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "frame.request.capabilities",
       "category": "frame",
       "description": "GET capabilities discovery path",

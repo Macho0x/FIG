@@ -14,7 +14,7 @@ use crate::auth::{account_from_private_path, authorize_private};
 use crate::broker_session::{
     capabilities_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
     parse_order_history_path, parse_position_query_path, respond_cbor, stream_candle_batch,
-    stream_order_history,
+    stream_fill_history, stream_order_history,
 };
 use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_candle_query_path,
@@ -61,10 +61,17 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let md = state.market_data.lock().await;
-        let batch = md.query_agg_trades(&req.symbol, req.start_time, req.end_time, req.limit);
+        let batch = md.query_agg_trades(
+            &req.symbol,
+            req.start_time,
+            req.end_time,
+            req.limit,
+            req.cursor.as_deref(),
+        );
         drop(md);
         return ok_response(frame, &batch);
     }
@@ -131,6 +138,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let engine = state.engine.lock().await;
@@ -140,6 +148,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.start_time,
             req.end_time,
             req.limit,
+            req.cursor.as_deref(),
         );
         drop(engine);
         return stream_order_history(frame, &batch);
@@ -165,6 +174,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let md = state.market_data.lock().await;
@@ -174,6 +184,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.start_time,
             req.end_time,
             req.limit,
+            req.cursor.as_deref(),
         );
         drop(md);
         return stream_candle_batch(frame, &batch);
@@ -187,10 +198,17 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let md = state.market_data.lock().await;
-        let batch = md.query_trades(&req.symbol, req.start_time, req.end_time, req.limit);
+        let batch = md.query_trades(
+            &req.symbol,
+            req.start_time,
+            req.end_time,
+            req.limit,
+            req.cursor.as_deref(),
+        );
         drop(md);
         return ok_response(frame, &batch);
     }
@@ -205,6 +223,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let accounts = state.accounts.lock().await;
@@ -218,8 +237,9 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
             req.start_time,
             req.end_time,
             req.limit,
+            req.cursor.as_deref(),
         );
-        return ok_response(frame, &batch);
+        return stream_fill_history(frame, &batch);
     }
 
     if channel_path.starts_with("accounts/") && channel_path.ends_with("/funding") {
@@ -231,6 +251,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let accounts = state.accounts.lock().await;
@@ -241,7 +262,12 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         drop(accounts);
         return ok_response(
             frame,
-            &acct.query_funding(req.start_time, req.end_time, req.limit),
+            &acct.query_funding(
+                req.start_time,
+                req.end_time,
+                req.limit,
+                req.cursor.as_deref(),
+            ),
         );
     }
 
@@ -254,6 +280,7 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 start_time: None,
                 end_time: None,
                 limit: Some(500),
+                cursor: None,
             },
         );
         let accounts = state.accounts.lock().await;
@@ -264,7 +291,12 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         drop(accounts);
         return ok_response(
             frame,
-            &acct.query_ledger(req.start_time, req.end_time, req.limit),
+            &acct.query_ledger(
+                req.start_time,
+                req.end_time,
+                req.limit,
+                req.cursor.as_deref(),
+            ),
         );
     }
 
@@ -398,7 +430,7 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
         }
         SubscriptionKind::Trades { symbol } => {
             let md = state.market_data.lock().await;
-            let batch = md.query_trades(&symbol, None, None, Some(50));
+            let batch = md.query_trades(&symbol, None, None, Some(50), None);
             drop(md);
             let mut frames = Vec::new();
             for trade in batch.trades {
@@ -460,7 +492,7 @@ pub async fn handle_market_subscribe(frame: Frame, state: &Arc<ExchangeState>) -
         }
         SubscriptionKind::AggTrades { symbol } => {
             let md = state.market_data.lock().await;
-            let batch = md.query_agg_trades(&symbol, None, None, Some(50));
+            let batch = md.query_agg_trades(&symbol, None, None, Some(50), None);
             drop(md);
             let mut frames = Vec::new();
             for trade in batch.trades {
@@ -658,7 +690,19 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
                 ));
             }
         }
-        AccountSubscriptionKind::Liquidations => {}
+        AccountSubscriptionKind::Liquidations => {
+            for liq in &acct.liquidations {
+                if let Ok(payload) = codec::encode_cbor(liq) {
+                    frames.push(stream_item(
+                        frame.channel_id,
+                        &routing_key,
+                        payload,
+                        "accounts/liquidations",
+                    ));
+                }
+            }
+        }
+        AccountSubscriptionKind::OrderLists => {}
     }
     drop(accounts);
     if frames.is_empty() {
@@ -747,6 +791,17 @@ pub async fn post_fill_updates(
                                     "accounts/liquidations",
                                 ));
                             }
+                        }
+                    }
+                    AccountSubscriptionKind::OrderLists => {
+                        let status = order_list_status_from_report(account, report);
+                        if let Ok(payload) = codec::encode_cbor(&status) {
+                            frames.push(stream_item(
+                                sub.channel_id,
+                                &sub.routing_key,
+                                payload,
+                                "trading/orderlists",
+                            ));
                         }
                     }
                     AccountSubscriptionKind::Funding => {}
@@ -913,6 +968,62 @@ pub async fn post_fill_updates(
 
     frames.extend(crate::server::push_book_depth(state, symbol).await);
     frames
+}
+
+/// Fan out execution reports to execution/order-list subscribers (no fill side-effects).
+pub async fn post_execution_reports(
+    state: &Arc<ExchangeState>,
+    account: &str,
+    reports: &[ExecutionReport],
+) -> Vec<Frame> {
+    let subs = state.account_subscriptions.lock().await.clone();
+    let mut frames = Vec::new();
+    for report in reports {
+        for sub in subs.iter().filter(|s| s.account == account) {
+            match sub.kind {
+                AccountSubscriptionKind::Executions => {
+                    if let Ok(payload) = codec::encode_cbor(report) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "trading/executions",
+                        ));
+                    }
+                }
+                AccountSubscriptionKind::OrderLists => {
+                    let status = order_list_status_from_report(account, report);
+                    if let Ok(payload) = codec::encode_cbor(&status) {
+                        frames.push(stream_item(
+                            sub.channel_id,
+                            &sub.routing_key,
+                            payload,
+                            "trading/orderlists",
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    frames
+}
+
+fn order_list_status_from_report(account: &str, report: &ExecutionReport) -> OrderListStatus {
+    let status = match report.exec_type {
+        ExecType::New => OrderListStatusStatus::Executing,
+        ExecType::Canceled => OrderListStatusStatus::AllDone,
+        ExecType::Fill | ExecType::PartialFill if report.leaves_qty.0 <= f64::EPSILON => {
+            OrderListStatusStatus::AllDone
+        }
+        _ => OrderListStatusStatus::Executing,
+    };
+    OrderListStatus {
+        account: account.to_string(),
+        list_id: report.cl_ord_id.clone(),
+        status,
+        symbol: Some(report.symbol.clone()),
+    }
 }
 
 fn ack_subscribe(frame: Frame) -> Frame {

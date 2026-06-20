@@ -13,9 +13,10 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    AggregateTrade, BalanceSnapshot, CandleBar, CapabilitiesResponse, MarkPriceUpdate,
-    MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrderBookSnapshot,
-    OrderHistoryRequest, OrderType, Price, Quantity, Side, TimeInForce,
+    AggregateTrade, BalanceSnapshot, CandleBar, CapabilitiesResponse, ExecType, ExecutionReport,
+    MarkPriceUpdate, MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus,
+    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    OrderListStatusStatus, OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -82,6 +83,11 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
             "OrderHistoryRequest" => encode_cbor(&sample_order_history_request())
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OrderHistoryBatch" => encode_cbor(&sample_order_history_batch())
+                .map_err(|e| anyhow!("encode_cbor: {e}"))?,
+            "OrderListStatus" => {
+                encode_cbor(&sample_order_list_status()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
             "OrderBookSnapshot" => encode_cbor(&sample_order_book_snapshot())
                 .map_err(|e| anyhow!("encode_cbor: {e}"))?,
             "AggregateTrade" => {
@@ -173,6 +179,39 @@ fn sample_order_history_request() -> OrderHistoryRequest {
         start_time: None,
         end_time: None,
         limit: Some(100),
+        cursor: None,
+    }
+}
+
+fn sample_order_history_batch() -> OrderHistoryBatch {
+    OrderHistoryBatch {
+        account: "DEMO".to_string(),
+        orders: vec![ExecutionReport {
+            cl_ord_id: "HIST-1".to_string(),
+            order_id: "1".to_string(),
+            exec_id: "exec-1".to_string(),
+            exec_type: ExecType::New,
+            ord_status: OrdStatus::New,
+            side: Side::Buy,
+            last_qty: None,
+            last_price: None,
+            leaves_qty: Quantity(10.0),
+            cum_qty: Quantity(0.0),
+            avg_price: Price(0.0),
+            symbol: "AAPL".to_string(),
+            transact_time: 1_700_000_000_000_000_000,
+        }],
+        has_more: true,
+        next_cursor: Some("exec-1".to_string()),
+    }
+}
+
+fn sample_order_list_status() -> OrderListStatus {
+    OrderListStatus {
+        account: "DEMO".to_string(),
+        list_id: "OL-1".to_string(),
+        status: OrderListStatusStatus::Executing,
+        symbol: Some("AAPL".to_string()),
     }
 }
 

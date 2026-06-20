@@ -213,6 +213,7 @@ async fn main() -> Result<()> {
             start_time: None,
             end_time: None,
             limit: Some(10),
+            cursor: None,
         })?);
     log_frames("candle_query", &send_and_read(&conn, candle_get).await?);
 

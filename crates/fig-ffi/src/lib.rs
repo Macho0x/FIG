@@ -365,6 +365,7 @@ fn sample_order_history_request() -> OrderHistoryRequest {
         start_time: None,
         end_time: None,
         limit: Some(100),
+        cursor: None,
     }
 }
 

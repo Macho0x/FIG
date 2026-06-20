@@ -12,9 +12,10 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceEntry, BalanceSnapshot, CandleBar, CandleBarRequest,
-    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, MarkPriceUpdate,
-    MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot,
-    OrderBookSnapshot, OrderHistoryRequest, OrderType, Price, PriceLevel, Quantity, Side,
+    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, ExecType, ExecutionReport,
+    MarkPriceUpdate, MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrdStatus, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest,
+    OrderListStatus, OrderListStatusStatus, OrderType, Price, PriceLevel, Quantity, Side,
     TimeInForce,
 };
 use fig_core::sbe::encode_new_order_single;
@@ -104,6 +105,7 @@ fn build_suite() -> Result<ConformanceSuite> {
         start_time: None,
         end_time: None,
         limit: Some(100),
+        cursor: None,
     };
     let candle_query_frame = Frame::new(FrameType::Request, 2)
         .with_seq(1)
@@ -162,6 +164,33 @@ fn build_suite() -> Result<ConformanceSuite> {
         start_time: None,
         end_time: None,
         limit: Some(100),
+        cursor: None,
+    };
+    let order_hist_page = OrderHistoryBatch {
+        account: "DEMO".to_string(),
+        orders: vec![ExecutionReport {
+            cl_ord_id: "HIST-1".to_string(),
+            order_id: "1".to_string(),
+            exec_id: "exec-1".to_string(),
+            exec_type: ExecType::New,
+            ord_status: OrdStatus::New,
+            side: Side::Buy,
+            last_qty: None,
+            last_price: None,
+            leaves_qty: Quantity(10.0),
+            cum_qty: Quantity(0.0),
+            avg_price: Price(0.0),
+            symbol: "AAPL".to_string(),
+            transact_time: 1_700_000_000_000_000_000,
+        }],
+        has_more: true,
+        next_cursor: Some("exec-1".to_string()),
+    };
+    let order_list_status = OrderListStatus {
+        account: "DEMO".to_string(),
+        list_id: "OL-1".to_string(),
+        status: OrderListStatusStatus::Executing,
+        symbol: Some("AAPL".to_string()),
     };
     let open_orders_req = OpenOrdersRequest {
         account: "DEMO".to_string(),
@@ -310,6 +339,26 @@ fn build_suite() -> Result<ConformanceSuite> {
                 description: "OrderHistoryRequest CBOR".into(),
                 message_type: "OrderHistoryRequest".into(),
                 expected_hex: hex::encode(encode_cbor(&order_hist_req)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.order_history_batch.demo".into(),
+                category: "cbor".into(),
+                description: "OrderHistoryBatch CBOR with pagination cursor".into(),
+                message_type: "OrderHistoryBatch".into(),
+                expected_hex: hex::encode(encode_cbor(&order_hist_page)?),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "cbor.order_list_status.demo".into(),
+                category: "cbor".into(),
+                description: "OrderListStatus CBOR for order list stream".into(),
+                message_type: "OrderListStatus".into(),
+                expected_hex: hex::encode(encode_cbor(&order_list_status)?),
                 frame: None,
                 payload: None,
                 channel: None,

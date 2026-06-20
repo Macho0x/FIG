@@ -728,6 +728,8 @@ pub struct AggregateTradeRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl AggregateTradeRequest {
@@ -885,6 +887,8 @@ pub struct CandleBarRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl CandleBarRequest {
@@ -941,6 +945,8 @@ pub struct TradeHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl TradeHistoryRequest {
@@ -1219,6 +1225,8 @@ pub struct FillHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl FillHistoryRequest {
@@ -1279,6 +1287,8 @@ pub struct FundingHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl FundingHistoryRequest {
@@ -1340,6 +1350,8 @@ pub struct LedgerHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl LedgerHistoryRequest {
@@ -1417,6 +1429,8 @@ pub struct OrderHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 impl OrderHistoryRequest {

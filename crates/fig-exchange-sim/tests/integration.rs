@@ -970,3 +970,209 @@ async fn test_position_delta_on_fill() {
             && codec::decode_cbor::<PositionUpdate>(&f.payload).is_ok()
     }));
 }
+
+/// Order history pagination returns next_cursor for follow-up queries.
+#[tokio::test]
+async fn test_order_history_pagination_cursor() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    for i in 0..15 {
+        let sell = make_order(
+            &format!("PG-{i}"),
+            Side::Sell,
+            "AAPL",
+            OrderType::Limit,
+            Some(100.0 + i as f64),
+            1.0,
+        );
+        send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+            .await
+            .expect("sell");
+    }
+
+    let req = OrderHistoryRequest {
+        account: "TEST".to_string(),
+        symbol: None,
+        start_time: None,
+        end_time: None,
+        limit: Some(5),
+        cursor: None,
+    };
+    let payload = codec::encode_cbor(&req).unwrap();
+    let mut query = make_get_query_frame(2, "trading/accounts/TEST/orders", Some("TEST"));
+    query.payload = payload;
+    let responses = send_and_receive(&conn, query).await.expect("page1");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response");
+    let batch: OrderHistoryBatch = codec::decode_cbor(&resp.payload).expect("decode");
+    assert_eq!(batch.orders.len(), 5);
+    assert!(batch.has_more);
+    assert!(batch.next_cursor.is_some());
+
+    let req2 = OrderHistoryRequest {
+        account: "TEST".to_string(),
+        symbol: None,
+        start_time: None,
+        end_time: None,
+        limit: Some(5),
+        cursor: batch.next_cursor.clone(),
+    };
+    let payload2 = codec::encode_cbor(&req2).unwrap();
+    let mut query2 = make_get_query_frame(2, "trading/accounts/TEST/orders", Some("TEST"));
+    query2.payload = payload2;
+    let responses2 = send_and_receive(&conn, query2).await.expect("page2");
+    let resp2 = responses2
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response2");
+    let batch2: OrderHistoryBatch = codec::decode_cbor(&resp2.payload).expect("decode2");
+    assert!(!batch2.orders.is_empty());
+    assert_ne!(batch2.orders[0].exec_id, batch.orders[0].exec_id);
+}
+
+/// Resting limit order emits New execution on executions subscription.
+#[tokio::test]
+async fn test_executions_subscribe_on_rest() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let mut exec_frame = make_subscribe_frame(
+        1,
+        "trading/accounts/TEST/executions",
+        "trading/accounts/TEST/executions",
+    );
+    exec_frame =
+        exec_frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
+    send_and_receive(&conn, exec_frame)
+        .await
+        .expect("executions sub");
+
+    let order = make_order(
+        "REST-1",
+        Side::Buy,
+        "AAPL",
+        OrderType::Limit,
+        Some(50.0),
+        10.0,
+    );
+    let responses = send_and_receive(&conn, make_order_frame(2, &order).unwrap())
+        .await
+        .expect("resting order");
+    let new_report = responses.iter().find_map(|f| {
+        if f.frame_type != FrameType::StreamItem {
+            return None;
+        }
+        let report: ExecutionReport = codec::decode_cbor(&f.payload).ok()?;
+        (report.exec_type == ExecType::New).then_some(report)
+    });
+    assert!(new_report.is_some(), "expected New on executions sub");
+}
+
+/// Fill history query returns recorded fills after a trade.
+#[tokio::test]
+async fn test_fill_history_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "FH-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        5.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("resting");
+    let buy = make_order("FH-2", Side::Buy, "AAPL", OrderType::Market, None, 5.0);
+    send_and_receive(&conn, make_order_frame(1, &buy).unwrap())
+        .await
+        .expect("fill");
+
+    let query = make_get_query_frame(2, "accounts/TEST/fills", Some("TEST"));
+    let responses = send_and_receive(&conn, query).await.expect("fills query");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response");
+    let batch: FillHistoryBatch = codec::decode_cbor(&resp.payload).expect("decode");
+    assert!(!batch.fills.is_empty());
+}
+
+/// BBO stream delivers snapshot on subscribe.
+#[tokio::test]
+async fn test_bbo_subscribe_snapshot() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sell = make_order(
+        "BBO-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(101.0),
+        1.0,
+    );
+    send_and_receive(&conn, make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("resting");
+
+    let sub = make_subscribe_frame(2, "marketdata/AAPL/bbo", "marketdata/AAPL/bbo");
+    let responses = send_and_receive(&conn, sub).await.expect("bbo sub");
+    let item = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamItem)
+        .expect("bbo item");
+    let bbo: BestBidOffer = codec::decode_cbor(&item.payload).expect("bbo decode");
+    assert_eq!(bbo.symbol, "AAPL");
+}
+
+/// OrderListStatus stream receives updates when orders rest.
+#[tokio::test]
+async fn test_order_list_status_subscribe() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let mut list_frame = make_subscribe_frame(
+        1,
+        "trading/accounts/TEST/orderlists",
+        "trading/accounts/TEST/orderlists",
+    );
+    list_frame =
+        list_frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
+    send_and_receive(&conn, list_frame)
+        .await
+        .expect("orderlists sub");
+
+    let order = make_order("OL-1", Side::Buy, "AAPL", OrderType::Limit, Some(42.0), 2.0);
+    let responses = send_and_receive(&conn, make_order_frame(2, &order).unwrap())
+        .await
+        .expect("resting");
+    let status = responses.iter().find_map(|f| {
+        if f.frame_type != FrameType::StreamItem {
+            return None;
+        }
+        codec::decode_cbor::<OrderListStatus>(&f.payload).ok()
+    });
+    assert!(status.is_some());
+    assert_eq!(status.unwrap().list_id, "OL-1");
+}

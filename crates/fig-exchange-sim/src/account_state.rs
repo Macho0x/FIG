@@ -13,6 +13,7 @@ pub enum AccountSubscriptionKind {
     Funding,
     Ledger,
     Liquidations,
+    OrderLists,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,7 @@ pub struct SimAccount {
     pub fills: Vec<ExecutionReport>,
     pub funding: Vec<FundingPayment>,
     pub ledger: Vec<LedgerUpdate>,
+    pub liquidations: Vec<UserLiquidation>,
 }
 
 impl SimAccount {
@@ -58,6 +60,7 @@ impl SimAccount {
             fills: Vec::new(),
             funding: Vec::new(),
             ledger: Vec::new(),
+            liquidations: Vec::new(),
         }
     }
 
@@ -152,6 +155,9 @@ impl SimAccount {
         } else {
             None
         };
+        if let Some(ref liq) = user_liquidation {
+            self.liquidations.push(liq.clone());
+        }
 
         (balance_update, position_update, user_liquidation)
     }
@@ -217,8 +223,9 @@ impl SimAccount {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> FundingHistoryBatch {
-        let mut payments: Vec<FundingPayment> = self
+        let payments: Vec<FundingPayment> = self
             .funding
             .iter()
             .filter(|p| start_time.is_none_or(|st| p.timestamp >= st))
@@ -226,13 +233,15 @@ impl SimAccount {
             .cloned()
             .collect();
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = payments.len() > limit;
-        payments.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(payments, limit, cursor, |p| {
+                format!("{}:{}", p.timestamp, p.symbol.as_deref().unwrap_or(""))
+            });
         FundingHistoryBatch {
             account: self.account.clone(),
-            payments,
+            payments: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 
@@ -241,8 +250,9 @@ impl SimAccount {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> LedgerHistoryBatch {
-        let mut entries: Vec<LedgerUpdate> = self
+        let entries: Vec<LedgerUpdate> = self
             .ledger
             .iter()
             .filter(|e| start_time.is_none_or(|st| e.timestamp >= st))
@@ -250,13 +260,15 @@ impl SimAccount {
             .cloned()
             .collect();
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = entries.len() > limit;
-        entries.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(entries, limit, cursor, |e| {
+                format!("{}:{:?}", e.timestamp, e.reference_id)
+            });
         LedgerHistoryBatch {
             account: self.account.clone(),
-            entries,
+            entries: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 
@@ -266,8 +278,9 @@ impl SimAccount {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> FillHistoryBatch {
-        let mut fills: Vec<ExecutionReport> = self
+        let fills: Vec<ExecutionReport> = self
             .fills
             .iter()
             .filter(|f| symbol.is_none_or(|s| f.symbol == s))
@@ -276,13 +289,13 @@ impl SimAccount {
             .cloned()
             .collect();
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = fills.len() > limit;
-        fills.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(fills, limit, cursor, crate::pagination::exec_cursor);
         FillHistoryBatch {
             account: self.account.clone(),
-            fills,
+            fills: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 }
@@ -332,6 +345,10 @@ pub fn parse_account_subscription(
     if path.starts_with("accounts/") && path.ends_with("/liquidations") {
         let account = path.split('/').nth(1)?.to_string();
         return Some((account, AccountSubscriptionKind::Liquidations));
+    }
+    if path.starts_with("trading/accounts/") && path.ends_with("/orderlists") {
+        let account = path.split('/').nth(2)?.to_string();
+        return Some((account, AccountSubscriptionKind::OrderLists));
     }
     if path.starts_with("accounts/") && path.ends_with("/funding") {
         let account = path.split('/').nth(1)?.to_string();

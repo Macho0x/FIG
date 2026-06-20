@@ -1932,7 +1932,7 @@ pub struct AggregateTradeRequestEncoder;
 impl AggregateTradeRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(symbol: Symbol, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -1954,6 +1954,12 @@ impl AggregateTradeRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -1966,6 +1972,7 @@ pub struct AggregateTradeRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl AggregateTradeRequestDecoder {
@@ -2019,12 +2026,31 @@ impl AggregateTradeRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             symbol,
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -2705,7 +2731,7 @@ pub struct CandleBarRequestEncoder;
 impl CandleBarRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol, interval: CandleInterval, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(symbol: Symbol, interval: CandleInterval, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -2730,6 +2756,12 @@ impl CandleBarRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -2743,6 +2775,7 @@ pub struct CandleBarRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl CandleBarRequestDecoder {
@@ -2802,6 +2835,24 @@ impl CandleBarRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             symbol,
@@ -2809,6 +2860,7 @@ impl CandleBarRequestDecoder {
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -3004,7 +3056,7 @@ pub struct TradeHistoryRequestEncoder;
 impl TradeHistoryRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(symbol: Symbol, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -3026,6 +3078,12 @@ impl TradeHistoryRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -3038,6 +3096,7 @@ pub struct TradeHistoryRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl TradeHistoryRequestDecoder {
@@ -3091,12 +3150,31 @@ impl TradeHistoryRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             symbol,
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -4589,7 +4667,7 @@ pub struct FillHistoryRequestEncoder;
 impl FillHistoryRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(account: String, symbol: Option<Symbol>, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(account: String, symbol: Option<Symbol>, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -4617,6 +4695,12 @@ impl FillHistoryRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -4630,6 +4714,7 @@ pub struct FillHistoryRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl FillHistoryRequestDecoder {
@@ -4701,6 +4786,24 @@ impl FillHistoryRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             account,
@@ -4708,6 +4811,7 @@ impl FillHistoryRequestDecoder {
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -4960,7 +5064,7 @@ pub struct FundingHistoryRequestEncoder;
 impl FundingHistoryRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(account: String, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(account: String, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -4982,6 +5086,12 @@ impl FundingHistoryRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -4994,6 +5104,7 @@ pub struct FundingHistoryRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl FundingHistoryRequestDecoder {
@@ -5047,12 +5158,31 @@ impl FundingHistoryRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             account,
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -5309,7 +5439,7 @@ pub struct LedgerHistoryRequestEncoder;
 impl LedgerHistoryRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(account: String, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(account: String, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -5331,6 +5461,12 @@ impl LedgerHistoryRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -5343,6 +5479,7 @@ pub struct LedgerHistoryRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl LedgerHistoryRequestDecoder {
@@ -5396,12 +5533,31 @@ impl LedgerHistoryRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             account,
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }
@@ -5697,7 +5853,7 @@ pub struct OrderHistoryRequestEncoder;
 impl OrderHistoryRequestEncoder {
     /// Encode this message into a byte buffer.
     /// Returns the filled buffer.
-    pub fn encode(account: String, symbol: Option<Symbol>, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>) -> Vec<u8> {
+    pub fn encode(account: String, symbol: Option<Symbol>, start_time: Option<TradeTimestamp>, end_time: Option<TradeTimestamp>, limit: Option<u32>, cursor: Option<String>) -> Vec<u8> {
         let mut buf = Vec::new();
 
         // SBE Message Header (8 bytes)
@@ -5725,6 +5881,12 @@ impl OrderHistoryRequestEncoder {
             buf.extend_from_slice(&v.to_be_bytes());
         }
         // TODO: encode limit as u32
+        buf.push(if cursor.is_some() { 1 } else { 0 });
+        if let Some(ref s) = cursor {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
 
         buf
     }
@@ -5738,6 +5900,7 @@ pub struct OrderHistoryRequestDecoder {
     pub start_time: Option<TradeTimestamp>,
     pub end_time: Option<TradeTimestamp>,
     pub limit: Option<u32>,
+    pub cursor: Option<String>,
 }
 
 impl OrderHistoryRequestDecoder {
@@ -5809,6 +5972,24 @@ impl OrderHistoryRequestDecoder {
         pos += 8;
         let limit = buf[pos]; // TODO: decode u32
         pos += 1;
+        let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+        pos += 2;
+        let cursor_bytes = &buf[pos..pos+cursor_len];
+        pos += cursor_len;
+        let cursor = std::str::from_utf8(cursor_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string();
+        let cursor = if buf[pos] == 1 {
+            pos += 1;
+            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;
+            pos += 2;
+            let cursor_bytes = &buf[pos..pos+cursor_len];
+            pos += cursor_len;
+            Some(std::str::from_utf8(cursor_bytes)
+                .map_err(|e| format!("invalid UTF-8: {}", e))?.to_string())
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             account,
@@ -5816,6 +5997,7 @@ impl OrderHistoryRequestDecoder {
             start_time,
             end_time,
             limit,
+            cursor,
         })
     }
 }

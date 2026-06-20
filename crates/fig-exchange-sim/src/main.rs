@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("FIG Exchange Simulator starting...");
     let endpoint = run_server("127.0.0.1:8443").await?;
     tracing::info!("FIG server listening on {}", endpoint.local_addr()?);
-    // Keep running
-    endpoint.wait_idle().await;
+    // Stay alive until interrupted (wait_idle returns immediately with no peers).
+    tokio::signal::ctrl_c().await?;
     Ok(())
 }

@@ -72,6 +72,11 @@ pub fn capabilities_response() -> CapabilitiesResponse {
                 auth_required: true,
             },
             CapabilityPath {
+                path: "trading/accounts/{account}/orderlists".to_string(),
+                pattern: CapabilityPathPattern::PubSub,
+                auth_required: true,
+            },
+            CapabilityPath {
                 path: ".well-known/capabilities".to_string(),
                 pattern: CapabilityPathPattern::RequestResponse,
                 auth_required: false,
@@ -112,6 +117,7 @@ pub fn persist_subscription(state: &Arc<ExchangeState>, session_id: Uuid, frame:
             AccountSubscriptionKind::Funding => "funding",
             AccountSubscriptionKind::Ledger => "ledger",
             AccountSubscriptionKind::Liquidations => "liquidations",
+            AccountSubscriptionKind::OrderLists => "orderlists",
         };
         format!("acct:{account}:{tag}")
     } else if parse_md_subscription(&routing_key, &channel_path).is_some() {
@@ -243,9 +249,33 @@ pub fn stream_candle_batch(frame: Frame, batch: &CandleBarBatch) -> Vec<Frame> {
 }
 
 pub fn stream_order_history(frame: Frame, batch: &OrderHistoryBatch) -> Vec<Frame> {
-    if batch.orders.len() <= REQUEST_STREAM_THRESHOLD && !batch.has_more {
+    if batch.orders.len() <= REQUEST_STREAM_THRESHOLD {
         return respond_cbor(frame, batch, None);
     }
+    stream_order_history_chunks(frame, batch)
+}
+
+pub fn stream_fill_history(frame: Frame, batch: &FillHistoryBatch) -> Vec<Frame> {
+    if batch.fills.len() <= REQUEST_STREAM_THRESHOLD {
+        return respond_cbor(frame, batch, None);
+    }
+    let items: Vec<Vec<u8>> = batch
+        .fills
+        .chunks(REQUEST_STREAM_CHUNK)
+        .filter_map(|chunk| {
+            codec::encode_cbor(&FillHistoryBatch {
+                account: batch.account.clone(),
+                fills: chunk.to_vec(),
+                has_more: batch.has_more,
+                next_cursor: batch.next_cursor.clone(),
+            })
+            .ok()
+        })
+        .collect();
+    stream_response(frame, items)
+}
+
+fn stream_order_history_chunks(frame: Frame, batch: &OrderHistoryBatch) -> Vec<Frame> {
     let items: Vec<Vec<u8>> = batch
         .orders
         .chunks(REQUEST_STREAM_CHUNK)

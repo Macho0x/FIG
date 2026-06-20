@@ -261,7 +261,7 @@ All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
 - **§16** — Multi-language SDK parity — **core landed** (§17 vectors, C++/C# enum/nested codegen, expanded `fig-ffi`, `fig-python` reference SDK + CI binding tests, Go/C++/C# thin wrappers)
-- **§17** — Broker ↔ client API parity — **broker complete** (native FIG paths + gateway catalog in exchange-sim; client SDK merge/helpers and remaining E2E/conformance depth in §16 / §17.6)
+- **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (pagination, order-update streaming, optional streams, gateway E2E; SDK merge/helpers remain §16)
 
 **Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — core landed (Python reference + FFI + thin wrappers). Broker ↔ client API parity (§17) — native broker + gateway catalog complete; per-checkbox SDK/client items tracked below.**
 
@@ -623,8 +623,8 @@ Use this as the completeness checklist: **if a row is ⬜, native FIG is incompl
 | Funding payments | — | `userFundings` | `accounts/{account}/funding` | `FundingPayment` | ✅ sub + history GET | ✅ WS catalog |
 | Ledger (deposit/withdraw/transfer) | — | `userNonFundingLedgerUpdates` | `accounts/{account}/ledger` | `LedgerUpdate` | ✅ sub + history GET + fee on fill | ✅ WS catalog |
 | Liquidation (user) | — | `liquidation` in `userEvents` | `accounts/{account}/liquidations` | `UserLiquidation` | ✅ on balance breach | 🔶 passthrough |
-| List / OCO status | `listStatus` | — | `trading/accounts/{account}/orderlists` | `OrderListStatus` | ⬜ | ⬜ blocked |
-| Stream lifecycle | `eventStreamTerminated` | subscription ack + snapshot flag | control / `STREAM_CLOSE` | session event | 🔶 `is_snapshot` on some payloads | ⬜ |
+| List / OCO status | `listStatus` | — | `trading/accounts/{account}/orderlists` | `OrderListStatus` | ✅ subscribe + fan-out on rest | ⬜ blocked |
+| Stream lifecycle | `eventStreamTerminated` | subscription ack + snapshot flag | control / `STREAM_CLOSE` | session event | ✅ `STREAM_CLOSE` on UNSUBSCRIBE + `is_snapshot` | ⬜ |
 
 **Legend:** ✅ native FIG complete · 🔶 partial · ⬜ not started · **Gateway WS** blocked until native FIG ✅
 
@@ -740,7 +740,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | Shared pagination types | High | `PageInfo` in FSL; batches also inline `next_cursor` + `has_more`; cursor propagation still partial |
+| ✅ | Shared pagination types | High | `PageInfo` in FSL; batches inline `next_cursor` + `has_more`; cursor on requests + REST `?cursor=` |
 | ✅ | `CapabilitiesRequest` → `CapabilitiesResponse` | Medium | `.well-known/capabilities` |
 | ✅ | `LedgerHistoryRequest` → `LedgerHistoryBatch` | Medium | Implemented |
 | ✅ | `FundingHistoryRequest` → `FundingHistoryBatch` | Low | Implemented |
@@ -793,7 +793,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | 🔶 | `SUBSCRIBE trading/…/fills` | Medium | Covered by executions sub + `FillHistoryRequest` GET |
 | ✅ | `SUBSCRIBE accounts/{account}/funding` | Medium | Subscribe path wired |
 | ✅ | `SUBSCRIBE accounts/{account}/ledger` | Medium | Subscribe + fee ledger on fill |
-| 🔶 | `SUBSCRIBE accounts/{account}/liquidations` | Low | Push on balance breach wired; no snapshot on subscribe |
+| ✅ | `SUBSCRIBE accounts/{account}/liquidations` | Low | Snapshot on subscribe + push on balance breach |
 | ✅ | Account state on order fill | High | Balance + execution + ledger updates on fill |
 | ✅ | `fig-cli` private stream demo | High | Balance subscribe + authenticated queries in `fig-cli` |
 | ⬜ | Client account cache | High | SDK merge/reconcile pending (§16) |
@@ -814,8 +814,8 @@ FIG `REQUEST` on TREE; the REST gateway translates HTTP → same frames.
 | ✅ | Public trade history handler | High | `MarketDataHub::query_trades` |
 | ✅ | Order / fill history handler | High | `FillHistoryRequest` + `OrderHistoryRequest` handlers + integration tests |
 | ✅ | Open orders query | Medium | GET `trading/accounts/{account}/orders/open` |
-| 🔶 | Large-range `request_stream` | Medium | Candles + order history; generalize for all large queries |
-| 🔶 | Pagination enforcement | High | `limit` + `next_cursor` on batches; rate limits pending |
+| 🔶 | Large-range `request_stream` | Medium | Candles + order history + fill history when page >50 rows |
+| ✅ | Pagination enforcement | High | `limit` + `cursor`/`next_cursor` on history batches; REST query params wired |
 | ✅ | `fig-cli` historical demo | High | Candle + funding + ledger queries in `fig-cli` |
 | ⬜ | SDK `request_candles`, `request_fills`, … | High | Pending (§16) |
 | ✅ | Gap-fill workflow | High | Documented in STREAMING.md + PROTOCOL.md; `OrderBookRequest` / `CandleBarRequest` backfill |
@@ -848,15 +848,15 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 |---|---|---|---|
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
 | ⬜ | SBE templates for hot-path streams | High | Order/trade messages only; stream types CBOR-first |
-| 🔶 | CBOR golden vectors per message | High | Seed vectors in `v1.json`; full public/private split pending |
+| 🔶 | CBOR golden vectors per message | High | Seed vectors in `v1.json`; OrderHistoryBatch + OrderListStatus added |
 | ⬜ | SBE golden vectors per message | High | NewOrderSingle + seed types; stream messages pending |
 | ⬜ | Snapshot + delta vector pairs | High | Not in conformance suite yet |
 | ⬜ | Multi-codec exchange-sim dispatch | High | CBOR-only in exchange-sim today |
-| 🔶 | E2E: public MD subscribe suite | High | Candle/book/agg-trade/mark tests landed; dedicated trade/BBO E2E still thin |
-| 🔶 | E2E: private account subscribe suite | High | Auth + balance/margin/position-delta tests; dedicated execution-sub E2E still thin |
-| 🔶 | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/agg-trades queries tested; fill-history E2E still thin |
-| ⬜ | E2E: gateway REST GET round-trip | High | `rest_query` unit tests only |
-| ⬜ | E2E: gateway WS round-trip | Medium | WS listener + `--fig-backend`; no CI E2E yet |
+| ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
+| ✅ | E2E: private account subscribe suite | High | Auth + balance/margin/position/executions/orderlists |
+| ✅ | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/fill-history/pagination |
+| ✅ | E2E: gateway REST GET round-trip | High | `gateway_proxy_e2e.rs` capabilities via `proxy_frame` |
+| ✅ | E2E: gateway WS round-trip | Medium | `gateway_proxy_e2e.rs` Binance SUBSCRIBE via `proxy_frame` |
 | ⬜ | §16 binding tests for new types | Medium | Extend to Go/C#/C++ compile smoke |
 
 ---

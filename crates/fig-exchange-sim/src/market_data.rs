@@ -240,6 +240,7 @@ impl MarketDataHub {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> AggregateTradeBatch {
         let mut trades = self.agg_trades.get(symbol).cloned().unwrap_or_default();
         if let Some(st) = start_time {
@@ -249,13 +250,15 @@ impl MarketDataHub {
             trades.retain(|t| t.timestamp <= et);
         }
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = trades.len() > limit;
-        trades.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(trades, limit, cursor, |t| {
+                format!("{}:{}", t.timestamp, t.agg_trade_id)
+            });
         AggregateTradeBatch {
             symbol: symbol.to_string(),
-            trades,
+            trades: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 
@@ -341,6 +344,7 @@ impl MarketDataHub {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> CandleBarBatch {
         let key = (symbol.to_string(), interval.to_string());
         let mut bars = self.closed_candles.get(&key).cloned().unwrap_or_default();
@@ -354,14 +358,14 @@ impl MarketDataHub {
             bars.retain(|b| b.bar_end <= et);
         }
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = bars.len() > limit;
-        bars.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(bars, limit, cursor, crate::pagination::candle_cursor);
         CandleBarBatch {
             symbol: symbol.to_string(),
             interval: interval.to_string(),
-            bars,
+            bars: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 
@@ -371,6 +375,7 @@ impl MarketDataHub {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> PublicTradeBatch {
         let mut trades = self.trades.get(symbol).cloned().unwrap_or_default();
         if let Some(st) = start_time {
@@ -380,13 +385,13 @@ impl MarketDataHub {
             trades.retain(|t| t.timestamp <= et);
         }
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = trades.len() > limit;
-        trades.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(trades, limit, cursor, crate::pagination::trade_cursor);
         PublicTradeBatch {
             symbol: symbol.to_string(),
-            trades,
+            trades: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 

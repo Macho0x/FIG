@@ -156,6 +156,7 @@ schema trading.orders v1.0.0 {
         start_time: TradeTimestamp @3 optional
         end_time: TradeTimestamp @4 optional
         limit: uint32 @5 optional
+        cursor: string(max_len: 64) @6 optional
     }
 
     message FillHistoryBatch {
@@ -184,6 +185,7 @@ schema trading.orders v1.0.0 {
         start_time: TradeTimestamp @2 optional
         end_time: TradeTimestamp @3 optional
         limit: uint32 @4 optional
+        cursor: string(max_len: 64) @5 optional
     }
 
     message FundingHistoryBatch {
@@ -213,6 +215,7 @@ schema trading.orders v1.0.0 {
         start_time: TradeTimestamp @2 optional
         end_time: TradeTimestamp @3 optional
         limit: uint32 @4 optional
+        cursor: string(max_len: 64) @5 optional
     }
 
     message LedgerHistoryBatch {
@@ -247,6 +250,7 @@ schema trading.orders v1.0.0 {
         start_time: TradeTimestamp @3 optional
         end_time: TradeTimestamp @4 optional
         limit: uint32 @5 optional
+        cursor: string(max_len: 64) @6 optional
     }
 
     message OrderHistoryBatch {

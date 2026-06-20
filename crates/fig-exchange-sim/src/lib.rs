@@ -10,6 +10,7 @@ pub mod broker_session;
 pub mod market_data;
 pub mod matching;
 pub mod orderbook;
+pub mod pagination;
 pub mod server;
 
 pub use matching::MatchingEngine;

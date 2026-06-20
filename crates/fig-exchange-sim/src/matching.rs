@@ -528,8 +528,9 @@ impl MatchingEngine {
         start_time: Option<i64>,
         end_time: Option<i64>,
         limit: Option<u32>,
+        cursor: Option<&str>,
     ) -> OrderHistoryBatch {
-        let mut orders: Vec<ExecutionReport> = self
+        let orders: Vec<ExecutionReport> = self
             .order_history
             .iter()
             .filter(|(acct, r)| {
@@ -541,13 +542,13 @@ impl MatchingEngine {
             .map(|(_, r)| r.clone())
             .collect();
         let limit = limit.unwrap_or(500) as usize;
-        let has_more = orders.len() > limit;
-        orders.truncate(limit);
+        let (page, has_more, next_cursor) =
+            crate::pagination::paginate(orders, limit, cursor, crate::pagination::exec_cursor);
         OrderHistoryBatch {
             account: account.to_string(),
-            orders,
+            orders: page,
             has_more,
-            next_cursor: None,
+            next_cursor,
         }
     }
 
@@ -610,7 +611,7 @@ impl MatchingEngine {
     }
 }
 
-fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {
+pub fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
