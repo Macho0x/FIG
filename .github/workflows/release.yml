@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -13,34 +16,62 @@ env:
 
 jobs:
   release:
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Compute next release tag
+        id: version
+        run: |
+          set -euo pipefail
+          LATEST="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -1 || true)"
+          if [ -z "$LATEST" ]; then
+            TAG="v0.1.0"
+          else
+            VER="${LATEST#v}"
+            MAJOR="${VER%%.*}"
+            REST="${VER#*.}"
+            MINOR="${REST%%.*}"
+            PATCH="${REST#*.}"
+            PATCH="${PATCH%%-*}"
+            TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Next release tag: ${TAG}"
+
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
       - name: Build release binaries
         run: |
           cargo build --release -p fig-exchange-sim
           cargo build --release -p fig-gateways --bin fig-gateway
           cargo build --release -p fig-cli
+
       - name: Generate changelog
         run: |
-          PREV_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
+          set -euo pipefail
+          PREV_TAG="$(git tag -l 'v[0-9]*' --sort=-v:refname | head -1 || true)"
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..HEAD"
           else
             RANGE="$(git rev-list --max-parents=0 HEAD)..HEAD"
           fi
           {
-            echo "## Changes"
+            echo "## Changes since ${PREV_TAG:-initial commit}"
             echo
             git log --pretty=format:"- %s (%h)" "$RANGE"
           } > CHANGELOG.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             target/release/fig-exchange-sim
             target/release/fig-gateway

@@ -229,7 +229,7 @@ If you want the full transport throughput benchmark back in CI later, we'll need
 | ✅ | Cross-platform CI (macOS, Windows) | Low | `cross-platform` matrix job in ci.yml |
 | ✅ | Benchmark regression CI | Medium | CI smoke-runs frame/transport (ping-pong only)/gateway/alloc benches |
 | ✅ | Coverage reporting | Medium | cargo llvm-cov job in CI workflow |
-| ✅ | Release workflow | Low | `.github/workflows/release.yml` on version tags |
+| ✅ | Release workflow | Low | `.github/workflows/release.yml` — GitHub Release on every push to `main` (auto patch bump) |
 | ✅ | Docker image | Low | Dockerfile for fig-exchange-sim |
 
 ---
