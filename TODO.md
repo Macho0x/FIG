@@ -260,10 +260,10 @@ All medium-priority items complete ✅ (§1–15 Rust core)
 All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
-- **§16** — Multi-language SDK parity — **core landed** (§17 vectors, C++/C# enum/nested codegen, expanded `fig-ffi`, `fig-python` reference SDK + CI binding tests, Go/C++/C# thin wrappers)
+- **§16** — Multi-language SDK parity — **FFI-first clients landed** (`fig-ffi` connect/request/subscribe + auth encode; Python Tier 1–3; Go/C++/C#/TS thin wrappers; FFI + Python binding conformance in CI)
 - **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (pagination, order-update streaming, optional streams, gateway E2E; SDK merge/helpers remain §16)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — core landed (Python reference + FFI + thin wrappers). Broker ↔ client API parity (§17) — native broker + gateway catalog complete; per-checkbox SDK/client items tracked below.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — FFI-first Tier 1–3 clients + binding conformance shipped; FSL serializer codegen + Tier 4 advanced features remain. Broker ↔ client API parity (§17) — native broker + gateway catalog complete; per-checkbox SDK/client items tracked below.**
 
 ---
 
@@ -376,16 +376,16 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; frame encode/decode + CBOR order helpers; no full TREE client yet |
-| 🔶 | FFI API surface spec | High | Frame + CBOR helpers landed; `fig_client_connect` / send/recv/close still ⬜ |
-| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe`), binding conformance |
-| 🔶 | `fig-csharp` (P/Invoke) | Medium | Thin wrapper in `bindings/csharp/Fig` over `fig.h` |
-| 🔶 | `fig-go` (cgo) | Medium | Thin wrapper in `bindings/go/fig` over `fig.h` |
-| 🔶 | `fig-cpp` (header + link staticlib) | Medium | Header-only RAII helpers in `bindings/cpp/include/fig` |
+| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; frame/CBOR helpers + TREE client (`fig_client_connect`, request/recv, ping, auth encode) |
+| ✅ | FFI API surface spec | High | Frame + CBOR + client lifecycle in `fig.h`; auth extensions on request/subscribe |
+| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe` + auth), binding conformance |
+| 🔶 | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` connect/request/ping |
+| 🔶 | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` connect/request/ping |
+| 🔶 | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode helpers in `bindings/cpp/include/fig` |
 | ⬜ | `fig-ocaml` (ctypes) | Low | ctypes binding over `fig-ffi` |
 | ⬜ | `fig-zig` (`@cImport fig.h`) | Low | Comptime-friendly thin wrapper |
-| ⬜ | TypeScript / Node native addon (N-API) | Medium | `fig-ffi` via N-API for **Node, Bun, Deno** trading bots — **no WASM**; browser → gateway only |
-| ✅ | Binding conformance tests | High | Python binding runs §16.1 + §17 vectors in CI |
+| 🔶 | TypeScript / Node native addon (N-API) | Medium | `bindings/typescript/fig.ts` via `node:ffi` over `fig.h` — **Node/Bun/Deno; no WASM** |
+| ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 + §17 vectors in CI |
 
 High-level client API (all bindings):
 
@@ -405,9 +405,9 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | `fig-python` + `fig-ffi` cover core paths; other bindings pending |
-| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | `fig-python` client covers connect/subscribe/request; other bindings pending |
-| ⬜ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Native pub/sub in exchange-sim; SDK wrappers pending (§17) |
+| ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | `fig-python` + `fig-ffi` + Go/C++/C#/TS wrappers |
+| 🔶 | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + dev `AuthToken` on wire; JWT helpers still Rust-only |
+| 🔶 | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth via FFI/Python; typed stream helpers still ⬜ |
 | ⬜ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | Full protocol parity |
 
 ---

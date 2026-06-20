@@ -35,7 +35,7 @@ fn decode_cbor_order_cl_ord_id(data: &[u8]) -> PyResult<String> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (channel_id, stream_seq, schema_id, payload=None, channel_path=None, method=None))]
+#[pyo3(signature = (channel_id, stream_seq, schema_id, payload=None, channel_path=None, method=None, auth_token=None))]
 fn encode_request_frame(
     channel_id: u16,
     stream_seq: u32,
@@ -43,6 +43,7 @@ fn encode_request_frame(
     payload: Option<&[u8]>,
     channel_path: Option<&str>,
     method: Option<&str>,
+    auth_token: Option<&str>,
 ) -> PyResult<Vec<u8>> {
     codec::encode_request_frame(
         channel_id,
@@ -54,20 +55,28 @@ fn encode_request_frame(
             .filter(|p| !p.is_empty())
             .map(|_| "application/cbor"),
         payload,
+        auth_token,
     )
     .map_err(PyValueError::new_err)
 }
 
 #[pyfunction]
-#[pyo3(signature = (channel_id, stream_seq, routing_key, channel_path))]
+#[pyo3(signature = (channel_id, stream_seq, routing_key, channel_path, auth_token=None))]
 fn encode_subscribe_frame(
     channel_id: u16,
     stream_seq: u32,
     routing_key: &str,
     channel_path: &str,
+    auth_token: Option<&str>,
 ) -> PyResult<Vec<u8>> {
-    codec::encode_subscribe_frame(channel_id, stream_seq, routing_key, channel_path)
-        .map_err(PyValueError::new_err)
+    codec::encode_subscribe_frame(
+        channel_id,
+        stream_seq,
+        routing_key,
+        channel_path,
+        auth_token,
+    )
+    .map_err(PyValueError::new_err)
 }
 
 #[pyfunction]
@@ -172,6 +181,7 @@ fn binding_check_vector(vector: &fig_conformance::ConformanceVector) -> Result<(
                 Some("GET"),
                 None,
                 None,
+                None,
             )
             .map_err(|e| e.to_string())?;
             check_hex(&vector.expected_hex, &bytes)?;
@@ -187,6 +197,7 @@ fn binding_check_vector(vector: &fig_conformance::ConformanceVector) -> Result<(
                 Some("GET"),
                 Some("application/cbor"),
                 Some(&payload),
+                None,
             )
             .map_err(|e| e.to_string())?;
             check_hex(&vector.expected_hex, &bytes)?;
@@ -197,6 +208,7 @@ fn binding_check_vector(vector: &fig_conformance::ConformanceVector) -> Result<(
                 1,
                 "marketdata.AAPL.quotes",
                 "marketdata/AAPL/quotes",
+                None,
             )
             .map_err(|e| e.to_string())?;
             check_hex(&vector.expected_hex, &bytes)?;

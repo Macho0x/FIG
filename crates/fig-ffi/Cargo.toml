@@ -10,8 +10,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
 fig-core = { workspace = true }
+fig-conformance = { workspace = true }
+hex = { workspace = true }
 libc = "0.2"
 serde = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+fig-exchange-sim = { path = "../fig-exchange-sim" }
+tokio = { workspace = true }
 
 [build-dependencies]
 cbindgen = "0.27"

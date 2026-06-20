@@ -2,6 +2,15 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+mod binding;
+mod client;
+
+pub use binding::run_binding_conformance;
+pub use client::{
+    fig_client_close, fig_client_connect, fig_client_ping, fig_client_request_and_recv,
+    fig_frame_list_free, FigClientHandle, FigFrameList,
+};
+
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::slice;
@@ -32,7 +41,7 @@ pub extern "C" fn fig_buffer_free(buf: FigBuffer) {
     }
 }
 
-fn into_buffer(bytes: Vec<u8>) -> FigBuffer {
+pub(crate) fn into_buffer(bytes: Vec<u8>) -> FigBuffer {
     let mut bytes = bytes;
     let ptr = bytes.as_mut_ptr();
     let len = bytes.len();
@@ -166,6 +175,115 @@ pub unsafe extern "C" fn fig_frame_encode_subscribe(
             ExtensionTag::CorrelationId,
             stream_seq.to_string(),
         ));
+    match frame.encode() {
+        Ok(bytes) => {
+            *out = into_buffer(bytes);
+            0
+        }
+        Err(_) => -3,
+    }
+}
+
+/// Encode REQUEST with optional ChannelPath, Method, ContentType, AuthToken.
+#[no_mangle]
+pub unsafe extern "C" fn fig_frame_encode_request_auth(
+    channel_id: u16,
+    stream_seq: u32,
+    schema_id: u8,
+    channel_path: *const c_char,
+    method: *const c_char,
+    content_type: *const c_char,
+    auth_token: *const c_char,
+    payload: *const u8,
+    payload_len: usize,
+    out: *mut FigBuffer,
+) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let channel_path = match optional_cstr(channel_path) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let method = match optional_cstr(method) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let content_type = match optional_cstr(content_type) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let auth_token = match optional_cstr(auth_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let payload = if payload.is_null() || payload_len == 0 {
+        Vec::new()
+    } else {
+        slice::from_raw_parts(payload, payload_len).to_vec()
+    };
+    let mut frame = Frame::new(FrameType::Request, channel_id)
+        .with_seq(stream_seq)
+        .with_schema_id(schema_id);
+    if let Some(path) = channel_path {
+        frame = frame.with_extension(Extension::text(ExtensionTag::ChannelPath, path));
+    }
+    if let Some(method) = method {
+        frame = frame.with_extension(Extension::text(ExtensionTag::Method, method));
+    }
+    if let Some(ct) = content_type {
+        frame = frame.with_extension(Extension::text(ExtensionTag::ContentType, ct));
+    }
+    if let Some(token) = auth_token {
+        frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, token));
+    }
+    frame = frame.with_payload(payload);
+    match frame.encode() {
+        Ok(bytes) => {
+            *out = into_buffer(bytes);
+            0
+        }
+        Err(_) => -3,
+    }
+}
+
+/// Encode SUBSCRIBE with optional auth token (CorrelationId = stream_seq).
+#[no_mangle]
+pub unsafe extern "C" fn fig_frame_encode_subscribe_auth(
+    channel_id: u16,
+    stream_seq: u32,
+    routing_key: *const c_char,
+    channel_path: *const c_char,
+    auth_token: *const c_char,
+    out: *mut FigBuffer,
+) -> i32 {
+    if out.is_null() || routing_key.is_null() || channel_path.is_null() {
+        return -1;
+    }
+    let routing_key = match CStr::from_ptr(routing_key).to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+    let channel_path = match CStr::from_ptr(channel_path).to_str() {
+        Ok(s) => s,
+        Err(_) => return -2,
+    };
+    let auth_token = match optional_cstr(auth_token) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let mut frame = Frame::new(FrameType::Subscribe, channel_id)
+        .with_seq(stream_seq)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
+        .with_extension(Extension::text(ExtensionTag::RoutingKey, routing_key))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            stream_seq.to_string(),
+        ));
+    if let Some(token) = auth_token {
+        frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, token));
+    }
     match frame.encode() {
         Ok(bytes) => {
             *out = into_buffer(bytes);

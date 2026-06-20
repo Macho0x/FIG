@@ -52,7 +52,7 @@ impl FigPyClient {
     }
 
     /// Send native FIG REQUEST and return raw response frame bytes.
-    #[pyo3(signature = (channel_path, method, payload=None, channel_id=1, stream_seq=1, schema_id=1))]
+    #[pyo3(signature = (channel_path, method, payload=None, auth_token=None, channel_id=1, stream_seq=1, schema_id=1))]
     #[allow(clippy::too_many_arguments)]
     fn request<'py>(
         &self,
@@ -60,6 +60,7 @@ impl FigPyClient {
         channel_path: &str,
         method: &str,
         payload: Option<&[u8]>,
+        auth_token: Option<&str>,
         channel_id: u16,
         stream_seq: u32,
         schema_id: u8,
@@ -74,6 +75,7 @@ impl FigPyClient {
                 .filter(|p| !p.is_empty())
                 .map(|_| "application/cbor"),
             payload,
+            auth_token,
         )
         .map_err(PyRuntimeError::new_err)?;
         let frame = Frame::decode(&encoded)
@@ -96,19 +98,25 @@ impl FigPyClient {
     }
 
     /// SUBSCRIBE to a native channel path and return initial stream frames.
-    #[pyo3(signature = (channel_path, routing_key=None, channel_id=1, stream_seq=1))]
+    #[pyo3(signature = (channel_path, routing_key=None, auth_token=None, channel_id=1, stream_seq=1))]
     fn subscribe<'py>(
         &self,
         py: Python<'py>,
         channel_path: &str,
         routing_key: Option<&str>,
+        auth_token: Option<&str>,
         channel_id: u16,
         stream_seq: u32,
     ) -> PyResult<Vec<Bound<'py, PyBytes>>> {
         let routing_key = routing_key.unwrap_or(channel_path);
-        let encoded =
-            codec::encode_subscribe_frame(channel_id, stream_seq, routing_key, channel_path)
-                .map_err(PyRuntimeError::new_err)?;
+        let encoded = codec::encode_subscribe_frame(
+            channel_id,
+            stream_seq,
+            routing_key,
+            channel_path,
+            auth_token,
+        )
+        .map_err(PyRuntimeError::new_err)?;
         let frame = Frame::decode(&encoded)
             .map_err(|e| PyRuntimeError::new_err(e.to_string()))?
             .0;

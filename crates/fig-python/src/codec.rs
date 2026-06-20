@@ -53,6 +53,7 @@ pub fn encode_request_frame(
     method: Option<&str>,
     content_type: Option<&str>,
     payload: Option<&[u8]>,
+    auth_token: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     let mut frame = Frame::new(FrameType::Request, channel_id)
         .with_seq(stream_seq)
@@ -66,6 +67,9 @@ pub fn encode_request_frame(
     if let Some(ct) = content_type {
         frame = frame.with_extension(Extension::text(ExtensionTag::ContentType, ct));
     }
+    if let Some(token) = auth_token {
+        frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, token));
+    }
     if let Some(payload) = payload {
         frame = frame.with_payload(payload.to_vec());
     }
@@ -77,8 +81,9 @@ pub fn encode_subscribe_frame(
     stream_seq: u32,
     routing_key: &str,
     channel_path: &str,
+    auth_token: Option<&str>,
 ) -> Result<Vec<u8>, String> {
-    Frame::new(FrameType::Subscribe, channel_id)
+    let mut frame = Frame::new(FrameType::Subscribe, channel_id)
         .with_seq(stream_seq)
         .with_schema_id(1)
         .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path))
@@ -86,9 +91,11 @@ pub fn encode_subscribe_frame(
         .with_extension(Extension::text(
             ExtensionTag::CorrelationId,
             stream_seq.to_string(),
-        ))
-        .encode()
-        .map_err(|e| e.to_string())
+        ));
+    if let Some(token) = auth_token {
+        frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, token));
+    }
+    frame.encode().map_err(|e| e.to_string())
 }
 
 pub fn encode_ping_frame() -> Result<Vec<u8>, String> {
