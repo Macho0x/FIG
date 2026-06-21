@@ -132,12 +132,16 @@ fn schema_id_const(lang: SbeTargetLang) -> String {
     match lang {
         SbeTargetLang::Go => format!("const SCHEMA_ID uint16 = 0x{:02X}\n\n", SCHEMA_ID),
         SbeTargetLang::Cpp => format!("constexpr uint16_t SCHEMA_ID = 0x{:02X};\n\n", SCHEMA_ID),
-        SbeTargetLang::Csharp => format!("    public const ushort SCHEMA_ID = 0x{:02X};\n\n", SCHEMA_ID),
-        SbeTargetLang::TypeScript => format!("export const SCHEMA_ID = 0x{:02X} as const;\n\n", SCHEMA_ID),
+        SbeTargetLang::Csharp => format!(
+            "    public const ushort SCHEMA_ID = 0x{:02X};\n\n",
+            SCHEMA_ID
+        ),
+        SbeTargetLang::TypeScript => {
+            format!("export const SCHEMA_ID = 0x{:02X} as const;\n\n", SCHEMA_ID)
+        }
         SbeTargetLang::Zig => format!("pub const SCHEMA_ID: u16 = 0x{:02X};\n\n", SCHEMA_ID),
     }
 }
-
 
 fn wire_helpers(lang: SbeTargetLang) -> String {
     match lang {
@@ -243,7 +247,12 @@ fn readString(buf: []const u8, pos: *usize, allocator: std.mem.Allocator) ![]u8 
     }
 }
 
-fn target_field_type(lang: SbeTargetLang, ft: &FieldType, msg_name: &str, field_name: &str) -> String {
+fn target_field_type(
+    lang: SbeTargetLang,
+    ft: &FieldType,
+    msg_name: &str,
+    field_name: &str,
+) -> String {
     match ft {
         FieldType::Enum(_) | FieldType::InlineStruct(_) => {
             sbe_field_type_name_for_message(ft, msg_name, field_name)
@@ -258,7 +267,10 @@ fn target_field_type(lang: SbeTargetLang, ft: &FieldType, msg_name: &str, field_
                 SbeTargetLang::Zig => format!("[]{inner_name}"),
             }
         }
-        _ => map_named_type(lang, &sbe_field_type_name_for_message(ft, msg_name, field_name)),
+        _ => map_named_type(
+            lang,
+            &sbe_field_type_name_for_message(ft, msg_name, field_name),
+        ),
     }
 }
 
@@ -338,9 +350,15 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                 out.push_str(&format!("\t{name}{} {name} = {}\n", pascal_case(v), i + 1));
             }
             out.push_str(")\n\n");
-            out.push_str(&format!("func {name}FromValue(v uint8) ({name}, error) {{\n\tswitch v {{\n"));
+            out.push_str(&format!(
+                "func {name}FromValue(v uint8) ({name}, error) {{\n\tswitch v {{\n"
+            ));
             for (i, v) in variants.iter().enumerate() {
-                out.push_str(&format!("\tcase {}: return {name}{}, nil\n", i + 1, pascal_case(v)));
+                out.push_str(&format!(
+                    "\tcase {}: return {name}{}, nil\n",
+                    i + 1,
+                    pascal_case(v)
+                ));
             }
             out.push_str(&format!("\tdefault: return 0, fmt.Errorf(\"invalid {name} value: %d\", v)\n\t}}\n}}\n\nfunc (e {name}) ToValue() uint8 {{ return uint8(e) }}\n"));
             out
@@ -351,9 +369,15 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                 out.push_str(&format!("    {} = {},\n", pascal_case(v), i + 1));
             }
             out.push_str("};\n\n");
-            out.push_str(&format!("inline std::optional<{name}> {name}FromValue(uint8_t v) {{\n    switch (v) {{\n"));
+            out.push_str(&format!(
+                "inline std::optional<{name}> {name}FromValue(uint8_t v) {{\n    switch (v) {{\n"
+            ));
             for (i, v) in variants.iter().enumerate() {
-                out.push_str(&format!("    case {}: return {name}::{};\n", i + 1, pascal_case(v)));
+                out.push_str(&format!(
+                    "    case {}: return {name}::{};\n",
+                    i + 1,
+                    pascal_case(v)
+                ));
             }
             out.push_str(&format!("    default: return std::nullopt;\n    }}\n}}\n\ninline uint8_t {name}ToValue({name} e) {{ return static_cast<uint8_t>(e); }}\n"));
             out
@@ -364,12 +388,20 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                 out.push_str(&format!("        {} = {},\n", pascal_case(v), i + 1));
             }
             out.push_str("    }\n\n");
-            out.push_str(&format!("    public static {name}? {name}FromValue(byte v) => v switch {{\n"));
+            out.push_str(&format!(
+                "    public static {name}? {name}FromValue(byte v) => v switch {{\n"
+            ));
             for (i, v) in variants.iter().enumerate() {
-                out.push_str(&format!("        {} => {name}.{},\n", i + 1, pascal_case(v)));
+                out.push_str(&format!(
+                    "        {} => {name}.{},\n",
+                    i + 1,
+                    pascal_case(v)
+                ));
             }
             out.push_str("        _ => null,\n    };\n\n");
-            out.push_str(&format!("    public static byte {name}ToValue({name} e) => (byte)e;\n"));
+            out.push_str(&format!(
+                "    public static byte {name}ToValue({name} e) => (byte)e;\n"
+            ));
             out
         }
         SbeTargetLang::TypeScript => {
@@ -378,12 +410,20 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                 out.push_str(&format!("  {} = {},\n", pascal_case(v), i + 1));
             }
             out.push_str("}\n\n");
-            out.push_str(&format!("export function {name}FromValue(v: number): {name} | null {{\n  switch (v) {{\n"));
+            out.push_str(&format!(
+                "export function {name}FromValue(v: number): {name} | null {{\n  switch (v) {{\n"
+            ));
             for (i, v) in variants.iter().enumerate() {
-                out.push_str(&format!("    case {}: return {name}.{};\n", i + 1, pascal_case(v)));
+                out.push_str(&format!(
+                    "    case {}: return {name}.{};\n",
+                    i + 1,
+                    pascal_case(v)
+                ));
             }
             out.push_str("    default: return null;\n  }\n}\n\n");
-            out.push_str(&format!("export function {name}ToValue(e: {name}): number {{ return e; }}\n"));
+            out.push_str(&format!(
+                "export function {name}ToValue(e: {name}): number {{ return e; }}\n"
+            ));
             out
         }
         SbeTargetLang::Zig => {
@@ -392,12 +432,16 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                 out.push_str(&format!("    {},\n", pascal_case(v)));
             }
             out.push_str("};\n\n");
-            out.push_str(&format!("pub fn {name}FromValue(v: u8) !{name} {{\n    return switch (v) {{\n"));
+            out.push_str(&format!(
+                "pub fn {name}FromValue(v: u8) !{name} {{\n    return switch (v) {{\n"
+            ));
             for (i, v) in variants.iter().enumerate() {
                 out.push_str(&format!("        {} => .{},\n", i + 1, pascal_case(v)));
             }
             out.push_str("        else => error.InvalidEnumValue,\n    };\n}\n\n");
-            out.push_str(&format!("pub fn {name}ToValue(e: {name}) u8 {{ return @intFromEnum(e); }}\n"));
+            out.push_str(&format!(
+                "pub fn {name}ToValue(e: {name}) u8 {{ return @intFromEnum(e); }}\n"
+            ));
             out
         }
     }
@@ -411,8 +455,16 @@ fn generate_target_inline_struct(lang: SbeTargetLang, name: &str, fields: &[Fiel
             let mut out = format!("type {name} struct {{\n");
             for field in fields {
                 let base = target_field_type(lang, &field.field_type, name, &field.name);
-                let ty = if field.optional { target_optional_type(lang, &base) } else { base };
-                out.push_str(&format!("\t{} {}\n", target_param_name(lang, &field.name), ty));
+                let ty = if field.optional {
+                    target_optional_type(lang, &base)
+                } else {
+                    base
+                };
+                out.push_str(&format!(
+                    "\t{} {}\n",
+                    target_param_name(lang, &field.name),
+                    ty
+                ));
             }
             out.push_str(&format!("}}\n\nconst {name}EncodedLen = {encoded_len}\n"));
             out
@@ -421,40 +473,67 @@ fn generate_target_inline_struct(lang: SbeTargetLang, name: &str, fields: &[Fiel
             let mut out = format!("struct {name} {{\n");
             for field in fields {
                 let base = target_field_type(lang, &field.field_type, name, &field.name);
-                let ty = if field.optional { target_optional_type(lang, &base) } else { base };
+                let ty = if field.optional {
+                    target_optional_type(lang, &base)
+                } else {
+                    base
+                };
                 out.push_str(&format!("    {ty} {};\n", field.name));
             }
-            out.push_str(&format!("}};\n\ninline constexpr size_t {name}EncodedLen = {encoded_len};\n"));
+            out.push_str(&format!(
+                "}};\n\ninline constexpr size_t {name}EncodedLen = {encoded_len};\n"
+            ));
             out
         }
         SbeTargetLang::Csharp => {
             let mut out = format!("    public class {name}\n    {{\n");
             for field in fields {
                 let base = target_field_type(lang, &field.field_type, name, &field.name);
-                let ty = if field.optional { target_optional_type(lang, &base) } else { base };
-                out.push_str(&format!("        public {ty} {} {{ get; set; }}\n", target_param_name(lang, &field.name)));
+                let ty = if field.optional {
+                    target_optional_type(lang, &base)
+                } else {
+                    base
+                };
+                out.push_str(&format!(
+                    "        public {ty} {} {{ get; set; }}\n",
+                    target_param_name(lang, &field.name)
+                ));
             }
-            out.push_str(&format!("    }}\n\n    public const int {name}EncodedLen = {encoded_len};\n"));
+            out.push_str(&format!(
+                "    }}\n\n    public const int {name}EncodedLen = {encoded_len};\n"
+            ));
             out
         }
         SbeTargetLang::TypeScript => {
             let mut out = format!("export interface {name} {{\n");
             for field in fields {
                 let base = target_field_type(lang, &field.field_type, name, &field.name);
-                let ty = if field.optional { target_optional_type(lang, &base) } else { base };
+                let ty = if field.optional {
+                    target_optional_type(lang, &base)
+                } else {
+                    base
+                };
                 out.push_str(&format!("  {}: {ty};\n", field.name));
             }
-            out.push_str(&format!("}}\n\nexport const {name}EncodedLen = {encoded_len};\n"));
+            out.push_str(&format!(
+                "}}\n\nexport const {name}EncodedLen = {encoded_len};\n"
+            ));
             out
         }
         SbeTargetLang::Zig => {
             let mut out = format!("pub const {name} = struct {{\n");
             for field in fields {
                 let base = target_field_type(lang, &field.field_type, name, &field.name);
-                let ty = if field.optional { target_optional_type(lang, &base) } else { base };
+                let ty = if field.optional {
+                    target_optional_type(lang, &base)
+                } else {
+                    base
+                };
                 out.push_str(&format!("    {}: {ty},\n", field.name));
             }
-            out.push_str(&format!("}};\n\npub const {name}EncodedLen: usize = {encoded_len};\n"));
+            out.push_str(&format!(
+                "}};\n\npub const {name}EncodedLen: usize = {encoded_len};\n"
+            ));
             out
         }
     }
@@ -546,11 +625,21 @@ fn target_encode_field(lang: SbeTargetLang, field: &Field, msg: &Message, buf_va
         FieldType::InlineStruct(_) => {
             let struct_name = format!("{}{}", msg.name, pascal_case(field_name));
             match lang {
-                SbeTargetLang::Go => out.push_str(&format!("\t{struct_name}Encoder{{}}.Encode({pname}, &{buf_var})\n")),
-                SbeTargetLang::Cpp => out.push_str(&format!("        {struct_name}Encoder::encode({pname}, {buf_var});\n")),
-                SbeTargetLang::Csharp => out.push_str(&format!("            {struct_name}Encoder.Encode({pname}, {buf_var});\n")),
-                SbeTargetLang::TypeScript => out.push_str(&format!("  {struct_name}Encode({pname}, {buf_var});\n")),
-                SbeTargetLang::Zig => out.push_str(&format!("        try {struct_name}.encode(allocator, {pname}, &{buf_var});\n")),
+                SbeTargetLang::Go => out.push_str(&format!(
+                    "\t{struct_name}Encoder{{}}.Encode({pname}, &{buf_var})\n"
+                )),
+                SbeTargetLang::Cpp => out.push_str(&format!(
+                    "        {struct_name}Encoder::encode({pname}, {buf_var});\n"
+                )),
+                SbeTargetLang::Csharp => out.push_str(&format!(
+                    "            {struct_name}Encoder.Encode({pname}, {buf_var});\n"
+                )),
+                SbeTargetLang::TypeScript => {
+                    out.push_str(&format!("  {struct_name}Encode({pname}, {buf_var});\n"))
+                }
+                SbeTargetLang::Zig => out.push_str(&format!(
+                    "        try {struct_name}.encode(allocator, {pname}, &{buf_var});\n"
+                )),
             }
         }
         _ => {
@@ -580,9 +669,13 @@ fn encode_string(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, ou
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\twriteString(&{buf}, {field})\n")),
             SbeTargetLang::Cpp => out.push_str(&format!("        write_string({buf}, {field});\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            Wire.WriteString({buf}, {field});\n")),
+            SbeTargetLang::Csharp => {
+                out.push_str(&format!("            Wire.WriteString({buf}, {field});\n"))
+            }
             SbeTargetLang::TypeScript => out.push_str(&format!("  writeString({buf}, {field});\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        try writeString(&{buf}, {field});\n")),
+            SbeTargetLang::Zig => {
+                out.push_str(&format!("        try writeString(&{buf}, {field});\n"))
+            }
         }
     }
 }
@@ -600,9 +693,13 @@ fn encode_f64(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, out: 
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\twriteF64BE(&{buf}, {field})\n")),
             SbeTargetLang::Cpp => out.push_str(&format!("        write_f64_be({buf}, {field});\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            Wire.WriteF64BE({buf}, {field});\n")),
+            SbeTargetLang::Csharp => {
+                out.push_str(&format!("            Wire.WriteF64BE({buf}, {field});\n"))
+            }
             SbeTargetLang::TypeScript => out.push_str(&format!("  writeF64BE({buf}, {field});\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        try writeF64BE(&{buf}, {field});\n")),
+            SbeTargetLang::Zig => {
+                out.push_str(&format!("        try writeF64BE(&{buf}, {field});\n"))
+            }
         }
     }
 }
@@ -620,9 +717,13 @@ fn encode_i64(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, out: 
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\twriteI64BE(&{buf}, {field})\n")),
             SbeTargetLang::Cpp => out.push_str(&format!("        write_i64_be({buf}, {field});\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            Wire.WriteI64BE({buf}, {field});\n")),
+            SbeTargetLang::Csharp => {
+                out.push_str(&format!("            Wire.WriteI64BE({buf}, {field});\n"))
+            }
             SbeTargetLang::TypeScript => out.push_str(&format!("  writeI64BE({buf}, {field});\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        try writeI64BE(&{buf}, {field});\n")),
+            SbeTargetLang::Zig => {
+                out.push_str(&format!("        try writeI64BE(&{buf}, {field});\n"))
+            }
         }
     }
 }
@@ -647,7 +748,12 @@ fn encode_u8(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, out: &
     }
 }
 
-fn target_decode_field(lang: SbeTargetLang, field: &Field, msg: &Message, decoder_name: &str) -> String {
+fn target_decode_field(
+    lang: SbeTargetLang,
+    field: &Field,
+    msg: &Message,
+    decoder_name: &str,
+) -> String {
     let _ = generate_decode_field(field, msg);
     let var = field.name.clone();
     let optional = field.optional;
@@ -702,10 +808,18 @@ fn target_decode_field(lang: SbeTargetLang, field: &Field, msg: &Message, decode
 fn decode_string(lang: SbeTargetLang, var: &str, out: &mut String) {
     match lang {
         SbeTargetLang::Go => out.push_str(&format!("\t{var} := readString(buf, &pos)\n")),
-        SbeTargetLang::Cpp => out.push_str(&format!("        std::string {var} = read_string(buf, pos);\n")),
-        SbeTargetLang::Csharp => out.push_str(&format!("            string {var} = Wire.ReadString(buf, ref pos);\n")),
-        SbeTargetLang::TypeScript => out.push_str(&format!("  const {var} = readString(buf, pos);\n")),
-        SbeTargetLang::Zig => out.push_str(&format!("        const {var} = try readString(buf, &pos, allocator);\n")),
+        SbeTargetLang::Cpp => out.push_str(&format!(
+            "        std::string {var} = read_string(buf, pos);\n"
+        )),
+        SbeTargetLang::Csharp => out.push_str(&format!(
+            "            string {var} = Wire.ReadString(buf, ref pos);\n"
+        )),
+        SbeTargetLang::TypeScript => {
+            out.push_str(&format!("  const {var} = readString(buf, pos);\n"))
+        }
+        SbeTargetLang::Zig => out.push_str(&format!(
+            "        const {var} = try readString(buf, &pos, allocator);\n"
+        )),
     }
 }
 
@@ -731,10 +845,18 @@ fn decode_f64(lang: SbeTargetLang, var: &str, optional: bool, out: &mut String) 
     } else {
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\t{var} := readF64BE(buf, &pos)\n")),
-            SbeTargetLang::Cpp => out.push_str(&format!("        double {var} = read_f64_be(buf, pos);\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            double {var} = Wire.ReadF64BE(buf, ref pos);\n")),
-            SbeTargetLang::TypeScript => out.push_str(&format!("  const {var} = readF64BE(buf, pos);\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        const {var} = readF64BE(buf, &pos);\n")),
+            SbeTargetLang::Cpp => {
+                out.push_str(&format!("        double {var} = read_f64_be(buf, pos);\n"))
+            }
+            SbeTargetLang::Csharp => out.push_str(&format!(
+                "            double {var} = Wire.ReadF64BE(buf, ref pos);\n"
+            )),
+            SbeTargetLang::TypeScript => {
+                out.push_str(&format!("  const {var} = readF64BE(buf, pos);\n"))
+            }
+            SbeTargetLang::Zig => {
+                out.push_str(&format!("        const {var} = readF64BE(buf, &pos);\n"))
+            }
         }
     }
 }
@@ -751,10 +873,18 @@ fn decode_i64(lang: SbeTargetLang, var: &str, optional: bool, out: &mut String) 
     } else {
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\t{var} := readI64BE(buf, &pos)\n")),
-            SbeTargetLang::Cpp => out.push_str(&format!("        int64_t {var} = read_i64_be(buf, pos);\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            long {var} = Wire.ReadI64BE(buf, ref pos);\n")),
-            SbeTargetLang::TypeScript => out.push_str(&format!("  const {var} = readI64BE(buf, pos);\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        const {var} = readI64BE(buf, &pos);\n")),
+            SbeTargetLang::Cpp => {
+                out.push_str(&format!("        int64_t {var} = read_i64_be(buf, pos);\n"))
+            }
+            SbeTargetLang::Csharp => out.push_str(&format!(
+                "            long {var} = Wire.ReadI64BE(buf, ref pos);\n"
+            )),
+            SbeTargetLang::TypeScript => {
+                out.push_str(&format!("  const {var} = readI64BE(buf, pos);\n"))
+            }
+            SbeTargetLang::Zig => {
+                out.push_str(&format!("        const {var} = readI64BE(buf, &pos);\n"))
+            }
         }
     }
 }
@@ -772,9 +902,15 @@ fn decode_u8(lang: SbeTargetLang, var: &str, optional: bool, out: &mut String) {
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\t{var} := buf[pos]\n\tpos++\n")),
             SbeTargetLang::Cpp => out.push_str(&format!("        uint8_t {var} = buf[pos++];\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            byte {var} = buf[pos++];\n")),
-            SbeTargetLang::TypeScript => out.push_str(&format!("  const {var} = buf[pos.value++];\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        const {var} = buf[pos];\n        pos += 1;\n")),
+            SbeTargetLang::Csharp => {
+                out.push_str(&format!("            byte {var} = buf[pos++];\n"))
+            }
+            SbeTargetLang::TypeScript => {
+                out.push_str(&format!("  const {var} = buf[pos.value++];\n"))
+            }
+            SbeTargetLang::Zig => out.push_str(&format!(
+                "        const {var} = buf[pos];\n        pos += 1;\n"
+            )),
         }
     }
 }
@@ -844,7 +980,9 @@ fn generate_target_message_decoder(lang: SbeTargetLang, msg: &Message, template_
                 "        public {ty} {} {{ get; set; }}\n",
                 target_param_name(lang, &field.name)
             )),
-            SbeTargetLang::TypeScript => fields_decl.push_str(&format!("  {}: {ty};\n", field.name)),
+            SbeTargetLang::TypeScript => {
+                fields_decl.push_str(&format!("  {}: {ty};\n", field.name))
+            }
             SbeTargetLang::Zig => fields_decl.push_str(&format!("    {}: {ty},\n", field.name)),
         }
     }
@@ -883,11 +1021,13 @@ fn generate_target_message_decoder(lang: SbeTargetLang, msg: &Message, template_
             let assigns = msg
                 .fields
                 .iter()
-                .map(|f| format!(
-                    "                {} = {},",
-                    target_param_name(lang, &f.name),
-                    f.name
-                ))
+                .map(|f| {
+                    format!(
+                        "                {} = {},",
+                        target_param_name(lang, &f.name),
+                        f.name
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join("\n");
             format!(
