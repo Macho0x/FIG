@@ -41,11 +41,14 @@ In another terminal:
 
 ```bash
 cargo run -p fig-cli
+cargo run -p fig-cli -- --help
 ```
 
-The client connects to `127.0.0.1:8443` (override with `FIG_SERVER=host:port`)
-and runs six demos: order entry, candle subscribe, balance subscribe,
-historical candle query, account/ticker/funding/ledger queries, and PING/PONG.
+The client connects to `127.0.0.1:8443` (override with `--server` or
+`FIG_SERVER=host:port`) and runs **seven** demos: order entry, candle subscribe,
+balance subscribe, historical candle query, account/ticker/funding/ledger
+queries, agg-trades/mark/margin streams, and PING/PONG. Each step validates
+responses (no `STREAM_ERROR`, expected acks).
 
 Private account paths require an `AUTH_TOKEN` extension on each frame (SPEC
 §9.3). The reference simulator uses a **test harness token**

@@ -33,6 +33,8 @@ jobs:
         run: cargo test -p fig-ffi --test advanced
       - name: Build fig-cli
         run: cargo build -p fig-cli --all-features
+      - name: Run fig-cli integration tests
+        run: cargo test -p fig-cli
       - name: Codegen drift check
         run: cargo run -p xtask -- codegen --check
       - name: Gateway catalog completeness

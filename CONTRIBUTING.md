@@ -32,7 +32,7 @@ fig-core          — Wire format, channels, sessions, TREE transport, SBE/CBOR 
 fig-fsl           — FSL schema language parser, multi-target codegen, ftlc CLI
 fig-gateways      — FIX, REST, WebSocket, and SSE gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
-fig-cli           — Native FIG trading client demo
+fig-cli           — Native FIG demo client (seven validated flows)
 fig-bench         — Criterion microbenches + fig-latency tail harness
 ```
 

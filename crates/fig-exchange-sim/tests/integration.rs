@@ -176,11 +176,15 @@ async fn test_order_entry_execution_report() {
         .await
         .expect("send/receive");
 
-    // The sell order rests (no fill), the buy market order fills.
-    // Find the fill response (StreamItem with ExecutionReport)
+    // The sell order rests (New ack), the buy market order fills.
     let fill_response = responses
         .iter()
-        .find(|f| f.frame_type == FrameType::StreamItem)
+        .find(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<ExecutionReport>(&f.payload)
+                    .map(|r| r.exec_type == ExecType::Fill)
+                    .unwrap_or(false)
+        })
         .expect("should have a StreamItem (fill) response");
 
     let report: ExecutionReport =
@@ -340,11 +344,15 @@ async fn test_multiple_orders_matching() {
         .await
         .expect("send/receive");
 
-    // The sell rests (no fill), the buy should fill
-    // Find the fill response (StreamItem with ExecutionReport)
+    // The sell rests (New ack), the buy should fill.
     let fill_response = responses
         .iter()
-        .find(|f| f.frame_type == FrameType::StreamItem)
+        .find(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<ExecutionReport>(&f.payload)
+                    .map(|r| r.exec_type == ExecType::Fill)
+                    .unwrap_or(false)
+        })
         .expect("should have a StreamItem (fill) response");
 
     let report: ExecutionReport =
@@ -570,7 +578,77 @@ async fn test_candle_subscription() {
         "marketdata/AAPL/candles/5m",
     );
     let responses = send_and_receive(&conn, sub).await.expect("send/receive");
-    assert!(!responses.is_empty());
+    assert!(
+        responses
+            .iter()
+            .any(|f| matches!(f.frame_type, fig_core::frame::FrameType::Response | fig_core::frame::FrameType::StreamItem)),
+        "expected SUBSCRIBE ack, got: {responses:?}"
+    );
+    assert!(
+        !responses
+            .iter()
+            .any(|f| f.frame_type == fig_core::frame::FrameType::StreamError),
+        "candle subscribe must not return STREAM_ERROR"
+    );
+}
+
+/// Resting limit order returns ExecutionReport on the request stream.
+#[tokio::test]
+async fn test_resting_order_request_stream_ack() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let order = make_order(
+        "REQ-1",
+        Side::Buy,
+        "AAPL",
+        OrderType::Limit,
+        Some(50.25),
+        10.0,
+    );
+    let responses = send_and_receive(&conn, make_order_frame(1, &order).unwrap())
+        .await
+        .expect("order");
+    let report = responses
+        .iter()
+        .find_map(|f| codec::decode_cbor::<ExecutionReport>(&f.payload).ok())
+        .expect("ExecutionReport on request stream");
+    assert_eq!(report.cl_ord_id, "REQ-1");
+    assert_eq!(report.exec_type, ExecType::New);
+}
+
+/// Agg trades subscribe returns ack (live stream path).
+#[tokio::test]
+async fn test_agg_trades_subscribe() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let endpoint = run_server("127.0.0.1:0").await.expect("server start");
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .expect("connect");
+
+    let sub = make_subscribe_frame(
+        1,
+        "marketdata/AAPL/aggtrades",
+        "marketdata/AAPL/aggtrades",
+    );
+    let responses = send_and_receive(&conn, sub).await.expect("send/receive");
+    assert!(
+        responses.iter().any(|f| {
+            matches!(
+                f.frame_type,
+                FrameType::Response | FrameType::StreamItem
+            )
+        }),
+        "expected SUBSCRIBE ack"
+    );
+    assert!(
+        !responses
+            .iter()
+            .any(|f| f.frame_type == FrameType::StreamError)
+    );
 }
 
 /// Private account query without auth is rejected.

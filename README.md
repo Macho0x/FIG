@@ -59,7 +59,7 @@ Full Criterion results and tail-latency percentiles: [docs/BENCHMARKS.md](docs/B
 ```bash
 git clone https://github.com/Macho0x/fig.git && cd fig
 cargo run -p fig-exchange-sim          # terminal 1 — server on 127.0.0.1:8443
-cargo run -p fig-cli                   # terminal 2 — six demos, one connection
+cargo run -p fig-cli                   # terminal 2 — seven demos, one connection
 ```
 
 Optional legacy gateway (REST `:8080`, WS `:8090`, FIX `:9876`):

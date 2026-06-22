@@ -412,6 +412,22 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         let new_report = crate::matching::resting_to_report(resting);
                         engine.record_execution(account, new_report.clone());
                         drop(engine);
+                        if let Ok(payload) = codec::encode_cbor(&new_report) {
+                            responses.push(
+                                Frame::new(FrameType::StreamItem, frame.channel_id)
+                                    .with_seq(frame.stream_seq)
+                                    .with_schema_id(schema_id::TRADING_ORDERS)
+                                    .with_extension(Extension::text(
+                                        ExtensionTag::ChannelPath,
+                                        paths::EXECUTIONS,
+                                    ))
+                                    .with_extension(Extension::text(
+                                        ExtensionTag::ContentType,
+                                        codec::frame_content_type(&frame),
+                                    ))
+                                    .with_payload(payload),
+                            );
+                        }
                         responses.extend(
                             crate::broker_api::post_execution_reports(
                                 state,

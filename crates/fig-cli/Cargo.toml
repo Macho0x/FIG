@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 description = "FIG-native trading client (killer demo client)"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "fig-cli"
+path = "src/main.rs"
+
 [dependencies]
 fig-core = { workspace = true }
 tokio = { workspace = true }
@@ -15,5 +22,8 @@ serde = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
 uuid = { workspace = true }
+
+[dev-dependencies]
+fig-exchange-sim = { path = "../fig-exchange-sim" }
