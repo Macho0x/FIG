@@ -73,12 +73,9 @@ fn assert_execution_report(label: &str, frames: &[Frame]) -> Result<()> {
 
 fn assert_subscribe_ack(label: &str, frames: &[Frame]) -> Result<()> {
     assert_success_frames(label, frames)?;
-    let ok = frames.iter().any(|f| {
-        matches!(
-            f.frame_type,
-            FrameType::Response | FrameType::StreamItem
-        )
-    });
+    let ok = frames
+        .iter()
+        .any(|f| matches!(f.frame_type, FrameType::Response | FrameType::StreamItem));
     if !ok {
         bail!("{label}: expected SUBSCRIBE ack (Response or StreamItem)");
     }
@@ -87,10 +84,7 @@ fn assert_subscribe_ack(label: &str, frames: &[Frame]) -> Result<()> {
 
 fn assert_query_response(label: &str, frames: &[Frame]) -> Result<()> {
     assert_success_frames(label, frames)?;
-    if !frames
-        .iter()
-        .any(|f| f.frame_type == FrameType::Response)
-    {
+    if !frames.iter().any(|f| f.frame_type == FrameType::Response) {
         bail!("{label}: expected RESPONSE frame");
     }
     Ok(())
@@ -99,8 +93,7 @@ fn assert_query_response(label: &str, frames: &[Frame]) -> Result<()> {
 fn assert_pong(label: &str, frames: &[Frame]) -> Result<()> {
     assert_success_frames(label, frames)?;
     if !frames.iter().any(|f| {
-        f.frame_type == FrameType::Control
-            && f.control_subtype() == Some(ControlSubtype::Pong)
+        f.frame_type == FrameType::Control && f.control_subtype() == Some(ControlSubtype::Pong)
     }) {
         bail!("{label}: expected CONTROL PONG");
     }

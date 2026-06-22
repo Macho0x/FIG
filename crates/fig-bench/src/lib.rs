@@ -4,6 +4,7 @@
 //! reporting is in [`latency`] and exposed via the `fig-latency` binary.
 
 pub mod latency;
+pub mod matching_latency;
 
 #[cfg(test)]
 mod tests {

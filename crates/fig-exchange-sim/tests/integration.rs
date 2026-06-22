@@ -579,9 +579,10 @@ async fn test_candle_subscription() {
     );
     let responses = send_and_receive(&conn, sub).await.expect("send/receive");
     assert!(
-        responses
-            .iter()
-            .any(|f| matches!(f.frame_type, fig_core::frame::FrameType::Response | fig_core::frame::FrameType::StreamItem)),
+        responses.iter().any(|f| matches!(
+            f.frame_type,
+            fig_core::frame::FrameType::Response | fig_core::frame::FrameType::StreamItem
+        )),
         "expected SUBSCRIBE ack, got: {responses:?}"
     );
     assert!(
@@ -629,26 +630,17 @@ async fn test_agg_trades_subscribe() {
         .await
         .expect("connect");
 
-    let sub = make_subscribe_frame(
-        1,
-        "marketdata/AAPL/aggtrades",
-        "marketdata/AAPL/aggtrades",
-    );
+    let sub = make_subscribe_frame(1, "marketdata/AAPL/aggtrades", "marketdata/AAPL/aggtrades");
     let responses = send_and_receive(&conn, sub).await.expect("send/receive");
     assert!(
-        responses.iter().any(|f| {
-            matches!(
-                f.frame_type,
-                FrameType::Response | FrameType::StreamItem
-            )
-        }),
+        responses
+            .iter()
+            .any(|f| { matches!(f.frame_type, FrameType::Response | FrameType::StreamItem) }),
         "expected SUBSCRIBE ack"
     );
-    assert!(
-        !responses
-            .iter()
-            .any(|f| f.frame_type == FrameType::StreamError)
-    );
+    assert!(!responses
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamError));
 }
 
 /// Private account query without auth is rejected.

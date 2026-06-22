@@ -41,10 +41,13 @@ FIG_LATENCY_ITERS=500 cargo run --release -p fig-bench --bin fig-latency
 | Scenario | Default samples | What it measures |
 |---|---|---|
 | `sbe_decode_hot_path` | 100,000 | SBE `NewOrderSingle` decode — codec tail latency |
-| `tree_round_trip_steady_state` | 10,000 | Persistent QUIC conn; new bidi stream per ping/pong |
+| `tree_round_trip_steady_state` | 10,000 | Persistent QUIC conn; new bidi stream per ping/pong (reconnects every 128 streams) |
 | `tree_round_trip_under_load` | 5,000 | Measured stream + background traffic on separate channels |
+| `matching_insert_top_n{N}` | 50,000 | Non-crossing limit insert at top of bid (N = 0 / 100 / 1000 ask levels) |
+| `matching_cancel_top_n1000` | 50,000 | Cancel best bid on a 1000-level book |
+| `matching_cancel_deep_n1000` | 10,000 | Cancel deepest bid (linear book scan tail) |
+| `matching_replace_qty_n1000` | 50,000 | Quantity-only replace on top-of-book order |
 | `matching_engine_contended` | 8,000 | 8 threads contending on one `MatchingEngine` |
-| `matching_engine_cancel_hot_path` | 10,000 | Cancel latency per order |
 
 **Note:** localhost TREE numbers include kernel + QUIC stack jitter. They are
 useful for regression and relative comparison, not absolute HFT wire latency.
