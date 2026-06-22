@@ -1,4 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use std::time::Duration;
+
+use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 
 use fig_core::messages::{
     CancelRequest, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
@@ -62,7 +64,12 @@ fn make_resting_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) 
 }
 
 fn bench_order_book_add(c: &mut Criterion) {
-    c.bench_function("order_book_add", |b| {
+    let mut group = c.benchmark_group("matching");
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(30);
+    group.measurement_time(Duration::from_secs(5));
+
+    group.bench_function("order_book_add", |b| {
         b.iter(|| {
             let mut book = OrderBook::new("AAPL".to_string());
             for i in 0..1000 {
@@ -74,27 +81,18 @@ fn bench_order_book_add(c: &mut Criterion) {
             black_box(book);
         })
     });
+    group.finish();
 }
 
 fn bench_matching_engine_process_order(c: &mut Criterion) {
-    // Pre-populate the engine with a full book
-    let mut engine = MatchingEngine::new();
-    for i in 0..500 {
-        let sell = make_limit_order(
-            &format!("S-{}", i),
-            Side::Sell,
-            "AAPL",
-            150.0 + (i as f64) * 0.01,
-            10.0,
-        );
-        engine.process_new_order(&sell);
-    }
-
     let market_buy = make_market_order("MB-1", Side::Buy, "AAPL", 100.0);
 
-    // We need to reset the engine for each iteration — clone the setup data
-    // Instead, create a fresh engine each iteration
-    c.bench_function("matching_engine_process_order", |b| {
+    let mut group = c.benchmark_group("matching");
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(30);
+    group.measurement_time(Duration::from_secs(5));
+
+    group.bench_function("matching_engine_process_order", |b| {
         b.iter(|| {
             let mut eng = MatchingEngine::new();
             // Populate with sells
@@ -112,10 +110,15 @@ fn bench_matching_engine_process_order(c: &mut Criterion) {
             black_box(result);
         })
     });
+    group.finish();
 }
 
 fn bench_matching_engine_cancel(c: &mut Criterion) {
-    c.bench_function("matching_engine_cancel", |b| {
+    let mut group = c.benchmark_group("matching");
+    group.sampling_mode(SamplingMode::Flat);
+    group.sample_size(50);
+
+    group.bench_function("matching_engine_cancel", |b| {
         b.iter(|| {
             let mut engine = MatchingEngine::new();
             let order = make_limit_order("CXL-1", Side::Buy, "AAPL", 100.0, 50.0);
@@ -132,6 +135,7 @@ fn bench_matching_engine_cancel(c: &mut Criterion) {
             black_box(cancelled);
         })
     });
+    group.finish();
 }
 
 criterion_group!(

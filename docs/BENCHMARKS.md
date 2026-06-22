@@ -1,14 +1,55 @@
 # FIG Benchmarks
 
-All benchmarks run with [Criterion](https://bheisler.github.io/criterion.rs/) on
-the release profile. Results below are from the reference development machine —
-your numbers will vary.
+FIG has two benchmark layers:
+
+1. **Criterion microbenches** — median/mean regression on isolated hot paths.
+2. **Tail-latency harness** — HDR Histogram percentiles (p50 / p99 / p99.9) per operation.
+
+All benchmarks run on the release profile. Numbers below are from the reference
+development machine — yours will vary. For institutional tail-latency claims, run
+the harness on dedicated bare metal with pinned CPUs and document your environment.
+
+## Criterion microbenches
 
 ```bash
 cargo bench -p fig-bench
 cargo bench -p fig-bench --bench codec_bench
 cargo bench -p fig-bench --features alloc --bench alloc_bench
+cargo bench -p fig-bench --bench transport_bench
 ```
+
+Criterion reports **mean time per iteration** with confidence intervals — not
+per-operation p99/p99.9. Use the tail-latency harness below for percentile SLAs.
+
+## Tail-latency harness (HDR Histogram)
+
+Records **one wall-clock sample per operation** and prints p50, p90, p99,
+p99.9, and p99.99:
+
+```bash
+cargo run --release -p fig-bench --bin fig-latency
+# or
+cargo bench -p fig-bench --bench latency_bench
+```
+
+Reduce iterations for CI smoke runs:
+
+```bash
+FIG_LATENCY_ITERS=500 cargo run --release -p fig-bench --bin fig-latency
+```
+
+| Scenario | Default samples | What it measures |
+|---|---|---|
+| `sbe_decode_hot_path` | 100,000 | SBE `NewOrderSingle` decode — codec tail latency |
+| `tree_round_trip_steady_state` | 10,000 | Persistent QUIC conn; new bidi stream per ping/pong |
+| `tree_round_trip_under_load` | 5,000 | Measured stream + background traffic on separate channels |
+| `matching_engine_contended` | 8,000 | 8 threads contending on one `MatchingEngine` |
+| `matching_engine_cancel_hot_path` | 10,000 | Cancel latency per order |
+
+**Note:** localhost TREE numbers include kernel + QUIC stack jitter. They are
+useful for regression and relative comparison, not absolute HFT wire latency.
+
+---
 
 ## Frame encode/decode
 
@@ -53,6 +94,13 @@ and 25–100× faster than FIX ASCII parsing (5–20 μs).
 | `order_book_add` | **530 μs** | Add 1000 orders to the order book |
 | `matching_engine_process_order` | **805 μs** | Process market order against full book |
 | `matching_engine_cancel` | **1.21 μs** | Cancel an order |
+
+## TREE transport
+
+| Benchmark | Description |
+|---|---|
+| `tree_ping_pong_cold_start` | New server + connect + one ping/pong (handshake included) |
+| `tree_ping_pong_steady_state` | Persistent QUIC conn; new bidi stream per ping/pong |
 
 ## Protocol comparison
 

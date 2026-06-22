@@ -5,11 +5,19 @@ edition.workspace = true
 license.workspace = true
 description = "FIG protocol benchmarks"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "fig-latency"
+path = "src/bin/fig-latency.rs"
+
 [dependencies]
 fig-core = { workspace = true }
 fig-gateways = { workspace = true }
 fig-exchange-sim = { path = "../fig-exchange-sim" }
 criterion = { version = "0.5", features = ["html_reports"] }
+hdrhistogram = "7"
 serde = { workspace = true }
 ciborium = { workspace = true }
 tokio = { workspace = true }
@@ -34,6 +42,10 @@ harness = false
 name = "matching_bench"
 harness = false
 
+[[bench]]
+name = "latency_bench"
+harness = false
+
 [features]
 default = []
 alloc = []
@@ -41,3 +53,5 @@ alloc = []
 [[bench]]
 name = "alloc_bench"
 harness = false
+
+[dev-dependencies]

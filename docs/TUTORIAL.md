@@ -188,11 +188,16 @@ Set `FIG_DEV_OPEN=1` when running the simulator to disable this check locally.
 ```bash
 cargo bench -p fig-bench
 cargo bench -p fig-bench --features alloc --bench alloc_bench
+cargo run --release -p fig-bench --bin fig-latency
 ```
 
-Benchmark groups include frame codec, TREE round-trip latency, gateway
+Criterion microbenches cover frame codec, TREE round-trip latency, gateway
 adapter comparison (FIX vs REST vs native FIG), matching engine throughput,
 and allocation patterns.
+
+The `fig-latency` binary reports **tail latency percentiles** (p50 / p99 /
+p99.9) using HDR Histogram — one sample per operation. Use
+`FIG_LATENCY_ITERS=1000` for a quick smoke run. See [BENCHMARKS.md](BENCHMARKS.md).
 
 ## 9. Docker
 

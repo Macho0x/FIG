@@ -196,7 +196,8 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | CBOR vs SBE codec benchmarks | — | 6 benchmarks |
 | ✅ | Gateway adapter benchmarks | — | 8 benchmarks |
 | ✅ | Matching engine benchmarks | — | 3 benchmarks |
-| ✅ | TREE transport benchmarks (round-trip latency) | Medium | transport_bench.rs ping/pong round-trip; CI smoke-tests this only |
+| ✅ | TREE transport benchmarks (round-trip latency) | Medium | cold-start + steady-state in transport_bench; CI smoke-tests steady-state |
+| ✅ | Tail-latency harness (p99 / p99.9) | Medium | `fig-latency` binary + `latency_bench`; HDR Histogram per-operation samples |
 | ✅ | Comparison benchmarks vs FIX/REST/WS | Medium | protocol_comparison_new_order group in gateway_bench |
 | 🔶 | Throughput benchmarks (msgs/sec) | Medium | `tree_throughput` removed from transport_bench pending server-side multi-frame read |
 | ✅ | Memory allocation benchmarks | Low | `alloc_bench.rs`; run with `--features alloc` |

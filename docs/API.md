@@ -132,9 +132,18 @@ private paths (see SPEC §9.3 wire semantics; not a key-issuance API).
 
 ## `fig-bench` — benchmarks
 
-Six Criterion suites: `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench`.
+Criterion microbenches plus a tail-latency harness (`fig-latency` / `latency_bench`).
+
+| Suite | Role |
+|---|---|
+| `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` | Criterion mean/median regression |
+| `fig-latency`, `latency_bench` | HDR Histogram p50 / p99 / p99.9 per operation |
 
 ```bash
 cargo bench -p fig-bench
 cargo bench -p fig-bench --features alloc --bench alloc_bench
+cargo run --release -p fig-bench --bin fig-latency
+FIG_LATENCY_ITERS=1000 cargo run --release -p fig-bench --bin fig-latency
 ```
+
+See [BENCHMARKS.md](BENCHMARKS.md) for methodology and reference numbers.

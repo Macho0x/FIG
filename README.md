@@ -48,7 +48,7 @@ and matching engines belong in your venue stack, outside the protocol.
 | Min header | **16 B** | 200–500 B | 200–800 B |
 | Reconnect | **0-RTT** | full Logon | stateless |
 
-Full Criterion results: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Full Criterion results and tail-latency percentiles: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 **Terms:** **FIG** = protocol · **TREE** = QUIC transport (TLS 1.3, ALPN `fig/1`) · **FSL** = schema IDL ([SPEC.md](SPEC.md) §1).
 
@@ -223,14 +223,15 @@ for browser or WASM-free edge cases.
 | [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and WS catalog |
 | [docs/QUERY.md](docs/QUERY.md) | Historical queries and REST GET mapping |
 | [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Full Criterion results |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Criterion microbenches + tail-latency harness |
 | [docs/API.md](docs/API.md) | Crate and module index |
 | [schemas/orders.fsl](schemas/orders.fsl) | Example FSL schema |
 | [TODO.md](TODO.md) | Implementation roadmap |
 
 ```bash
 cargo test --workspace          # ~360 tests
-cargo bench -p fig-bench        # performance suites
+cargo bench -p fig-bench        # Criterion microbenches (medians)
+cargo run --release -p fig-bench --bin fig-latency   # tail latency p99/p99.9
 ```
 
 ---

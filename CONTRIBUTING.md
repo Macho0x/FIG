@@ -33,7 +33,7 @@ fig-fsl           — FSL schema language parser, multi-target codegen, ftlc CLI
 fig-gateways      — FIX, REST, WebSocket, and SSE gateway adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
 fig-cli           — Native FIG trading client demo
-fig-bench         — Criterion benchmarks
+fig-bench         — Criterion microbenches + fig-latency tail harness
 ```
 
 See [docs/API.md](docs/API.md) for the full module index.
@@ -153,7 +153,7 @@ GitHub Actions runs on every push to `main`:
 |---|---|
 | `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux) |
 | `coverage` | `cargo llvm-cov` coverage report |
-| `benchmarks` | Smoke-run frame, transport, gateway, and alloc benchmarks |
+| `benchmarks` | Smoke-run frame, transport, gateway, alloc, and tail-latency benches |
 | `cross-platform` | `cargo test --workspace --all-features` on Linux, macOS, Windows |
 
 Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
