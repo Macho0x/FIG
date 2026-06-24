@@ -1,13 +1,22 @@
 # TODO — FIG Protocol Roadmap
 
+**Central source of truth** for all outstanding FIG work — implementation roadmap,
+**1.0 release criteria** (§18), and **venue adoption** checklists (§19–21).
+
 Tracking work to reach production-grade coverage of the
 [SPEC.md](SPEC.md). **Sections 1–15 (Rust core) are complete.** Section 16
 tracks multi-language SDK parity; **§17 tracks broker ↔ client API parity**
 (live streaming **and** historical/query pulls — WS, REST, balances, candles, and
-more) — the active roadmap. See [API.md](docs/API.md)
-for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidance.
+more). **§18** is the 1.0 release gate. **§19–21** track what FIG and adopting
+venues must do for Hyperliquid-shaped and CME-shaped production use. See
+[API.md](docs/API.md) for the module index and [PROTOCOL.md](docs/PROTOCOL.md)
+for integration guidance.
 
-**Legend:** ✅ Done · 🔶 Partial · ⬜ Not started
+**Legend:** ✅ Done · 🔶 Partial · ⬜ Not started · 🏛 Venue-owned (outside FIG repo)
+
+**Table of contents:** §1–15 Rust core · §16 SDK parity · §17 broker API ·
+**§18 1.0 release** · §19 shared venue foundation · §20 crypto-perps venue ·
+§21 institutional venue
 
 ---
 
@@ -261,10 +270,12 @@ All medium-priority items complete ✅ (§1–15 Rust core)
 All low-priority items complete ✅ (§1–15 Rust core)
 
 ### Active roadmap
-- **§16** — Multi-language SDK parity — **complete** ✅ (FSL codegen all targets + Java; per-lang SBE via `sbe_target_codegen`; `fig-ffi` Tier 1–4 + JWT/SBE helpers; Go/C++/C#/TS/OCaml/Zig/Java bindings; pure protocol libs C++/Zig; conformance in CI)
-- **§17** — Broker ↔ client API parity — **Rust broker + gateway + conformance depth complete** (SDK polish and per-lang generated SBE serializers remain optional follow-ups)
+- **§16** — Multi-language SDK parity — **complete** ✅ (optional follow-ups in §16.2 / §16.6)
+- **§17** — Broker ↔ client API parity — **Rust broker + gateway catalog complete** ✅ (SDK polish in §18.7)
+- **§18** — **1.0 release gate** — criteria ✅; Engineering + Security sign-off **Pending**
+- **§19–21** — Venue adoption — **not started** (FIG project + venue-owned work)
 
-**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. Multi-language SDK parity (§16) — complete ✅ (FFI Tier 1–4, per-language SBE codegen, pure protocol libs, JWT helpers, binding conformance). Broker ↔ client API parity (§17) — native broker + gateway catalog complete.**
+**Roadmap status: Rust core (§1–15) — 100% SPEC coverage complete. §16–17 reference stack complete. Blocking 1.0: §18 sign-off + SPEC bump. Production venue adoption: §19–21.**
 
 ---
 
@@ -942,3 +953,325 @@ with `--fig-backend`; not every native row has a legacy catalog entry yet.
 8. Gateway REST GET + WS catalogs (§17.5)
 9. Documentation (`QUERY.md` / `STREAMING.md`, gateway catalog) (§17.8)
 10. Remaining §17.0/§17.0b rows + cross-language binding tests (§16)
+
+---
+
+## 18. FIG 1.0 Release Criteria
+
+FIG remains **0.1.0 (draft)** in [SPEC.md](SPEC.md) until every **required** row
+below is complete **and** Engineering + Security sign-off (§18.11) are recorded.
+Optional rows improve confidence but do not block 1.0.
+
+### 18.1 Protocol and reference implementation
+
+| Status | Criterion | Blocker | Evidence |
+|---|---|---|---|
+| ✅ | SPEC §1–15 Rust core complete | Required | §1–15 above |
+| ✅ | Broker API parity (§17) native paths | Required | exchange-sim + `cargo run -p xtask -- check-gateway` |
+| ✅ | Conformance vectors CI | Required | `cargo run -p fig-conformance --bin fig-conformance` |
+| ✅ | Workspace tests pass | Required | `cargo test --workspace` |
+
+### 18.2 Security
+
+| Status | Criterion | Blocker | Evidence |
+|---|---|---|---|
+| ✅ | 0-RTT replay protection (client path) | Required | `fig_core::replay`, client `connect_0rtt`, unit tests |
+| 🔶 | 0-RTT replay protection (server accept path) | Post-1.0* | `FigServer::accept_0rtt` — see §18.7 |
+| ✅ | Frame decoder fuzz target | Required | `crates/fig-core/fuzz/frame_decode`, [CONTRIBUTING.md](CONTRIBUTING.md) |
+| ⬜ | Frame decoder fuzz in required CI | Post-1.0* | §18.7 |
+| ✅ | Load / flood smoke test | Required | `fig-load` bin, CI `FIG_LOAD_SECS=3` |
+| ✅ | mTLS + rate limits available | Required | `FIG_MTLS`, `ChannelRateLimiter`, `DoSGuard` |
+| ⬜ | External penetration test | Optional | Manual — [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) |
+
+\*Post-1.0 items do not block 1.0 if accepted or ticketed in §18.7.
+
+### 18.3 Client SDK
+
+| Status | Criterion | Blocker | Evidence |
+|---|---|---|---|
+| ✅ | `fig-client` merge helpers (book, candles, account, mids, bbo, trades, mark, orders) | Required | `crates/fig-client` tests |
+| 🔶 | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `send_and_read` + `dev_auth_token` ✅; demos still hand-build frames — §18.7 |
+| ✅ | Python + FFI exposure | Required | `PyOrderBookState`, `PyMidsState`, … + `fig_*` FFI |
+| ⬜ | Per-language generated SBE hex CI | Optional | FFI conformance required; native SBE compile-smoke only |
+
+### 18.4 Operations
+
+| Status | Criterion | Blocker | Evidence |
+|---|---|---|---|
+| ✅ | `RedisSessionStore` (`session-redis` feature) | Required | `#[ignore]` test with `REDIS_URL`; CLI `--session-store redis` |
+| ⬜ | Redis session round-trip in CI service container | Post-1.0* | §18.7 |
+| ✅ | `docker-compose.yml` (sim + gateway + metrics) | Required | repo root |
+| ✅ | Gateway `--health-addr` / `--metrics-addr` | Required | `fig-gateway` flags |
+| ✅ | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Required | HA topology documented |
+
+### 18.5 Documentation
+
+| Status | Criterion | Blocker | Evidence |
+|---|---|---|---|
+| ✅ | Doc drift resolved (no stale protobuf/etcd) | Required | API, PROTOCOL, GATEWAY, SPEC §3.3 / §11.2 |
+| ✅ | [PUBLISHING.md](docs/PUBLISHING.md) | Required | install paths |
+| ✅ | Benchmarks from measured runs | Required | [BENCHMARKS.md](docs/BENCHMARKS.md) |
+
+### 18.6 1.0 vs post-1.0 (sign-off reference)
+
+Use during Engineering / Security review. **1.0** means the reference Rust stack +
+FFI/Python wire path is production-ready for **protocol adoption**; **post-1.0**
+items do not block the SPEC version bump if accepted or ticketed in §18.7.
+
+| Area | In 1.0 (required / done) | Post-1.0 (deferred → §18.7) |
+|---|---|---|
+| **Release gate** | Criteria tables ✅ + sign-off + SPEC → `1.0.0` | — |
+| **Wire codecs** | CBOR + SBE only (SPEC §3.3, §11.2) | Protobuf wire restoration (not planned) |
+| **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
+| **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
+| **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go compile smoke | Native TREE per language; per-lang SBE hex CI; C#/C++ compile matrix |
+| **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
+| **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
+| **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |
+| **Schema IDs** | Single wire `schema_id = 0x01` (documented) | Split `0x02` market / `0x03` account domains |
+| **Ops** | docker-compose, gateway health/metrics | crates.io / npm publish automation |
+| **Venue-owned** | Wire auth contract (§9.3) | API key issuance, RS256/KMS, matching engine |
+
+### 18.7 Post-1.0 outstanding (FIG project)
+
+Actionable follow-ups from §18.6. Ticket or accept before / during 1.0 sign-off.
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | `FigServer::accept_0rtt` reads resumption token from first app frame | High | Client path protected; server accept partial |
+| ⬜ | Shared `RedisReplayCache` for HA 0-RTT | Medium | Pair with `RedisSessionStore` |
+| ⬜ | Fuzz `frame_decode` in required CI | Medium | Target exists; see CONTRIBUTING |
+| ⬜ | JWT RS256/KMS reference + key rotation runbook | Medium | HS256 dev only today; issuance is venue-owned |
+| ⬜ | `fig-cli` demos use `FigSdkClient` subscribe/request helpers | Low | I/O via client; frames still hand-built in demos |
+| ⬜ | `fig-client`: funding, ledger, liquidations, agg trades merge helpers | Medium | Broker paths exist; SDK deferred |
+| ⬜ | `AccountCache` in FFI/Python | Low | Rust-only today |
+| ⬜ | Per-language SBE hex parity CI | Low | Compile-smoke only |
+| ⬜ | Native TREE transport per language (§16.6) | Low | FFI default |
+| ⬜ | Wire schema split `0x02` / `0x03` | Low | Logical domains advertised; wire uses `0x01` |
+| ⬜ | Tier-based public MD rate limits | Medium | Mentioned in SPEC; thin enforcement |
+| ⬜ | Redis session round-trip in CI | Low | `#[ignore]` test with `REDIS_URL` |
+| ⬜ | crates.io / npm publish automation | Low | [PUBLISHING.md](docs/PUBLISHING.md) manual paths |
+
+### 18.8 Review packet (Engineering + Security)
+
+Run from repo root before signing:
+
+```bash
+cargo test --workspace
+cargo test -p fig-cli                    # includes cli_integration e2e
+cargo test -p fig-client
+cargo test -p fig-core replay
+cargo clippy --workspace -- -D warnings
+cargo fmt --check
+cargo run -p xtask -- codegen --check
+cargo run -p xtask -- check-gateway
+cargo run -p fig-conformance --bin fig-conformance
+cargo test -p fig-ffi --test binding_conformance
+cargo test -p fig-python --test binding_conformance
+FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
+# optional: cargo fuzz run frame_decode -- -max_total_time=60
+# optional: REDIS_URL=redis://127.0.0.1:6379 cargo test -p fig-core round_trip_session -- --ignored
+```
+
+### 18.9 Engineering review (SPEC alignment)
+
+| Area | SPEC reference | Reviewer question | Automated evidence |
+|---|---|---|---|
+| Transport + framing | SPEC §2–8 | Frames, channels, extensions match spec? | conformance vectors + `fig-core` tests |
+| Payload codecs | SPEC §3.3, §11.2 | CBOR + SBE only documented and implemented? | exchange-sim multi-codec tests |
+| Sessions + 0-RTT | SPEC §10, §10.1 | Replay window documented and enforced on client? | `replay::tests`, SPEC §10.1 |
+| Broker API surface | SPEC §9.1 | High-priority paths in exchange-sim + gateway? | `check-gateway`, integration tests |
+| Reference client | SPEC §9.1 | `fig-cli` demos exercise native paths? | `cli_demos_complete_successfully` |
+| HA sessions | DEPLOYMENT.md | Redis store + compose topology accurate? | `session-redis` feature, compose file |
+
+### 18.10 Security review ([SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md))
+
+| Area | Checklist item | Status | Notes for reviewer |
+|---|---|---|---|
+| Transport | TLS 1.3, mTLS, cert rotation | ✅ | Verify prod deploy uses `FIG_MTLS=1` |
+| Auth | Constant-time compare, JWT, path policy | ✅ | RS256/KMS is venue responsibility |
+| DoS | Rate limiter, flood guard, load smoke | ✅ | `fig-load` in CI |
+| 0-RTT | Replay cache | 🔶 | Server accept path partial — §18.7 |
+| Fuzz | Frame decoder | 🔶 | Target exists; not required CI |
+| External | Pen test | ⬜ | Optional for 1.0 |
+
+### 18.11 Sign-off
+
+Record **name**, **date**, and **git SHA** (or release tag) when approving.
+Approving means: required criteria in §18.1–18.5 are ✅, review packet was run
+(or CI equivalent is green), and post-1.0 rows in §18.7 are **accepted or ticketed**.
+
+| Role | Name | Date | Git SHA / tag | Status |
+|---|---|---|---|---|
+| Engineering | — | — | — | Pending |
+| Security | — | — | — | Pending |
+
+When both rows are **Approved**, bump [SPEC.md](SPEC.md) to **1.0.0**, set status
+to stable, and tag the release.
+
+---
+
+## 19. Venue Adoption — Shared Foundation
+
+Work required before **either** Hyperliquid-shaped (§20) or CME-shaped (§21) venues
+would treat FIG as production-grade wire infrastructure. Items marked 🏛 are
+**venue-owned** — FIG defines the wire contract; the venue builds the business stack.
+
+### 19.1 FIG project — protocol release maturity
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Complete §18 sign-off + SPEC **1.0.0** stable | High | Draft `0.1.0` today |
+| ⬜ | All §18.7 post-1.0 items accepted or ticketed | High | Gate for sign-off |
+| ⬜ | Published artifacts (crates, bindings) with compatibility policy | Medium | §18.7 publish automation |
+| ⬜ | Co-lo / tail-latency evidence on realistic topology | Medium | Localhost benches are regression-only — [BENCHMARKS.md](docs/BENCHMARKS.md) |
+
+### 19.2 FIG project — client ecosystem
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🔶 | `fig-client` complete merge + request surface | Medium | §18.7 funding, ledger, liquidations, agg trades |
+| 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | Medium | FFI smoke exists; institutions standardize on specific langs |
+| ⬜ | Per-language SBE hex parity CI | Medium | HFT clients expect SBE hot path, not CBOR-over-FFI |
+| ⬜ | SBE-default order path documentation + examples | Medium | CBOR is default client path today |
+
+### 19.3 Venue-owned — business stack (both venue types)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🏛 | Production matching engine (latency, determinism, surveillance) | High | `fig-exchange-sim` is reference only |
+| 🏛 | Risk / margin / liquidation at scale | High | Sim has basic margin |
+| 🏛 | Clearing & ledger (CCP or on-chain) | High | Outside SPEC §1.3 |
+| 🏛 | Credential issuance, entitlements, rotation, admin | High | FIG verifies `AUTH_TOKEN` only |
+| 🏛 | Durable historical data platform | High | Sim uses in-memory stores |
+| 🏛 | SRE, incident response, multi-region capacity | High | Compose is a template |
+| 🏛 | Member / client certification program | High | Protocol conformance ≠ venue cert |
+
+### 19.4 Suggested sequencing (both tracks)
+
+| Wave | Scope | Target |
+|---|---|---|
+| **Wave 1** | §18 1.0 + §18.7 hardening | Weeks–months — protocol adoption ready |
+| **Wave 2** | §20 crypto-perps OR §21 institutional (pick track) | Months–year+ |
+| **Wave 3** | Second venue track + shared §19.2 SDK depth | Ongoing |
+
+---
+
+## 20. Venue Adoption — Hyperliquid-Shaped Crypto Perps
+
+**API-shape fit:** High — §17 catalog + `ws_catalog.rs` Hyperliquid mappings cover
+mids, L2, funding, ledger, liquidations, mark price, etc. **Production fit:** Low
+without venue backend + auth + product extensions.
+
+Adoption model: **Day 1 gateway** (JSON WS/REST → FIG) → **Day 2 native FIG/SBE**
+for colocated market makers → **Day 3 FSL extensions** for venue-specific products.
+
+### 20.1 FIG project — wire and protocol gaps
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | Cryptographic action auth (wallet signatures, EIP-712, chain-specific) | High | Today: `AUTH_TOKEN` / JWT / mTLS — not signed L1 actions |
+| ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | High | Not in `schemas/*.fsl` |
+| ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | Medium | HL product surface |
+| ⬜ | Batch / atomic multi-action `REQUEST` contract | Medium | HL batches L1 actions; FIG is frame-per-request |
+| ⬜ | Chain / L1 event stream domain in FSL | Medium | Block height, finality, deposit confirmation, withdrawal status |
+| ⬜ | Extended instrument model (long symbols, perp identifiers, margin asset metadata) | High | FSL `Symbol` is `max_len: 8` uppercase |
+| ⬜ | Post-only, reduce-only, venue policy flags + surveillance hooks in SPEC | Medium | Partial order flags in FSL; venue semantics TBD |
+| 🔶 | Gateway Hyperliquid JSON parity test suite | Medium | `ws_catalog.rs` mappings exist; expand E2E |
+| ⬜ | `fig-client` + Python/FFI: funding, ledger, liquidations, agg trades | Medium | §18.7 |
+
+### 20.2 Venue-owned — backend (Hyperliquid-shaped)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🏛 | Matching + order book at venue scale | High | Replace in-memory sim matcher |
+| 🏛 | On-chain or hybrid settlement (deposits, withdrawals, state roots) | High | Core to HL model |
+| 🏛 | Funding rate engine + oracle/index pipeline | High | FIG streams exist; production oracle doesn't |
+| 🏛 | Liquidation engine + insurance fund / ADL | High | Push events exist; production logic doesn't |
+| 🏛 | Indexer for historical `REQUEST` at petabyte scale | High | Durable backing for §17.0b paths |
+| 🏛 | Wallet linking, sub-accounts, account abstraction | Medium | Path model is `accounts/{account}` |
+| 🏛 | Compliance (geo-fencing, sanctions, KYC tiers) | High | Venue policy |
+| 🏛 | Public API backward compatibility during migration | High | Gateway keeps JSON WS for retail |
+
+### 20.3 Milestones (Hyperliquid-shaped)
+
+| Phase | Deliverable | FIG repo | Venue |
+|---|---|---|---|
+| **P1** | Gateway in front of existing JSON API | `fig-gateway` + `--fig-backend` | Proxy to real matching engine |
+| **P2** | Native FIG/TREE + SBE for colo MMs | §19.2 SBE path, §18 stable | Production order entry SLA |
+| **P3** | HL-only products on FIG wire | §20.1 FSL + auth extensions | Vaults, signed actions, chain events |
+
+**Rough effort:** §17 API surface ~70% for Binance/Hyperliquid-shaped perps;
+production venue **12–24+ months** venue engineering on top of §19.
+
+---
+
+## 21. Venue Adoption — CME-Shaped Institutional
+
+**API-shape fit:** Low for core Globex MD distribution; **moderate** for FIX drop-copy /
+order-entry modernization. FIG unifies FIX + REST + WS on one binary protocol — useful
+for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multicast.
+
+### 21.1 FIG project — wire and protocol gaps
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| ⬜ | FIX gateway: full institutional dialect matrix | High | Today: subset (Logon, D/F/G/8/9, some MD) — see `fix.rs` |
+| ⬜ | FIX: mass cancel, trading session status, security status | High | Not in gateway |
+| ⬜ | FIX: allocations, trade capture, multi-leg, IOI | High | Institutional order types |
+| ⬜ | FSL: market state & control (halts, auctions, pre-open, price limits) | High | Not in catalog |
+| ⬜ | FSL: open interest, settlement prices, block trades | High | Not in catalog |
+| ⬜ | FSL: regulatory / surveillance (bust/correct, give-up, trade reporting) | Medium | Out of current scope |
+| ⬜ | Member entitlement model on wire (beyond path scoping) | High | Channel arbitration, drop-copy entitlements |
+| ⬜ | MDP 3.0 / FAST adapter OR documented multicast distribution layer | High | FIG is TREE point-to-point; CME uses UDP multicast fan-out |
+| ⬜ | FIX session cert harness (resend/gap-fill matrix vs OMS stacks) | High | Partial resend wiring |
+| ⬜ | Co-lo latency SLA benchmark program | High | Dedicated hardware, jitter budgets — not localhost claims |
+| ⬜ | Tier 4 advanced frames in all production SDKs | Medium | §16.4 core ✅; not all langs at Tier 4 |
+| ⬜ | Wire schema split `0x02` market / `0x03` account | Low | Institutions care about domain versioning — §18.7 |
+
+### 21.2 Venue-owned — market infrastructure (CME-shaped)
+
+| Status | Item | Priority | Notes |
+|---|---|---|---|
+| 🏛 | Globex matching + market supervision | High | FIG does not replace |
+| 🏛 | CME Clearing / SPAN-scale margin | High | Outside FIG |
+| 🏛 | Member connectivity cert labs (per OMS/EMS) | High | Months per member |
+| 🏛 | Drop copy legal/ops entitlements | High | Not just wire format |
+| 🏛 | Audit trail & retention (legal hold) | High | Compliance |
+| 🏛 | Disaster recovery & market reopen procedures | High | Venue ops |
+| 🏛 | Cross-asset (rates, equities, FX, options combos) | High | FSL instrument model is equity-ish |
+
+### 21.3 Realistic adoption scenarios (institutional)
+
+| Scenario | FIG role | Primary §21 work |
+|---|---|---|
+| Internal crossing network between members | Native FIG + FIX adapter | §21.1 FIX completeness + §19.3 matching |
+| Parallel API for fintech / retail wrappers | Gateway + subset native FIG | §17 + gateway; keep MDP for pro MD |
+| Drop copy modernization | `SUBSCRIBE` executions + FIX 8 egress | §21.1 exec type matrix + entitlements |
+| Greenfield regional exchange | Fuller FIG adoption | §19 + §21.1 + venue clearing stack |
+
+### 21.4 Milestones (CME-shaped)
+
+| Phase | Deliverable | FIG repo | Venue |
+|---|---|---|---|
+| **P1** | FIX drop-copy / order-entry bridge | Expand `fix.rs`, cert tests | Member OMS integration |
+| **P2** | Market-state FSL domain + halts/auctions | New FSL + exchange-sim reference | Production supervision |
+| **P3** | MD distribution strategy (multicast adapter or hybrid) | §21.1 MDP/FAST or ADR | Globex-scale fan-out |
+
+**Rough effort:** Protocol surface ~**25–35%** for CME-equivalent connectivity;
+institutional cert + MD distribution largely **greenfield** relative to current FIG.
+
+---
+
+## 22. Venue Adoption — Side-by-Side Summary
+
+| Dimension | Hyperliquid-shaped (§20) | CME-shaped (§21) |
+|---|---|---|
+| **§17 API catalog fit** | High | Low (different MD/order models) |
+| **Gateway migration value** | High (JSON WS → FIG) | Medium (FIX subset only) |
+| **Native FIG as primary wire** | Plausible for colo MM clients | Unlikely for core Globex MD |
+| **Biggest FIG-project gap** | Signed-action auth + product FSL | FIX completeness + multicast MD |
+| **Biggest venue gap** | Chain + matching at scale | Clearing, cert, surveillance, MDP |
+| **Sensible first milestone** | Gateway + native FIG orders/MD | FIX drop-copy / order-entry bridge |
+| **Depends on** | §18 1.0 + §19 shared foundation | §18 1.0 + §19 shared foundation |

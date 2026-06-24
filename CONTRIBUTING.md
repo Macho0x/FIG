@@ -166,7 +166,7 @@ Install `cargo-fuzz`, then from `crates/fig-core/fuzz`:
 cargo fuzz run frame_decode -- -max_total_time=60
 ```
 
-Targets `Frame::decode` and `FrameDecoder` against arbitrary bytes. See [docs/1.0-CRITERIA.md](docs/1.0-CRITERIA.md).
+Targets `Frame::decode` and `FrameDecoder` against arbitrary bytes. See [TODO.md §18](TODO.md#182-security).
 
 ## License
 
