@@ -19,6 +19,12 @@ jobs:
         with:
           components: rustfmt, clippy, llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
       - name: Build
         run: cargo build --workspace --all-features
       - name: Run tests
@@ -35,7 +41,7 @@ jobs:
         run: |
           cargo build -p fig-ffi
           export LD_LIBRARY_PATH="$PWD/target/debug:${LD_LIBRARY_PATH:-}"
-          cd bindings/go/fig && go test -tags=conformance
+          (cd bindings/go/fig && go test -tags=conformance)
           cargo build -p fig-ffi --release
           bash bindings/cpp/smoke/run.sh
           export FIG_REPO_ROOT="$PWD"
@@ -45,7 +51,7 @@ jobs:
           cargo build -p fig-ffi --release
           export LD_LIBRARY_PATH="$PWD/target/release:${LD_LIBRARY_PATH:-}"
           export FIG_REPO_ROOT="$PWD"
-          cd bindings/go/fig && go test -tags=conformance -run TestSbeHexViaFfi
+          (cd bindings/go/fig && go test -tags=conformance -run TestSbeHexViaFfi)
           bash bindings/cpp/smoke/sbe_hex.sh
           bash bindings/csharp/smoke/run.sh
       - name: FFI Tier 4 smoke tests
@@ -84,6 +90,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
       - name: Run codec benchmarks (smoke)
         run: cargo bench -p fig-bench --bench codec_bench -- --sample-size 10
       - name: Run frame benchmarks (smoke)
@@ -99,7 +108,10 @@ jobs:
       - name: Run load harness (smoke)
         run: FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
       - name: Build Go binding (smoke)
-        run: cargo build -p fig-ffi --release && cd bindings/go/fig && go test -tags=conformance
+        run: |
+          cargo build -p fig-ffi
+          export LD_LIBRARY_PATH="$PWD/target/debug:${LD_LIBRARY_PATH:-}"
+          (cd bindings/go/fig && go test -tags=conformance)
 
   cross-platform:
     strategy:
