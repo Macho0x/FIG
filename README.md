@@ -149,91 +149,155 @@ What the reference simulator and CLI exercise end-to-end (parity roadmap: [TODO.
 
 ## Worked examples
 
-Rust snippets using `fig_core` — same patterns as [`fig-cli`](crates/fig-cli/src/main.rs).
-Each frame is sent on a TREE bidirectional stream (`conn.open_bi()` → `encode()` →
-`FrameDecoder`).
+Native FIG on **one TREE connection** (TLS + multiplexed channels). If you know legacy APIs, the mapping is:
+
+| You know… | FIG native | `CHANNEL_PATH` example |
+|-----------|------------|-------------------------|
+| **WebSocket** `SUBSCRIBE` / push stream | `SUBSCRIBE` → `STREAM_ITEM` | `marketdata/AAPL/candles/5m` |
+| **REST** `GET` / `POST` | `REQUEST` → `RESPONSE` | `marketdata/AAPL/ticker`, `trading/…/orders` |
+| **FIX** NewOrderSingle (35=D) | `REQUEST` + CBOR `NewOrderSingle` | `trading/accounts/{account}/orders` |
+| **FIX** drop copy / MD incremental | `SUBSCRIBE` → `STREAM_ITEM` | `trading/accounts/{account}/executions` |
+| **Hyperliquid** `allMids` | `GET` → `AllMidsBatch` | `marketdata/ticker/all` |
+
+Recommended path: [`fig-client`](crates/fig-client/) (`FigSdkClient`) — same wire as below, less boilerplate. Full demo: [`fig-cli`](crates/fig-cli/src/lib.rs) (`run_demos`).
 
 ```rust
-use fig_core::codec;
-use fig_core::ext::{Extension, ExtensionTag};
-use fig_core::frame::{Frame, FrameType};
+use fig_client::{dev_auth_token, FigSdkClient};
 use fig_core::messages::*;
+use fig_core::transport;
+use quinn::Endpoint;
+
+// Connect once (like opening a FIX session or a single WS connection).
+let client_cfg = transport::client_config()?;
+let mut ep = Endpoint::client("0.0.0.0:0".parse()?)?;
+ep.set_default_client_config(client_cfg);
+let conn = ep.connect("127.0.0.1:8443".parse()?, "localhost")?.await?;
+let client = FigSdkClient::new(&conn);
+let account = "DEMO-ACCT";
 ```
 
-### 1. Live market data (public subscribe)
+### 1. Live market data (WebSocket-style subscribe)
+
+Like Binance `@kline_5m` or a FIX market-data subscription — server pushes `STREAM_ITEM`s.
 
 ```rust
-let candles = Frame::new(FrameType::Subscribe, 2)
-    .with_extension(Extension::text(ExtensionTag::RoutingKey, "marketdata/AAPL/candles/5m"))
-    .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL/candles/5m"));
-// → STREAM_ITEM (CandleBarEvent)
+// Candles (partial + final bars merged in CandleState)
+let (candles, _frames) = client.subscribe_candles("AAPL", "5m", 2).await?;
+if let Some(bar) = candles.current() {
+    println!("close={}", bar.close.0);
+}
+
+// Top-of-book + implied mid (lighter than full L2 book)
+let (bbo, _frames) = client.subscribe_bbo("AAPL", 3).await?;
+println!("mid={:?}", bbo.implied_mid());
+
+// All symbols at once (Hyperliquid allMids-style dashboard)
+let (mids, _batch) = client.request_all_mids(4).await?;
+println!("AAPL mid={:?}", mids.mid("AAPL"));
 ```
 
-### 2. Order entry
+### 2. Order entry (REST POST / FIX NewOrderSingle)
+
+Like `POST /accounts/{id}/orders` or FIX MsgType `D` — one shot, execution reports in the response stream.
 
 ```rust
 let order = NewOrderSingle {
-    cl_ord_id: "CLI-001".into(), side: Side::Buy, symbol: "AAPL".into(),
-    order_qty: Quantity(100.0), price: Some(Price(150.25)),
-    order_type: OrderType::Limit, time_in_force: TimeInForce::Day,
-    account: Some("DEMO-ACCT".into()),
-    stop_price: None, expire_time: None, strategy_id: None,
-    security_id: None, id_source: None, security_exchange: None,
+    cl_ord_id: "CLI-001".into(),
+    side: Side::Buy,
+    symbol: "AAPL".into(),
+    order_qty: Quantity(100.0),
+    price: Some(Price(150.25)),
+    order_type: OrderType::Limit,
+    time_in_force: TimeInForce::Day,
+    account: Some(account.into()),
+    stop_price: None,
+    expire_time: None,
+    strategy_id: None,
+    security_id: None,
+    id_source: None,
+    security_exchange: None,
 };
-let order_frame = Frame::new(FrameType::Request, 1)
-    .with_extension(Extension::text(ExtensionTag::ChannelPath, "trading/accounts/DEMO-ACCT/orders"))
-    .with_extension(Extension::text(ExtensionTag::Method, "POST"))
-    .with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-DEMO-ACCT"))
-    .with_payload(codec::encode_cbor(&order)?);
-// → STREAM_ITEM (ExecutionReport)
+let frames = client.post_order(account, &order, 1).await?;
+// Decode ExecutionReport from frames (or use OrdersState for live merge)
 ```
 
-### 3. Private account stream (wire auth)
+### 3. Private account stream (authenticated WS / FIX drop copy)
+
+Like a user-data WebSocket or private FIX session — **`AUTH_TOKEN` required** on every open.
 
 ```rust
-let balances = Frame::new(FrameType::Subscribe, 3)
-    .with_extension(Extension::text(ExtensionTag::RoutingKey, "accounts/DEMO-ACCT/balances"))
-    .with_extension(Extension::text(ExtensionTag::ChannelPath, "accounts/DEMO-ACCT/balances"))
-    .with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-DEMO-ACCT"));
-// → STREAM_ITEM (BalanceSnapshot, then BalanceUpdate)
+use fig_client::frames::subscribe_frame;
+
+let token = dev_auth_token(account);
+let bal_sub = subscribe_frame(
+    5, 1,
+    &format!("accounts/{account}/balances"),
+    Some(&format!("accounts/{account}/balances")),
+    Some(&token),
+)?;
+let frames = client.send_and_read(bal_sub).await?;
+// → BalanceSnapshot (is_snapshot), then BalanceUpdate deltas
+
+// Live fills / order state (execution stream)
+let (orders, _frames) = client.subscribe_executions(account, 6).await?;
+println!("open orders={}", orders.open_count());
 ```
 
-### 4. Historical query, then resume live
+### 4. Historical query, then resume live (REST GET → WS subscribe)
+
+Like `GET /candles?limit=100` then subscribing to the live feed on the **same connection**.
 
 ```rust
-let history = Frame::new(FrameType::Request, 4)
-    .with_extension(Extension::text(ExtensionTag::ChannelPath, "marketdata/AAPL/candles/5m"))
-    .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-    .with_payload(codec::encode_cbor(&CandleBarRequest {
+let batch = client.request_candles(
+    CandleBarRequest {
         symbol: "AAPL".into(),
         interval: "5m".into(),
         start_time: None,
         end_time: None,
         limit: Some(100),
         cursor: None,
-    })?);
-// → RESPONSE (CandleBarBatch); then re-use example 1 SUBSCRIBE on the same connection
+    },
+    7,
+).await?;
+println!("history bars={}", batch.bars.len());
+
+// Same conn — switch to live (example 1)
+let (live, _) = client.subscribe_candles("AAPL", "5m", 8).await?;
 ```
 
-### 5. Legacy migration (gateway adapters)
+### 5. Legacy migration (keep FIX / REST / WS clients)
 
-Translate REST or WebSocket client shapes to native FIG frames before proxying
-to your backend ([docs/GATEWAY.md](docs/GATEWAY.md)).
+Run [`fig-gateway`](crates/fig-gateways/) at the edge; translate legacy shapes to native FIG frames and proxy to your FIG backend ([docs/GATEWAY.md](docs/GATEWAY.md)).
 
 ```rust
 use fig_gateways::rest::{parse_http_request};
 use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws_catalog::legacy_ws_json_to_fig_subscribe;
+use fig_gateways::fix::{parse_fix_message, fix_to_fig_order};
 
-let get = parse_http_request(b"GET /marketdata/AAPL/ticker HTTP/1.1\r\nHost: localhost\r\n\r\n")?;
-let ticker = http_get_to_fig_request(&get)?;
+// REST GET → native FIG REQUEST (same path the simulator speaks)
+let get = parse_http_request(
+    b"GET /marketdata/AAPL/ticker HTTP/1.1\r\nHost: localhost\r\n\r\n",
+)?;
+let ticker_req = http_get_to_fig_request(&get)?;
 
+// Binance-style WS JSON → FIG SUBSCRIBE
 let ws_sub = legacy_ws_json_to_fig_subscribe(
     r#"{"method":"SUBSCRIBE","params":["aapl@ticker"]}"#,
     1,
 )?;
-// Forward `ticker` / `ws_sub` to FIG backend via fig_gateways::backend
+
+// Forward translated frames to your native FIG backend (fig-gateway --fig-backend)
+// use fig_gateways::backend::{connect_backend, proxy_frame};
+// let backend = connect_backend("127.0.0.1:8443".parse()?).await?;
+// let responses = proxy_frame(&backend, ticker_req).await?;
+
+// FIX NewOrderSingle (35=D) → CBOR body, then FIG REQUEST POST
+// let fix = parse_fix_message(b"8=FIX.4.4\x0135=D\x0111=CLI-001\x01...")?;
+// let order = fix_to_fig_order(&fix.tags)?;
 ```
+
+**Low-level wire:** build `Frame` + extensions directly with `fig_core` (see [SPEC §9](SPEC.md)). Python/Go/C++ use the same paths via [`fig-ffi`](crates/fig-ffi/) / [`bindings/`](bindings/README.md).
 
 ---
 

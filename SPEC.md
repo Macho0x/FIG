@@ -34,7 +34,7 @@ streaming) into a single wire format.
 |------|-----------|------------|
 | **FIG** | Fast Interchange Gateway | The protocol — a schema-native, multiplexed binary protocol for trading systems. Unifies FIX, REST, and WebSocket semantics over a single transport. |
 | **TREE** | Trunked Reliable Encrypted Exchange | FIG's mandatory transport layer (implementation: quinn crate). Provides 0-RTT resumption, 65,535 concurrent channels per connection, and mandatory TLS 1.3 encryption. |
-| **FSL** | Fig Schema Language | FIG's schema definition language (IDL). Defines messages, channels, and gateway mappings. Compiles to Rust, Go, SBE, Protobuf, JSON Schema, and FIX mappings. |
+| **FSL** | Fig Schema Language | FIG's schema definition language (IDL). Defines messages, channels, and gateway mappings. Compiles to Rust, Go, SBE, JSON Schema, FIX mappings, and other type-only targets. |
 | **Connection** | — | A TREE connection between a client and server. |
 | **Channel** | — | A logical conversation within a connection, mapped 1:1 to a TREE stream. |
 | **Frame** | — | The unit of communication — a typed binary message on a channel. |
@@ -170,8 +170,12 @@ payload_len = Length - 16 - extension_block_len
 Payload encoding is determined by `Schema ID` and the `CONTENT_TYPE`
 extension:
 - Schema ID 0x00 + no CONTENT_TYPE → raw bytes
-- Schema ID 0x00 + CONTENT_TYPE "application/cbor" → CBOR
-- Well-known Schema ID → schema-defined encoding (SBE or Protobuf)
+- Schema ID 0x00 + CONTENT_TYPE `application/cbor` → CBOR (default for gateway and reference broker)
+- Well-known Schema ID → **CBOR** (human-readable / JSON-interop path) or **SBE**
+  (`application/fig+sbe`) on the trading fast path
+
+FIG 1.0 wire codecs are **CBOR + SBE only**. Protobuf payloads were removed from
+the reference implementation; do not send `application/protobuf` on FIG frames.
 
 ---
 
@@ -559,7 +563,9 @@ a venue-specific anti-replay policy allows otherwise.
 ## 11. FSL — Fig Schema Language
 
 FSL is a domain-specific IDL that compiles to multiple targets (Rust, Go,
-Python, TypeScript, Java, C#, C++, Protobuf, SBE, JSON Schema).
+Python, TypeScript, Java, C#, C++, SBE, JSON Schema, FIX mappings). Optional
+`.proto` export may be generated for gRPC interop documentation; it is **not**
+a FIG 1.0 on-wire codec.
 
 **`schemas/*.fsl` is the single source of truth** for message types, enums,
 field numbers, and gateway mappings. Do not edit language-specific types by
@@ -621,19 +627,23 @@ schema trading.orders v1.0.0 {
 
 ### 11.2 Codegen Targets
 
-| Target | Output (today) |
-|---|---|
-| Rust | Structs + serde (`RustCodegen`); SBE encode/decode (`--lang sbe`) |
-| Go | Structs + JSON tags (types only; serializers planned) |
-| Python | Dataclasses (types only; serializers planned) |
-| TypeScript | Interfaces (types only; serializers planned) |
-| C++ / C# / OCaml / Zig | Structs / classes / records (types only) |
-| Protobuf | `.proto` file (for gRPC interop) |
-| SBE | `.xml` (for trading fast path) + Rust encode/decode |
-| JSON Schema | `.schema.json` (for REST docs) |
-| FIX mapping | `.fix.yaml` (for gateway config) |
+| Target | Output (1.0) | On-wire serializer |
+|---|---|---|
+| Rust | Structs + serde (`RustCodegen`); SBE encode/decode | ✅ CBOR + SBE in `fig-core` |
+| SBE | Per-language `sbe_generated.*` + Rust codec | ✅ Rust reference; compile-smoke elsewhere |
+| Python | PyO3 (`fig-python`) + `fig-client` merge helpers | ✅ CBOR via FFI / PyO3 |
+| Go / C++ / C# / TypeScript / Zig | Generated types + thin FFI wrapper | ✅ Wire via `fig-ffi` (CBOR + frames) |
+| OCaml | FSL types + ctypes | 🔶 Types; wire via `fig-ffi` |
+| JSON Schema | `.schema.json` (REST docs) | N/A (documentation) |
+| FIX mapping | `.fix.yaml` (gateway config) | N/A (gateway translation) |
+| Protobuf | — | ❌ Removed from FIG wire (was experimental) |
 
-Full multi-language serializer and SDK parity: [TODO.md §16](TODO.md).
+**1.0 rule:** multi-language clients SHOULD use **`fig-ffi`** (C ABI) or
+**`fig-python`** for encode/decode/conformance-tested paths. Per-language
+generated SBE is for zero-copy hot paths once hex parity CI lands — see
+[bindings/README.md](bindings/README.md).
+
+Full multi-language serializer and native TREE client parity: [TODO.md §16](TODO.md).
 Schema change policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
 
 ---
