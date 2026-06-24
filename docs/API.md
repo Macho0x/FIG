@@ -74,7 +74,7 @@ cargo doc --workspace --no-deps --open
 | [`rest`](../crates/fig-gateways/src/rest.rs) | HTTP/1.1 parse/serialize, JSON ↔ CBOR |
 | [`rest_query`](../crates/fig-gateways/src/rest_query.rs) | REST GET → native FIG `REQUEST` (candles, fills, funding, …) |
 | [`ws`](../crates/fig-gateways/src/ws.rs) | WebSocket RFC 6455 frame mapping |
-| [`ws_catalog`](../crates/fig-gateways/src/ws_catalog.rs) | Binance/Hyperliquid topics → FIG `SUBSCRIBE` |
+| [`ws_catalog`](../crates/fig-gateways/src/ws_catalog.rs) | Legacy WS topic → native FIG `SUBSCRIBE` (Binance/HL reference aliases) |
 | [`ws_listener`](../crates/fig-gateways/src/ws_listener.rs) | HTTP upgrade handler for `fig-gateway` WS listener |
 | [`backend`](../crates/fig-gateways/src/backend.rs) | Proxy frames to remote FIG backend over TREE |
 | [`sse`](../crates/fig-gateways/src/sse.rs) | Server-Sent Events ↔ STREAM_ITEM |
@@ -84,6 +84,9 @@ cargo doc --workspace --no-deps --open
 | Binary | Command | Purpose |
 |---|---|---|
 | `fig-gateway` | `cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876` |
+
+E2E alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`
+(Binance / Hyperliquid / FIX / REST fixture tables in one test file).
 
 ---
 

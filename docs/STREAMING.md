@@ -86,6 +86,7 @@ Run with backend proxy:
 ```bash
 cargo run -p fig-exchange-sim &
 cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
 ```
 
 See [GATEWAY.md](GATEWAY.md) for deployment and [QUERY.md](QUERY.md) for historical pulls.

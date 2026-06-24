@@ -135,7 +135,24 @@ cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 | FIG native | — | `SUBSCRIBE` with `ChannelPath` directly |
 
 Full mapping: [`crates/fig-gateways/src/ws_catalog.rs`](../crates/fig-gateways/src/ws_catalog.rs).
-Alias round-trip tests: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.
+
+### Alias round-trip tests
+
+One integration test file exercises **reference fixture tables** (not separate protocol tracks):
+
+```bash
+cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
+```
+
+| Test | Fixture table | Legacy shape |
+|---|---|---|
+| `legacy_ws_binance_aliases_round_trip_through_backend` | Binance WS | `{"method":"SUBSCRIBE","params":["…@…"]}` |
+| `legacy_ws_hyperliquid_aliases_round_trip_through_backend` | Hyperliquid WS | `{"method":"subscribe","subscription":{…}}` |
+| `legacy_fix_order_aliases_round_trip_through_backend` | FIX 4.4 | `35=D` NewOrderSingle → native order `REQUEST` |
+| `legacy_rest_get_aliases_round_trip_through_backend` | Native REST | `GET /.well-known/capabilities`, `GET /accounts/{acct}` |
+
+Each case maps to native FIG, proxies via `proxy_frame` to exchange-sim, and asserts
+`StreamItem` / `Response` (no `StreamError`). See [AGENTS.md](../AGENTS.md).
 
 Performance clients (colo MMs) connect directly to the backend with SBE or CBOR —
 see [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md).

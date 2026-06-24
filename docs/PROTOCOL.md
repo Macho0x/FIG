@@ -220,13 +220,14 @@ Native FIG clients use `CHANNEL_PATH` directly. The gateway maps **legacy wire s
 to those paths — see [AGENTS.md](../AGENTS.md). Binance and Hyperliquid are reference
 implementations in `fig-gateways`; venues do not fork the protocol.
 
-| Native `CHANNEL_PATH` | Binance WS alias | Hyperliquid WS alias |
-|---|---|---|
-| `marketdata/{sym}/trades` | `@trade` | `trades` |
-| `marketdata/{sym}/book` | `@depth` | `l2Book`, `bbo` |
-| `marketdata/{sym}/candles/{iv}` | `@kline_{iv}` | `candle` |
-| `trading/accounts/{acct}/executions` | `@executionReport` | `orderUpdates` |
-| `accounts/{acct}/funding` | — | `userFunding` |
-| `marketdata/ticker/all` | `@miniTicker` | `allMids` |
+| Native `CHANNEL_PATH` | Binance WS alias | Hyperliquid WS alias | FIX alias |
+|---|---|---|---|
+| `marketdata/{sym}/trades` | `@trade` | `trades` | — |
+| `marketdata/{sym}/book` | `@depth` | `l2Book`, `bbo` | — |
+| `marketdata/{sym}/candles/{iv}` | `@kline_{iv}` | `candle` | — |
+| `trading/accounts/{acct}/executions` | `@executionReport` | `orderUpdates` | `ExecutionReport` (egress) |
+| `trading/accounts/{acct}/orders` POST | — | — | `35=D` NewOrderSingle |
+| `accounts/{acct}/funding` | — | `userFunding` | — |
+| `marketdata/ticker/all` | `@miniTicker` | `allMids` | — |
 
 Alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.

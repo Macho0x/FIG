@@ -178,11 +178,12 @@ Do **not**:
 | Conformance | Native FIG wire — `tests/conformance/vectors/` |
 | Broker | Native `SUBSCRIBE` / `REQUEST` on TREE |
 | Gateway | Legacy JSON in → native FIG frame → legacy JSON out |
-| Binance/HL completeness | Alias coverage in `fig-gateways` tests — proves mapping, not protocol semantics |
+| Legacy alias fixtures | `gateway_legacy_ws_alias_e2e.rs` — Binance/HL WS, FIX orders, REST GET |
 
 ```bash
 cargo test --workspace
 cargo test -p fig-conformance
+cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
 cargo run -p xtask -- check-gateway   # gateway parity
 ```
 

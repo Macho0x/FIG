@@ -185,22 +185,27 @@ fn generate_sbe_imports(
     imported_message_enums: &std::collections::BTreeSet<String>,
 ) -> String {
     let mut types = std::collections::BTreeSet::new();
+    let struct_type_defs = collect_struct_type_defs(schema);
+
     for msg in &schema.messages {
         types.insert(msg.name.clone());
     }
-    for td in &schema.type_defs {
-        types.insert(td.name.clone());
+    for (name, _) in &struct_type_defs {
+        types.insert(name.clone());
     }
+
+    let mut message_named = std::collections::BTreeSet::new();
     for msg in &schema.messages {
         for field in &msg.fields {
-            collect_import_types(&field.field_type, &mut types);
+            collect_all_named_types(&field.field_type, &mut message_named);
         }
     }
-    for (_, fields) in collect_struct_type_defs(schema) {
-        for field in &fields {
-            collect_import_types(&field.field_type, &mut types);
+    for name in message_named {
+        if schema.type_defs.iter().any(|td| td.name == name && td.fields.is_none()) {
+            types.insert(name);
         }
     }
+
     let list: Vec<String> = types.into_iter().collect();
     let shared = [
         "Side",
@@ -233,15 +238,15 @@ fn generate_sbe_imports(
     format!("use crate::messages::{{{}}};\n\n", imports.join(", "))
 }
 
-fn collect_import_types(ft: &FieldType, out: &mut std::collections::BTreeSet<String>) {
+fn collect_all_named_types(ft: &FieldType, out: &mut std::collections::BTreeSet<String>) {
     match ft {
         FieldType::Named(name) => {
             out.insert(name.clone());
         }
-        FieldType::List(inner) => collect_import_types(inner, out),
+        FieldType::List(inner) => collect_all_named_types(inner, out),
         FieldType::InlineStruct(fields) => {
             for f in fields {
-                collect_import_types(&f.field_type, out);
+                collect_all_named_types(&f.field_type, out);
             }
         }
         _ => {}

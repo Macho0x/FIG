@@ -387,12 +387,15 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 
 | Document | Description |
 |---|---|
+| [AGENTS.md](AGENTS.md) | Contributor guide — one standard, gateway alias rules |
 | [SPEC.md](SPEC.md) | Normative protocol specification |
 | [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started and CLI walkthrough |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Worked sequences and integration patterns |
 | [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and WS catalog |
 | [docs/QUERY.md](docs/QUERY.md) | Historical queries and REST GET mapping |
-| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment and alias E2E tests |
+| [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md) | Colo SBE order entry path |
+| [docs/adr/0007-crypto-instrument-model.md](docs/adr/0007-crypto-instrument-model.md) | Crypto perp instrument catalog (FSL) |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Criterion microbenches + tail-latency harness |
 | [docs/API.md](docs/API.md) | Crate and module index |
 | [TODO.md §0](TODO.md#0-active-backlog-fig-repo) | Active backlog (priority-ordered open work) |
@@ -403,9 +406,11 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 | [TODO.md](TODO.md) | Implementation roadmap |
 
 ```bash
-cargo test --workspace          # ~360 tests
-cargo bench -p fig-bench        # Criterion microbenches (medians)
-cargo run --release -p fig-bench --bin fig-latency   # tail latency p99/p99.9
+cargo test --workspace
+cargo test -p fig-cli                              # SDK demos + SBE order demo
+cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
+cargo bench -p fig-bench                           # Criterion microbenches (medians)
+cargo run --release -p fig-bench --bin fig-latency # tail latency p99/p99.9
 ```
 
 ---

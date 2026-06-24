@@ -80,7 +80,7 @@ TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chai
 | Status | Item | Track | Detail |
 |---|---|---|---|
 | ✅ | Extended instrument model (long symbols, perp IDs, margin asset metadata) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
-| ✅ | Gateway legacy WS alias E2E test suite (reference fixtures) | crypto | `gateway_legacy_ws_alias_e2e.rs` |
+| ✅ | Gateway legacy alias E2E (Binance/HL/FIX/REST fixtures) | crypto | `gateway_legacy_ws_alias_e2e.rs` |
 | ⬜ | Cryptographic action auth (wallet signatures, EIP-712) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
@@ -294,7 +294,7 @@ Open items: [§0.3](#03-p2--reference-client-and-sdk-polish) (P2) and
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| 🔶 | `fig-client` complete merge + request surface | Medium | Broker paths exist; SDK gaps in §0.3 |
+| ✅ | `fig-client` complete merge + request surface | Medium | Perps merge helpers + `FigSdkClient` demos; Tier 1 polish in §0.3 |
 | 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | Medium | FFI smoke exists; see §0.4 |
 
 ### 19.3 Venue-owned — business stack (both venue types)
@@ -1024,8 +1024,9 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
 | ✅ | E2E: private account subscribe suite | High | Auth + balance/margin/position/executions/orderlists |
 | ✅ | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/fill-history/pagination |
-| ✅ | E2E: gateway REST GET round-trip | High | `gateway_legacy_ws_alias_e2e.rs` capabilities via `proxy_frame` |
-| ✅ | E2E: gateway WS round-trip | Medium | `gateway_legacy_ws_alias_e2e.rs` Binance/HL SUBSCRIBE via `proxy_frame` |
+| ✅ | E2E: gateway REST GET round-trip | High | `gateway_legacy_ws_alias_e2e` REST fixtures |
+| ✅ | E2E: gateway WS alias round-trip | Medium | Binance + Hyperliquid fixture tables |
+| ✅ | E2E: gateway FIX order alias round-trip | Medium | FIX `35=D` → native order `REQUEST` |
 | ⬜ | §16 binding tests for new types | Medium | See [§0.3](#03-p2--reference-client-and-sdk-polish) |
 
 ---
@@ -1053,7 +1054,10 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | SPEC.md private vs public auth | High | §9.3 scoping rules (token match, cross-account reject) |
 | ✅ | SPEC.md §7.3 historical patterns | High | §9.2 request/response + request_stream + gap-fill |
 | ✅ | `docs/QUERY.md` or STREAMING.md § query | High | [QUERY.md](docs/QUERY.md) + [STREAMING.md](docs/STREAMING.md) |
-| ✅ | `docs/WS_GATEWAY.md` or GATEWAY.md § WS catalog | High | `ws_catalog.rs` + [GATEWAY.md](docs/GATEWAY.md) update |
+| ✅ | `docs/WS_GATEWAY.md` or GATEWAY.md § WS catalog | High | `ws_catalog.rs` + alias E2E in [GATEWAY.md](docs/GATEWAY.md) |
+| ✅ | [AGENTS.md](AGENTS.md) contributor guide | High | One standard; gateway alias placement rules |
+| ✅ | [SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md) | Medium | Colo SBE order entry + `run_sbe_order_demo` |
+| ✅ | ADR 0007 crypto instrument model | Medium | [0007-crypto-instrument-model.md](docs/adr/0007-crypto-instrument-model.md) |
 | ✅ | ADR 0006 broker API parity | High | [0006-broker-api-parity.md](docs/adr/0006-broker-api-parity.md) |
 | ✅ | PROTOCOL.md worked examples | High | Public MD subscribe + private account + historical query |
 | ✅ | TUTORIAL.md streaming steps | Medium | §10 stream/query inventory tables |
@@ -1063,8 +1067,8 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 
 ### 17.9 Parity Checklist (Broker ↔ Client)
 
-Aligned with §17.0 / §17.0b matrix status. **Gateway WS/REST** = mapped topics/paths
-with `--fig-backend`; not every native row has a legacy catalog entry yet.
+Aligned with §17.0 / §17.0b matrix status. **Gateway WS/REST/FIX** = reference alias
+fixtures in `gateway_legacy_ws_alias_e2e.rs`; native FIG remains canonical.
 
 | Stream category | Broker publishes | Client subscribes | Gateway WS | In FSL | In exchange-sim |
 |---|---|---|---|---|---|

@@ -11,6 +11,7 @@ and consequences** for choices with long-term impact.
 | 0004 | [FSL as Single Source of Truth](0004-fsl-single-source-of-truth.md) | Accepted |
 | 0005 | [Multi-Language Runtime Strategy](0005-multi-language-runtime-strategy.md) | Accepted |
 | 0006 | [Broker ↔ Client API Parity](0006-broker-api-parity.md) | Accepted |
+| 0007 | [Crypto Instrument Model](0007-crypto-instrument-model.md) | Accepted |
 
 ---
 

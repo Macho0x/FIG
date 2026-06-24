@@ -14,7 +14,7 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceSnapshot, CandleBar, CandleBarBatch, CapabilitiesResponse, ExecType,
-    ExecutionReport, InstrumentCatalogResponse, InstrumentMetadata, MarkPriceUpdate,
+    ExecutionReport, InstrumentCatalogResponse, MarkPriceUpdate,
     MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle,
     OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch,
     OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price,
