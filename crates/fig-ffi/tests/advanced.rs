@@ -28,10 +28,8 @@ fn payload_compress_round_trip() {
     );
     let out = unsafe { std::slice::from_raw_parts(decompressed.data, decompressed.len).to_vec() };
     assert_eq!(out, data);
-    unsafe {
-        fig_ffi::fig_buffer_free(compressed);
-        fig_ffi::fig_buffer_free(decompressed);
-    }
+    fig_ffi::fig_buffer_free(compressed);
+    fig_ffi::fig_buffer_free(decompressed);
 }
 
 #[test]

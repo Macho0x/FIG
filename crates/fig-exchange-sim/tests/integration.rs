@@ -42,7 +42,7 @@ async fn read_all_frames(recv: &mut quinn::RecvStream) -> anyhow::Result<Vec<Fra
 
 /// Helper: setup a client connection to the given server address.
 async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<quinn::Connection> {
-    let mut client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
+    let client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
     let client_cfg = client_config().map_err(|e| anyhow::anyhow!("client_config: {}", e))?;
     let conn = client_ep
         .connect_with(client_cfg, server_addr, "localhost")?
@@ -1341,7 +1341,7 @@ async fn test_invalid_query_method_rejected() {
         .await
         .expect("connect");
 
-    let mut query = Frame::new(FrameType::Request, 1)
+    let query = Frame::new(FrameType::Request, 1)
         .with_seq(1)
         .with_schema_id(1)
         .with_extension(Extension::text(
