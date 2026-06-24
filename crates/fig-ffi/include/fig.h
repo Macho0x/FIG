@@ -7,14 +7,39 @@
 #include <stdlib.h>
 
 /**
+ * Opaque BBO state for C bindings.
+ */
+typedef struct FigBboHandle FigBboHandle;
+
+/**
  * Opaque connected FIG client (one TREE connection).
  */
 typedef struct FigClientHandle FigClientHandle;
 
 /**
+ * Opaque mark price cache for C bindings.
+ */
+typedef struct FigMarkPriceHandle FigMarkPriceHandle;
+
+/**
+ * Opaque mids cache for C bindings.
+ */
+typedef struct FigMidsHandle FigMidsHandle;
+
+/**
  * Opaque order book state for C bindings.
  */
 typedef struct FigOrderBookHandle FigOrderBookHandle;
+
+/**
+ * Opaque orders + executions merge state for C bindings.
+ */
+typedef struct FigOrdersHandle FigOrdersHandle;
+
+/**
+ * Opaque public trade tape for C bindings.
+ */
+typedef struct FigTradeTapeHandle FigTradeTapeHandle;
 
 /**
  * Opaque owned byte buffer returned to callers.
@@ -309,57 +334,65 @@ int32_t fig_sbe_encode_symbol_ticker(const char *symbol,
                                      uint8_t is_snapshot,
                                      struct FigBuffer *out);
 
-FigMidsHandle *fig_mids_new(void);
+struct FigMidsHandle *fig_mids_new(void);
 
-void fig_mids_free(FigMidsHandle *handle);
+void fig_mids_free(struct FigMidsHandle *handle);
 
-int32_t fig_mids_apply_ticker(FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_mids_apply_ticker(struct FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
 
-int32_t fig_mids_apply_batch(FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_mids_apply_batch(struct FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
 
-double fig_mids_mid(const FigMidsHandle *handle, const char *symbol);
+double fig_mids_mid(const struct FigMidsHandle *handle, const char *symbol);
 
-FigBboHandle *fig_bbo_new(void);
+struct FigBboHandle *fig_bbo_new(void);
 
-void fig_bbo_free(FigBboHandle *handle);
+void fig_bbo_free(struct FigBboHandle *handle);
 
-int32_t fig_bbo_apply(FigBboHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_bbo_apply(struct FigBboHandle *handle, const uint8_t *payload, uintptr_t len);
 
-double fig_bbo_implied_mid(const FigBboHandle *handle);
+double fig_bbo_implied_mid(const struct FigBboHandle *handle);
 
-double fig_bbo_best_bid(const FigBboHandle *handle);
+double fig_bbo_best_bid(const struct FigBboHandle *handle);
 
-double fig_bbo_best_ask(const FigBboHandle *handle);
+double fig_bbo_best_ask(const struct FigBboHandle *handle);
 
-FigTradeTapeHandle *fig_trade_tape_new(uintptr_t capacity);
+struct FigTradeTapeHandle *fig_trade_tape_new(uintptr_t capacity);
 
-void fig_trade_tape_free(FigTradeTapeHandle *handle);
+void fig_trade_tape_free(struct FigTradeTapeHandle *handle);
 
-int32_t fig_trade_tape_push(FigTradeTapeHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_trade_tape_push(struct FigTradeTapeHandle *handle,
+                            const uint8_t *payload,
+                            uintptr_t len);
 
-uintptr_t fig_trade_tape_len(const FigTradeTapeHandle *handle);
+uintptr_t fig_trade_tape_len(const struct FigTradeTapeHandle *handle);
 
-double fig_trade_tape_latest_price(const FigTradeTapeHandle *handle);
+double fig_trade_tape_latest_price(const struct FigTradeTapeHandle *handle);
 
-FigMarkPriceHandle *fig_mark_price_new(void);
+struct FigMarkPriceHandle *fig_mark_price_new(void);
 
-void fig_mark_price_free(FigMarkPriceHandle *handle);
+void fig_mark_price_free(struct FigMarkPriceHandle *handle);
 
-int32_t fig_mark_price_apply(FigMarkPriceHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_mark_price_apply(struct FigMarkPriceHandle *handle,
+                             const uint8_t *payload,
+                             uintptr_t len);
 
-double fig_mark_price_get(const FigMarkPriceHandle *handle, const char *symbol);
+double fig_mark_price_get(const struct FigMarkPriceHandle *handle, const char *symbol);
 
-FigOrdersHandle *fig_orders_new(uintptr_t exec_capacity);
+struct FigOrdersHandle *fig_orders_new(uintptr_t exec_capacity);
 
-void fig_orders_free(FigOrdersHandle *handle);
+void fig_orders_free(struct FigOrdersHandle *handle);
 
-int32_t fig_orders_apply_snapshot(FigOrdersHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_orders_apply_snapshot(struct FigOrdersHandle *handle,
+                                  const uint8_t *payload,
+                                  uintptr_t len);
 
-int32_t fig_orders_apply_execution(FigOrdersHandle *handle, const uint8_t *payload, uintptr_t len);
+int32_t fig_orders_apply_execution(struct FigOrdersHandle *handle,
+                                   const uint8_t *payload,
+                                   uintptr_t len);
 
-uintptr_t fig_orders_open_count(const FigOrdersHandle *handle);
+uintptr_t fig_orders_open_count(const struct FigOrdersHandle *handle);
 
-uintptr_t fig_orders_execution_count(const FigOrdersHandle *handle);
+uintptr_t fig_orders_execution_count(const struct FigOrdersHandle *handle);
 
 /**
  * Extract payload bytes from an encoded FIG frame.

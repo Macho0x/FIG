@@ -9,19 +9,30 @@ use fig_core::messages::{
     PublicTradeEvent,
 };
 
-macro_rules! opaque_handle {
-    ($name:ident, $inner:ty) => {
-        pub struct $name {
-            state: $inner,
-        }
-    };
+/// Opaque mids cache for C bindings.
+pub struct FigMidsHandle {
+    state: MidsState,
 }
 
-opaque_handle!(FigMidsHandle, MidsState);
-opaque_handle!(FigBboHandle, BboState);
-opaque_handle!(FigTradeTapeHandle, TradeTape);
-opaque_handle!(FigMarkPriceHandle, MarkPriceState);
-opaque_handle!(FigOrdersHandle, OrdersState);
+/// Opaque BBO state for C bindings.
+pub struct FigBboHandle {
+    state: BboState,
+}
+
+/// Opaque public trade tape for C bindings.
+pub struct FigTradeTapeHandle {
+    state: TradeTape,
+}
+
+/// Opaque mark price cache for C bindings.
+pub struct FigMarkPriceHandle {
+    state: MarkPriceState,
+}
+
+/// Opaque orders + executions merge state for C bindings.
+pub struct FigOrdersHandle {
+    state: OrdersState,
+}
 
 fn apply_cbor<T: serde::de::DeserializeOwned>(
     payload: *const u8,

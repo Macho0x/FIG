@@ -78,7 +78,12 @@ fn run_codegen(check: bool) -> Result<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        write_if_changed(&path, &fig_fsl::generate_sbe_target(&parsed, lang), check)?;
+        let content = fig_fsl::generate_sbe_target(&parsed, lang);
+        if lang == fig_fsl::SbeTargetLang::Go {
+            write_if_changed_go(&path, &content, check)?;
+        } else {
+            write_if_changed(&path, &content, check)?;
+        }
     }
 
     let cpp_pure = root.join("bindings/cpp/pure");
@@ -156,6 +161,27 @@ fn rustfmt_string(path: &Path, content: &str) -> Result<String> {
     let status = Command::new("rustfmt").arg(&tmp).status()?;
     if !status.success() {
         bail!("rustfmt failed for {}", path.display());
+    }
+    Ok(fs::read_to_string(&tmp)?)
+}
+
+/// Like [`write_if_changed`] but normalizes Go sources with `gofmt` before compare/write.
+fn write_if_changed_go(path: &Path, content: &str, check: bool) -> Result<()> {
+    let formatted = gofmt_string(path, content)?;
+    write_if_changed(path, &formatted, check)
+}
+
+fn gofmt_string(path: &Path, content: &str) -> Result<String> {
+    let tmp = std::env::temp_dir().join(format!(
+        "fig-codegen-{}",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("out.go")
+    ));
+    fs::write(&tmp, content)?;
+    let status = Command::new("gofmt").arg("-w").arg(&tmp).status()?;
+    if !status.success() {
+        bail!("gofmt failed for {}", path.display());
     }
     Ok(fs::read_to_string(&tmp)?)
 }
