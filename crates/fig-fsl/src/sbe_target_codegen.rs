@@ -96,7 +96,7 @@ fn collect_schema_types(schema: &Schema) -> (SbeEnumTypes, SbeInlineStructTypes)
 fn file_header(schema: &Schema, lang: SbeTargetLang, desc: &str) -> String {
     let mut out = match lang {
         SbeTargetLang::Go => format!(
-            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\npackage figsbe\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\n",
+            "//go:build !conformance\n\n// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\npackage figsbe\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\n",
             schema.name, schema.version, desc
         ),
         SbeTargetLang::Cpp => format!(

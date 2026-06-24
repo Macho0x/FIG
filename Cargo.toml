@@ -6,6 +6,7 @@ members = [
     "crates/fig-fsl",
     "crates/fig-exchange-sim",
     "crates/fig-cli",
+    "crates/fig-client",
     "crates/fig-bench",
     "crates/fig-conformance",
     "crates/fig-ffi",

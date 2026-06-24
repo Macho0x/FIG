@@ -58,6 +58,12 @@ struct Args {
     /// Optional FIG backend to proxy translated frames (host:port)
     #[arg(long)]
     fig_backend: Option<SocketAddr>,
+    /// HTTP listen address for `/healthz` liveness
+    #[arg(long)]
+    health_addr: Option<SocketAddr>,
+    /// HTTP listen address for Prometheus `/metrics`
+    #[arg(long)]
+    metrics_addr: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -97,6 +103,13 @@ async fn main() -> anyhow::Result<()> {
         args.fig_backend,
     ));
 
+    if let Some(addr) = args.health_addr {
+        tokio::spawn(run_health_server(addr));
+    }
+    if let Some(addr) = args.metrics_addr {
+        tokio::spawn(run_metrics_server(addr));
+    }
+
     tokio::select! {
         r = rest => r??,
         w = ws => w??,
@@ -104,6 +117,54 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+async fn run_health_server(addr: SocketAddr) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(addr).await?;
+    info!("Health check on http://{}/healthz", addr);
+    loop {
+        let (mut stream, _) = listener.accept().await?;
+        tokio::spawn(async move {
+            let mut buf = [0u8; 256];
+            let n = stream.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            if req.starts_with("GET /healthz") {
+                let _ = stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok")
+                    .await;
+            } else {
+                let _ = stream
+                    .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            }
+        });
+    }
+}
+
+async fn run_metrics_server(addr: SocketAddr) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(addr).await?;
+    info!("Prometheus metrics on http://{}/metrics", addr);
+    loop {
+        let (mut stream, _) = listener.accept().await?;
+        tokio::spawn(async move {
+            let mut buf = [0u8; 512];
+            let n = stream.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            if req.starts_with("GET /metrics") {
+                let body = fig_core::observability::METRICS.render_prometheus();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+            } else {
+                let _ = stream
+                    .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            }
+        });
+    }
 }
 
 async fn run_rest_gateway(addr: SocketAddr, fig_backend: Option<SocketAddr>) -> anyhow::Result<()> {

@@ -6,7 +6,7 @@ license.workspace = true
 description = "FIG-native exchange simulator (killer demo server)"
 
 [dependencies]
-fig-core = { workspace = true }
+fig-core = { workspace = true, features = ["session-redis"] }
 tokio = { workspace = true }
 quinn = { workspace = true }
 rustls = { workspace = true }
@@ -17,3 +17,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
+clap = { workspace = true }

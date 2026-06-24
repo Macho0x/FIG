@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 fig-core = { workspace = true }
+fig-client = { path = "../fig-client" }
 fig-ffi = { workspace = true }
 fig-conformance = { workspace = true }
 hex = { workspace = true }

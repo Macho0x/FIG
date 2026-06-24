@@ -12,6 +12,9 @@ Central reference for FIG crates, modules, and project documentation.
 | [QUERY.md](QUERY.md) | Historical `REQUEST`/`RESPONSE` paths and REST GET mapping |
 | [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST/WebSocket gateway deployment |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Pre-1.0 security checklist |
+| [1.0-CRITERIA.md](1.0-CRITERIA.md) | Release criteria for FIG 1.0 |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | HA deployment and operations |
+| [PUBLISHING.md](PUBLISHING.md) | Build and install SDKs |
 | [adr/README.md](adr/README.md) | Architecture decision records |
 | [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
@@ -33,12 +36,12 @@ cargo doc --workspace --no-deps --open
 | [`frame`](../crates/fig-core/src/frame.rs) | 16-byte header encode/decode, streaming `FrameDecoder` |
 | [`ext`](../crates/fig-core/src/ext.rs) | TLV extension tags (29 tags) |
 | [`channel`](../crates/fig-core/src/channel.rs) | Channel lifecycle, unidirectional streams, sequence numbers |
-| [`session`](../crates/fig-core/src/session.rs) | Session model; `MemorySessionStore`, `FileSessionStore`, `RedisSessionStore`, `EtcdSessionStore` |
-| [`transport`](../crates/fig-core/src/transport.rs) | TREE transport, `FigConnection`, 0-RTT, migration |
+| [`session`](../crates/fig-core/src/session.rs) | Session model; `MemorySessionStore`, `FileSessionStore`, optional `RedisSessionStore` (`session-redis` feature) |
+| [`transport`](../crates/fig-core/src/transport.rs) | TREE transport, `FigConnection`, 0-RTT, migration, replay cache |
 | [`tcp`](../crates/fig-core/src/tcp.rs) | TCP downgrade mode (`FIG\x01` magic prefix) |
 | [`migration`](../crates/fig-core/src/migration.rs) | Connection migration tokens and channel reconstruction |
 | [`codec`](../crates/fig-core/src/codec.rs) | CBOR helpers; JSON ↔ CBOR for gateways |
-| [`protobuf`](../crates/fig-core/src/protobuf.rs) | Protobuf wire encoding for schema-evolving payloads |
+| [`replay`](../crates/fig-core/src/replay.rs) | 0-RTT resumption token replay cache |
 | [`sbe`](../crates/fig-core/src/sbe.rs) | Zero-alloc SBE encoder/decoder |
 | [`compression`](../crates/fig-core/src/compression.rs) | zstd payload compression |
 | [`fragment`](../crates/fig-core/src/fragment.rs) | Payload fragmentation and reassembly |

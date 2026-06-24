@@ -12,6 +12,11 @@
 typedef struct FigClientHandle FigClientHandle;
 
 /**
+ * Opaque order book state for C bindings.
+ */
+typedef struct FigOrderBookHandle FigOrderBookHandle;
+
+/**
  * Opaque owned byte buffer returned to callers.
  */
 typedef struct FigBuffer {
@@ -228,6 +233,47 @@ int32_t fig_jwt_decode_sub(const char *token, const char *secret, char **out_sub
  */
 int32_t fig_jwt_verify_bearer(const char *token, const char *secret);
 
+/**
+ * Create an empty order book state.
+ */
+struct FigOrderBookHandle *fig_order_book_new(void);
+
+/**
+ * Free order book state.
+ *
+ * # Safety
+ * `handle` must be from `fig_order_book_new` and not already freed.
+ */
+void fig_order_book_free(struct FigOrderBookHandle *handle);
+
+/**
+ * Apply CBOR `OrderBookSnapshot` payload. Returns 0 on success, -1 on error.
+ *
+ * # Safety
+ * `payload` must be valid for `len` bytes.
+ */
+int32_t fig_order_book_apply_snapshot(struct FigOrderBookHandle *handle,
+                                      const uint8_t *payload,
+                                      uintptr_t len);
+
+/**
+ * Apply CBOR `OrderBookDelta` payload. Returns 0 on success, -1 on error.
+ *
+ * # Safety
+ * `payload` must be valid for `len` bytes.
+ */
+int32_t fig_order_book_apply_delta(struct FigOrderBookHandle *handle,
+                                   const uint8_t *payload,
+                                   uintptr_t len);
+
+/**
+ * Best bid price, or NaN if empty.
+ *
+ * # Safety
+ * `handle` must be valid.
+ */
+double fig_order_book_best_bid(const struct FigOrderBookHandle *handle);
+
 int32_t fig_sbe_encode_new_order_single(const char *cl_ord_id,
                                         const char *symbol,
                                         uint8_t side_buy,
@@ -262,6 +308,58 @@ int32_t fig_sbe_encode_symbol_ticker(const char *symbol,
                                      int64_t timestamp,
                                      uint8_t is_snapshot,
                                      struct FigBuffer *out);
+
+FigMidsHandle *fig_mids_new(void);
+
+void fig_mids_free(FigMidsHandle *handle);
+
+int32_t fig_mids_apply_ticker(FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
+
+int32_t fig_mids_apply_batch(FigMidsHandle *handle, const uint8_t *payload, uintptr_t len);
+
+double fig_mids_mid(const FigMidsHandle *handle, const char *symbol);
+
+FigBboHandle *fig_bbo_new(void);
+
+void fig_bbo_free(FigBboHandle *handle);
+
+int32_t fig_bbo_apply(FigBboHandle *handle, const uint8_t *payload, uintptr_t len);
+
+double fig_bbo_implied_mid(const FigBboHandle *handle);
+
+double fig_bbo_best_bid(const FigBboHandle *handle);
+
+double fig_bbo_best_ask(const FigBboHandle *handle);
+
+FigTradeTapeHandle *fig_trade_tape_new(uintptr_t capacity);
+
+void fig_trade_tape_free(FigTradeTapeHandle *handle);
+
+int32_t fig_trade_tape_push(FigTradeTapeHandle *handle, const uint8_t *payload, uintptr_t len);
+
+uintptr_t fig_trade_tape_len(const FigTradeTapeHandle *handle);
+
+double fig_trade_tape_latest_price(const FigTradeTapeHandle *handle);
+
+FigMarkPriceHandle *fig_mark_price_new(void);
+
+void fig_mark_price_free(FigMarkPriceHandle *handle);
+
+int32_t fig_mark_price_apply(FigMarkPriceHandle *handle, const uint8_t *payload, uintptr_t len);
+
+double fig_mark_price_get(const FigMarkPriceHandle *handle, const char *symbol);
+
+FigOrdersHandle *fig_orders_new(uintptr_t exec_capacity);
+
+void fig_orders_free(FigOrdersHandle *handle);
+
+int32_t fig_orders_apply_snapshot(FigOrdersHandle *handle, const uint8_t *payload, uintptr_t len);
+
+int32_t fig_orders_apply_execution(FigOrdersHandle *handle, const uint8_t *payload, uintptr_t len);
+
+uintptr_t fig_orders_open_count(const FigOrdersHandle *handle);
+
+uintptr_t fig_orders_execution_count(const FigOrdersHandle *handle);
 
 /**
  * Extract payload bytes from an encoded FIG frame.

@@ -128,6 +128,9 @@ pub enum FigError {
     #[error("0-RTT rejected by server")]
     ZeroRttRejected,
 
+    #[error("0-RTT resumption token replay rejected")]
+    ReplayRejected,
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }

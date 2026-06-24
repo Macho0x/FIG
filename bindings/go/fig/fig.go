@@ -29,9 +29,7 @@ func intoGoBuffer(buf C.struct_FigBuffer) (Buffer, error) {
 		C.fig_buffer_free(buf)
 		return Buffer{}, errors.New("empty fig buffer")
 	}
-	slice := unsafe.Slice(buf.data, buf.len)
-	out := make([]byte, len(slice))
-	copy(out, slice)
+	out := C.GoBytes(unsafe.Pointer(buf.data), C.int(buf.len))
 	C.fig_buffer_free(buf)
 	return Buffer{data: out}, nil
 }
@@ -105,8 +103,7 @@ func (c *Client) RequestAndRecv(frame []byte) ([][]byte, error) {
 		if buf.data == nil || buf.len == 0 {
 			continue
 		}
-		raw := unsafe.Slice(buf.data, buf.len)
-		out[i] = append([]byte(nil), raw...)
+		out[i] = C.GoBytes(unsafe.Pointer(buf.data), C.int(buf.len))
 	}
 	return out, nil
 }

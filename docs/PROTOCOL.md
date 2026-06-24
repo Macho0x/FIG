@@ -41,8 +41,9 @@ When the underlying IP changes (mobile clients, load balancer failover):
 3. Call `FigConnection::apply_migration()` to restore channel sequence state.
 
 See `fig_core::migration` for token format and validation. Session stores
-(`MemorySessionStore`, `FileSessionStore`, `RedisSessionStore`, `EtcdSessionStore`)
-persist channel and sequence state across restarts.
+(`MemorySessionStore`, `FileSessionStore`, optional `RedisSessionStore` with
+`fig-core` feature `session-redis`) persist channel and sequence state across
+restarts. See [DEPLOYMENT.md](DEPLOYMENT.md) for multi-node layouts.
 
 ## Security Primitives (wire validation)
 

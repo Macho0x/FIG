@@ -46,4 +46,13 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python binding_conforman
 cargo run -p xtask -- codegen --check
 ```
 
+**Stream merge (CBOR payload → local state):** `fig_order_book_*`, `fig_mids_*`,
+`fig_bbo_*`, `fig_trade_tape_*`, `fig_mark_price_*`, `fig_orders_*` — see
+`crates/fig-ffi/include/fig.h`. Python: `OrderBookState`, `MidsState`, `BboState`,
+`TradeTape`, `MarkPriceState`, `OrdersState` in `fig-python`.
+
 Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformance/vectors/v1.json` (including CandleBar CBOR/SBE).
+
+**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. Per-language generated SBE (`sbe_generated.*`) is compile-smoke only until hex parity lands — prefer FFI for production wire paths.
+
+Go smoke: `cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance`.

@@ -309,6 +309,9 @@ Roadmap and parity definition: [TODO.md §16](TODO.md). Status key: **✅** ship
 | [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Criterion microbenches + tail-latency harness |
 | [docs/API.md](docs/API.md) | Crate and module index |
+| [docs/1.0-CRITERIA.md](docs/1.0-CRITERIA.md) | Release criteria for FIG 1.0 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA deployment and operations |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | Build and install SDKs |
 | [schemas/orders.fsl](schemas/orders.fsl) | Example FSL schema |
 | [TODO.md](TODO.md) | Implementation roadmap |
 

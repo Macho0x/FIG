@@ -46,7 +46,7 @@ fn run_codegen(check: bool) -> Result<()> {
         &fig_fsl::RustCodegen::generate(&parsed),
         check,
     )?;
-    write_if_changed(
+    write_if_changed_rust(
         &out_dir.join("sbe_generated.rs"),
         &fig_fsl::sbe_codegen::generate_sbe(&parsed),
         check,
@@ -137,6 +137,27 @@ fn write_if_changed(path: &Path, content: &str, check: bool) -> Result<()> {
     }
     fs::write(path, content).with_context(|| format!("write {}", path.display()))?;
     Ok(())
+}
+
+/// Like [`write_if_changed`] but normalizes Rust sources with `rustfmt` before compare/write.
+fn write_if_changed_rust(path: &Path, content: &str, check: bool) -> Result<()> {
+    let formatted = rustfmt_string(path, content)?;
+    write_if_changed(path, &formatted, check)
+}
+
+fn rustfmt_string(path: &Path, content: &str) -> Result<String> {
+    let tmp = std::env::temp_dir().join(format!(
+        "fig-codegen-{}",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("out.rs")
+    ));
+    fs::write(&tmp, content)?;
+    let status = Command::new("rustfmt").arg(&tmp).status()?;
+    if !status.success() {
+        bail!("rustfmt failed for {}", path.display());
+    }
+    Ok(fs::read_to_string(&tmp)?)
 }
 
 fn workspace_root() -> PathBuf {

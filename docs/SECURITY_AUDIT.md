@@ -10,7 +10,7 @@ references.
 - [x] mTLS support for production
 - [x] Certificate rotation (`RotatingServerCerts`)
 - [ ] External penetration test of TREE listener
-- [ ] 0-RTT replay protection (documented TODO in transport)
+- [x] 0-RTT replay protection (`fig_core::replay`, SPEC §10.1)
 
 ## Authentication
 
@@ -27,8 +27,8 @@ outside this checklist.
 
 - [x] Per-channel rate limiting (`ChannelRateLimiter`)
 - [x] Connection-level DoS guard (`DoSGuard`, `FloodDetector`)
-- [ ] Load test with sustained frame flood
-- [ ] Fuzz frame decoder (`cargo fuzz` — recommended)
+- [x] Load test with sustained frame flood (`fig-load` smoke)
+- [ ] Fuzz frame decoder (`cargo fuzz` in `crates/fig-core/fuzz` — see CONTRIBUTING)
 
 ## Data
 

@@ -6,7 +6,9 @@ mod advanced;
 mod binding;
 mod client;
 mod jwt;
+mod order_book;
 mod sbe;
+mod stream_state;
 mod streams;
 
 pub use advanced::{

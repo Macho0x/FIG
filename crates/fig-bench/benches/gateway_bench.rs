@@ -181,9 +181,7 @@ fn bench_ws_serialize_text_frame(c: &mut Criterion) {
 // ─── Protocol comparison benchmarks ─────────────────────────────
 
 fn bench_protocol_comparison_new_order(c: &mut Criterion) {
-    use fig_core::messages::{
-        NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
-    };
+    use fig_core::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
     use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
     use fig_gateways::rest::{http_to_fig_frame, parse_http_request};
 

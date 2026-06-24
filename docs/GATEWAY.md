@@ -79,11 +79,13 @@ state management (sequence numbers, heartbeats, gap fill).
 ## Production Checklist
 
 - [ ] Replace self-signed certs with proper PKI or mTLS (`FIG_MTLS=1` on exchange-sim).
-- [ ] Use Redis/etcd session store for multi-node deployments (`RedisSessionStore`, `EtcdSessionStore`).
+- [ ] Multi-node: shared sessions via `RedisSessionStore` (`fig-core` feature `session-redis`). See [DEPLOYMENT.md](DEPLOYMENT.md).
 - [ ] Enable rate limiting and DoS guards (`DoSGuard`, `ChannelRateLimiter`).
-- [ ] Export metrics from `fig-observability` (`/metrics` on `:9090`).
-- [ ] Wire gateway adapters to forward translated frames to your FIG backend.
+- [ ] Export metrics: `fig-observability` or `fig-gateway --metrics-addr`.
+- [ ] Liveness: `fig-gateway --health-addr` for orchestrators.
+- [ ] Wire gateway adapters to forward translated frames to your FIG backend (`--fig-backend`).
 - [ ] Run gateway and backend in separate network zones with firewall rules.
+- [ ] Use [docker-compose.yml](../docker-compose.yml) as a reference stack.
 
 ## Docker
 
@@ -93,5 +95,7 @@ Build and run the exchange simulator container:
 docker build -t fig-exchange-sim .
 docker run --rm -p 8443:8443/udp fig-exchange-sim
 ```
+
+Full stack (sim + gateway + metrics): `docker compose up`. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 See [Dockerfile](../Dockerfile) for the multi-stage build definition.

@@ -15,8 +15,9 @@ use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
 use fig_core::messages::*;
-use fig_core::session::{FileSessionStore, MemorySessionStore, Session, SessionStore};
+use fig_core::session::{MemorySessionStore, Session, SessionStore};
 use fig_core::transport;
+use fig_core::DurableSessionStore;
 
 use crate::account_state::{AccountHub, AccountSubscription};
 use crate::broker_session::{
@@ -55,7 +56,7 @@ pub mod paths {
 pub struct ExchangeState {
     pub engine: Mutex<MatchingEngine>,
     pub sessions: MemorySessionStore,
-    pub file_sessions: FileSessionStore,
+    pub file_sessions: DurableSessionStore,
     pub subscriptions: Mutex<Vec<StreamSubscription>>,
     pub account_subscriptions: Mutex<Vec<AccountSubscription>>,
     pub market_data: Mutex<MarketDataHub>,
@@ -89,10 +90,17 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
     let endpoint = Arc::new(Endpoint::server(server_config, addr)?);
     info!("FIG server listening on {}", endpoint.local_addr()?);
 
+    let durable = DurableSessionStore::from_env().unwrap_or_else(|e| {
+        warn!("session store from env failed ({e}); using file backend");
+        DurableSessionStore::File(fig_core::session::FileSessionStore::new(
+            std::env::temp_dir().join("fig-exchange-sessions"),
+        ))
+    });
+
     let state = Arc::new(ExchangeState {
         engine: Mutex::new(MatchingEngine::new()),
         sessions: MemorySessionStore::new(),
-        file_sessions: FileSessionStore::new(std::env::temp_dir().join("fig-exchange-sessions")),
+        file_sessions: durable,
         subscriptions: Mutex::new(Vec::new()),
         account_subscriptions: Mutex::new(Vec::new()),
         market_data: Mutex::new(MarketDataHub::default()),

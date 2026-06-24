@@ -352,8 +352,8 @@ SESSION_ID (16-byte binary). It is NOT tied to a single connection.
 
 ### 8.2 Session Store
 
-Servers maintain session state in a durable store (Redis, etcd, or
-database). State includes:
+Servers maintain session state in a durable store (memory, file, or Redis via
+`fig-core` feature `session-redis`). State includes:
 - Session ID and authentication context
 - Open channels and their modes
 - Last sent/received sequence numbers per channel
@@ -543,6 +543,17 @@ for implementers (constant-time compare, JWT decode, introspection hooks).
 They do not constitute a credential-issuance product. Production venues plug
 their own identity systems behind the same `AUTH_TOKEN` + path-scoping rules.
 
+### 10.1 0-RTT replay protection
+
+TREE 0-RTT resumption can replay early client data. Implementations MUST
+reject duplicate resumption tokens within a configurable replay window
+(default **30 seconds**). The reference `fig_core::replay::MemoryReplayCache`
+keys on a hash of the resumption token bytes.
+
+Venues SHOULD treat idempotent read paths as 0-RTT-safe and defer
+non-idempotent order submission until the handshake completes (1-RTT) unless
+a venue-specific anti-replay policy allows otherwise.
+
 ---
 
 ## 11. FSL — Fig Schema Language
@@ -700,7 +711,7 @@ Servers advertise their tier during CONNECT via SETTINGS.
 - **ALPN identifier:** `fig/1`
 - **Well-known Schema IDs:** 0x01–0xEF (registry TBD)
 - **Well-known Extension Tags:** 0x0001–0x001D (this document); future tags via registry
-- **Content Types:** `application/fig+sbe`, `application/fig+protobuf`, `application/cbor`
+- **Content Types:** `application/fig+sbe`, `application/cbor`
 
 ---
 

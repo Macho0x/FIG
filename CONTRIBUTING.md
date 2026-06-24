@@ -158,6 +158,16 @@ GitHub Actions runs on every push to `main`:
 
 Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
 
+## Fuzzing (optional, pre-1.0)
+
+Install `cargo-fuzz`, then from `crates/fig-core/fuzz`:
+
+```bash
+cargo fuzz run frame_decode -- -max_total_time=60
+```
+
+Targets `Frame::decode` and `FrameDecoder` against arbitrary bytes. See [docs/1.0-CRITERIA.md](docs/1.0-CRITERIA.md).
+
 ## License
 
 Dual-licensed under MIT or Apache-2.0. All contributions must be dual-licensed.

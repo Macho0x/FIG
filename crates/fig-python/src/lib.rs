@@ -2,6 +2,8 @@
 
 mod client;
 mod codec;
+mod order_book;
+mod stream_state;
 
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -245,5 +247,11 @@ fn fig(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_cbor_order_history_request, m)?)?;
     m.add_function(wrap_pyfunction!(run_conformance, m)?)?;
     m.add_class::<FigPyClient>()?;
+    m.add_class::<order_book::PyOrderBookState>()?;
+    m.add_class::<stream_state::PyMidsState>()?;
+    m.add_class::<stream_state::PyBboState>()?;
+    m.add_class::<stream_state::PyTradeTape>()?;
+    m.add_class::<stream_state::PyMarkPriceState>()?;
+    m.add_class::<stream_state::PyOrdersState>()?;
     Ok(())
 }

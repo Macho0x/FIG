@@ -3,9 +3,10 @@
 use std::net::SocketAddr;
 
 use anyhow::{bail, Context, Result};
+use fig_client::{dev_auth_token, FigSdkClient};
 use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
-use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
+use fig_core::frame::{ControlSubtype, Frame, FrameType};
 use fig_core::messages::*;
 use fig_core::transport;
 use quinn::{Connection, Endpoint};
@@ -15,7 +16,7 @@ pub const ACCOUNT: &str = "DEMO-ACCT";
 pub const DEFAULT_SERVER: &str = "127.0.0.1:8443";
 
 pub fn auth_ext(account: &str) -> Extension {
-    Extension::text(ExtensionTag::AuthToken, format!("fig-dev-{account}"))
+    Extension::text(ExtensionTag::AuthToken, dev_auth_token(account))
 }
 
 pub async fn connect(server_addr: SocketAddr) -> Result<(Endpoint, Connection)> {
@@ -30,19 +31,10 @@ pub async fn connect(server_addr: SocketAddr) -> Result<(Endpoint, Connection)> 
 }
 
 pub async fn send_and_read(conn: &Connection, frame: Frame) -> Result<Vec<Frame>> {
-    let (mut send, mut recv) = conn.open_bi().await?;
-    send.write_all(&frame.encode()?).await?;
-    send.finish()?;
-    let mut decoder = FrameDecoder::new();
-    let mut buf = vec![0u8; 8192];
-    let mut frames = Vec::new();
-    while let Some(n) = recv.read(&mut buf).await? {
-        decoder.feed(&buf[..n]);
-        while let Some(r) = decoder.decode_next() {
-            frames.push(r?);
-        }
-    }
-    Ok(frames)
+    FigSdkClient::new(conn)
+        .send_and_read(frame)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn assert_success_frames(label: &str, frames: &[Frame]) -> Result<()> {

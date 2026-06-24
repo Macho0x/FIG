@@ -1,3 +1,5 @@
+//go:build !conformance
+
 // Auto-generated SBE encode/decode by fig-fsl from schema 'trading.orders' vv1.0.0
 // Standard order entry and execution messages
 
@@ -23,7 +25,7 @@ func writeU64BE(buf *[]byte, v uint64) {
 }
 
 func writeF64BE(buf *[]byte, v float64) { writeU64BE(buf, math.Float64bits(v)) }
-func writeI64BE(buf *[]byte, v int64) { writeU64BE(buf, uint64(v)) }
+func writeI64BE(buf *[]byte, v int64)   { writeU64BE(buf, uint64(v)) }
 
 func writeString(buf *[]byte, s string) {
 	writeU16BE(buf, uint16(len(s)))
@@ -50,7 +52,7 @@ func readU64BE(buf []byte, pos *int) uint64 {
 }
 
 func readF64BE(buf []byte, pos *int) float64 { return math.Float64frombits(readU64BE(buf, pos)) }
-func readI64BE(buf []byte, pos *int) int64 { return int64(readU64BE(buf, pos)) }
+func readI64BE(buf []byte, pos *int) int64   { return int64(readU64BE(buf, pos)) }
 
 func readString(buf []byte, pos *int) string {
 	n := int(readU16BE(buf, pos))
@@ -62,19 +64,24 @@ func readString(buf []byte, pos *int) string {
 type NewOrderSingleSide uint8
 
 const (
-	NewOrderSingleSideBuy NewOrderSingleSide = 1
-	NewOrderSingleSideSell NewOrderSingleSide = 2
-	NewOrderSingleSideSellShort NewOrderSingleSide = 3
+	NewOrderSingleSideBuy             NewOrderSingleSide = 1
+	NewOrderSingleSideSell            NewOrderSingleSide = 2
+	NewOrderSingleSideSellShort       NewOrderSingleSide = 3
 	NewOrderSingleSideSellShortExempt NewOrderSingleSide = 4
 )
 
 func NewOrderSingleSideFromValue(v uint8) (NewOrderSingleSide, error) {
 	switch v {
-	case 1: return NewOrderSingleSideBuy, nil
-	case 2: return NewOrderSingleSideSell, nil
-	case 3: return NewOrderSingleSideSellShort, nil
-	case 4: return NewOrderSingleSideSellShortExempt, nil
-	default: return 0, fmt.Errorf("invalid NewOrderSingleSide value: %d", v)
+	case 1:
+		return NewOrderSingleSideBuy, nil
+	case 2:
+		return NewOrderSingleSideSell, nil
+	case 3:
+		return NewOrderSingleSideSellShort, nil
+	case 4:
+		return NewOrderSingleSideSellShortExempt, nil
+	default:
+		return 0, fmt.Errorf("invalid NewOrderSingleSide value: %d", v)
 	}
 }
 
@@ -83,25 +90,33 @@ func (e NewOrderSingleSide) ToValue() uint8 { return uint8(e) }
 type NewOrderSingleOrderType uint8
 
 const (
-	NewOrderSingleOrderTypeMarket NewOrderSingleOrderType = 1
-	NewOrderSingleOrderTypeLimit NewOrderSingleOrderType = 2
-	NewOrderSingleOrderTypeStop NewOrderSingleOrderType = 3
-	NewOrderSingleOrderTypeStopLimit NewOrderSingleOrderType = 4
+	NewOrderSingleOrderTypeMarket        NewOrderSingleOrderType = 1
+	NewOrderSingleOrderTypeLimit         NewOrderSingleOrderType = 2
+	NewOrderSingleOrderTypeStop          NewOrderSingleOrderType = 3
+	NewOrderSingleOrderTypeStopLimit     NewOrderSingleOrderType = 4
 	NewOrderSingleOrderTypeMarketOnClose NewOrderSingleOrderType = 5
-	NewOrderSingleOrderTypeLimitOnClose NewOrderSingleOrderType = 6
-	NewOrderSingleOrderTypePegged NewOrderSingleOrderType = 7
+	NewOrderSingleOrderTypeLimitOnClose  NewOrderSingleOrderType = 6
+	NewOrderSingleOrderTypePegged        NewOrderSingleOrderType = 7
 )
 
 func NewOrderSingleOrderTypeFromValue(v uint8) (NewOrderSingleOrderType, error) {
 	switch v {
-	case 1: return NewOrderSingleOrderTypeMarket, nil
-	case 2: return NewOrderSingleOrderTypeLimit, nil
-	case 3: return NewOrderSingleOrderTypeStop, nil
-	case 4: return NewOrderSingleOrderTypeStopLimit, nil
-	case 5: return NewOrderSingleOrderTypeMarketOnClose, nil
-	case 6: return NewOrderSingleOrderTypeLimitOnClose, nil
-	case 7: return NewOrderSingleOrderTypePegged, nil
-	default: return 0, fmt.Errorf("invalid NewOrderSingleOrderType value: %d", v)
+	case 1:
+		return NewOrderSingleOrderTypeMarket, nil
+	case 2:
+		return NewOrderSingleOrderTypeLimit, nil
+	case 3:
+		return NewOrderSingleOrderTypeStop, nil
+	case 4:
+		return NewOrderSingleOrderTypeStopLimit, nil
+	case 5:
+		return NewOrderSingleOrderTypeMarketOnClose, nil
+	case 6:
+		return NewOrderSingleOrderTypeLimitOnClose, nil
+	case 7:
+		return NewOrderSingleOrderTypePegged, nil
+	default:
+		return 0, fmt.Errorf("invalid NewOrderSingleOrderType value: %d", v)
 	}
 }
 
@@ -119,12 +134,18 @@ const (
 
 func NewOrderSingleTimeInForceFromValue(v uint8) (NewOrderSingleTimeInForce, error) {
 	switch v {
-	case 1: return NewOrderSingleTimeInForceDay, nil
-	case 2: return NewOrderSingleTimeInForceGtc, nil
-	case 3: return NewOrderSingleTimeInForceIoc, nil
-	case 4: return NewOrderSingleTimeInForceFok, nil
-	case 5: return NewOrderSingleTimeInForceGtd, nil
-	default: return 0, fmt.Errorf("invalid NewOrderSingleTimeInForce value: %d", v)
+	case 1:
+		return NewOrderSingleTimeInForceDay, nil
+	case 2:
+		return NewOrderSingleTimeInForceGtc, nil
+	case 3:
+		return NewOrderSingleTimeInForceIoc, nil
+	case 4:
+		return NewOrderSingleTimeInForceFok, nil
+	case 5:
+		return NewOrderSingleTimeInForceGtd, nil
+	default:
+		return 0, fmt.Errorf("invalid NewOrderSingleTimeInForce value: %d", v)
 	}
 }
 
@@ -133,21 +154,27 @@ func (e NewOrderSingleTimeInForce) ToValue() uint8 { return uint8(e) }
 type NewOrderSingleIdSource uint8
 
 const (
-	NewOrderSingleIdSourceCusip NewOrderSingleIdSource = 1
-	NewOrderSingleIdSourceSedol NewOrderSingleIdSource = 2
-	NewOrderSingleIdSourceIsin NewOrderSingleIdSource = 3
-	NewOrderSingleIdSourceRic NewOrderSingleIdSource = 4
+	NewOrderSingleIdSourceCusip          NewOrderSingleIdSource = 1
+	NewOrderSingleIdSourceSedol          NewOrderSingleIdSource = 2
+	NewOrderSingleIdSourceIsin           NewOrderSingleIdSource = 3
+	NewOrderSingleIdSourceRic            NewOrderSingleIdSource = 4
 	NewOrderSingleIdSourceExchangeSymbol NewOrderSingleIdSource = 5
 )
 
 func NewOrderSingleIdSourceFromValue(v uint8) (NewOrderSingleIdSource, error) {
 	switch v {
-	case 1: return NewOrderSingleIdSourceCusip, nil
-	case 2: return NewOrderSingleIdSourceSedol, nil
-	case 3: return NewOrderSingleIdSourceIsin, nil
-	case 4: return NewOrderSingleIdSourceRic, nil
-	case 5: return NewOrderSingleIdSourceExchangeSymbol, nil
-	default: return 0, fmt.Errorf("invalid NewOrderSingleIdSource value: %d", v)
+	case 1:
+		return NewOrderSingleIdSourceCusip, nil
+	case 2:
+		return NewOrderSingleIdSourceSedol, nil
+	case 3:
+		return NewOrderSingleIdSourceIsin, nil
+	case 4:
+		return NewOrderSingleIdSourceRic, nil
+	case 5:
+		return NewOrderSingleIdSourceExchangeSymbol, nil
+	default:
+		return 0, fmt.Errorf("invalid NewOrderSingleIdSource value: %d", v)
 	}
 }
 
@@ -156,17 +183,21 @@ func (e NewOrderSingleIdSource) ToValue() uint8 { return uint8(e) }
 type CancelRequestSide uint8
 
 const (
-	CancelRequestSideBuy CancelRequestSide = 1
-	CancelRequestSideSell CancelRequestSide = 2
+	CancelRequestSideBuy       CancelRequestSide = 1
+	CancelRequestSideSell      CancelRequestSide = 2
 	CancelRequestSideSellShort CancelRequestSide = 3
 )
 
 func CancelRequestSideFromValue(v uint8) (CancelRequestSide, error) {
 	switch v {
-	case 1: return CancelRequestSideBuy, nil
-	case 2: return CancelRequestSideSell, nil
-	case 3: return CancelRequestSideSellShort, nil
-	default: return 0, fmt.Errorf("invalid CancelRequestSide value: %d", v)
+	case 1:
+		return CancelRequestSideBuy, nil
+	case 2:
+		return CancelRequestSideSell, nil
+	case 3:
+		return CancelRequestSideSellShort, nil
+	default:
+		return 0, fmt.Errorf("invalid CancelRequestSide value: %d", v)
 	}
 }
 
@@ -175,17 +206,21 @@ func (e CancelRequestSide) ToValue() uint8 { return uint8(e) }
 type CancelReplaceRequestSide uint8
 
 const (
-	CancelReplaceRequestSideBuy CancelReplaceRequestSide = 1
-	CancelReplaceRequestSideSell CancelReplaceRequestSide = 2
+	CancelReplaceRequestSideBuy       CancelReplaceRequestSide = 1
+	CancelReplaceRequestSideSell      CancelReplaceRequestSide = 2
 	CancelReplaceRequestSideSellShort CancelReplaceRequestSide = 3
 )
 
 func CancelReplaceRequestSideFromValue(v uint8) (CancelReplaceRequestSide, error) {
 	switch v {
-	case 1: return CancelReplaceRequestSideBuy, nil
-	case 2: return CancelReplaceRequestSideSell, nil
-	case 3: return CancelReplaceRequestSideSellShort, nil
-	default: return 0, fmt.Errorf("invalid CancelReplaceRequestSide value: %d", v)
+	case 1:
+		return CancelReplaceRequestSideBuy, nil
+	case 2:
+		return CancelReplaceRequestSideSell, nil
+	case 3:
+		return CancelReplaceRequestSideSellShort, nil
+	default:
+		return 0, fmt.Errorf("invalid CancelReplaceRequestSide value: %d", v)
 	}
 }
 
@@ -194,35 +229,48 @@ func (e CancelReplaceRequestSide) ToValue() uint8 { return uint8(e) }
 type ExecutionReportExecType uint8
 
 const (
-	ExecutionReportExecTypeNew ExecutionReportExecType = 1
-	ExecutionReportExecTypePartialFill ExecutionReportExecType = 2
-	ExecutionReportExecTypeFill ExecutionReportExecType = 3
-	ExecutionReportExecTypeDoneForDay ExecutionReportExecType = 4
-	ExecutionReportExecTypeCanceled ExecutionReportExecType = 5
-	ExecutionReportExecTypeReplaced ExecutionReportExecType = 6
+	ExecutionReportExecTypeNew           ExecutionReportExecType = 1
+	ExecutionReportExecTypePartialFill   ExecutionReportExecType = 2
+	ExecutionReportExecTypeFill          ExecutionReportExecType = 3
+	ExecutionReportExecTypeDoneForDay    ExecutionReportExecType = 4
+	ExecutionReportExecTypeCanceled      ExecutionReportExecType = 5
+	ExecutionReportExecTypeReplaced      ExecutionReportExecType = 6
 	ExecutionReportExecTypePendingCancel ExecutionReportExecType = 7
-	ExecutionReportExecTypeStopped ExecutionReportExecType = 8
-	ExecutionReportExecTypeRejected ExecutionReportExecType = 9
-	ExecutionReportExecTypeSuspended ExecutionReportExecType = 10
-	ExecutionReportExecTypePendingNew ExecutionReportExecType = 11
-	ExecutionReportExecTypeExpired ExecutionReportExecType = 12
+	ExecutionReportExecTypeStopped       ExecutionReportExecType = 8
+	ExecutionReportExecTypeRejected      ExecutionReportExecType = 9
+	ExecutionReportExecTypeSuspended     ExecutionReportExecType = 10
+	ExecutionReportExecTypePendingNew    ExecutionReportExecType = 11
+	ExecutionReportExecTypeExpired       ExecutionReportExecType = 12
 )
 
 func ExecutionReportExecTypeFromValue(v uint8) (ExecutionReportExecType, error) {
 	switch v {
-	case 1: return ExecutionReportExecTypeNew, nil
-	case 2: return ExecutionReportExecTypePartialFill, nil
-	case 3: return ExecutionReportExecTypeFill, nil
-	case 4: return ExecutionReportExecTypeDoneForDay, nil
-	case 5: return ExecutionReportExecTypeCanceled, nil
-	case 6: return ExecutionReportExecTypeReplaced, nil
-	case 7: return ExecutionReportExecTypePendingCancel, nil
-	case 8: return ExecutionReportExecTypeStopped, nil
-	case 9: return ExecutionReportExecTypeRejected, nil
-	case 10: return ExecutionReportExecTypeSuspended, nil
-	case 11: return ExecutionReportExecTypePendingNew, nil
-	case 12: return ExecutionReportExecTypeExpired, nil
-	default: return 0, fmt.Errorf("invalid ExecutionReportExecType value: %d", v)
+	case 1:
+		return ExecutionReportExecTypeNew, nil
+	case 2:
+		return ExecutionReportExecTypePartialFill, nil
+	case 3:
+		return ExecutionReportExecTypeFill, nil
+	case 4:
+		return ExecutionReportExecTypeDoneForDay, nil
+	case 5:
+		return ExecutionReportExecTypeCanceled, nil
+	case 6:
+		return ExecutionReportExecTypeReplaced, nil
+	case 7:
+		return ExecutionReportExecTypePendingCancel, nil
+	case 8:
+		return ExecutionReportExecTypeStopped, nil
+	case 9:
+		return ExecutionReportExecTypeRejected, nil
+	case 10:
+		return ExecutionReportExecTypeSuspended, nil
+	case 11:
+		return ExecutionReportExecTypePendingNew, nil
+	case 12:
+		return ExecutionReportExecTypeExpired, nil
+	default:
+		return 0, fmt.Errorf("invalid ExecutionReportExecType value: %d", v)
 	}
 }
 
@@ -231,35 +279,48 @@ func (e ExecutionReportExecType) ToValue() uint8 { return uint8(e) }
 type ExecutionReportOrdStatus uint8
 
 const (
-	ExecutionReportOrdStatusNew ExecutionReportOrdStatus = 1
+	ExecutionReportOrdStatusNew             ExecutionReportOrdStatus = 1
 	ExecutionReportOrdStatusPartiallyFilled ExecutionReportOrdStatus = 2
-	ExecutionReportOrdStatusFilled ExecutionReportOrdStatus = 3
-	ExecutionReportOrdStatusDoneForDay ExecutionReportOrdStatus = 4
-	ExecutionReportOrdStatusCanceled ExecutionReportOrdStatus = 5
-	ExecutionReportOrdStatusPendingCancel ExecutionReportOrdStatus = 6
-	ExecutionReportOrdStatusStopped ExecutionReportOrdStatus = 7
-	ExecutionReportOrdStatusRejected ExecutionReportOrdStatus = 8
-	ExecutionReportOrdStatusSuspended ExecutionReportOrdStatus = 9
-	ExecutionReportOrdStatusPendingNew ExecutionReportOrdStatus = 10
-	ExecutionReportOrdStatusExpired ExecutionReportOrdStatus = 11
-	ExecutionReportOrdStatusReplaced ExecutionReportOrdStatus = 12
+	ExecutionReportOrdStatusFilled          ExecutionReportOrdStatus = 3
+	ExecutionReportOrdStatusDoneForDay      ExecutionReportOrdStatus = 4
+	ExecutionReportOrdStatusCanceled        ExecutionReportOrdStatus = 5
+	ExecutionReportOrdStatusPendingCancel   ExecutionReportOrdStatus = 6
+	ExecutionReportOrdStatusStopped         ExecutionReportOrdStatus = 7
+	ExecutionReportOrdStatusRejected        ExecutionReportOrdStatus = 8
+	ExecutionReportOrdStatusSuspended       ExecutionReportOrdStatus = 9
+	ExecutionReportOrdStatusPendingNew      ExecutionReportOrdStatus = 10
+	ExecutionReportOrdStatusExpired         ExecutionReportOrdStatus = 11
+	ExecutionReportOrdStatusReplaced        ExecutionReportOrdStatus = 12
 )
 
 func ExecutionReportOrdStatusFromValue(v uint8) (ExecutionReportOrdStatus, error) {
 	switch v {
-	case 1: return ExecutionReportOrdStatusNew, nil
-	case 2: return ExecutionReportOrdStatusPartiallyFilled, nil
-	case 3: return ExecutionReportOrdStatusFilled, nil
-	case 4: return ExecutionReportOrdStatusDoneForDay, nil
-	case 5: return ExecutionReportOrdStatusCanceled, nil
-	case 6: return ExecutionReportOrdStatusPendingCancel, nil
-	case 7: return ExecutionReportOrdStatusStopped, nil
-	case 8: return ExecutionReportOrdStatusRejected, nil
-	case 9: return ExecutionReportOrdStatusSuspended, nil
-	case 10: return ExecutionReportOrdStatusPendingNew, nil
-	case 11: return ExecutionReportOrdStatusExpired, nil
-	case 12: return ExecutionReportOrdStatusReplaced, nil
-	default: return 0, fmt.Errorf("invalid ExecutionReportOrdStatus value: %d", v)
+	case 1:
+		return ExecutionReportOrdStatusNew, nil
+	case 2:
+		return ExecutionReportOrdStatusPartiallyFilled, nil
+	case 3:
+		return ExecutionReportOrdStatusFilled, nil
+	case 4:
+		return ExecutionReportOrdStatusDoneForDay, nil
+	case 5:
+		return ExecutionReportOrdStatusCanceled, nil
+	case 6:
+		return ExecutionReportOrdStatusPendingCancel, nil
+	case 7:
+		return ExecutionReportOrdStatusStopped, nil
+	case 8:
+		return ExecutionReportOrdStatusRejected, nil
+	case 9:
+		return ExecutionReportOrdStatusSuspended, nil
+	case 10:
+		return ExecutionReportOrdStatusPendingNew, nil
+	case 11:
+		return ExecutionReportOrdStatusExpired, nil
+	case 12:
+		return ExecutionReportOrdStatusReplaced, nil
+	default:
+		return 0, fmt.Errorf("invalid ExecutionReportOrdStatus value: %d", v)
 	}
 }
 
@@ -268,17 +329,21 @@ func (e ExecutionReportOrdStatus) ToValue() uint8 { return uint8(e) }
 type ExecutionReportSide uint8
 
 const (
-	ExecutionReportSideBuy ExecutionReportSide = 1
-	ExecutionReportSideSell ExecutionReportSide = 2
+	ExecutionReportSideBuy       ExecutionReportSide = 1
+	ExecutionReportSideSell      ExecutionReportSide = 2
 	ExecutionReportSideSellShort ExecutionReportSide = 3
 )
 
 func ExecutionReportSideFromValue(v uint8) (ExecutionReportSide, error) {
 	switch v {
-	case 1: return ExecutionReportSideBuy, nil
-	case 2: return ExecutionReportSideSell, nil
-	case 3: return ExecutionReportSideSellShort, nil
-	default: return 0, fmt.Errorf("invalid ExecutionReportSide value: %d", v)
+	case 1:
+		return ExecutionReportSideBuy, nil
+	case 2:
+		return ExecutionReportSideSell, nil
+	case 3:
+		return ExecutionReportSideSellShort, nil
+	default:
+		return 0, fmt.Errorf("invalid ExecutionReportSide value: %d", v)
 	}
 }
 
@@ -287,19 +352,24 @@ func (e ExecutionReportSide) ToValue() uint8 { return uint8(e) }
 type CancelRejectRejectReason uint8
 
 const (
-	CancelRejectRejectReasonOrderNotFound CancelRejectRejectReason = 1
+	CancelRejectRejectReasonOrderNotFound   CancelRejectRejectReason = 1
 	CancelRejectRejectReasonAlreadyCanceled CancelRejectRejectReason = 2
-	CancelRejectRejectReasonAlreadyFilled CancelRejectRejectReason = 3
+	CancelRejectRejectReasonAlreadyFilled   CancelRejectRejectReason = 3
 	CancelRejectRejectReasonTooLateToCancel CancelRejectRejectReason = 4
 )
 
 func CancelRejectRejectReasonFromValue(v uint8) (CancelRejectRejectReason, error) {
 	switch v {
-	case 1: return CancelRejectRejectReasonOrderNotFound, nil
-	case 2: return CancelRejectRejectReasonAlreadyCanceled, nil
-	case 3: return CancelRejectRejectReasonAlreadyFilled, nil
-	case 4: return CancelRejectRejectReasonTooLateToCancel, nil
-	default: return 0, fmt.Errorf("invalid CancelRejectRejectReason value: %d", v)
+	case 1:
+		return CancelRejectRejectReasonOrderNotFound, nil
+	case 2:
+		return CancelRejectRejectReasonAlreadyCanceled, nil
+	case 3:
+		return CancelRejectRejectReasonAlreadyFilled, nil
+	case 4:
+		return CancelRejectRejectReasonTooLateToCancel, nil
+	default:
+		return 0, fmt.Errorf("invalid CancelRejectRejectReason value: %d", v)
 	}
 }
 
@@ -308,21 +378,27 @@ func (e CancelRejectRejectReason) ToValue() uint8 { return uint8(e) }
 type BalanceUpdateReason uint8
 
 const (
-	BalanceUpdateReasonTrade BalanceUpdateReason = 1
-	BalanceUpdateReasonDeposit BalanceUpdateReason = 2
+	BalanceUpdateReasonTrade      BalanceUpdateReason = 1
+	BalanceUpdateReasonDeposit    BalanceUpdateReason = 2
 	BalanceUpdateReasonWithdrawal BalanceUpdateReason = 3
-	BalanceUpdateReasonTransfer BalanceUpdateReason = 4
-	BalanceUpdateReasonFee BalanceUpdateReason = 5
+	BalanceUpdateReasonTransfer   BalanceUpdateReason = 4
+	BalanceUpdateReasonFee        BalanceUpdateReason = 5
 )
 
 func BalanceUpdateReasonFromValue(v uint8) (BalanceUpdateReason, error) {
 	switch v {
-	case 1: return BalanceUpdateReasonTrade, nil
-	case 2: return BalanceUpdateReasonDeposit, nil
-	case 3: return BalanceUpdateReasonWithdrawal, nil
-	case 4: return BalanceUpdateReasonTransfer, nil
-	case 5: return BalanceUpdateReasonFee, nil
-	default: return 0, fmt.Errorf("invalid BalanceUpdateReason value: %d", v)
+	case 1:
+		return BalanceUpdateReasonTrade, nil
+	case 2:
+		return BalanceUpdateReasonDeposit, nil
+	case 3:
+		return BalanceUpdateReasonWithdrawal, nil
+	case 4:
+		return BalanceUpdateReasonTransfer, nil
+	case 5:
+		return BalanceUpdateReasonFee, nil
+	default:
+		return 0, fmt.Errorf("invalid BalanceUpdateReason value: %d", v)
 	}
 }
 
@@ -332,16 +408,20 @@ type OrderListStatusStatus uint8
 
 const (
 	OrderListStatusStatusExecuting OrderListStatusStatus = 1
-	OrderListStatusStatusAllDone OrderListStatusStatus = 2
-	OrderListStatusStatusReject OrderListStatusStatus = 3
+	OrderListStatusStatusAllDone   OrderListStatusStatus = 2
+	OrderListStatusStatusReject    OrderListStatusStatus = 3
 )
 
 func OrderListStatusStatusFromValue(v uint8) (OrderListStatusStatus, error) {
 	switch v {
-	case 1: return OrderListStatusStatusExecuting, nil
-	case 2: return OrderListStatusStatusAllDone, nil
-	case 3: return OrderListStatusStatusReject, nil
-	default: return 0, fmt.Errorf("invalid OrderListStatusStatus value: %d", v)
+	case 1:
+		return OrderListStatusStatusExecuting, nil
+	case 2:
+		return OrderListStatusStatusAllDone, nil
+	case 3:
+		return OrderListStatusStatusReject, nil
+	default:
+		return 0, fmt.Errorf("invalid OrderListStatusStatus value: %d", v)
 	}
 }
 
@@ -350,21 +430,27 @@ func (e OrderListStatusStatus) ToValue() uint8 { return uint8(e) }
 type LedgerUpdateKind uint8
 
 const (
-	LedgerUpdateKindDeposit LedgerUpdateKind = 1
+	LedgerUpdateKindDeposit    LedgerUpdateKind = 1
 	LedgerUpdateKindWithdrawal LedgerUpdateKind = 2
-	LedgerUpdateKindTransfer LedgerUpdateKind = 3
-	LedgerUpdateKindFee LedgerUpdateKind = 4
-	LedgerUpdateKindFunding LedgerUpdateKind = 5
+	LedgerUpdateKindTransfer   LedgerUpdateKind = 3
+	LedgerUpdateKindFee        LedgerUpdateKind = 4
+	LedgerUpdateKindFunding    LedgerUpdateKind = 5
 )
 
 func LedgerUpdateKindFromValue(v uint8) (LedgerUpdateKind, error) {
 	switch v {
-	case 1: return LedgerUpdateKindDeposit, nil
-	case 2: return LedgerUpdateKindWithdrawal, nil
-	case 3: return LedgerUpdateKindTransfer, nil
-	case 4: return LedgerUpdateKindFee, nil
-	case 5: return LedgerUpdateKindFunding, nil
-	default: return 0, fmt.Errorf("invalid LedgerUpdateKind value: %d", v)
+	case 1:
+		return LedgerUpdateKindDeposit, nil
+	case 2:
+		return LedgerUpdateKindWithdrawal, nil
+	case 3:
+		return LedgerUpdateKindTransfer, nil
+	case 4:
+		return LedgerUpdateKindFee, nil
+	case 5:
+		return LedgerUpdateKindFunding, nil
+	default:
+		return 0, fmt.Errorf("invalid LedgerUpdateKind value: %d", v)
 	}
 }
 
@@ -373,15 +459,18 @@ func (e LedgerUpdateKind) ToValue() uint8 { return uint8(e) }
 type AggregateTradeSide uint8
 
 const (
-	AggregateTradeSideBuy AggregateTradeSide = 1
+	AggregateTradeSideBuy  AggregateTradeSide = 1
 	AggregateTradeSideSell AggregateTradeSide = 2
 )
 
 func AggregateTradeSideFromValue(v uint8) (AggregateTradeSide, error) {
 	switch v {
-	case 1: return AggregateTradeSideBuy, nil
-	case 2: return AggregateTradeSideSell, nil
-	default: return 0, fmt.Errorf("invalid AggregateTradeSide value: %d", v)
+	case 1:
+		return AggregateTradeSideBuy, nil
+	case 2:
+		return AggregateTradeSideSell, nil
+	default:
+		return 0, fmt.Errorf("invalid AggregateTradeSide value: %d", v)
 	}
 }
 
@@ -390,15 +479,18 @@ func (e AggregateTradeSide) ToValue() uint8 { return uint8(e) }
 type LiquidationTradeSide uint8
 
 const (
-	LiquidationTradeSideBuy LiquidationTradeSide = 1
+	LiquidationTradeSideBuy  LiquidationTradeSide = 1
 	LiquidationTradeSideSell LiquidationTradeSide = 2
 )
 
 func LiquidationTradeSideFromValue(v uint8) (LiquidationTradeSide, error) {
 	switch v {
-	case 1: return LiquidationTradeSideBuy, nil
-	case 2: return LiquidationTradeSideSell, nil
-	default: return 0, fmt.Errorf("invalid LiquidationTradeSide value: %d", v)
+	case 1:
+		return LiquidationTradeSideBuy, nil
+	case 2:
+		return LiquidationTradeSideSell, nil
+	default:
+		return 0, fmt.Errorf("invalid LiquidationTradeSide value: %d", v)
 	}
 }
 
@@ -407,15 +499,18 @@ func (e LiquidationTradeSide) ToValue() uint8 { return uint8(e) }
 type MarketDataUpdateSide uint8
 
 const (
-	MarketDataUpdateSideBuy MarketDataUpdateSide = 1
+	MarketDataUpdateSideBuy  MarketDataUpdateSide = 1
 	MarketDataUpdateSideSell MarketDataUpdateSide = 2
 )
 
 func MarketDataUpdateSideFromValue(v uint8) (MarketDataUpdateSide, error) {
 	switch v {
-	case 1: return MarketDataUpdateSideBuy, nil
-	case 2: return MarketDataUpdateSideSell, nil
-	default: return 0, fmt.Errorf("invalid MarketDataUpdateSide value: %d", v)
+	case 1:
+		return MarketDataUpdateSideBuy, nil
+	case 2:
+		return MarketDataUpdateSideSell, nil
+	default:
+		return 0, fmt.Errorf("invalid MarketDataUpdateSide value: %d", v)
 	}
 }
 
@@ -424,17 +519,21 @@ func (e MarketDataUpdateSide) ToValue() uint8 { return uint8(e) }
 type MarketDataUpdateAction uint8
 
 const (
-	MarketDataUpdateActionNew MarketDataUpdateAction = 1
+	MarketDataUpdateActionNew    MarketDataUpdateAction = 1
 	MarketDataUpdateActionChange MarketDataUpdateAction = 2
 	MarketDataUpdateActionDelete MarketDataUpdateAction = 3
 )
 
 func MarketDataUpdateActionFromValue(v uint8) (MarketDataUpdateAction, error) {
 	switch v {
-	case 1: return MarketDataUpdateActionNew, nil
-	case 2: return MarketDataUpdateActionChange, nil
-	case 3: return MarketDataUpdateActionDelete, nil
-	default: return 0, fmt.Errorf("invalid MarketDataUpdateAction value: %d", v)
+	case 1:
+		return MarketDataUpdateActionNew, nil
+	case 2:
+		return MarketDataUpdateActionChange, nil
+	case 3:
+		return MarketDataUpdateActionDelete, nil
+	default:
+		return 0, fmt.Errorf("invalid MarketDataUpdateAction value: %d", v)
 	}
 }
 
@@ -443,15 +542,18 @@ func (e MarketDataUpdateAction) ToValue() uint8 { return uint8(e) }
 type PublicTradeSide uint8
 
 const (
-	PublicTradeSideBuy PublicTradeSide = 1
+	PublicTradeSideBuy  PublicTradeSide = 1
 	PublicTradeSideSell PublicTradeSide = 2
 )
 
 func PublicTradeSideFromValue(v uint8) (PublicTradeSide, error) {
 	switch v {
-	case 1: return PublicTradeSideBuy, nil
-	case 2: return PublicTradeSideSell, nil
-	default: return 0, fmt.Errorf("invalid PublicTradeSide value: %d", v)
+	case 1:
+		return PublicTradeSideBuy, nil
+	case 2:
+		return PublicTradeSideSell, nil
+	default:
+		return 0, fmt.Errorf("invalid PublicTradeSide value: %d", v)
 	}
 }
 
@@ -460,17 +562,21 @@ func (e PublicTradeSide) ToValue() uint8 { return uint8(e) }
 type CapabilityPathPattern uint8
 
 const (
-	CapabilityPathPatternPubSub CapabilityPathPattern = 1
+	CapabilityPathPatternPubSub          CapabilityPathPattern = 1
 	CapabilityPathPatternRequestResponse CapabilityPathPattern = 2
-	CapabilityPathPatternRequestStream CapabilityPathPattern = 3
+	CapabilityPathPatternRequestStream   CapabilityPathPattern = 3
 )
 
 func CapabilityPathPatternFromValue(v uint8) (CapabilityPathPattern, error) {
 	switch v {
-	case 1: return CapabilityPathPatternPubSub, nil
-	case 2: return CapabilityPathPatternRequestResponse, nil
-	case 3: return CapabilityPathPatternRequestStream, nil
-	default: return 0, fmt.Errorf("invalid CapabilityPathPattern value: %d", v)
+	case 1:
+		return CapabilityPathPatternPubSub, nil
+	case 2:
+		return CapabilityPathPatternRequestResponse, nil
+	case 3:
+		return CapabilityPathPatternRequestStream, nil
+	default:
+		return 0, fmt.Errorf("invalid CapabilityPathPattern value: %d", v)
 	}
 }
 
@@ -492,17 +598,34 @@ func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, Ord
 	buf = append(buf, byte(Side.ToValue()))
 	writeF64BE(&buf, OrderQty)
 	v := 0.0
-	if Price != nil { v = *Price }
+	if Price != nil {
+		v = *Price
+	}
 	writeF64BE(&buf, v)
-	if Price != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if Price != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if StopPrice != nil { v = *StopPrice }
+	if StopPrice != nil {
+		v = *StopPrice
+	}
 	writeF64BE(&buf, v)
-	if StopPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if StopPrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	writeString(&buf, Symbol)
 	buf = append(buf, byte(OrderType.ToValue()))
 	buf = append(buf, byte(TimeInForce.ToValue()))
-	if ExpireTime != nil { buf = append(buf, 1); writeI64BE(&buf, *ExpireTime) } else { buf = append(buf, 0) }
+	if ExpireTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *ExpireTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	if Account != nil {
 		buf = append(buf, 1)
 		writeString(&buf, *Account)
@@ -521,7 +644,11 @@ func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, Ord
 	} else {
 		buf = append(buf, 0)
 	}
-	if IdSource != nil { buf = append(buf, byte(IdSource.ToValue())) } else { buf = append(buf, 0) }
+	if IdSource != nil {
+		buf = append(buf, byte(IdSource.ToValue()))
+	} else {
+		buf = append(buf, 0)
+	}
 	if SecurityExchange != nil {
 		buf = append(buf, 1)
 		writeString(&buf, *SecurityExchange)
@@ -534,19 +661,19 @@ func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, Ord
 
 // SBE decoder for NewOrderSingle
 type NewOrderSingleDecoder struct {
-	ClOrdId string
-	Side NewOrderSingleSide
-	OrderQty float64
-	Price *float64
-	StopPrice *float64
-	Symbol string
-	OrderType NewOrderSingleOrderType
-	TimeInForce NewOrderSingleTimeInForce
-	ExpireTime *int64
-	Account *string
-	StrategyId *string
-	SecurityId *string
-	IdSource *NewOrderSingleIdSource
+	ClOrdId          string
+	Side             NewOrderSingleSide
+	OrderQty         float64
+	Price            *float64
+	StopPrice        *float64
+	Symbol           string
+	OrderType        NewOrderSingleOrderType
+	TimeInForce      NewOrderSingleTimeInForce
+	ExpireTime       *int64
+	Account          *string
+	StrategyId       *string
+	SecurityId       *string
+	IdSource         *NewOrderSingleIdSource
 	SecurityExchange *string
 }
 
@@ -571,22 +698,47 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingleDecoder, error) {
 	sideRaw := buf[pos]
 	pos++
 	side, err := NewOrderSingleSideFromValue(sideRaw)
-	if err != nil { return NewOrderSingleDecoder{}, err }
+	if err != nil {
+		return NewOrderSingleDecoder{}, err
+	}
 	order_qty := readF64BE(buf, &pos)
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; price = &raw } else { pos++; price = nil }
+	if buf[pos] == 1 {
+		pos++
+		price = &raw
+	} else {
+		pos++
+		price = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; stop_price = &raw } else { pos++; stop_price = nil }
+	if buf[pos] == 1 {
+		pos++
+		stop_price = &raw
+	} else {
+		pos++
+		stop_price = nil
+	}
 	symbol := readString(buf, &pos)
 	order_typeRaw := buf[pos]
 	pos++
 	order_type, err := NewOrderSingleOrderTypeFromValue(order_typeRaw)
-	if err != nil { return NewOrderSingleDecoder{}, err }
+	if err != nil {
+		return NewOrderSingleDecoder{}, err
+	}
 	time_in_forceRaw := buf[pos]
 	pos++
 	time_in_force, err := NewOrderSingleTimeInForceFromValue(time_in_forceRaw)
-	if err != nil { return NewOrderSingleDecoder{}, err }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); expire_time = &v } else { pos++; expire_time = nil }
+	if err != nil {
+		return NewOrderSingleDecoder{}, err
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		expire_time = &v
+	} else {
+		pos++
+		expire_time = nil
+	}
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -614,7 +766,9 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingleDecoder, error) {
 	id_sourceRaw := buf[pos]
 	pos++
 	id_source, err := NewOrderSingleIdSourceFromValue(id_sourceRaw)
-	if err != nil { return NewOrderSingleDecoder{}, err }
+	if err != nil {
+		return NewOrderSingleDecoder{}, err
+	}
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -625,19 +779,19 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingleDecoder, error) {
 	}
 
 	return NewOrderSingleDecoder{
-		ClOrdId: cl_ord_id,
-		Side: side,
-		OrderQty: order_qty,
-		Price: price,
-		StopPrice: stop_price,
-		Symbol: symbol,
-		OrderType: order_type,
-		TimeInForce: time_in_force,
-		ExpireTime: expire_time,
-		Account: account,
-		StrategyId: strategy_id,
-		SecurityId: security_id,
-		IdSource: id_source,
+		ClOrdId:          cl_ord_id,
+		Side:             side,
+		OrderQty:         order_qty,
+		Price:            price,
+		StopPrice:        stop_price,
+		Symbol:           symbol,
+		OrderType:        order_type,
+		TimeInForce:      time_in_force,
+		ExpireTime:       expire_time,
+		Account:          account,
+		StrategyId:       strategy_id,
+		SecurityId:       security_id,
+		IdSource:         id_source,
 		SecurityExchange: security_exchange,
 	}, nil
 }
@@ -659,20 +813,26 @@ func (CancelRequestEncoder) Encode(ClOrdId string, OrigClOrdId string, Symbol st
 	writeString(&buf, Symbol)
 	buf = append(buf, byte(Side.ToValue()))
 	v := 0.0
-	if OrderQty != nil { v = *OrderQty }
+	if OrderQty != nil {
+		v = *OrderQty
+	}
 	writeF64BE(&buf, v)
-	if OrderQty != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if OrderQty != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for CancelRequest
 type CancelRequestDecoder struct {
-	ClOrdId string
+	ClOrdId     string
 	OrigClOrdId string
-	Symbol string
-	Side CancelRequestSide
-	OrderQty *float64
+	Symbol      string
+	Side        CancelRequestSide
+	OrderQty    *float64
 }
 
 func (CancelRequestDecoder) EncodedLen() int { return 0 }
@@ -698,16 +858,24 @@ func CancelRequestDecoderDecode(buf []byte) (CancelRequestDecoder, error) {
 	sideRaw := buf[pos]
 	pos++
 	side, err := CancelRequestSideFromValue(sideRaw)
-	if err != nil { return CancelRequestDecoder{}, err }
+	if err != nil {
+		return CancelRequestDecoder{}, err
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; order_qty = &raw } else { pos++; order_qty = nil }
+	if buf[pos] == 1 {
+		pos++
+		order_qty = &raw
+	} else {
+		pos++
+		order_qty = nil
+	}
 
 	return CancelRequestDecoder{
-		ClOrdId: cl_ord_id,
+		ClOrdId:     cl_ord_id,
 		OrigClOrdId: orig_cl_ord_id,
-		Symbol: symbol,
-		Side: side,
-		OrderQty: order_qty,
+		Symbol:      symbol,
+		Side:        side,
+		OrderQty:    order_qty,
 	}, nil
 }
 
@@ -729,21 +897,27 @@ func (CancelReplaceRequestEncoder) Encode(ClOrdId string, OrigClOrdId string, Sy
 	buf = append(buf, byte(Side.ToValue()))
 	writeF64BE(&buf, OrderQty)
 	v := 0.0
-	if Price != nil { v = *Price }
+	if Price != nil {
+		v = *Price
+	}
 	writeF64BE(&buf, v)
-	if Price != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if Price != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for CancelReplaceRequest
 type CancelReplaceRequestDecoder struct {
-	ClOrdId string
+	ClOrdId     string
 	OrigClOrdId string
-	Symbol string
-	Side CancelReplaceRequestSide
-	OrderQty float64
-	Price *float64
+	Symbol      string
+	Side        CancelReplaceRequestSide
+	OrderQty    float64
+	Price       *float64
 }
 
 func (CancelReplaceRequestDecoder) EncodedLen() int { return 0 }
@@ -769,18 +943,26 @@ func CancelReplaceRequestDecoderDecode(buf []byte) (CancelReplaceRequestDecoder,
 	sideRaw := buf[pos]
 	pos++
 	side, err := CancelReplaceRequestSideFromValue(sideRaw)
-	if err != nil { return CancelReplaceRequestDecoder{}, err }
+	if err != nil {
+		return CancelReplaceRequestDecoder{}, err
+	}
 	order_qty := readF64BE(buf, &pos)
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; price = &raw } else { pos++; price = nil }
+	if buf[pos] == 1 {
+		pos++
+		price = &raw
+	} else {
+		pos++
+		price = nil
+	}
 
 	return CancelReplaceRequestDecoder{
-		ClOrdId: cl_ord_id,
+		ClOrdId:     cl_ord_id,
 		OrigClOrdId: orig_cl_ord_id,
-		Symbol: symbol,
-		Side: side,
-		OrderQty: order_qty,
-		Price: price,
+		Symbol:      symbol,
+		Side:        side,
+		OrderQty:    order_qty,
+		Price:       price,
 	}, nil
 }
 
@@ -803,13 +985,25 @@ func (ExecutionReportEncoder) Encode(ClOrdId string, OrderId string, ExecId stri
 	buf = append(buf, byte(OrdStatus.ToValue()))
 	buf = append(buf, byte(Side.ToValue()))
 	v := 0.0
-	if LastQty != nil { v = *LastQty }
+	if LastQty != nil {
+		v = *LastQty
+	}
 	writeF64BE(&buf, v)
-	if LastQty != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if LastQty != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if LastPrice != nil { v = *LastPrice }
+	if LastPrice != nil {
+		v = *LastPrice
+	}
 	writeF64BE(&buf, v)
-	if LastPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if LastPrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	writeF64BE(&buf, LeavesQty)
 	writeF64BE(&buf, CumQty)
 	writeF64BE(&buf, AvgPrice)
@@ -821,18 +1015,18 @@ func (ExecutionReportEncoder) Encode(ClOrdId string, OrderId string, ExecId stri
 
 // SBE decoder for ExecutionReport
 type ExecutionReportDecoder struct {
-	ClOrdId string
-	OrderId string
-	ExecId string
-	ExecType ExecutionReportExecType
-	OrdStatus ExecutionReportOrdStatus
-	Side ExecutionReportSide
-	LastQty *float64
-	LastPrice *float64
-	LeavesQty float64
-	CumQty float64
-	AvgPrice float64
-	Symbol string
+	ClOrdId      string
+	OrderId      string
+	ExecId       string
+	ExecType     ExecutionReportExecType
+	OrdStatus    ExecutionReportOrdStatus
+	Side         ExecutionReportSide
+	LastQty      *float64
+	LastPrice    *float64
+	LeavesQty    float64
+	CumQty       float64
+	AvgPrice     float64
+	Symbol       string
 	TransactTime int64
 }
 
@@ -859,19 +1053,37 @@ func ExecutionReportDecoderDecode(buf []byte) (ExecutionReportDecoder, error) {
 	exec_typeRaw := buf[pos]
 	pos++
 	exec_type, err := ExecutionReportExecTypeFromValue(exec_typeRaw)
-	if err != nil { return ExecutionReportDecoder{}, err }
+	if err != nil {
+		return ExecutionReportDecoder{}, err
+	}
 	ord_statusRaw := buf[pos]
 	pos++
 	ord_status, err := ExecutionReportOrdStatusFromValue(ord_statusRaw)
-	if err != nil { return ExecutionReportDecoder{}, err }
+	if err != nil {
+		return ExecutionReportDecoder{}, err
+	}
 	sideRaw := buf[pos]
 	pos++
 	side, err := ExecutionReportSideFromValue(sideRaw)
-	if err != nil { return ExecutionReportDecoder{}, err }
+	if err != nil {
+		return ExecutionReportDecoder{}, err
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; last_qty = &raw } else { pos++; last_qty = nil }
+	if buf[pos] == 1 {
+		pos++
+		last_qty = &raw
+	} else {
+		pos++
+		last_qty = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; last_price = &raw } else { pos++; last_price = nil }
+	if buf[pos] == 1 {
+		pos++
+		last_price = &raw
+	} else {
+		pos++
+		last_price = nil
+	}
 	leaves_qty := readF64BE(buf, &pos)
 	cum_qty := readF64BE(buf, &pos)
 	avg_price := readF64BE(buf, &pos)
@@ -879,18 +1091,18 @@ func ExecutionReportDecoderDecode(buf []byte) (ExecutionReportDecoder, error) {
 	transact_time := readI64BE(buf, &pos)
 
 	return ExecutionReportDecoder{
-		ClOrdId: cl_ord_id,
-		OrderId: order_id,
-		ExecId: exec_id,
-		ExecType: exec_type,
-		OrdStatus: ord_status,
-		Side: side,
-		LastQty: last_qty,
-		LastPrice: last_price,
-		LeavesQty: leaves_qty,
-		CumQty: cum_qty,
-		AvgPrice: avg_price,
-		Symbol: symbol,
+		ClOrdId:      cl_ord_id,
+		OrderId:      order_id,
+		ExecId:       exec_id,
+		ExecType:     exec_type,
+		OrdStatus:    ord_status,
+		Side:         side,
+		LastQty:      last_qty,
+		LastPrice:    last_price,
+		LeavesQty:    leaves_qty,
+		CumQty:       cum_qty,
+		AvgPrice:     avg_price,
+		Symbol:       symbol,
 		TransactTime: transact_time,
 	}, nil
 }
@@ -917,10 +1129,10 @@ func (CancelRejectEncoder) Encode(ClOrdId string, OrigClOrdId string, RejectReas
 
 // SBE decoder for CancelReject
 type CancelRejectDecoder struct {
-	ClOrdId string
-	OrigClOrdId string
+	ClOrdId      string
+	OrigClOrdId  string
 	RejectReason CancelRejectRejectReason
-	Symbol string
+	Symbol       string
 }
 
 func (CancelRejectDecoder) EncodedLen() int { return 0 }
@@ -945,14 +1157,16 @@ func CancelRejectDecoderDecode(buf []byte) (CancelRejectDecoder, error) {
 	reject_reasonRaw := buf[pos]
 	pos++
 	reject_reason, err := CancelRejectRejectReasonFromValue(reject_reasonRaw)
-	if err != nil { return CancelRejectDecoder{}, err }
+	if err != nil {
+		return CancelRejectDecoder{}, err
+	}
 	symbol := readString(buf, &pos)
 
 	return CancelRejectDecoder{
-		ClOrdId: cl_ord_id,
-		OrigClOrdId: orig_cl_ord_id,
+		ClOrdId:      cl_ord_id,
+		OrigClOrdId:  orig_cl_ord_id,
 		RejectReason: reject_reason,
-		Symbol: symbol,
+		Symbol:       symbol,
 	}, nil
 }
 
@@ -979,23 +1193,34 @@ func (MarketDataSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []s
 		PriceLevelEncoder{}.Encode(item, &buf)
 	}
 	writeI64BE(&buf, Timestamp)
-	if Sequence != nil { buf = append(buf, 1); writeI64BE(&buf, *Sequence) } else { buf = append(buf, 0) }
+	if Sequence != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *Sequence)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for MarketDataSnapshot
 type MarketDataSnapshotDecoder struct {
-	Symbol string
-	Exchange string
-	Bids []string
-	Asks []string
-	Timestamp int64
-	Sequence *int64
+	Symbol     string
+	Exchange   string
+	Bids       []string
+	Asks       []string
+	Timestamp  int64
+	Sequence   *int64
 	IsSnapshot *uint8
 }
 
@@ -1022,7 +1247,9 @@ func MarketDataSnapshotDecoderDecode(buf []byte) (MarketDataSnapshotDecoder, err
 	bids := make([]PriceLevel, 0, bidsCount)
 	for i := 0; i < bidsCount; i++ {
 		item, err := PriceLevelDecoder{}.Decode(buf[pos:])
-		if err != nil { return MarketDataSnapshotDecoder{}, err }
+		if err != nil {
+			return MarketDataSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		bids = append(bids, item)
 	}
@@ -1030,23 +1257,38 @@ func MarketDataSnapshotDecoderDecode(buf []byte) (MarketDataSnapshotDecoder, err
 	asks := make([]PriceLevel, 0, asksCount)
 	for i := 0; i < asksCount; i++ {
 		item, err := PriceLevelDecoder{}.Decode(buf[pos:])
-		if err != nil { return MarketDataSnapshotDecoder{}, err }
+		if err != nil {
+			return MarketDataSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		asks = append(asks, item)
 	}
 	timestamp := readI64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); sequence = &v } else { pos++; sequence = nil }
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		sequence = &v
+	} else {
+		pos++
+		sequence = nil
+	}
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return MarketDataSnapshotDecoder{
-		Symbol: symbol,
-		Exchange: exchange,
-		Bids: bids,
-		Asks: asks,
-		Timestamp: timestamp,
-		Sequence: sequence,
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -1069,17 +1311,22 @@ func (MarketDataIncrementalRefreshEncoder) Encode(Symbol string, Updates []strin
 		MarketDataUpdateEncoder{}.Encode(item, &buf)
 	}
 	writeI64BE(&buf, Timestamp)
-	if Sequence != nil { buf = append(buf, 1); writeI64BE(&buf, *Sequence) } else { buf = append(buf, 0) }
+	if Sequence != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *Sequence)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for MarketDataIncrementalRefresh
 type MarketDataIncrementalRefreshDecoder struct {
-	Symbol string
-	Updates []string
+	Symbol    string
+	Updates   []string
 	Timestamp int64
-	Sequence *int64
+	Sequence  *int64
 }
 
 func (MarketDataIncrementalRefreshDecoder) EncodedLen() int { return 0 }
@@ -1104,18 +1351,27 @@ func MarketDataIncrementalRefreshDecoderDecode(buf []byte) (MarketDataIncrementa
 	updates := make([]MarketDataUpdate, 0, updatesCount)
 	for i := 0; i < updatesCount; i++ {
 		item, err := MarketDataUpdateDecoder{}.Decode(buf[pos:])
-		if err != nil { return MarketDataIncrementalRefreshDecoder{}, err }
+		if err != nil {
+			return MarketDataIncrementalRefreshDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		updates = append(updates, item)
 	}
 	timestamp := readI64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); sequence = &v } else { pos++; sequence = nil }
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		sequence = &v
+	} else {
+		pos++
+		sequence = nil
+	}
 
 	return MarketDataIncrementalRefreshDecoder{
-		Symbol: symbol,
-		Updates: updates,
+		Symbol:    symbol,
+		Updates:   updates,
 		Timestamp: timestamp,
-		Sequence: sequence,
+		Sequence:  sequence,
 	}, nil
 }
 
@@ -1133,7 +1389,12 @@ func (OrderBookRequestEncoder) Encode(Symbol string, Depth *u32, AtTime *int64) 
 	// Fixed fields
 	writeString(&buf, Symbol)
 	// TODO: encode depth as u32
-	if AtTime != nil { buf = append(buf, 1); writeI64BE(&buf, *AtTime) } else { buf = append(buf, 0) }
+	if AtTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *AtTime)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
@@ -1141,7 +1402,7 @@ func (OrderBookRequestEncoder) Encode(Symbol string, Depth *u32, AtTime *int64) 
 // SBE decoder for OrderBookRequest
 type OrderBookRequestDecoder struct {
 	Symbol string
-	Depth *u32
+	Depth  *u32
 	AtTime *int64
 }
 
@@ -1163,12 +1424,19 @@ func OrderBookRequestDecoderDecode(buf []byte) (OrderBookRequestDecoder, error) 
 		return OrderBookRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	symbol := readString(buf, &pos)
-        // TODO: decode depth
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); at_time = &v } else { pos++; at_time = nil }
+	// TODO: decode depth
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		at_time = &v
+	} else {
+		pos++
+		at_time = nil
+	}
 
 	return OrderBookRequestDecoder{
 		Symbol: symbol,
-		Depth: depth,
+		Depth:  depth,
 		AtTime: at_time,
 	}, nil
 }
@@ -1196,23 +1464,34 @@ func (OrderBookSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []st
 		PriceLevelEncoder{}.Encode(item, &buf)
 	}
 	writeI64BE(&buf, Timestamp)
-	if Sequence != nil { buf = append(buf, 1); writeI64BE(&buf, *Sequence) } else { buf = append(buf, 0) }
+	if Sequence != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *Sequence)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for OrderBookSnapshot
 type OrderBookSnapshotDecoder struct {
-	Symbol string
-	Exchange string
-	Bids []string
-	Asks []string
-	Timestamp int64
-	Sequence *int64
+	Symbol     string
+	Exchange   string
+	Bids       []string
+	Asks       []string
+	Timestamp  int64
+	Sequence   *int64
 	IsSnapshot *uint8
 }
 
@@ -1239,7 +1518,9 @@ func OrderBookSnapshotDecoderDecode(buf []byte) (OrderBookSnapshotDecoder, error
 	bids := make([]PriceLevel, 0, bidsCount)
 	for i := 0; i < bidsCount; i++ {
 		item, err := PriceLevelDecoder{}.Decode(buf[pos:])
-		if err != nil { return OrderBookSnapshotDecoder{}, err }
+		if err != nil {
+			return OrderBookSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		bids = append(bids, item)
 	}
@@ -1247,23 +1528,38 @@ func OrderBookSnapshotDecoderDecode(buf []byte) (OrderBookSnapshotDecoder, error
 	asks := make([]PriceLevel, 0, asksCount)
 	for i := 0; i < asksCount; i++ {
 		item, err := PriceLevelDecoder{}.Decode(buf[pos:])
-		if err != nil { return OrderBookSnapshotDecoder{}, err }
+		if err != nil {
+			return OrderBookSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		asks = append(asks, item)
 	}
 	timestamp := readI64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); sequence = &v } else { pos++; sequence = nil }
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		sequence = &v
+	} else {
+		pos++
+		sequence = nil
+	}
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return OrderBookSnapshotDecoder{
-		Symbol: symbol,
-		Exchange: exchange,
-		Bids: bids,
-		Asks: asks,
-		Timestamp: timestamp,
-		Sequence: sequence,
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -1286,17 +1582,22 @@ func (OrderBookDeltaEncoder) Encode(Symbol string, Updates []string, Timestamp i
 		MarketDataUpdateEncoder{}.Encode(item, &buf)
 	}
 	writeI64BE(&buf, Timestamp)
-	if Sequence != nil { buf = append(buf, 1); writeI64BE(&buf, *Sequence) } else { buf = append(buf, 0) }
+	if Sequence != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *Sequence)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for OrderBookDelta
 type OrderBookDeltaDecoder struct {
-	Symbol string
-	Updates []string
+	Symbol    string
+	Updates   []string
 	Timestamp int64
-	Sequence *int64
+	Sequence  *int64
 }
 
 func (OrderBookDeltaDecoder) EncodedLen() int { return 0 }
@@ -1321,18 +1622,27 @@ func OrderBookDeltaDecoderDecode(buf []byte) (OrderBookDeltaDecoder, error) {
 	updates := make([]MarketDataUpdate, 0, updatesCount)
 	for i := 0; i < updatesCount; i++ {
 		item, err := MarketDataUpdateDecoder{}.Decode(buf[pos:])
-		if err != nil { return OrderBookDeltaDecoder{}, err }
+		if err != nil {
+			return OrderBookDeltaDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		updates = append(updates, item)
 	}
 	timestamp := readI64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); sequence = &v } else { pos++; sequence = nil }
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		sequence = &v
+	} else {
+		pos++
+		sequence = nil
+	}
 
 	return OrderBookDeltaDecoder{
-		Symbol: symbol,
-		Updates: updates,
+		Symbol:    symbol,
+		Updates:   updates,
 		Timestamp: timestamp,
-		Sequence: sequence,
+		Sequence:  sequence,
 	}, nil
 }
 
@@ -1395,8 +1705,18 @@ func (AggregateTradeRequestEncoder) Encode(Symbol string, StartTime *int64, EndT
 
 	// Fixed fields
 	writeString(&buf, Symbol)
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -1410,11 +1730,11 @@ func (AggregateTradeRequestEncoder) Encode(Symbol string, StartTime *int64, EndT
 
 // SBE decoder for AggregateTradeRequest
 type AggregateTradeRequestDecoder struct {
-	Symbol string
+	Symbol    string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (AggregateTradeRequestDecoder) EncodedLen() int { return 0 }
@@ -1435,9 +1755,23 @@ func AggregateTradeRequestDecoderDecode(buf []byte) (AggregateTradeRequestDecode
 		return AggregateTradeRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	symbol := readString(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -1448,11 +1782,11 @@ func AggregateTradeRequestDecoderDecode(buf []byte) (AggregateTradeRequestDecode
 	}
 
 	return AggregateTradeRequestDecoder{
-		Symbol: symbol,
+		Symbol:    symbol,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -1486,9 +1820,9 @@ func (AggregateTradeBatchEncoder) Encode(Symbol string, Trades []string, HasMore
 
 // SBE decoder for AggregateTradeBatch
 type AggregateTradeBatchDecoder struct {
-	Symbol string
-	Trades []string
-	HasMore uint8
+	Symbol     string
+	Trades     []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -1514,7 +1848,9 @@ func AggregateTradeBatchDecoderDecode(buf []byte) (AggregateTradeBatchDecoder, e
 	trades := make([]AggregateTrade, 0, tradesCount)
 	for i := 0; i < tradesCount; i++ {
 		item, err := AggregateTradeDecoder{}.Decode(buf[pos:])
-		if err != nil { return AggregateTradeBatchDecoder{}, err }
+		if err != nil {
+			return AggregateTradeBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		trades = append(trades, item)
 	}
@@ -1530,9 +1866,9 @@ func AggregateTradeBatchDecoderDecode(buf []byte) (AggregateTradeBatchDecoder, e
 	}
 
 	return AggregateTradeBatchDecoder{
-		Symbol: symbol,
-		Trades: trades,
-		HasMore: has_more,
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -1554,19 +1890,25 @@ func (MiniTickerEncoder) Encode(Symbol string, LastPrice float64, Volume float64
 	writeF64BE(&buf, Volume)
 	writeI64BE(&buf, Timestamp)
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for MiniTicker
 type MiniTickerDecoder struct {
-	Symbol string
-	LastPrice float64
-	Volume float64
-	Timestamp int64
+	Symbol     string
+	LastPrice  float64
+	Volume     float64
+	Timestamp  int64
 	IsSnapshot *uint8
 }
 
@@ -1593,13 +1935,19 @@ func MiniTickerDecoderDecode(buf []byte) (MiniTickerDecoder, error) {
 	timestamp := readI64BE(buf, &pos)
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return MiniTickerDecoder{
-		Symbol: symbol,
-		LastPrice: last_price,
-		Volume: volume,
-		Timestamp: timestamp,
+		Symbol:     symbol,
+		LastPrice:  last_price,
+		Volume:     volume,
+		Timestamp:  timestamp,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -1642,9 +1990,7 @@ func AllMidsRequestDecoderDecode(buf []byte) (AllMidsRequestDecoder, error) {
 		return AllMidsRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 
-	return AllMidsRequestDecoder{
-
-	}, nil
+	return AllMidsRequestDecoder{}, nil
 }
 
 // SBE encoder for AllMidsBatch
@@ -1693,7 +2039,9 @@ func AllMidsBatchDecoderDecode(buf []byte) (AllMidsBatchDecoder, error) {
 	tickers := make([]MiniTicker, 0, tickersCount)
 	for i := 0; i < tickersCount; i++ {
 		item, err := MiniTickerDecoder{}.Decode(buf[pos:])
-		if err != nil { return AllMidsBatchDecoder{}, err }
+		if err != nil {
+			return AllMidsBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		tickers = append(tickers, item)
 	}
@@ -1718,30 +2066,48 @@ func (MarkPriceUpdateEncoder) Encode(Symbol string, MarkPrice float64, IndexPric
 	writeString(&buf, Symbol)
 	writeF64BE(&buf, MarkPrice)
 	v := 0.0
-	if IndexPrice != nil { v = *IndexPrice }
+	if IndexPrice != nil {
+		v = *IndexPrice
+	}
 	writeF64BE(&buf, v)
-	if IndexPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IndexPrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if FundingRate != nil { v = *FundingRate }
+	if FundingRate != nil {
+		v = *FundingRate
+	}
 	writeF64BE(&buf, v)
-	if FundingRate != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if FundingRate != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	writeI64BE(&buf, Timestamp)
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for MarkPriceUpdate
 type MarkPriceUpdateDecoder struct {
-	Symbol string
-	MarkPrice float64
-	IndexPrice *float64
+	Symbol      string
+	MarkPrice   float64
+	IndexPrice  *float64
 	FundingRate *float64
-	Timestamp int64
-	IsSnapshot *uint8
+	Timestamp   int64
+	IsSnapshot  *uint8
 }
 
 func (MarkPriceUpdateDecoder) EncodedLen() int { return 0 }
@@ -1764,21 +2130,39 @@ func MarkPriceUpdateDecoderDecode(buf []byte) (MarkPriceUpdateDecoder, error) {
 	symbol := readString(buf, &pos)
 	mark_price := readF64BE(buf, &pos)
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; index_price = &raw } else { pos++; index_price = nil }
+	if buf[pos] == 1 {
+		pos++
+		index_price = &raw
+	} else {
+		pos++
+		index_price = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; funding_rate = &raw } else { pos++; funding_rate = nil }
+	if buf[pos] == 1 {
+		pos++
+		funding_rate = &raw
+	} else {
+		pos++
+		funding_rate = nil
+	}
 	timestamp := readI64BE(buf, &pos)
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return MarkPriceUpdateDecoder{
-		Symbol: symbol,
-		MarkPrice: mark_price,
-		IndexPrice: index_price,
+		Symbol:      symbol,
+		MarkPrice:   mark_price,
+		IndexPrice:  index_price,
 		FundingRate: funding_rate,
-		Timestamp: timestamp,
-		IsSnapshot: is_snapshot,
+		Timestamp:   timestamp,
+		IsSnapshot:  is_snapshot,
 	}, nil
 }
 
@@ -1934,8 +2318,18 @@ func (CandleBarRequestEncoder) Encode(Symbol string, Interval string, StartTime 
 	// Fixed fields
 	writeString(&buf, Symbol)
 	writeString(&buf, Interval)
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -1949,12 +2343,12 @@ func (CandleBarRequestEncoder) Encode(Symbol string, Interval string, StartTime 
 
 // SBE decoder for CandleBarRequest
 type CandleBarRequestDecoder struct {
-	Symbol string
-	Interval string
+	Symbol    string
+	Interval  string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (CandleBarRequestDecoder) EncodedLen() int { return 0 }
@@ -1976,9 +2370,23 @@ func CandleBarRequestDecoderDecode(buf []byte) (CandleBarRequestDecoder, error) 
 	}
 	symbol := readString(buf, &pos)
 	interval := readString(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -1989,12 +2397,12 @@ func CandleBarRequestDecoderDecode(buf []byte) (CandleBarRequestDecoder, error) 
 	}
 
 	return CandleBarRequestDecoder{
-		Symbol: symbol,
-		Interval: interval,
+		Symbol:    symbol,
+		Interval:  interval,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -2029,10 +2437,10 @@ func (CandleBarBatchEncoder) Encode(Symbol string, Interval string, Bars []strin
 
 // SBE decoder for CandleBarBatch
 type CandleBarBatchDecoder struct {
-	Symbol string
-	Interval string
-	Bars []string
-	HasMore uint8
+	Symbol     string
+	Interval   string
+	Bars       []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -2059,7 +2467,9 @@ func CandleBarBatchDecoderDecode(buf []byte) (CandleBarBatchDecoder, error) {
 	bars := make([]CandleBar, 0, barsCount)
 	for i := 0; i < barsCount; i++ {
 		item, err := CandleBarDecoder{}.Decode(buf[pos:])
-		if err != nil { return CandleBarBatchDecoder{}, err }
+		if err != nil {
+			return CandleBarBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		bars = append(bars, item)
 	}
@@ -2075,10 +2485,10 @@ func CandleBarBatchDecoderDecode(buf []byte) (CandleBarBatchDecoder, error) {
 	}
 
 	return CandleBarBatchDecoder{
-		Symbol: symbol,
-		Interval: interval,
-		Bars: bars,
-		HasMore: has_more,
+		Symbol:     symbol,
+		Interval:   interval,
+		Bars:       bars,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -2142,8 +2552,18 @@ func (TradeHistoryRequestEncoder) Encode(Symbol string, StartTime *int64, EndTim
 
 	// Fixed fields
 	writeString(&buf, Symbol)
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -2157,11 +2577,11 @@ func (TradeHistoryRequestEncoder) Encode(Symbol string, StartTime *int64, EndTim
 
 // SBE decoder for TradeHistoryRequest
 type TradeHistoryRequestDecoder struct {
-	Symbol string
+	Symbol    string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (TradeHistoryRequestDecoder) EncodedLen() int { return 0 }
@@ -2182,9 +2602,23 @@ func TradeHistoryRequestDecoderDecode(buf []byte) (TradeHistoryRequestDecoder, e
 		return TradeHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	symbol := readString(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -2195,11 +2629,11 @@ func TradeHistoryRequestDecoderDecode(buf []byte) (TradeHistoryRequestDecoder, e
 	}
 
 	return TradeHistoryRequestDecoder{
-		Symbol: symbol,
+		Symbol:    symbol,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -2233,9 +2667,9 @@ func (PublicTradeBatchEncoder) Encode(Symbol string, Trades []string, HasMore ui
 
 // SBE decoder for PublicTradeBatch
 type PublicTradeBatchDecoder struct {
-	Symbol string
-	Trades []string
-	HasMore uint8
+	Symbol     string
+	Trades     []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -2261,7 +2695,9 @@ func PublicTradeBatchDecoderDecode(buf []byte) (PublicTradeBatchDecoder, error) 
 	trades := make([]PublicTrade, 0, tradesCount)
 	for i := 0; i < tradesCount; i++ {
 		item, err := PublicTradeDecoder{}.Decode(buf[pos:])
-		if err != nil { return PublicTradeBatchDecoder{}, err }
+		if err != nil {
+			return PublicTradeBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		trades = append(trades, item)
 	}
@@ -2277,9 +2713,9 @@ func PublicTradeBatchDecoderDecode(buf []byte) (PublicTradeBatchDecoder, error) 
 	}
 
 	return PublicTradeBatchDecoder{
-		Symbol: symbol,
-		Trades: trades,
-		HasMore: has_more,
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -2298,38 +2734,68 @@ func (BestBidOfferEncoder) Encode(Symbol string, BidPrice *float64, BidQty *floa
 	// Fixed fields
 	writeString(&buf, Symbol)
 	v := 0.0
-	if BidPrice != nil { v = *BidPrice }
+	if BidPrice != nil {
+		v = *BidPrice
+	}
 	writeF64BE(&buf, v)
-	if BidPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if BidPrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if BidQty != nil { v = *BidQty }
+	if BidQty != nil {
+		v = *BidQty
+	}
 	writeF64BE(&buf, v)
-	if BidQty != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if BidQty != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if AskPrice != nil { v = *AskPrice }
+	if AskPrice != nil {
+		v = *AskPrice
+	}
 	writeF64BE(&buf, v)
-	if AskPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if AskPrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	v := 0.0
-	if AskQty != nil { v = *AskQty }
+	if AskQty != nil {
+		v = *AskQty
+	}
 	writeF64BE(&buf, v)
-	if AskQty != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if AskQty != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 	writeI64BE(&buf, Timestamp)
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for BestBidOffer
 type BestBidOfferDecoder struct {
-	Symbol string
-	BidPrice *float64
-	BidQty *float64
-	AskPrice *float64
-	AskQty *float64
-	Timestamp int64
+	Symbol     string
+	BidPrice   *float64
+	BidQty     *float64
+	AskPrice   *float64
+	AskQty     *float64
+	Timestamp  int64
 	IsSnapshot *uint8
 }
 
@@ -2352,25 +2818,55 @@ func BestBidOfferDecoderDecode(buf []byte) (BestBidOfferDecoder, error) {
 	}
 	symbol := readString(buf, &pos)
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; bid_price = &raw } else { pos++; bid_price = nil }
+	if buf[pos] == 1 {
+		pos++
+		bid_price = &raw
+	} else {
+		pos++
+		bid_price = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; bid_qty = &raw } else { pos++; bid_qty = nil }
+	if buf[pos] == 1 {
+		pos++
+		bid_qty = &raw
+	} else {
+		pos++
+		bid_qty = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; ask_price = &raw } else { pos++; ask_price = nil }
+	if buf[pos] == 1 {
+		pos++
+		ask_price = &raw
+	} else {
+		pos++
+		ask_price = nil
+	}
 	raw := readF64BE(buf, &pos)
-	if buf[pos] == 1 { pos++; ask_qty = &raw } else { pos++; ask_qty = nil }
+	if buf[pos] == 1 {
+		pos++
+		ask_qty = &raw
+	} else {
+		pos++
+		ask_qty = nil
+	}
 	timestamp := readI64BE(buf, &pos)
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return BestBidOfferDecoder{
-		Symbol: symbol,
-		BidPrice: bid_price,
-		BidQty: bid_qty,
-		AskPrice: ask_price,
-		AskQty: ask_qty,
-		Timestamp: timestamp,
+		Symbol:     symbol,
+		BidPrice:   bid_price,
+		BidQty:     bid_qty,
+		AskPrice:   ask_price,
+		AskQty:     ask_qty,
+		Timestamp:  timestamp,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -2397,25 +2893,31 @@ func (SymbolTickerEncoder) Encode(Symbol string, LastPrice float64, PriceChange 
 	writeF64BE(&buf, Open)
 	writeI64BE(&buf, Timestamp)
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for SymbolTicker
 type SymbolTickerDecoder struct {
-	Symbol string
-	LastPrice float64
-	PriceChange float64
+	Symbol         string
+	LastPrice      float64
+	PriceChange    float64
 	PriceChangePct float64
-	Volume float64
-	High float64
-	Low float64
-	Open float64
-	Timestamp int64
-	IsSnapshot *uint8
+	Volume         float64
+	High           float64
+	Low            float64
+	Open           float64
+	Timestamp      int64
+	IsSnapshot     *uint8
 }
 
 func (SymbolTickerDecoder) EncodedLen() int { return 0 }
@@ -2446,19 +2948,25 @@ func SymbolTickerDecoderDecode(buf []byte) (SymbolTickerDecoder, error) {
 	timestamp := readI64BE(buf, &pos)
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return SymbolTickerDecoder{
-		Symbol: symbol,
-		LastPrice: last_price,
-		PriceChange: price_change,
+		Symbol:         symbol,
+		LastPrice:      last_price,
+		PriceChange:    price_change,
 		PriceChangePct: price_change_pct,
-		Volume: volume,
-		High: high,
-		Low: low,
-		Open: open,
-		Timestamp: timestamp,
-		IsSnapshot: is_snapshot,
+		Volume:         volume,
+		High:           high,
+		Low:            low,
+		Open:           open,
+		Timestamp:      timestamp,
+		IsSnapshot:     is_snapshot,
 	}, nil
 }
 
@@ -2530,10 +3038,10 @@ func (AccountSummaryEncoder) Encode(Account string, Balance float64, BuyingPower
 
 // SBE decoder for AccountSummary
 type AccountSummaryDecoder struct {
-	Account string
-	Balance float64
+	Account     string
+	Balance     float64
 	BuyingPower float64
-	Currency string
+	Currency    string
 }
 
 func (AccountSummaryDecoder) EncodedLen() int { return 0 }
@@ -2559,10 +3067,10 @@ func AccountSummaryDecoderDecode(buf []byte) (AccountSummaryDecoder, error) {
 	currency := readString(buf, &pos)
 
 	return AccountSummaryDecoder{
-		Account: account,
-		Balance: balance,
+		Account:     account,
+		Balance:     balance,
 		BuyingPower: buying_power,
-		Currency: currency,
+		Currency:    currency,
 	}, nil
 }
 
@@ -2591,13 +3099,13 @@ func (MarginSummaryEncoder) Encode(Account string, Balance float64, BuyingPower 
 
 // SBE decoder for MarginSummary
 type MarginSummaryDecoder struct {
-	Account string
-	Balance float64
+	Account     string
+	Balance     float64
 	BuyingPower float64
-	Equity float64
-	MarginUsed float64
-	Available float64
-	Currency string
+	Equity      float64
+	MarginUsed  float64
+	Available   float64
+	Currency    string
 }
 
 func (MarginSummaryDecoder) EncodedLen() int { return 0 }
@@ -2626,13 +3134,13 @@ func MarginSummaryDecoderDecode(buf []byte) (MarginSummaryDecoder, error) {
 	currency := readString(buf, &pos)
 
 	return MarginSummaryDecoder{
-		Account: account,
-		Balance: balance,
+		Account:     account,
+		Balance:     balance,
 		BuyingPower: buying_power,
-		Equity: equity,
-		MarginUsed: margin_used,
-		Available: available,
-		Currency: currency,
+		Equity:      equity,
+		MarginUsed:  margin_used,
+		Available:   available,
+		Currency:    currency,
 	}, nil
 }
 
@@ -2654,17 +3162,23 @@ func (BalanceSnapshotEncoder) Encode(Account string, Balances []string, IsSnapsh
 		BalanceEntryEncoder{}.Encode(item, &buf)
 	}
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for BalanceSnapshot
 type BalanceSnapshotDecoder struct {
-	Account string
-	Balances []string
+	Account    string
+	Balances   []string
 	IsSnapshot *uint8
 }
 
@@ -2690,17 +3204,25 @@ func BalanceSnapshotDecoderDecode(buf []byte) (BalanceSnapshotDecoder, error) {
 	balances := make([]BalanceEntry, 0, balancesCount)
 	for i := 0; i < balancesCount; i++ {
 		item, err := BalanceEntryDecoder{}.Decode(buf[pos:])
-		if err != nil { return BalanceSnapshotDecoder{}, err }
+		if err != nil {
+			return BalanceSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		balances = append(balances, item)
 	}
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return BalanceSnapshotDecoder{
-		Account: account,
-		Balances: balances,
+		Account:    account,
+		Balances:   balances,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -2729,12 +3251,12 @@ func (BalanceUpdateEncoder) Encode(Account string, Asset string, Delta float64, 
 
 // SBE decoder for BalanceUpdate
 type BalanceUpdateDecoder struct {
-	Account string
-	Asset string
-	Delta float64
-	Total float64
+	Account   string
+	Asset     string
+	Delta     float64
+	Total     float64
 	Available float64
-	Reason BalanceUpdateReason
+	Reason    BalanceUpdateReason
 }
 
 func (BalanceUpdateDecoder) EncodedLen() int { return 0 }
@@ -2762,15 +3284,17 @@ func BalanceUpdateDecoderDecode(buf []byte) (BalanceUpdateDecoder, error) {
 	reasonRaw := buf[pos]
 	pos++
 	reason, err := BalanceUpdateReasonFromValue(reasonRaw)
-	if err != nil { return BalanceUpdateDecoder{}, err }
+	if err != nil {
+		return BalanceUpdateDecoder{}, err
+	}
 
 	return BalanceUpdateDecoder{
-		Account: account,
-		Asset: asset,
-		Delta: delta,
-		Total: total,
+		Account:   account,
+		Asset:     asset,
+		Delta:     delta,
+		Total:     total,
 		Available: available,
-		Reason: reason,
+		Reason:    reason,
 	}, nil
 }
 
@@ -2792,17 +3316,23 @@ func (PositionSnapshotEncoder) Encode(Account string, Positions []string, IsSnap
 		PositionEntryEncoder{}.Encode(item, &buf)
 	}
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for PositionSnapshot
 type PositionSnapshotDecoder struct {
-	Account string
-	Positions []string
+	Account    string
+	Positions  []string
 	IsSnapshot *uint8
 }
 
@@ -2828,17 +3358,25 @@ func PositionSnapshotDecoderDecode(buf []byte) (PositionSnapshotDecoder, error) 
 	positions := make([]PositionEntry, 0, positionsCount)
 	for i := 0; i < positionsCount; i++ {
 		item, err := PositionEntryDecoder{}.Decode(buf[pos:])
-		if err != nil { return PositionSnapshotDecoder{}, err }
+		if err != nil {
+			return PositionSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		positions = append(positions, item)
 	}
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return PositionSnapshotDecoder{
-		Account: account,
-		Positions: positions,
+		Account:    account,
+		Positions:  positions,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -2866,10 +3404,10 @@ func (PositionUpdateEncoder) Encode(Account string, Symbol string, Qty float64, 
 
 // SBE decoder for PositionUpdate
 type PositionUpdateDecoder struct {
-	Account string
-	Symbol string
-	Qty float64
-	EntryPrice float64
+	Account       string
+	Symbol        string
+	Qty           float64
+	EntryPrice    float64
 	UnrealizedPnl float64
 }
 
@@ -2897,10 +3435,10 @@ func PositionUpdateDecoderDecode(buf []byte) (PositionUpdateDecoder, error) {
 	unrealized_pnl := readF64BE(buf, &pos)
 
 	return PositionUpdateDecoder{
-		Account: account,
-		Symbol: symbol,
-		Qty: qty,
-		EntryPrice: entry_price,
+		Account:       account,
+		Symbol:        symbol,
+		Qty:           qty,
+		EntryPrice:    entry_price,
 		UnrealizedPnl: unrealized_pnl,
 	}, nil
 }
@@ -2920,17 +3458,23 @@ func (MarginUpdateEncoder) Encode(Account string, Summary string, IsSnapshot *ui
 	writeString(&buf, Account)
 	writeString(&buf, Summary)
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for MarginUpdate
 type MarginUpdateDecoder struct {
-	Account string
-	Summary string
+	Account    string
+	Summary    string
 	IsSnapshot *uint8
 }
 
@@ -2955,11 +3499,17 @@ func MarginUpdateDecoderDecode(buf []byte) (MarginUpdateDecoder, error) {
 	summary := readString(buf, &pos)
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return MarginUpdateDecoder{
-		Account: account,
-		Summary: summary,
+		Account:    account,
+		Summary:    summary,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -2987,10 +3537,10 @@ func (UserLiquidationEncoder) Encode(Account string, Symbol string, Qty float64,
 
 // SBE decoder for UserLiquidation
 type UserLiquidationDecoder struct {
-	Account string
-	Symbol string
-	Qty float64
-	Price float64
+	Account   string
+	Symbol    string
+	Qty       float64
+	Price     float64
 	Timestamp int64
 }
 
@@ -3018,10 +3568,10 @@ func UserLiquidationDecoderDecode(buf []byte) (UserLiquidationDecoder, error) {
 	timestamp := readI64BE(buf, &pos)
 
 	return UserLiquidationDecoder{
-		Account: account,
-		Symbol: symbol,
-		Qty: qty,
-		Price: price,
+		Account:   account,
+		Symbol:    symbol,
+		Qty:       qty,
+		Price:     price,
 		Timestamp: timestamp,
 	}, nil
 }
@@ -3054,9 +3604,9 @@ func (OrderListStatusEncoder) Encode(Account string, ListId string, Status Order
 // SBE decoder for OrderListStatus
 type OrderListStatusDecoder struct {
 	Account string
-	ListId string
-	Status OrderListStatusStatus
-	Symbol *string
+	ListId  string
+	Status  OrderListStatusStatus
+	Symbol  *string
 }
 
 func (OrderListStatusDecoder) EncodedLen() int { return 0 }
@@ -3081,7 +3631,9 @@ func OrderListStatusDecoderDecode(buf []byte) (OrderListStatusDecoder, error) {
 	statusRaw := buf[pos]
 	pos++
 	status, err := OrderListStatusStatusFromValue(statusRaw)
-	if err != nil { return OrderListStatusDecoder{}, err }
+	if err != nil {
+		return OrderListStatusDecoder{}, err
+	}
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -3093,9 +3645,9 @@ func OrderListStatusDecoderDecode(buf []byte) (OrderListStatusDecoder, error) {
 
 	return OrderListStatusDecoder{
 		Account: account,
-		ListId: list_id,
-		Status: status,
-		Symbol: symbol,
+		ListId:  list_id,
+		Status:  status,
+		Symbol:  symbol,
 	}, nil
 }
 
@@ -3118,8 +3670,18 @@ func (FillHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTim
 	} else {
 		buf = append(buf, 0)
 	}
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -3133,12 +3695,12 @@ func (FillHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTim
 
 // SBE decoder for FillHistoryRequest
 type FillHistoryRequestDecoder struct {
-	Account string
-	Symbol *string
+	Account   string
+	Symbol    *string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (FillHistoryRequestDecoder) EncodedLen() int { return 0 }
@@ -3167,9 +3729,23 @@ func FillHistoryRequestDecoderDecode(buf []byte) (FillHistoryRequestDecoder, err
 		pos++
 		symbol = nil
 	}
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -3180,12 +3756,12 @@ func FillHistoryRequestDecoderDecode(buf []byte) (FillHistoryRequestDecoder, err
 	}
 
 	return FillHistoryRequestDecoder{
-		Account: account,
-		Symbol: symbol,
+		Account:   account,
+		Symbol:    symbol,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -3219,9 +3795,9 @@ func (FillHistoryBatchEncoder) Encode(Account string, Fills []string, HasMore ui
 
 // SBE decoder for FillHistoryBatch
 type FillHistoryBatchDecoder struct {
-	Account string
-	Fills []string
-	HasMore uint8
+	Account    string
+	Fills      []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -3247,7 +3823,9 @@ func FillHistoryBatchDecoderDecode(buf []byte) (FillHistoryBatchDecoder, error) 
 	fills := make([]ExecutionReport, 0, fillsCount)
 	for i := 0; i < fillsCount; i++ {
 		item, err := ExecutionReportDecoder{}.Decode(buf[pos:])
-		if err != nil { return FillHistoryBatchDecoder{}, err }
+		if err != nil {
+			return FillHistoryBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		fills = append(fills, item)
 	}
@@ -3263,9 +3841,9 @@ func FillHistoryBatchDecoderDecode(buf []byte) (FillHistoryBatchDecoder, error) 
 	}
 
 	return FillHistoryBatchDecoder{
-		Account: account,
-		Fills: fills,
-		HasMore: has_more,
+		Account:    account,
+		Fills:      fills,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -3298,10 +3876,10 @@ func (FundingPaymentEncoder) Encode(Account string, Symbol *string, Amount float
 
 // SBE decoder for FundingPayment
 type FundingPaymentDecoder struct {
-	Account string
-	Symbol *string
-	Amount float64
-	Rate float64
+	Account   string
+	Symbol    *string
+	Amount    float64
+	Rate      float64
 	Timestamp int64
 }
 
@@ -3336,10 +3914,10 @@ func FundingPaymentDecoderDecode(buf []byte) (FundingPaymentDecoder, error) {
 	timestamp := readI64BE(buf, &pos)
 
 	return FundingPaymentDecoder{
-		Account: account,
-		Symbol: symbol,
-		Amount: amount,
-		Rate: rate,
+		Account:   account,
+		Symbol:    symbol,
+		Amount:    amount,
+		Rate:      rate,
 		Timestamp: timestamp,
 	}, nil
 }
@@ -3357,8 +3935,18 @@ func (FundingHistoryRequestEncoder) Encode(Account string, StartTime *int64, End
 
 	// Fixed fields
 	writeString(&buf, Account)
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -3372,11 +3960,11 @@ func (FundingHistoryRequestEncoder) Encode(Account string, StartTime *int64, End
 
 // SBE decoder for FundingHistoryRequest
 type FundingHistoryRequestDecoder struct {
-	Account string
+	Account   string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (FundingHistoryRequestDecoder) EncodedLen() int { return 0 }
@@ -3397,9 +3985,23 @@ func FundingHistoryRequestDecoderDecode(buf []byte) (FundingHistoryRequestDecode
 		return FundingHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -3410,11 +4012,11 @@ func FundingHistoryRequestDecoderDecode(buf []byte) (FundingHistoryRequestDecode
 	}
 
 	return FundingHistoryRequestDecoder{
-		Account: account,
+		Account:   account,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -3448,9 +4050,9 @@ func (FundingHistoryBatchEncoder) Encode(Account string, Payments []string, HasM
 
 // SBE decoder for FundingHistoryBatch
 type FundingHistoryBatchDecoder struct {
-	Account string
-	Payments []string
-	HasMore uint8
+	Account    string
+	Payments   []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -3476,7 +4078,9 @@ func FundingHistoryBatchDecoderDecode(buf []byte) (FundingHistoryBatchDecoder, e
 	payments := make([]FundingPayment, 0, paymentsCount)
 	for i := 0; i < paymentsCount; i++ {
 		item, err := FundingPaymentDecoder{}.Decode(buf[pos:])
-		if err != nil { return FundingHistoryBatchDecoder{}, err }
+		if err != nil {
+			return FundingHistoryBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		payments = append(payments, item)
 	}
@@ -3492,9 +4096,9 @@ func FundingHistoryBatchDecoderDecode(buf []byte) (FundingHistoryBatchDecoder, e
 	}
 
 	return FundingHistoryBatchDecoder{
-		Account: account,
-		Payments: payments,
-		HasMore: has_more,
+		Account:    account,
+		Payments:   payments,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -3528,11 +4132,11 @@ func (LedgerUpdateEncoder) Encode(Account string, Asset string, Delta float64, K
 
 // SBE decoder for LedgerUpdate
 type LedgerUpdateDecoder struct {
-	Account string
-	Asset string
-	Delta float64
-	Kind LedgerUpdateKind
-	Timestamp int64
+	Account     string
+	Asset       string
+	Delta       float64
+	Kind        LedgerUpdateKind
+	Timestamp   int64
 	ReferenceId *string
 }
 
@@ -3559,7 +4163,9 @@ func LedgerUpdateDecoderDecode(buf []byte) (LedgerUpdateDecoder, error) {
 	kindRaw := buf[pos]
 	pos++
 	kind, err := LedgerUpdateKindFromValue(kindRaw)
-	if err != nil { return LedgerUpdateDecoder{}, err }
+	if err != nil {
+		return LedgerUpdateDecoder{}, err
+	}
 	timestamp := readI64BE(buf, &pos)
 	if buf[pos] == 1 {
 		pos++
@@ -3571,11 +4177,11 @@ func LedgerUpdateDecoderDecode(buf []byte) (LedgerUpdateDecoder, error) {
 	}
 
 	return LedgerUpdateDecoder{
-		Account: account,
-		Asset: asset,
-		Delta: delta,
-		Kind: kind,
-		Timestamp: timestamp,
+		Account:     account,
+		Asset:       asset,
+		Delta:       delta,
+		Kind:        kind,
+		Timestamp:   timestamp,
 		ReferenceId: reference_id,
 	}, nil
 }
@@ -3593,8 +4199,18 @@ func (LedgerHistoryRequestEncoder) Encode(Account string, StartTime *int64, EndT
 
 	// Fixed fields
 	writeString(&buf, Account)
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -3608,11 +4224,11 @@ func (LedgerHistoryRequestEncoder) Encode(Account string, StartTime *int64, EndT
 
 // SBE decoder for LedgerHistoryRequest
 type LedgerHistoryRequestDecoder struct {
-	Account string
+	Account   string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (LedgerHistoryRequestDecoder) EncodedLen() int { return 0 }
@@ -3633,9 +4249,23 @@ func LedgerHistoryRequestDecoderDecode(buf []byte) (LedgerHistoryRequestDecoder,
 		return LedgerHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -3646,11 +4276,11 @@ func LedgerHistoryRequestDecoderDecode(buf []byte) (LedgerHistoryRequestDecoder,
 	}
 
 	return LedgerHistoryRequestDecoder{
-		Account: account,
+		Account:   account,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -3684,9 +4314,9 @@ func (LedgerHistoryBatchEncoder) Encode(Account string, Entries []string, HasMor
 
 // SBE decoder for LedgerHistoryBatch
 type LedgerHistoryBatchDecoder struct {
-	Account string
-	Entries []string
-	HasMore uint8
+	Account    string
+	Entries    []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -3712,7 +4342,9 @@ func LedgerHistoryBatchDecoderDecode(buf []byte) (LedgerHistoryBatchDecoder, err
 	entries := make([]LedgerUpdate, 0, entriesCount)
 	for i := 0; i < entriesCount; i++ {
 		item, err := LedgerUpdateDecoder{}.Decode(buf[pos:])
-		if err != nil { return LedgerHistoryBatchDecoder{}, err }
+		if err != nil {
+			return LedgerHistoryBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		entries = append(entries, item)
 	}
@@ -3728,9 +4360,9 @@ func LedgerHistoryBatchDecoderDecode(buf []byte) (LedgerHistoryBatchDecoder, err
 	}
 
 	return LedgerHistoryBatchDecoder{
-		Account: account,
-		Entries: entries,
-		HasMore: has_more,
+		Account:    account,
+		Entries:    entries,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -3761,7 +4393,7 @@ func (OpenOrdersRequestEncoder) Encode(Account string, Symbol *string) ([]byte, 
 // SBE decoder for OpenOrdersRequest
 type OpenOrdersRequestDecoder struct {
 	Account string
-	Symbol *string
+	Symbol  *string
 }
 
 func (OpenOrdersRequestDecoder) EncodedLen() int { return 0 }
@@ -3793,7 +4425,7 @@ func OpenOrdersRequestDecoderDecode(buf []byte) (OpenOrdersRequestDecoder, error
 
 	return OpenOrdersRequestDecoder{
 		Account: account,
-		Symbol: symbol,
+		Symbol:  symbol,
 	}, nil
 }
 
@@ -3815,17 +4447,23 @@ func (OpenOrdersSnapshotEncoder) Encode(Account string, Orders []string, IsSnaps
 		ExecutionReportEncoder{}.Encode(item, &buf)
 	}
 	v := uint8(0)
-	if IsSnapshot != nil { v = *IsSnapshot }
+	if IsSnapshot != nil {
+		v = *IsSnapshot
+	}
 	buf = append(buf, v)
-	if IsSnapshot != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
 
 // SBE decoder for OpenOrdersSnapshot
 type OpenOrdersSnapshotDecoder struct {
-	Account string
-	Orders []string
+	Account    string
+	Orders     []string
 	IsSnapshot *uint8
 }
 
@@ -3851,17 +4489,25 @@ func OpenOrdersSnapshotDecoderDecode(buf []byte) (OpenOrdersSnapshotDecoder, err
 	orders := make([]ExecutionReport, 0, ordersCount)
 	for i := 0; i < ordersCount; i++ {
 		item, err := ExecutionReportDecoder{}.Decode(buf[pos:])
-		if err != nil { return OpenOrdersSnapshotDecoder{}, err }
+		if err != nil {
+			return OpenOrdersSnapshotDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		orders = append(orders, item)
 	}
 	v := buf[pos]
 	pos++
-	if buf[pos] == 1 { pos++; is_snapshot = &v } else { pos++; is_snapshot = nil }
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
 
 	return OpenOrdersSnapshotDecoder{
-		Account: account,
-		Orders: orders,
+		Account:    account,
+		Orders:     orders,
 		IsSnapshot: is_snapshot,
 	}, nil
 }
@@ -3885,8 +4531,18 @@ func (OrderHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTi
 	} else {
 		buf = append(buf, 0)
 	}
-	if StartTime != nil { buf = append(buf, 1); writeI64BE(&buf, *StartTime) } else { buf = append(buf, 0) }
-	if EndTime != nil { buf = append(buf, 1); writeI64BE(&buf, *EndTime) } else { buf = append(buf, 0) }
+	if StartTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *StartTime)
+	} else {
+		buf = append(buf, 0)
+	}
+	if EndTime != nil {
+		buf = append(buf, 1)
+		writeI64BE(&buf, *EndTime)
+	} else {
+		buf = append(buf, 0)
+	}
 	// TODO: encode limit as u32
 	if Cursor != nil {
 		buf = append(buf, 1)
@@ -3900,12 +4556,12 @@ func (OrderHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTi
 
 // SBE decoder for OrderHistoryRequest
 type OrderHistoryRequestDecoder struct {
-	Account string
-	Symbol *string
+	Account   string
+	Symbol    *string
 	StartTime *int64
-	EndTime *int64
-	Limit *u32
-	Cursor *string
+	EndTime   *int64
+	Limit     *u32
+	Cursor    *string
 }
 
 func (OrderHistoryRequestDecoder) EncodedLen() int { return 0 }
@@ -3934,9 +4590,23 @@ func OrderHistoryRequestDecoderDecode(buf []byte) (OrderHistoryRequestDecoder, e
 		pos++
 		symbol = nil
 	}
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); start_time = &v } else { pos++; start_time = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); end_time = &v } else { pos++; end_time = nil }
-        // TODO: decode limit
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		start_time = &v
+	} else {
+		pos++
+		start_time = nil
+	}
+	if buf[pos] == 1 {
+		pos++
+		v := readI64BE(buf, &pos)
+		end_time = &v
+	} else {
+		pos++
+		end_time = nil
+	}
+	// TODO: decode limit
 	if buf[pos] == 1 {
 		pos++
 		s := readString(buf, &pos)
@@ -3947,12 +4617,12 @@ func OrderHistoryRequestDecoderDecode(buf []byte) (OrderHistoryRequestDecoder, e
 	}
 
 	return OrderHistoryRequestDecoder{
-		Account: account,
-		Symbol: symbol,
+		Account:   account,
+		Symbol:    symbol,
 		StartTime: start_time,
-		EndTime: end_time,
-		Limit: limit,
-		Cursor: cursor,
+		EndTime:   end_time,
+		Limit:     limit,
+		Cursor:    cursor,
 	}, nil
 }
 
@@ -3986,9 +4656,9 @@ func (OrderHistoryBatchEncoder) Encode(Account string, Orders []string, HasMore 
 
 // SBE decoder for OrderHistoryBatch
 type OrderHistoryBatchDecoder struct {
-	Account string
-	Orders []string
-	HasMore uint8
+	Account    string
+	Orders     []string
+	HasMore    uint8
 	NextCursor *string
 }
 
@@ -4014,7 +4684,9 @@ func OrderHistoryBatchDecoderDecode(buf []byte) (OrderHistoryBatchDecoder, error
 	orders := make([]ExecutionReport, 0, ordersCount)
 	for i := 0; i < ordersCount; i++ {
 		item, err := ExecutionReportDecoder{}.Decode(buf[pos:])
-		if err != nil { return OrderHistoryBatchDecoder{}, err }
+		if err != nil {
+			return OrderHistoryBatchDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		orders = append(orders, item)
 	}
@@ -4030,9 +4702,9 @@ func OrderHistoryBatchDecoderDecode(buf []byte) (OrderHistoryBatchDecoder, error
 	}
 
 	return OrderHistoryBatchDecoder{
-		Account: account,
-		Orders: orders,
-		HasMore: has_more,
+		Account:    account,
+		Orders:     orders,
+		HasMore:    has_more,
 		NextCursor: next_cursor,
 	}, nil
 }
@@ -4075,9 +4747,7 @@ func CapabilitiesRequestDecoderDecode(buf []byte) (CapabilitiesRequestDecoder, e
 		return CapabilitiesRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 
-	return CapabilitiesRequestDecoder{
-
-	}, nil
+	return CapabilitiesRequestDecoder{}, nil
 }
 
 // SBE encoder for CapabilitiesResponse
@@ -4115,8 +4785,8 @@ func (CapabilitiesResponseEncoder) Encode(SchemaIds []string, Paths []string, Sy
 // SBE decoder for CapabilitiesResponse
 type CapabilitiesResponseDecoder struct {
 	SchemaIds []string
-	Paths []string
-	Symbols []string
+	Paths     []string
+	Symbols   []string
 	Intervals []string
 }
 
@@ -4141,7 +4811,9 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponseDecoder,
 	schema_ids := make([]u8, 0, schema_idsCount)
 	for i := 0; i < schema_idsCount; i++ {
 		item, err := u8Decoder{}.Decode(buf[pos:])
-		if err != nil { return CapabilitiesResponseDecoder{}, err }
+		if err != nil {
+			return CapabilitiesResponseDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		schema_ids = append(schema_ids, item)
 	}
@@ -4149,7 +4821,9 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponseDecoder,
 	paths := make([]CapabilityPath, 0, pathsCount)
 	for i := 0; i < pathsCount; i++ {
 		item, err := CapabilityPathDecoder{}.Decode(buf[pos:])
-		if err != nil { return CapabilitiesResponseDecoder{}, err }
+		if err != nil {
+			return CapabilitiesResponseDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		paths = append(paths, item)
 	}
@@ -4157,7 +4831,9 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponseDecoder,
 	symbols := make([]Symbol, 0, symbolsCount)
 	for i := 0; i < symbolsCount; i++ {
 		item, err := SymbolDecoder{}.Decode(buf[pos:])
-		if err != nil { return CapabilitiesResponseDecoder{}, err }
+		if err != nil {
+			return CapabilitiesResponseDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		symbols = append(symbols, item)
 	}
@@ -4165,15 +4841,17 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponseDecoder,
 	intervals := make([]CandleInterval, 0, intervalsCount)
 	for i := 0; i < intervalsCount; i++ {
 		item, err := CandleIntervalDecoder{}.Decode(buf[pos:])
-		if err != nil { return CapabilitiesResponseDecoder{}, err }
+		if err != nil {
+			return CapabilitiesResponseDecoder{}, err
+		}
 		pos += item.EncodedLen()
 		intervals = append(intervals, item)
 	}
 
 	return CapabilitiesResponseDecoder{
 		SchemaIds: schema_ids,
-		Paths: paths,
-		Symbols: symbols,
+		Paths:     paths,
+		Symbols:   symbols,
 		Intervals: intervals,
 	}, nil
 }
@@ -4223,4 +4901,3 @@ func PositionRequestDecoderDecode(buf []byte) (PositionRequestDecoder, error) {
 		Account: account,
 	}, nil
 }
-

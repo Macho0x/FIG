@@ -74,7 +74,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | MemorySessionStore | — | HashMap-backed |
 | ✅ | FileSessionStore | — | JSON file persistence, 6 tests |
 | ✅ | 0-RTT resumption integration | — | TREE 0-RTT wired through transport; FileSessionStore persists sessions |
-| ✅ | Redis/etcd SessionStore | Low | `RedisSessionStore` + `EtcdSessionStore` trait impls (in-memory backend for CI) |
+| ✅ | Redis session store (`session-redis` feature) | Low | `RedisSessionStore` + `DurableSessionStore::from_env` |
 | ✅ | Session expiry / TTL | Medium | Session::is_expired + store TTL on get/purge_expired |
 | ✅ | Session migration (connection migration) | Low | `migration::apply_migration` restores session seq state across IP changes |
 
@@ -89,7 +89,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | SBE encode: NewOrderSingle, ExecutionReport, CancelRequest | — | Hot path |
 | ✅ | SBE encode: remaining message types | — | CancelReplace, MarketDataSnapshot, MarketDataIncrementalRefresh, CancelReject (generated from FSL) |
 | ✅ | SBE message header (schema ID, version, template ID) | — | Generated SBE headers compliant with Spec §10 |
-| ✅ | Protobuf codec | Low | `protobuf` module: json_to_protobuf / protobuf_to_json wire encoding |
+| ✅ | Protobuf codec | Low | Removed — CBOR + SBE only |
 | ✅ | JSON codec (for REST gateway) | Medium | json_to_cbor/cbor_to_json in fig-core codec module |
 
 ---
@@ -199,7 +199,7 @@ for the module index and [PROTOCOL.md](docs/PROTOCOL.md) for integration guidanc
 | ✅ | TREE transport benchmarks (round-trip latency) | Medium | cold-start + steady-state in transport_bench; CI smoke-tests steady-state |
 | ✅ | Tail-latency harness (p99 / p99.9) | Medium | `fig-latency` binary + `latency_bench`; HDR Histogram per-operation samples |
 | ✅ | Comparison benchmarks vs FIX/REST/WS | Medium | protocol_comparison_new_order group in gateway_bench |
-| 🔶 | Throughput benchmarks (msgs/sec) | Medium | `tree_throughput` removed from transport_bench pending server-side multi-frame read |
+| 🔶 | Throughput benchmarks (msgs/sec) | Medium | `tree_ping_pong_throughput_x16` restored in transport_bench |
 | ✅ | Memory allocation benchmarks | Low | `alloc_bench.rs`; run with `--features alloc` |
 
 If you want the full transport throughput benchmark back in CI later, we'll need a proper server-side multi-frame read path first.
@@ -425,7 +425,7 @@ End-to-end parity requires server and gateway changes, not just client SDKs.
 | ✅ | Protobuf payload decode in exchange-sim | Medium | Query bodies + order entry via JSON bridge |
 | ✅ | Multi-codec integration tests | High | `test_sbe_new_order_single` + `multi_codec` unit test |
 | ✅ | Wire `fig-gateway` to proxy to FIG backend | Medium | `--fig-backend` proxies REST GET + WS `SUBSCRIBE` to exchange-sim |
-| ⬜ | Production gateway service template | Medium | Embed `fig-gateways` adapters; REST/WS/FIX → native FIG |
+| ✅ | Production gateway service template | Medium | `examples/production-gateway` + gateway `--health-addr` / `--metrics-addr` |
 
 ---
 
@@ -751,7 +751,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
 | ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
-| 🔶 | Tier 1 SDK: native `request()` | High | `fig-cli` queries candles/fills/funding/ledger; formal SDK helpers pending |
+| 🔶 | Tier 1 SDK: native `request()` | High | `fig-client::FigSdkClient` + `fig-cli` demos |
 | ✅ | Session resume restores subscriptions | High | `Method: RESUME` + `.well-known/resume` + session store |
 | ✅ | Heartbeat independent of data | — | PING/PONG in §3; used by `fig-cli` |
 | 🔶 | Tier 3 SDK parity definition | Medium | Native pub/sub for MD + account in exchange-sim; SDK wrappers pending |
@@ -769,9 +769,9 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | BBO stream | High | `update_bbo` + subscribe path |
 | ✅ | Ticker aggregator | Medium | 24h rolling window from trade tape in `MarketDataHub` |
 | ✅ | `fig-cli` MD demo suite | High | Candles + ticker query in `fig-cli`; book/trades/BBO via subscribe |
-| ⬜ | Client merge: order book | High | SDK helper pending |
-| ⬜ | Client merge: candles | High | SDK helper pending |
-| ⬜ | SDK helpers | High | `subscribe_order_book`, `subscribe_trades`, … pending (§16) |
+| ✅ | Client merge: order book | High | `fig-client::OrderBookState` |
+| ✅ | Client merge: candles | High | `fig-client::CandleState` |
+| ✅ | SDK helpers | High | `fig-client::FigSdkClient` subscribe/request APIs |
 
 ---
 
@@ -790,7 +790,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | `SUBSCRIBE accounts/{account}/liquidations` | Low | Snapshot on subscribe + push on balance breach |
 | ✅ | Account state on order fill | High | Balance + execution + ledger updates on fill |
 | ✅ | `fig-cli` private stream demo | High | Balance subscribe + authenticated queries in `fig-cli` |
-| ⬜ | Client account cache | High | SDK merge/reconcile pending (§16) |
+| ✅ | Client account cache | High | `fig-client::AccountCache` |
 
 ---
 
@@ -811,7 +811,7 @@ FIG `REQUEST` on TREE; the REST gateway translates HTTP → same frames.
 | ✅ | Large-range `request_stream` | Medium | All batch queries use `stream_paginated_batch` when >50 rows |
 | ✅ | Pagination enforcement | High | `limit` + `cursor`/`next_cursor` on history batches; REST query params wired |
 | ✅ | `fig-cli` historical demo | High | Candle + funding + ledger queries in `fig-cli` |
-| ⬜ | SDK `request_candles`, `request_fills`, … | High | Pending (§16) |
+| ✅ | SDK `request_candles`, `request_fills`, … | High | `fig-client::FigSdkClient` |
 | ✅ | Gap-fill workflow | High | Documented in STREAMING.md + PROTOCOL.md; `OrderBookRequest` / `CandleBarRequest` backfill |
 | ✅ | Auth on private queries | High | Same auth as private streams |
 

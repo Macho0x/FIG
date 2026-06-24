@@ -1,0 +1,15 @@
+[package]
+name = "fig-client"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "High-level FIG client SDK helpers (subscribe, query, merge)"
+
+[dependencies]
+fig-core = { workspace = true }
+quinn = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+fig-exchange-sim = { path = "../fig-exchange-sim" }

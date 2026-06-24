@@ -140,6 +140,7 @@ wall time by the element count shown.
 |---|---|---|
 | `tree_ping_pong_cold_start` | **29.4 ms** | New server + connect + one ping/pong (handshake included) |
 | `tree_ping_pong_steady_state` | **779 μs** | Persistent QUIC conn; new bidi stream per ping/pong |
+| `tree_ping_pong_throughput_x16` | **~12 ms** | 16 ping/pong rounds per iteration (~750 μs/round) |
 
 ## Allocation patterns (`--features alloc`)
 
