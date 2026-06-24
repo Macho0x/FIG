@@ -293,7 +293,7 @@ func SbeEncodeNewOrderSingle(clOrdID, symbol string, sideBuy bool, qty, price fl
 	}
 	var out C.struct_FigBuffer
 	rc := C.fig_sbe_encode_new_order_single(
-		cCl, cSym, side, C.double(qty), C.double(price), &out,
+		cCl, cSym, side, C.double(qty), C.double(price), -1, -1, &out,
 	)
 	if rc != 0 {
 		return Buffer{}, errors.New("fig_sbe_encode_new_order_single failed")

@@ -2,11 +2,15 @@
 
 use std::slice;
 
-use fig_client::{BboState, MarkPriceState, MidsState, OrdersState, TradeTape};
+use fig_client::{
+    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState, MidsState,
+    OrdersState, TradeTape,
+};
 use fig_core::codec::decode_cbor;
 use fig_core::messages::{
-    AllMidsBatch, BestBidOffer, ExecutionReport, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
-    PublicTradeEvent,
+    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment,
+    LedgerUpdate, LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
+    PublicTradeEvent, UserLiquidation,
 };
 
 /// Opaque mids cache for C bindings.
@@ -32,6 +36,26 @@ pub struct FigMarkPriceHandle {
 /// Opaque orders + executions merge state for C bindings.
 pub struct FigOrdersHandle {
     state: OrdersState,
+}
+
+/// Opaque aggregate trade tape for C bindings.
+pub struct FigAggTradesHandle {
+    state: AggTradeState,
+}
+
+/// Opaque funding payment ring for C bindings.
+pub struct FigFundingHandle {
+    state: FundingState,
+}
+
+/// Opaque ledger update ring for C bindings.
+pub struct FigLedgerHandle {
+    state: LedgerState,
+}
+
+/// Opaque liquidation merge state for C bindings.
+pub struct FigLiquidationHandle {
+    state: LiquidationState,
 }
 
 fn apply_cbor<T: serde::de::DeserializeOwned>(
@@ -314,4 +338,190 @@ pub unsafe extern "C" fn fig_orders_execution_count(handle: *const FigOrdersHand
         return 0;
     }
     (*handle).state.executions().len()
+}
+
+// ─── Aggregate trades ───────────────────────────────────────────
+
+#[no_mangle]
+pub extern "C" fn fig_agg_trades_new(capacity: usize) -> *mut FigAggTradesHandle {
+    Box::into_raw(Box::new(FigAggTradesHandle {
+        state: AggTradeState::with_capacity(capacity),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_agg_trades_free(handle: *mut FigAggTradesHandle) {
+    if !handle.is_null() {
+        drop(Box::from_raw(handle));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_agg_trades_apply(
+    handle: *mut FigAggTradesHandle,
+    payload: *const u8,
+    len: usize,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
+    apply_cbor(payload, len, |ev: &AggregateTradeEvent| {
+        (*handle).state.push_event(ev)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_agg_trades_len(handle: *const FigAggTradesHandle) -> usize {
+    if handle.is_null() {
+        return 0;
+    }
+    (*handle).state.len()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_agg_trades_latest_price(handle: *const FigAggTradesHandle) -> f64 {
+    if handle.is_null() {
+        return f64::NAN;
+    }
+    (*handle)
+        .state
+        .latest()
+        .map(|t| t.price.0)
+        .unwrap_or(f64::NAN)
+}
+
+// ─── Funding ────────────────────────────────────────────────────
+
+#[no_mangle]
+pub extern "C" fn fig_funding_new(capacity: usize) -> *mut FigFundingHandle {
+    Box::into_raw(Box::new(FigFundingHandle {
+        state: FundingState::with_capacity(capacity),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_funding_free(handle: *mut FigFundingHandle) {
+    if !handle.is_null() {
+        drop(Box::from_raw(handle));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_funding_apply(
+    handle: *mut FigFundingHandle,
+    payload: *const u8,
+    len: usize,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
+    apply_cbor(payload, len, |p: &FundingPayment| (*handle).state.apply_payment(p))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_funding_len(handle: *const FigFundingHandle) -> usize {
+    if handle.is_null() {
+        return 0;
+    }
+    (*handle).state.len()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_funding_latest_amount(handle: *const FigFundingHandle) -> f64 {
+    if handle.is_null() {
+        return f64::NAN;
+    }
+    (*handle)
+        .state
+        .latest()
+        .map(|p| p.amount)
+        .unwrap_or(f64::NAN)
+}
+
+// ─── Ledger ─────────────────────────────────────────────────────
+
+#[no_mangle]
+pub extern "C" fn fig_ledger_new(capacity: usize) -> *mut FigLedgerHandle {
+    Box::into_raw(Box::new(FigLedgerHandle {
+        state: LedgerState::with_capacity(capacity),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_ledger_free(handle: *mut FigLedgerHandle) {
+    if !handle.is_null() {
+        drop(Box::from_raw(handle));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_ledger_apply(
+    handle: *mut FigLedgerHandle,
+    payload: *const u8,
+    len: usize,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
+    apply_cbor(payload, len, |u: &LedgerUpdate| (*handle).state.apply_update(u))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_ledger_len(handle: *const FigLedgerHandle) -> usize {
+    if handle.is_null() {
+        return 0;
+    }
+    (*handle).state.len()
+}
+
+// ─── Liquidations ───────────────────────────────────────────────
+
+#[no_mangle]
+pub extern "C" fn fig_liquidation_new(capacity: usize) -> *mut FigLiquidationHandle {
+    Box::into_raw(Box::new(FigLiquidationHandle {
+        state: LiquidationState::with_capacity(capacity),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_liquidation_free(handle: *mut FigLiquidationHandle) {
+    if !handle.is_null() {
+        drop(Box::from_raw(handle));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_liquidation_apply_user(
+    handle: *mut FigLiquidationHandle,
+    payload: *const u8,
+    len: usize,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
+    apply_cbor(payload, len, |l: &UserLiquidation| {
+        (*handle).state.apply_user_liquidation(l)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_liquidation_apply_public(
+    handle: *mut FigLiquidationHandle,
+    payload: *const u8,
+    len: usize,
+) -> i32 {
+    if handle.is_null() {
+        return -1;
+    }
+    apply_cbor(payload, len, |ev: &LiquidationTradeEvent| {
+        (*handle).state.apply_public_event(ev)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_liquidation_user_count(handle: *const FigLiquidationHandle) -> usize {
+    if handle.is_null() {
+        return 0;
+    }
+    (*handle).state.user_liquidations().len()
 }

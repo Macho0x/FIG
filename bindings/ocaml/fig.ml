@@ -46,6 +46,6 @@ let fig_jwt_verify_bearer =
 
 let fig_sbe_encode_new_order_single =
   foreign "fig_sbe_encode_new_order_single"
-    (string @-> string @-> uint8_t @-> float @-> float
+    (string @-> string @-> uint8_t @-> float @-> float @-> int8_t @-> int8_t
     @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
     @-> returning int32_t)

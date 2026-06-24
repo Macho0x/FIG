@@ -126,7 +126,66 @@ public static class FigNative
         byte sideBuy,
         double orderQty,
         double price,
+        sbyte postOnly,
+        sbyte reduceOnly,
         out FigBuffer outBuf);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_funding_new(UIntPtr capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_funding_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_funding_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_funding_len(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_funding_latest_amount(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_agg_trades_new(UIntPtr capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_agg_trades_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_agg_trades_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_agg_trades_len(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_agg_trades_latest_price(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_ledger_new(UIntPtr capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_ledger_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_ledger_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_ledger_len(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_liquidation_new(UIntPtr capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_liquidation_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_liquidation_apply_user(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_liquidation_apply_public(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_liquidation_user_count(IntPtr handle);
 
     public static string JwtEncode(string sub, ulong exp, string secret)
     {
@@ -174,6 +233,8 @@ public static class FigNative
                 (byte)(sideBuy ? 1 : 0),
                 orderQty,
                 price,
+                -1,
+                -1,
                 out var buf) != 0)
         {
             throw new InvalidOperationException("fig_sbe_encode_new_order_single failed");

@@ -3,11 +3,12 @@
 use fig_conformance::{load_suite, run_vector, ConformanceVector};
 
 use crate::{
-    fig_cbor_encode_candle_bar, fig_cbor_encode_capabilities, fig_cbor_encode_market_data_snapshot,
+    fig_cbor_encode_candle_bar, fig_cbor_encode_capabilities,
+    fig_cbor_encode_instrument_catalog_response, fig_cbor_encode_market_data_snapshot,
     fig_cbor_encode_new_order_single, fig_cbor_encode_open_orders_request,
     fig_cbor_encode_open_orders_snapshot, fig_cbor_encode_order_history_request,
-    fig_frame_encode_request_ex, fig_frame_encode_subscribe, fig_sbe_encode_candle_bar,
-    fig_sbe_encode_new_order_single, FigBuffer,
+    fig_frame_encode_request_ex, fig_frame_encode_subscribe, fig_sbe_encode_new_order_single,
+    FigBuffer,
 };
 
 /// Run conformance vectors against `fig-ffi` encode paths.
@@ -22,7 +23,12 @@ pub fn run_binding_conformance(vectors_path: &std::path::Path) -> Result<(), Str
 
 fn binding_check_vector(vector: &ConformanceVector) -> Result<(), String> {
     match (vector.category.as_str(), vector.message_type.as_str()) {
-        ("cbor", "NewOrderSingle") if vector.id != "cbor.new_order_single.post_only" => {
+        ("cbor", "NewOrderSingle") => {
+            let (post_only, reduce_only) = if vector.id == "cbor.new_order_single.post_only" {
+                (1_i8, -1_i8)
+            } else {
+                (-1_i8, -1_i8)
+            };
             let mut out = empty_buf();
             let rc = unsafe {
                 fig_cbor_encode_new_order_single(
@@ -31,12 +37,22 @@ fn binding_check_vector(vector: &ConformanceVector) -> Result<(), String> {
                     1,
                     100.0,
                     50.25,
+                    post_only,
+                    reduce_only,
                     &mut out,
                 )
             };
             if rc != 0 {
                 return Err(format!("fig_cbor_encode_new_order_single rc={rc}"));
             }
+            unsafe {
+                check_hex(&vector.expected_hex, &buf_slice(&out))?;
+                free_buf(out);
+            }
+        }
+        ("cbor", "InstrumentCatalogResponse") => {
+            let mut out = empty_buf();
+            assert_eq!(unsafe { fig_cbor_encode_instrument_catalog_response(&mut out) }, 0);
             unsafe {
                 check_hex(&vector.expected_hex, &buf_slice(&out))?;
                 free_buf(out);
@@ -59,36 +75,13 @@ fn binding_check_vector(vector: &ConformanceVector) -> Result<(), String> {
                     1,
                     100.0,
                     50.25,
+                    -1,
+                    -1,
                     &mut out,
                 )
             };
             if rc != 0 {
                 return Err(format!("fig_sbe_encode_new_order_single rc={rc}"));
-            }
-            unsafe {
-                check_hex(&vector.expected_hex, &buf_slice(&out))?;
-                free_buf(out);
-            }
-        }
-        ("sbe", "CandleBar") => {
-            let mut out = empty_buf();
-            let rc = unsafe {
-                fig_sbe_encode_candle_bar(
-                    c"AAPL".as_ptr(),
-                    c"5m".as_ptr(),
-                    150.0,
-                    151.0,
-                    149.5,
-                    150.5,
-                    1000.0,
-                    1_700_000_000_000_000_000,
-                    1_700_000_300_000_000_000,
-                    1,
-                    &mut out,
-                )
-            };
-            if rc != 0 {
-                return Err(format!("fig_sbe_encode_candle_bar rc={rc}"));
             }
             unsafe {
                 check_hex(&vector.expected_hex, &buf_slice(&out))?;

@@ -110,10 +110,46 @@ const fig = dlopen(libPath, {
       FFIType.u8,
       FFIType.f64,
       FFIType.f64,
+      FFIType.i8,
+      FFIType.i8,
       FFIType.pointer,
     ],
     result: FFIType.i32,
   },
+  fig_funding_new: { parameters: [FFIType.u64], result: FFIType.pointer },
+  fig_funding_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_funding_apply: {
+    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    result: FFIType.i32,
+  },
+  fig_funding_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
+  fig_funding_latest_amount: { parameters: [FFIType.pointer], result: FFIType.f64 },
+  fig_agg_trades_new: { parameters: [FFIType.u64], result: FFIType.pointer },
+  fig_agg_trades_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_agg_trades_apply: {
+    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    result: FFIType.i32,
+  },
+  fig_agg_trades_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
+  fig_agg_trades_latest_price: { parameters: [FFIType.pointer], result: FFIType.f64 },
+  fig_ledger_new: { parameters: [FFIType.u64], result: FFIType.pointer },
+  fig_ledger_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_ledger_apply: {
+    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    result: FFIType.i32,
+  },
+  fig_ledger_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
+  fig_liquidation_new: { parameters: [FFIType.u64], result: FFIType.pointer },
+  fig_liquidation_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_liquidation_apply_user: {
+    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    result: FFIType.i32,
+  },
+  fig_liquidation_apply_public: {
+    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    result: FFIType.i32,
+  },
+  fig_liquidation_user_count: { parameters: [FFIType.pointer], result: FFIType.u64 },
 });
 
 function copyBuffer(buf: FigBuffer): Buffer {
@@ -340,12 +376,163 @@ export function sbeEncodeNewOrderSingle(
     sideBuy ? 1 : 0,
     qty,
     price,
+    -1,
+    -1,
     ptr(out),
   ) as number;
   if (rc !== 0) {
     throw new Error(`fig_sbe_encode_new_order_single failed: ${rc}`);
   }
   return copyBuffer(out);
+}
+
+/** RAII merge-state wrappers over fig.h stream merge handles. */
+
+export class FundingState {
+  private handle: Pointer;
+
+  constructor(capacity = 128) {
+    this.handle = fig.symbols.fig_funding_new(capacity) as Pointer;
+    if (!this.handle) {
+      throw new Error("fig_funding_new failed");
+    }
+  }
+
+  apply(payload: Buffer): void {
+    const rc = fig.symbols.fig_funding_apply(
+      this.handle,
+      payload,
+      payload.length,
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_funding_apply failed: ${rc}`);
+    }
+  }
+
+  len(): number {
+    return Number(fig.symbols.fig_funding_len(this.handle));
+  }
+
+  latestAmount(): number {
+    return fig.symbols.fig_funding_latest_amount(this.handle) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_funding_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class AggTradesState {
+  private handle: Pointer;
+
+  constructor(capacity = 256) {
+    this.handle = fig.symbols.fig_agg_trades_new(capacity) as Pointer;
+    if (!this.handle) {
+      throw new Error("fig_agg_trades_new failed");
+    }
+  }
+
+  apply(payload: Buffer): void {
+    const rc = fig.symbols.fig_agg_trades_apply(
+      this.handle,
+      payload,
+      payload.length,
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_agg_trades_apply failed: ${rc}`);
+    }
+  }
+
+  latestPrice(): number {
+    return fig.symbols.fig_agg_trades_latest_price(this.handle) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_agg_trades_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class LedgerState {
+  private handle: Pointer;
+
+  constructor(capacity = 128) {
+    this.handle = fig.symbols.fig_ledger_new(capacity) as Pointer;
+    if (!this.handle) {
+      throw new Error("fig_ledger_new failed");
+    }
+  }
+
+  apply(payload: Buffer): void {
+    const rc = fig.symbols.fig_ledger_apply(
+      this.handle,
+      payload,
+      payload.length,
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_ledger_apply failed: ${rc}`);
+    }
+  }
+
+  len(): number {
+    return Number(fig.symbols.fig_ledger_len(this.handle));
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_ledger_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class LiquidationState {
+  private handle: Pointer;
+
+  constructor(capacity = 64) {
+    this.handle = fig.symbols.fig_liquidation_new(capacity) as Pointer;
+    if (!this.handle) {
+      throw new Error("fig_liquidation_new failed");
+    }
+  }
+
+  applyUser(payload: Buffer): void {
+    const rc = fig.symbols.fig_liquidation_apply_user(
+      this.handle,
+      payload,
+      payload.length,
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_liquidation_apply_user failed: ${rc}`);
+    }
+  }
+
+  applyPublic(payload: Buffer): void {
+    const rc = fig.symbols.fig_liquidation_apply_public(
+      this.handle,
+      payload,
+      payload.length,
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_liquidation_apply_public failed: ${rc}`);
+    }
+  }
+
+  userCount(): number {
+    return Number(fig.symbols.fig_liquidation_user_count(this.handle));
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_liquidation_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
 }
 
 export { libPath };

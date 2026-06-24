@@ -20,6 +20,8 @@ pub unsafe extern "C" fn fig_sbe_encode_new_order_single(
     side_buy: u8,
     qty: f64,
     price: f64,
+    post_only: i8,
+    reduce_only: i8,
     out: *mut FigBuffer,
 ) -> i32 {
     if out.is_null() || cl_ord_id.is_null() || symbol.is_null() {
@@ -32,6 +34,14 @@ pub unsafe extern "C" fn fig_sbe_encode_new_order_single(
     let symbol = match CStr::from_ptr(symbol).to_str() {
         Ok(s) => s.to_string(),
         Err(_) => return -2,
+    };
+    let post_only = match crate::tri_state_flag(post_only) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let reduce_only = match crate::tri_state_flag(reduce_only) {
+        Ok(v) => v,
+        Err(e) => return e,
     };
     let order = NewOrderSingle {
         cl_ord_id,
@@ -48,8 +58,8 @@ pub unsafe extern "C" fn fig_sbe_encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
-        post_only: None,
-        reduce_only: None,
+        post_only,
+        reduce_only,
     };
     *out = into_buffer(encode_new_order_single(&order));
     0

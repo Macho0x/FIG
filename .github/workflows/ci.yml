@@ -29,6 +29,25 @@ jobs:
         run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python binding_conformance
       - name: FFI binding conformance
         run: cargo test -p fig-ffi binding_conformance
+      - name: FFI stream merge handles
+        run: cargo test -p fig-ffi --test stream_state
+      - name: Binding compile smoke (Go/C++/C#)
+        run: |
+          cargo build -p fig-ffi
+          export LD_LIBRARY_PATH="$PWD/target/debug:${LD_LIBRARY_PATH:-}"
+          cd bindings/go/fig && go test -tags=conformance
+          cargo build -p fig-ffi --release
+          bash bindings/cpp/smoke/run.sh
+          export FIG_REPO_ROOT="$PWD"
+          bash bindings/csharp/smoke/run.sh
+      - name: Binding SBE hex parity
+        run: |
+          cargo build -p fig-ffi --release
+          export LD_LIBRARY_PATH="$PWD/target/release:${LD_LIBRARY_PATH:-}"
+          export FIG_REPO_ROOT="$PWD"
+          cd bindings/go/fig && go test -tags=conformance -run TestSbeHexViaFfi
+          bash bindings/cpp/smoke/sbe_hex.sh
+          bash bindings/csharp/smoke/run.sh
       - name: FFI Tier 4 smoke tests
         run: cargo test -p fig-ffi --test advanced
       - name: Build fig-cli
@@ -80,7 +99,7 @@ jobs:
       - name: Run load harness (smoke)
         run: FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
       - name: Build Go binding (smoke)
-        run: cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance
+        run: cargo build -p fig-ffi --release && cd bindings/go/fig && go test -tags=conformance
 
   cross-platform:
     strategy:

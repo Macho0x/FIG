@@ -4,9 +4,9 @@ use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, MarketDataSnapshot,
-    NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price,
-    PriceLevel, Quantity, Side, TimeInForce,
+    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, InstrumentCatalogResponse,
+    InstrumentMetadata, MarketDataSnapshot, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot,
+    OrderHistoryRequest, OrderType, Price, PriceLevel, Quantity, Side, TimeInForce,
 };
 
 pub fn encode_new_order_single(
@@ -15,6 +15,8 @@ pub fn encode_new_order_single(
     side: Side,
     order_qty: f64,
     price: Option<f64>,
+    post_only: Option<bool>,
+    reduce_only: Option<bool>,
 ) -> Result<Vec<u8>, String> {
     let order = NewOrderSingle {
         cl_ord_id: cl_ord_id.to_string(),
@@ -35,8 +37,8 @@ pub fn encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
-        post_only: None,
-        reduce_only: None,
+        post_only,
+        reduce_only,
     };
     encode_cbor(&order).map_err(|e| e.to_string())
 }
@@ -169,6 +171,20 @@ pub fn sample_open_orders_request() -> OpenOrdersRequest {
     OpenOrdersRequest {
         account: "DEMO".to_string(),
         symbol: None,
+    }
+}
+
+pub fn sample_instrument_catalog_response() -> InstrumentCatalogResponse {
+    InstrumentCatalogResponse {
+        instruments: vec![InstrumentMetadata {
+            instrument_id: "BTC-PERP".to_string(),
+            symbol: "BTC".to_string(),
+            product_kind: "perp".to_string(),
+            margin_asset: Some("USDC".to_string()),
+            display_name: Some("Bitcoin Perpetual".to_string()),
+            tick_size: Some(0.1),
+            lot_size: Some(0.001),
+        }],
     }
 }
 

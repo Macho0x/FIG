@@ -57,7 +57,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | `fig-cli` demos use `FigSdkClient` subscribe/request helpers | both | `cli_demos_complete_successfully` |
 | 🔶 | Tier 1 SDK: `FigSdkClient` as primary `request()` path | both | [§17.2](#172-cross-cutting-protocol-both-sides) |
 | ✅ | Tier 3 SDK: pub/sub merge wrappers complete | both | perps + account merge helpers in `fig-client` |
-| ⬜ | §16 binding compile smoke for new stream types (Go/C#/C++) | both | [§17.6](#176-codegen-conformance--testing) |
+| ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | JWT RS256/KMS reference + key rotation runbook | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
@@ -68,7 +68,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 |---|---|---|---|
 | ⬜ | Published artifacts (crates, bindings) + compatibility policy | both | [§19.1](#191-fig-project--protocol-release-maturity) |
 | ⬜ | Co-lo / tail-latency evidence on realistic topology | both | [§19.1](#191-fig-project--protocol-release-maturity) |
-| ⬜ | Per-language SBE hex parity CI | both | [§19.2](#192-fig-project--client-ecosystem) |
+| ✅ | Per-language SBE hex parity CI | both | [§19.2](#192-fig-project--client-ecosystem) |
 | ✅ | SBE-default order path documentation + examples | both | [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md), `run_sbe_order_demo` |
 | 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | both | [§19.2](#192-fig-project--client-ecosystem) |
 
@@ -194,7 +194,7 @@ items do not block the SPEC version bump if accepted or ticketed in §18.7.
 | **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
 | **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
 | **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
-| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go compile smoke | Native TREE per language; per-lang SBE hex CI; C#/C++ compile matrix |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C# compile smoke + SBE hex via FFI | Native TREE per language; full per-lang generated SBE hex matrix |
 | **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
 | **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
 | **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |
@@ -562,7 +562,8 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 | ✅ | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` + JWT + SBE generated |
 | ✅ | TypeScript / Node (`node:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode, JWT, SBE generated |
 | ✅ | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` + JWT helpers |
-| ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` tests |
+| ✅ | Perps merge FFI handles (funding, ledger, liquidations, agg trades) | Medium | `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*`, `fig_agg_trades_*` |
+| ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` + `stream_state` tests |
 
 High-level client API (all bindings):
 
@@ -1027,7 +1028,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | E2E: gateway REST GET round-trip | High | `gateway_legacy_ws_alias_e2e` REST fixtures |
 | ✅ | E2E: gateway WS alias round-trip | Medium | Binance + Hyperliquid fixture tables |
 | ✅ | E2E: gateway FIX order alias round-trip | Medium | FIX `35=D` → native order `REQUEST` |
-| ⬜ | §16 binding tests for new types | Medium | See [§0.3](#03-p2--reference-client-and-sdk-polish) |
+| ✅ | §16 binding tests for new types | Medium | post_only + InstrumentCatalogResponse FFI conformance |
 
 ---
 

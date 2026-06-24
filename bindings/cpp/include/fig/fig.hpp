@@ -1,6 +1,12 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include "../../../../crates/fig-ffi/include/fig.h"
+#ifdef __cplusplus
+}
+#endif
 
 #include <cstdint>
 #include <memory>
@@ -167,7 +173,7 @@ inline Buffer sbe_encode_new_order_single(const char* cl_ord_id,
                                           double qty,
                                           double price) {
     FigBuffer out{};
-    if (fig_sbe_encode_new_order_single(cl_ord_id, symbol, side_buy ? 1 : 0, qty, price, &out) !=
+    if (fig_sbe_encode_new_order_single(cl_ord_id, symbol, side_buy ? 1 : 0, qty, price, -1, -1, &out) !=
         0) {
         throw std::runtime_error("fig_sbe_encode_new_order_single failed");
     }

@@ -86,6 +86,8 @@ pub fn sbeEncodeNewOrderSingle(
         @intFromBool(side_buy),
         qty,
         price,
+        -1,
+        -1,
         &out,
     );
     if (rc != 0) return error.SbeEncodeFailed;

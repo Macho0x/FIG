@@ -31,6 +31,13 @@ pub use streams::{
     fig_cbor_decode_market_data_snapshot_symbol, fig_cbor_decode_symbol_ticker_price,
     fig_frame_is_stream_item, fig_frame_payload,
 };
+pub use stream_state::{
+    fig_agg_trades_apply, fig_agg_trades_free, fig_agg_trades_latest_price, fig_agg_trades_len,
+    fig_agg_trades_new, fig_funding_apply, fig_funding_free, fig_funding_latest_amount,
+    fig_funding_len, fig_funding_new, fig_ledger_apply, fig_ledger_free, fig_ledger_len,
+    fig_ledger_new, fig_liquidation_apply_public, fig_liquidation_apply_user,
+    fig_liquidation_free, fig_liquidation_new, fig_liquidation_user_count,
+};
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -40,9 +47,10 @@ use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    CandleBar, CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, MarketDataSnapshot,
-    NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price,
-    PriceLevel, Quantity, Side, TimeInForce,
+    CandleBar, CapabilitiesResponse, CapabilityPath, CapabilityPathPattern,
+    InstrumentCatalogResponse, InstrumentMetadata, MarketDataSnapshot, NewOrderSingle,
+    OpenOrdersRequest, OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price, PriceLevel,
+    Quantity, Side, TimeInForce,
 };
 
 /// Opaque owned byte buffer returned to callers.
@@ -356,6 +364,15 @@ pub unsafe extern "C" fn fig_frame_decode_header(
     0
 }
 
+pub(crate) fn tri_state_flag(v: i8) -> Result<Option<bool>, i32> {
+    match v {
+        -1 => Ok(None),
+        0 => Ok(Some(false)),
+        1 => Ok(Some(true)),
+        _ => Err(-3),
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
     cl_ord_id: *const c_char,
@@ -363,6 +380,8 @@ pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
     side_buy: u8,
     order_qty: f64,
     price: f64,
+    post_only: i8,
+    reduce_only: i8,
     out: *mut FigBuffer,
 ) -> i32 {
     if out.is_null() || cl_ord_id.is_null() || symbol.is_null() {
@@ -375,6 +394,14 @@ pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
     let symbol = match CStr::from_ptr(symbol).to_str() {
         Ok(s) => s.to_string(),
         Err(_) => return -2,
+    };
+    let post_only = match tri_state_flag(post_only) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let reduce_only = match tri_state_flag(reduce_only) {
+        Ok(v) => v,
+        Err(e) => return e,
     };
     let side = if side_buy != 0 { Side::Buy } else { Side::Sell };
     let order = NewOrderSingle {
@@ -392,8 +419,8 @@ pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
-        post_only: None,
-        reduce_only: None,
+        post_only,
+        reduce_only,
     };
     encode_cbor_out(&order, out)
 }
@@ -533,6 +560,25 @@ fn sample_candle_bar() -> CandleBar {
         bar_end: 1_700_000_300_000_000_000,
         is_final: true,
         is_snapshot: Some(false),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fig_cbor_encode_instrument_catalog_response(out: *mut FigBuffer) -> i32 {
+    encode_cbor_out(&sample_instrument_catalog(), out)
+}
+
+fn sample_instrument_catalog() -> InstrumentCatalogResponse {
+    InstrumentCatalogResponse {
+        instruments: vec![InstrumentMetadata {
+            instrument_id: "BTC-PERP".to_string(),
+            symbol: "BTC".to_string(),
+            product_kind: "perp".to_string(),
+            margin_asset: Some("USDC".to_string()),
+            display_name: Some("Bitcoin Perpetual".to_string()),
+            tick_size: Some(0.1),
+            lot_size: Some(0.001),
+        }],
     }
 }
 

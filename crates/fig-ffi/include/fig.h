@@ -7,6 +7,11 @@
 #include <stdlib.h>
 
 /**
+ * Opaque aggregate trade tape for C bindings.
+ */
+typedef struct FigAggTradesHandle FigAggTradesHandle;
+
+/**
  * Opaque BBO state for C bindings.
  */
 typedef struct FigBboHandle FigBboHandle;
@@ -15,6 +20,21 @@ typedef struct FigBboHandle FigBboHandle;
  * Opaque connected FIG client (one TREE connection).
  */
 typedef struct FigClientHandle FigClientHandle;
+
+/**
+ * Opaque funding payment ring for C bindings.
+ */
+typedef struct FigFundingHandle FigFundingHandle;
+
+/**
+ * Opaque ledger update ring for C bindings.
+ */
+typedef struct FigLedgerHandle FigLedgerHandle;
+
+/**
+ * Opaque liquidation merge state for C bindings.
+ */
+typedef struct FigLiquidationHandle FigLiquidationHandle;
 
 /**
  * Opaque mark price cache for C bindings.
@@ -140,6 +160,8 @@ int32_t fig_cbor_encode_new_order_single(const char *cl_ord_id,
                                          uint8_t side_buy,
                                          double order_qty,
                                          double price,
+                                         int8_t post_only,
+                                         int8_t reduce_only,
                                          struct FigBuffer *out);
 
 int32_t fig_cbor_decode_new_order_single_cl_ord_id(const uint8_t *data,
@@ -159,6 +181,8 @@ int32_t fig_cbor_encode_order_history_request(struct FigBuffer *out);
 void fig_string_free(char *s);
 
 uint64_t fig_client_channel_stream_id(uint16_t channel_id, uint8_t is_server);
+
+int32_t fig_cbor_encode_instrument_catalog_response(struct FigBuffer *out);
 
 int32_t fig_cbor_encode_open_orders_request(struct FigBuffer *out);
 
@@ -304,6 +328,8 @@ int32_t fig_sbe_encode_new_order_single(const char *cl_ord_id,
                                         uint8_t side_buy,
                                         double qty,
                                         double price,
+                                        int8_t post_only,
+                                        int8_t reduce_only,
                                         struct FigBuffer *out);
 
 int32_t fig_sbe_decode_new_order_single_cl_ord_id(const uint8_t *data,
@@ -393,6 +419,50 @@ int32_t fig_orders_apply_execution(struct FigOrdersHandle *handle,
 uintptr_t fig_orders_open_count(const struct FigOrdersHandle *handle);
 
 uintptr_t fig_orders_execution_count(const struct FigOrdersHandle *handle);
+
+struct FigAggTradesHandle *fig_agg_trades_new(uintptr_t capacity);
+
+void fig_agg_trades_free(struct FigAggTradesHandle *handle);
+
+int32_t fig_agg_trades_apply(struct FigAggTradesHandle *handle,
+                             const uint8_t *payload,
+                             uintptr_t len);
+
+uintptr_t fig_agg_trades_len(const struct FigAggTradesHandle *handle);
+
+double fig_agg_trades_latest_price(const struct FigAggTradesHandle *handle);
+
+struct FigFundingHandle *fig_funding_new(uintptr_t capacity);
+
+void fig_funding_free(struct FigFundingHandle *handle);
+
+int32_t fig_funding_apply(struct FigFundingHandle *handle, const uint8_t *payload, uintptr_t len);
+
+uintptr_t fig_funding_len(const struct FigFundingHandle *handle);
+
+double fig_funding_latest_amount(const struct FigFundingHandle *handle);
+
+struct FigLedgerHandle *fig_ledger_new(uintptr_t capacity);
+
+void fig_ledger_free(struct FigLedgerHandle *handle);
+
+int32_t fig_ledger_apply(struct FigLedgerHandle *handle, const uint8_t *payload, uintptr_t len);
+
+uintptr_t fig_ledger_len(const struct FigLedgerHandle *handle);
+
+struct FigLiquidationHandle *fig_liquidation_new(uintptr_t capacity);
+
+void fig_liquidation_free(struct FigLiquidationHandle *handle);
+
+int32_t fig_liquidation_apply_user(struct FigLiquidationHandle *handle,
+                                   const uint8_t *payload,
+                                   uintptr_t len);
+
+int32_t fig_liquidation_apply_public(struct FigLiquidationHandle *handle,
+                                     const uint8_t *payload,
+                                     uintptr_t len);
+
+uintptr_t fig_liquidation_user_count(const struct FigLiquidationHandle *handle);
 
 /**
  * Extract payload bytes from an encoded FIG frame.

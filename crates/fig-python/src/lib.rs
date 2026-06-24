@@ -27,7 +27,7 @@ fn encode_cbor_order(
     price: Option<f64>,
 ) -> PyResult<Vec<u8>> {
     let side = codec::parse_side(&side).map_err(PyValueError::new_err)?;
-    codec::encode_new_order_single(&cl_ord_id, &symbol, side, order_qty, price)
+    codec::encode_new_order_single(&cl_ord_id, &symbol, side, order_qty, price, None, None)
         .map_err(PyValueError::new_err)
 }
 
@@ -139,16 +139,30 @@ fn run_conformance(vectors_path: &str) -> PyResult<()> {
 fn binding_check_vector(vector: &fig_conformance::ConformanceVector) -> Result<(), String> {
     use fig_core::codec::encode_cbor;
     match (vector.category.as_str(), vector.message_type.as_str()) {
-        ("cbor", "NewOrderSingle") if vector.id != "cbor.new_order_single.post_only" => {
+        ("cbor", "NewOrderSingle") => {
+            let (post_only, reduce_only) = if vector.id == "cbor.new_order_single.post_only" {
+                (Some(true), None)
+            } else {
+                (None, None)
+            };
             let bytes = codec::encode_new_order_single(
                 "CONF-001",
                 "AAPL",
                 fig_core::messages::Side::Buy,
                 100.0,
                 Some(50.25),
+                post_only,
+                reduce_only,
             )
             .map_err(|e| e.to_string())?;
             check_hex(&vector.expected_hex, &bytes)?;
+        }
+        ("cbor", "InstrumentCatalogResponse") => {
+            check_hex(
+                &vector.expected_hex,
+                &encode_cbor(&codec::sample_instrument_catalog_response())
+                    .map_err(|e| e.to_string())?,
+            )?;
         }
         ("cbor", "CapabilitiesResponse") => {
             check_hex(
@@ -253,5 +267,9 @@ fn fig(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stream_state::PyTradeTape>()?;
     m.add_class::<stream_state::PyMarkPriceState>()?;
     m.add_class::<stream_state::PyOrdersState>()?;
+    m.add_class::<stream_state::PyAggTradesState>()?;
+    m.add_class::<stream_state::PyFundingState>()?;
+    m.add_class::<stream_state::PyLedgerState>()?;
+    m.add_class::<stream_state::PyLiquidationState>()?;
     Ok(())
 }

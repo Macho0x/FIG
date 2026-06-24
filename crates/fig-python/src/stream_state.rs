@@ -3,11 +3,15 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
-use fig_client::{BboState, MarkPriceState, MidsState, OrdersState, TradeTape};
+use fig_client::{
+    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState, MidsState,
+    OrdersState, TradeTape,
+};
 use fig_core::codec::decode_cbor;
 use fig_core::messages::{
-    AllMidsBatch, BestBidOffer, ExecutionReport, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
-    PublicTradeEvent,
+    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment,
+    LedgerUpdate, LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
+    PublicTradeEvent, UserLiquidation,
 };
 
 #[pyclass]
@@ -177,5 +181,128 @@ impl PyOrdersState {
 
     fn execution_count(&self) -> usize {
         self.inner.executions().len()
+    }
+}
+
+#[pyclass]
+pub struct PyAggTradesState {
+    inner: AggTradeState,
+}
+
+#[pymethods]
+impl PyAggTradesState {
+    #[new]
+    #[pyo3(signature = (capacity=256))]
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: AggTradeState::with_capacity(capacity),
+        }
+    }
+
+    fn apply_bytes(&mut self, payload: &[u8]) -> PyResult<()> {
+        let ev: AggregateTradeEvent =
+            decode_cbor(payload).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner.push_event(&ev);
+        Ok(())
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn latest_price(&self) -> Option<f64> {
+        self.inner.latest().map(|t| t.price.0)
+    }
+}
+
+#[pyclass]
+pub struct PyFundingState {
+    inner: FundingState,
+}
+
+#[pymethods]
+impl PyFundingState {
+    #[new]
+    #[pyo3(signature = (capacity=128))]
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: FundingState::with_capacity(capacity),
+        }
+    }
+
+    fn apply_bytes(&mut self, payload: &[u8]) -> PyResult<()> {
+        let p: FundingPayment =
+            decode_cbor(payload).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner.apply_payment(&p);
+        Ok(())
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn latest_amount(&self) -> Option<f64> {
+        self.inner.latest().map(|p| p.amount)
+    }
+}
+
+#[pyclass]
+pub struct PyLedgerState {
+    inner: LedgerState,
+}
+
+#[pymethods]
+impl PyLedgerState {
+    #[new]
+    #[pyo3(signature = (capacity=256))]
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: LedgerState::with_capacity(capacity),
+        }
+    }
+
+    fn apply_bytes(&mut self, payload: &[u8]) -> PyResult<()> {
+        let u: LedgerUpdate =
+            decode_cbor(payload).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner.apply_update(&u);
+        Ok(())
+    }
+
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+#[pyclass]
+pub struct PyLiquidationState {
+    inner: LiquidationState,
+}
+
+#[pymethods]
+impl PyLiquidationState {
+    #[new]
+    #[pyo3(signature = (capacity=64))]
+    fn new(capacity: usize) -> Self {
+        Self {
+            inner: LiquidationState::with_capacity(capacity),
+        }
+    }
+
+    fn apply_user_bytes(&mut self, payload: &[u8]) -> PyResult<()> {
+        let l: UserLiquidation =
+            decode_cbor(payload).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner.apply_user_liquidation(&l);
+        Ok(())
+    }
+
+    fn apply_public_bytes(&mut self, payload: &[u8]) -> PyResult<()> {
+        let ev: LiquidationTradeEvent =
+            decode_cbor(payload).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner.apply_public_event(&ev);
+        Ok(())
+    }
+
+    fn user_count(&self) -> usize {
+        self.inner.user_liquidations().len()
     }
 }

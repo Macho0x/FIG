@@ -179,7 +179,7 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figSbeEncodeNewOrderSingle(
     }
     struct FigBuffer out = {0};
     int32_t rc = fig_sbe_encode_new_order_single(
-        cl, sym, (uint8_t)side_buy, order_qty, price, &out);
+        cl, sym, (uint8_t)side_buy, order_qty, price, -1, -1, &out);
     free(cl);
     free(sym);
     if (rc != 0) {
