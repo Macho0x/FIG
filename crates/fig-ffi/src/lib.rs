@@ -392,6 +392,8 @@ pub unsafe extern "C" fn fig_cbor_encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
     encode_cbor_out(&order, out)
 }

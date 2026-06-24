@@ -24,6 +24,8 @@ fn make_limit_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) ->
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     }
 }
 
@@ -43,6 +45,8 @@ fn make_market_order(id: &str, side: Side, symbol: &str, qty: f64) -> NewOrderSi
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     }
 }
 

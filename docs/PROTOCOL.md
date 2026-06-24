@@ -210,5 +210,23 @@ See [QUERY.md](QUERY.md) for REST gateway mapping and pagination fields.
 - [TUTORIAL.md](TUTORIAL.md) — getting started and stream inventory
 - [STREAMING.md](STREAMING.md) — live subscribe paths and WS catalog
 - [QUERY.md](QUERY.md) — historical REQUEST paths and REST GET mapping
-- [GATEWAY.md](GATEWAY.md) — legacy protocol deployment
-- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md), [0006: broker API parity](adr/0006-broker-api-parity.md))
+- [GATEWAY.md](GATEWAY.md) — legacy protocol deployment (Day 1 gateway)
+- [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md) — colo SBE order entry
+- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md), [0006: broker API parity](adr/0006-broker-api-parity.md), [0007: crypto instruments](adr/0007-crypto-instrument-model.md))
+
+## Gateway alias mapping (reference venues)
+
+Native FIG clients use `CHANNEL_PATH` directly. The gateway maps **legacy wire shapes**
+to those paths — see [AGENTS.md](../AGENTS.md). Binance and Hyperliquid are reference
+implementations in `fig-gateways`; venues do not fork the protocol.
+
+| Native `CHANNEL_PATH` | Binance WS alias | Hyperliquid WS alias |
+|---|---|---|
+| `marketdata/{sym}/trades` | `@trade` | `trades` |
+| `marketdata/{sym}/book` | `@depth` | `l2Book`, `bbo` |
+| `marketdata/{sym}/candles/{iv}` | `@kline_{iv}` | `candle` |
+| `trading/accounts/{acct}/executions` | `@executionReport` | `orderUpdates` |
+| `accounts/{acct}/funding` | — | `userFunding` |
+| `marketdata/ticker/all` | `@miniTicker` | `allMids` |
+
+Alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.

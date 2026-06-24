@@ -28,6 +28,8 @@ pub fn make_limit_order(id: &str, side: Side, price: f64) -> NewOrderSingle {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     }
 }
 

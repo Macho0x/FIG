@@ -32,6 +32,8 @@ mod tests {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         }
     }
 

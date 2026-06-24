@@ -51,8 +51,16 @@ infrastructure — not part of the protocol.
 | Ledger | `accounts/{account}/ledger` | `LedgerUpdate` |
 | User liquidations | `accounts/{account}/liquidations` | `UserLiquidation` (push on breach) |
 
-**Simulator test harness:** `fig-exchange-sim` accepts `fig-dev-{account}` for
-local integration tests only — not a production key-issuance flow.
+### SDK merge helpers (`fig-client`)
+
+Use `FigSdkClient::subscribe_*` and merge states for live streams:
+
+- `AggTradeState` — `subscribe_agg_trades`
+- `FundingState` — `subscribe_funding`
+- `LedgerState` — `subscribe_ledger`
+- `LiquidationState` — `subscribe_liquidations`
+
+Batch apply via `FigSdkClient::apply_account_stream_frames` or `apply_all_stream_frames`.
 
 ## Subscribe example (conceptual)
 

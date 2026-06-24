@@ -204,6 +204,8 @@ fn bench_protocol_comparison_new_order(c: &mut Criterion) {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
     let sbe_wire = encode_new_order_single(&order);
 

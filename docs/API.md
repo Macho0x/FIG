@@ -126,11 +126,23 @@ Default listen address: `127.0.0.1:8443` (UDP/TREE).
 
 ## `fig-cli` — demo client
 
-Native FIG client connecting to `127.0.0.1:8443` by default. Runs seven
-validated demo flows: order entry, candle/balance/agg-trades/margin subscribe,
-historical and account queries, and PING/PONG. Attaches simulator test token
+Native FIG client connecting to `127.0.0.1:8443` by default. Uses `FigSdkClient`
+for seven validated demo flows plus an SBE order demo. Attaches simulator test token
 `fig-dev-DEMO-ACCT` on private paths (see SPEC §9.3 wire semantics; not a
 key-issuance API).
+
+## `fig-client` — SDK merge helpers
+
+| Module | State type | Streams |
+|---|---|---|
+| `order_book` | `OrderBookState` | book snapshot/delta |
+| `candles` | `CandleState` | candle bars |
+| `account` | `AccountCache` | balances, positions, margin |
+| `agg_trades` | `AggTradeState` | aggregate trades |
+| `funding` | `FundingState` | funding payments |
+| `ledger` | `LedgerState` | ledger updates |
+| `liquidations` | `LiquidationState` | user + public liquidations |
+| `client` | `FigSdkClient` | subscribe/request wrappers |
 
 ```bash
 cargo run -p fig-cli

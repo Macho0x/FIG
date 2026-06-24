@@ -55,7 +55,7 @@
       "category": "sbe",
       "description": "Canonical limit buy NewOrderSingle SBE",
       "message_type": "NewOrderSingle",
-      "expected_hex": "00010001000000240008434f4e462d30303101405900000000000040492000000000000100000000000000000000044141504c0201000000000000000000000000000000",
+      "expected_hex": "00010001000000260008434f4e462d30303101405900000000000040492000000000000100000000000000000000044141504c020100000000000000000000000000000000000000",
       "frame": null,
       "payload": {
         "cl_ord_id": "CONF-001",
@@ -425,7 +425,7 @@
       "category": "sbe",
       "description": "BalanceSnapshot SBE (template 30)",
       "message_type": "BalanceSnapshot",
-      "expected_hex": "0001001f00000001000444454d4f000000010000001d0003555344412e848000000000413e84800000000000000000000000000101",
+      "expected_hex": "0001002100000001000444454d4f000000010000001d0003555344412e848000000000413e84800000000000000000000000000101",
       "frame": null,
       "payload": null,
       "channel": null
@@ -443,6 +443,47 @@
         "client_stream_id": 4,
         "server_stream_id": 5
       }
+    },
+    {
+      "id": "cbor.instrument_catalog.btc_perp",
+      "category": "cbor",
+      "description": "InstrumentCatalogResponse with BTC perp",
+      "message_type": "InstrumentCatalogResponse",
+      "expected_hex": "a16b696e737472756d656e747381a76d696e737472756d656e745f6964684254432d504552506673796d626f6c634254436c70726f647563745f6b696e6464706572706c6d617267696e5f617373657464555344436c646973706c61795f6e616d6571426974636f696e2050657270657475616c697469636b5f73697a65fb3fb999999999999a686c6f745f73697a65fb3f50624dd2f1a9fc",
+      "frame": null,
+      "payload": {
+        "instruments": [
+          {
+            "display_name": "Bitcoin Perpetual",
+            "instrument_id": "BTC-PERP",
+            "lot_size": 0.001,
+            "margin_asset": "USDC",
+            "product_kind": "perp",
+            "symbol": "BTC",
+            "tick_size": 0.1
+          }
+        ]
+      },
+      "channel": null
+    },
+    {
+      "id": "cbor.new_order_single.post_only",
+      "category": "cbor",
+      "description": "Limit buy with post_only=true",
+      "message_type": "NewOrderSingle",
+      "expected_hex": "a869636c5f6f72645f696468434f4e462d303031647369646563427579696f726465725f717479f95640657072696365f952486673796d626f6c644141504c6a6f726465725f74797065654c696d69746d74696d655f696e5f666f7263656344617969706f73745f6f6e6c79f5",
+      "frame": null,
+      "payload": {
+        "cl_ord_id": "CONF-001",
+        "order_qty": 100.0,
+        "order_type": "Limit",
+        "post_only": true,
+        "price": 50.25,
+        "side": "Buy",
+        "symbol": "AAPL",
+        "time_in_force": "Day"
+      },
+      "channel": null
     }
   ]
 }

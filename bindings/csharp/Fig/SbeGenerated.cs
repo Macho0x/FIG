@@ -403,14 +403,14 @@ namespace Fig.Sbe
     /// <summary>SBE encoder for NewOrderSingle</summary>
     public static class NewOrderSingleEncoder
     {
-        public static byte[] Encode(ClOrdId string, Side NewOrderSingleSide, OrderQty double, Price double?, StopPrice double?, Symbol string, OrderType NewOrderSingleOrderType, TimeInForce NewOrderSingleTimeInForce, ExpireTime long?, Account string?, StrategyId string?, SecurityId string?, IdSource NewOrderSingleIdSource?, SecurityExchange string?)
+        public static byte[] Encode(ClOrdId string, Side NewOrderSingleSide, OrderQty double, Price double?, StopPrice double?, Symbol string, OrderType NewOrderSingleOrderType, TimeInForce NewOrderSingleTimeInForce, ExpireTime long?, Account string?, StrategyId string?, SecurityId string?, IdSource NewOrderSingleIdSource?, SecurityExchange string?, PostOnly byte?, ReduceOnly byte?)
         {
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
                 Wire.WriteU16BE(buf, 1);
                 Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 36);
+                Wire.WriteU16BE(buf, 38);
 
             // Fixed fields
                 Wire.WriteString(buf, ClOrdId);
@@ -429,6 +429,10 @@ namespace Fig.Sbe
                 if (SecurityId.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityId.Value); } else { buf.Add(0); }
                 buf.Add(IdSource.HasValue ? NewOrderSingleIdSourceToValue(IdSource.Value) : (byte)0);
                 if (SecurityExchange.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityExchange.Value); } else { buf.Add(0); }
+                buf.Add(PostOnly ?? 0);
+                buf.Add((byte)(PostOnly.HasValue ? 1 : 0));
+                buf.Add(ReduceOnly ?? 0);
+                buf.Add((byte)(ReduceOnly.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
@@ -450,6 +454,8 @@ namespace Fig.Sbe
         public string? SecurityId { get; set; }
         public NewOrderSingleIdSource? IdSource { get; set; }
         public string? SecurityExchange { get; set; }
+        public byte? PostOnly { get; set; }
+        public byte? ReduceOnly { get; set; }
         public int EncodedLen() => 0;
 
         public static NewOrderSingleDecoder Decode(byte[] buf)
@@ -486,6 +492,10 @@ namespace Fig.Sbe
             var id_source = NewOrderSingleIdSourceFromValue(id_sourceRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleIdSource");
             string? security_exchange;
             if (buf[pos++] == 1) security_exchange = Wire.ReadString(buf, ref pos);
+            byte v = buf[pos++];
+            byte? post_only = buf[pos++] == 1 ? v : null;
+            byte v = buf[pos++];
+            byte? reduce_only = buf[pos++] == 1 ? v : null;
             return new NewOrderSingleDecoder
             {
                 ClOrdId = cl_ord_id,
@@ -502,6 +512,8 @@ namespace Fig.Sbe
                 SecurityId = security_id,
                 IdSource = id_source,
                 SecurityExchange = security_exchange,
+                PostOnly = post_only,
+                ReduceOnly = reduce_only,
             };
         }
     }
@@ -2119,6 +2131,94 @@ namespace Fig.Sbe
         }
     }
 
+    /// <summary>SBE encoder for InstrumentCatalogRequest</summary>
+    public static class InstrumentCatalogRequestEncoder
+    {
+        public static byte[] Encode()
+        {
+            var buf = new List<byte>();
+            // SBE Message Header (8 bytes)
+                Wire.WriteU16BE(buf, SCHEMA_ID);
+                Wire.WriteU16BE(buf, 29);
+                Wire.WriteU16BE(buf, 0);
+                Wire.WriteU16BE(buf, 0);
+
+            // Fixed fields
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for InstrumentCatalogRequest</summary>
+    public class InstrumentCatalogRequestDecoder
+    {
+        public int EncodedLen() => 0;
+
+        public static InstrumentCatalogRequestDecoder Decode(byte[] buf)
+        {
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 29) throw new InvalidOperationException("invalid template_id");
+            return new InstrumentCatalogRequestDecoder
+            {
+
+            };
+        }
+    }
+
+    /// <summary>SBE encoder for InstrumentCatalogResponse</summary>
+    public static class InstrumentCatalogResponseEncoder
+    {
+        public static byte[] Encode(Instruments List<string>)
+        {
+            var buf = new List<byte>();
+            // SBE Message Header (8 bytes)
+                Wire.WriteU16BE(buf, SCHEMA_ID);
+                Wire.WriteU16BE(buf, 30);
+                Wire.WriteU16BE(buf, 0);
+                Wire.WriteU16BE(buf, 0);
+
+            // Fixed fields
+                Wire.WriteU32BE(buf, (uint)Instruments.Count);
+                foreach (var item in Instruments) {
+                        InstrumentMetadataEncoder.Encode(item, buf);
+                }
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for InstrumentCatalogResponse</summary>
+    public class InstrumentCatalogResponseDecoder
+    {
+        public List<string> Instruments { get; set; }
+        public int EncodedLen() => 0;
+
+        public static InstrumentCatalogResponseDecoder Decode(byte[] buf)
+        {
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 30) throw new InvalidOperationException("invalid template_id");
+            int instrumentsCount = (int)Wire.ReadU32BE(buf, ref pos);
+            var instruments = new List<InstrumentMetadata>(instrumentsCount);
+            for (int i = 0; i < instrumentsCount; i++) {
+                var item = InstrumentMetadataDecoder.Decode(buf[pos..]);
+                pos += item.EncodedLen();
+                instruments.Add(item);
+            }
+            return new InstrumentCatalogResponseDecoder
+            {
+                Instruments = instruments,
+            };
+        }
+    }
+
     /// <summary>SBE encoder for AccountSummary</summary>
     public static class AccountSummaryEncoder
     {
@@ -2127,7 +2227,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 29);
+                Wire.WriteU16BE(buf, 31);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 16);
 
@@ -2157,7 +2257,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 29) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 31) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             double balance = Wire.ReadF64BE(buf, ref pos);
             double buying_power = Wire.ReadF64BE(buf, ref pos);
@@ -2180,7 +2280,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 30);
+                Wire.WriteU16BE(buf, 32);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 40);
 
@@ -2216,7 +2316,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 30) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 32) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             double balance = Wire.ReadF64BE(buf, ref pos);
             double buying_power = Wire.ReadF64BE(buf, ref pos);
@@ -2245,7 +2345,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 31);
+                Wire.WriteU16BE(buf, 33);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2277,7 +2377,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 31) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 33) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int balancesCount = (int)Wire.ReadU32BE(buf, ref pos);
             var balances = new List<BalanceEntry>(balancesCount);
@@ -2305,7 +2405,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 32);
+                Wire.WriteU16BE(buf, 34);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 25);
 
@@ -2339,7 +2439,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 32) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 34) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string asset = Wire.ReadString(buf, ref pos);
             double delta = Wire.ReadF64BE(buf, ref pos);
@@ -2367,7 +2467,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 33);
+                Wire.WriteU16BE(buf, 35);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2399,7 +2499,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 33) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 35) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int positionsCount = (int)Wire.ReadU32BE(buf, ref pos);
             var positions = new List<PositionEntry>(positionsCount);
@@ -2427,7 +2527,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 34);
+                Wire.WriteU16BE(buf, 36);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 24);
 
@@ -2459,7 +2559,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 34) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 36) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
             double qty = Wire.ReadF64BE(buf, ref pos);
@@ -2484,7 +2584,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 35);
+                Wire.WriteU16BE(buf, 37);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2513,7 +2613,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 35) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 37) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string summary = Wire.ReadString(buf, ref pos);
             byte v = buf[pos++];
@@ -2535,7 +2635,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 36);
+                Wire.WriteU16BE(buf, 38);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 24);
 
@@ -2567,7 +2667,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 36) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 38) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
             double qty = Wire.ReadF64BE(buf, ref pos);
@@ -2592,7 +2692,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 37);
+                Wire.WriteU16BE(buf, 39);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2622,7 +2722,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 37) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 39) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string list_id = Wire.ReadString(buf, ref pos);
             byte statusRaw = buf[pos++];
@@ -2647,7 +2747,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 38);
+                Wire.WriteU16BE(buf, 40);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 20);
 
@@ -2681,7 +2781,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 38) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 40) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string? symbol;
             if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
@@ -2712,7 +2812,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 39);
+                Wire.WriteU16BE(buf, 41);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2745,7 +2845,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 39) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 41) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int fillsCount = (int)Wire.ReadU32BE(buf, ref pos);
             var fills = new List<ExecutionReport>(fillsCount);
@@ -2775,7 +2875,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 40);
+                Wire.WriteU16BE(buf, 42);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 24);
 
@@ -2807,7 +2907,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 40) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 42) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string? symbol;
             if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
@@ -2833,7 +2933,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 41);
+                Wire.WriteU16BE(buf, 43);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 20);
 
@@ -2865,7 +2965,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 41) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 43) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             long? start_time;
             if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
@@ -2893,7 +2993,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 42);
+                Wire.WriteU16BE(buf, 44);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -2926,7 +3026,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 42) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 44) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int paymentsCount = (int)Wire.ReadU32BE(buf, ref pos);
             var payments = new List<FundingPayment>(paymentsCount);
@@ -2956,7 +3056,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 43);
+                Wire.WriteU16BE(buf, 45);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 17);
 
@@ -2990,7 +3090,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 43) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 45) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string asset = Wire.ReadString(buf, ref pos);
             double delta = Wire.ReadF64BE(buf, ref pos);
@@ -3019,7 +3119,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 44);
+                Wire.WriteU16BE(buf, 46);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 20);
 
@@ -3051,7 +3151,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 44) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 46) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             long? start_time;
             if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
@@ -3079,7 +3179,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 45);
+                Wire.WriteU16BE(buf, 47);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -3112,7 +3212,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 45) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 47) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int entriesCount = (int)Wire.ReadU32BE(buf, ref pos);
             var entries = new List<LedgerUpdate>(entriesCount);
@@ -3142,7 +3242,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 46);
+                Wire.WriteU16BE(buf, 48);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 0);
 
@@ -3168,7 +3268,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 46) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 48) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string? symbol;
             if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
@@ -3188,7 +3288,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 47);
+                Wire.WriteU16BE(buf, 49);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -3220,7 +3320,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 47) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 49) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int ordersCount = (int)Wire.ReadU32BE(buf, ref pos);
             var orders = new List<ExecutionReport>(ordersCount);
@@ -3248,7 +3348,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 48);
+                Wire.WriteU16BE(buf, 50);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 20);
 
@@ -3282,7 +3382,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 48) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 50) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string? symbol;
             if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
@@ -3313,7 +3413,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 49);
+                Wire.WriteU16BE(buf, 51);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 1);
 
@@ -3346,7 +3446,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 49) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 51) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             int ordersCount = (int)Wire.ReadU32BE(buf, ref pos);
             var orders = new List<ExecutionReport>(ordersCount);
@@ -3376,7 +3476,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 50);
+                Wire.WriteU16BE(buf, 52);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 0);
 
@@ -3398,7 +3498,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 50) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 52) throw new InvalidOperationException("invalid template_id");
             return new CapabilitiesRequestDecoder
             {
 
@@ -3414,7 +3514,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 51);
+                Wire.WriteU16BE(buf, 53);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 0);
 
@@ -3456,7 +3556,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 51) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 53) throw new InvalidOperationException("invalid template_id");
             int schema_idsCount = (int)Wire.ReadU32BE(buf, ref pos);
             var schema_ids = new List<u8>(schema_idsCount);
             for (int i = 0; i < schema_idsCount; i++) {
@@ -3503,7 +3603,7 @@ namespace Fig.Sbe
             var buf = new List<byte>();
             // SBE Message Header (8 bytes)
                 Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 52);
+                Wire.WriteU16BE(buf, 54);
                 Wire.WriteU16BE(buf, 0);
                 Wire.WriteU16BE(buf, 0);
 
@@ -3527,7 +3627,7 @@ namespace Fig.Sbe
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
             Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
-            if (tmplId != 52) throw new InvalidOperationException("invalid template_id");
+            if (tmplId != 54) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             return new PositionRequestDecoder
             {

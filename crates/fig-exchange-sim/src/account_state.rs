@@ -14,6 +14,7 @@ pub enum AccountSubscriptionKind {
     Ledger,
     Liquidations,
     OrderLists,
+    OpenOrders,
 }
 
 #[derive(Debug, Clone)]
@@ -349,6 +350,10 @@ pub fn parse_account_subscription(
     if path.starts_with("trading/accounts/") && path.ends_with("/orderlists") {
         let account = path.split('/').nth(2)?.to_string();
         return Some((account, AccountSubscriptionKind::OrderLists));
+    }
+    if path.starts_with("trading/accounts/") && path.ends_with("/orders/open") {
+        let account = path.split('/').nth(2)?.to_string();
+        return Some((account, AccountSubscriptionKind::OpenOrders));
     }
     if path.starts_with("accounts/") && path.ends_with("/funding") {
         let account = path.split('/').nth(1)?.to_string();

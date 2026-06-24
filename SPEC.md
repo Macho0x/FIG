@@ -437,6 +437,11 @@ Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 | `accounts/{account}/ledger` | pub/sub + GET | `LedgerUpdate`, `LedgerHistoryBatch` | Fee on fill |
 | `accounts/{account}/liquidations` | pub/sub | `UserLiquidation` | Push on balance breach |
 | `/.well-known/capabilities` | GET | `CapabilitiesResponse` | Exchange info / path catalog |
+| `/.well-known/instruments` | GET | `InstrumentCatalogResponse` | Perp/spot instrument catalog |
+
+`Symbol` supports up to 32 uppercase characters (equities and crypto tickers).
+Instrument metadata is defined in `instruments.fsl` — see
+[ADR 0007](docs/adr/0007-crypto-instrument-model.md).
 
 `OrderListStatus` is defined in FSL; live stream wiring is available on
 `trading/accounts/{account}/orderlists` in the reference broker.
@@ -528,6 +533,20 @@ require authentication on every frame that opens or uses the channel:
 
 See [docs/STREAMING.md](docs/STREAMING.md) and [docs/TUTORIAL.md](docs/TUTORIAL.md)
 for subscribe examples with `AUTH_TOKEN`.
+
+### 9.4 Order policy flags (venue-enforced)
+
+`NewOrderSingle` includes optional **`post_only`** and **`reduce_only`** booleans.
+Semantics are enforced by the venue matching engine; FIG carries the flags on the wire.
+
+| Flag | Meaning | Reference sim behavior |
+|---|---|---|
+| `post_only: true` | Order must not take liquidity | Reject if limit would cross the book |
+| `reduce_only: true` | Order must not increase absolute position | Reject if order would open or add to position |
+
+Gateway REST POST bodies pass these fields through JSON → CBOR unchanged
+(`"post_only": true`, `"reduce_only": true`). Native SBE/CBOR clients set them on
+`NewOrderSingle` directly. See [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md).
 
 ---
 

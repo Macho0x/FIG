@@ -125,6 +125,8 @@ pub fn encode_new_order_single(order: &NewOrderSingle) -> Vec<u8> {
         order.security_id.clone(),
         order.id_source.map(map_id_source),
         order.security_exchange.clone(),
+        order.post_only,
+        order.reduce_only,
     )
 }
 
@@ -149,6 +151,8 @@ pub fn decode_new_order_single(buf: &[u8]) -> Result<NewOrderSingle, SbeError> {
             .map(|s| unmap_id_source_u8(s.to_value()))
             .transpose()?,
         security_exchange: d.security_exchange,
+        post_only: d.post_only,
+        reduce_only: d.reduce_only,
     })
 }
 

@@ -8,6 +8,8 @@ use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{ControlSubtype, Frame, FrameType};
 use fig_core::messages::*;
+use fig_core::messages::schema_id;
+use fig_core::sbe;
 use fig_core::transport;
 use quinn::{Connection, Endpoint};
 use tracing::info;
@@ -186,6 +188,8 @@ pub fn log_frames(label: &str, frames: &[Frame]) {
 
 /// Run all seven demo flows against a connected FIG server.
 pub async fn run_demos(conn: &Connection) -> Result<()> {
+    let client = FigSdkClient::new(conn);
+
     info!("=== Demo 1: NewOrderSingle ===");
     let order = NewOrderSingle {
         cl_ord_id: "CLI-001".to_string(),
@@ -202,8 +206,126 @@ pub async fn run_demos(conn: &Connection) -> Result<()> {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
-    let order_frame = Frame::new(FrameType::Request, 1)
+    let order_frames = client.post_order(ACCOUNT, &order, 1).await?;
+    log_frames("order", &order_frames);
+    assert_execution_report("order", &order_frames)?;
+
+    info!("=== Demo 2: SUBSCRIBE candles/5m ===");
+    let (_candle_state, candle_frames) = client.subscribe_candles("AAPL", "5m", 2).await?;
+    log_frames("candles", &candle_frames);
+    assert_subscribe_ack("candles", &candle_frames)?;
+
+    info!("=== Demo 3: SUBSCRIBE balances ===");
+    let (_bal_cache, bal_frames) = client.subscribe_balances(ACCOUNT, 3).await?;
+    log_frames("balances", &bal_frames);
+    assert_subscribe_ack("balances", &bal_frames)?;
+
+    info!("=== Demo 4: GET candles/5m ===");
+    let (_batch, candle_query) = client
+        .request_candles(
+            CandleBarRequest {
+                symbol: "AAPL".to_string(),
+                interval: "5m".to_string(),
+                start_time: None,
+                end_time: None,
+                limit: Some(10),
+                cursor: None,
+            },
+            4,
+        )
+        .await?;
+    log_frames("candle_query", &candle_query);
+    assert_query_response("candle_query", &candle_query)?;
+
+    info!("=== Demo 5: private + ticker queries ===");
+    let (_summary, account_frames) = client.request_account_summary(ACCOUNT, 5).await?;
+    log_frames("account", &account_frames);
+    assert_query_response("account", &account_frames)?;
+
+    let (_ticker, ticker_frames) = client.request_ticker("AAPL", 6).await?;
+    log_frames("ticker", &ticker_frames);
+    assert_query_response("ticker", &ticker_frames)?;
+
+    let (_funding, funding_frames) = client
+        .request_funding_history(
+            ACCOUNT,
+            FundingHistoryRequest {
+                account: ACCOUNT.to_string(),
+                start_time: None,
+                end_time: None,
+                limit: Some(10),
+                cursor: None,
+            },
+            7,
+        )
+        .await?;
+    log_frames("funding", &funding_frames);
+    assert_query_response("funding", &funding_frames)?;
+
+    let (_ledger, ledger_frames) = client
+        .request_ledger_history(
+            ACCOUNT,
+            LedgerHistoryRequest {
+                account: ACCOUNT.to_string(),
+                start_time: None,
+                end_time: None,
+                limit: Some(10),
+                cursor: None,
+            },
+            8,
+        )
+        .await?;
+    log_frames("ledger", &ledger_frames);
+    assert_query_response("ledger", &ledger_frames)?;
+
+    info!("=== Demo 6: agg trades, mark price, margin ===");
+    let (_agg, agg_frames) = client.subscribe_agg_trades("AAPL", 9).await?;
+    log_frames("aggtrades", &agg_frames);
+    assert_subscribe_ack("aggtrades", &agg_frames)?;
+
+    let (_mark, mark_frames) = client.request_mark_price("AAPL", 10).await?;
+    log_frames("mark", &mark_frames);
+    assert_query_response("mark", &mark_frames)?;
+
+    let (_margin, margin_frames) = client.subscribe_margin(ACCOUNT, 11).await?;
+    log_frames("margin", &margin_frames);
+    assert_subscribe_ack("margin", &margin_frames)?;
+
+    info!("=== Demo 7: PING/PONG ===");
+    let ping_frames = client.send_and_read(Frame::ping()).await?;
+    log_frames("ping", &ping_frames);
+    assert_pong("ping", &ping_frames)?;
+
+    info!("=== Demo complete ===");
+    Ok(())
+}
+
+/// SBE-encoded order entry demo (colo / market-maker path).
+pub async fn run_sbe_order_demo(conn: &Connection) -> Result<()> {
+    let client = FigSdkClient::new(conn);
+    let order = NewOrderSingle {
+        cl_ord_id: "CLI-SBE-1".to_string(),
+        side: Side::Buy,
+        order_qty: Quantity(10.0),
+        price: Some(Price(50.0)),
+        stop_price: None,
+        symbol: "BTC".to_string(),
+        order_type: OrderType::Limit,
+        time_in_force: TimeInForce::Day,
+        expire_time: None,
+        account: Some(ACCOUNT.to_string()),
+        strategy_id: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
+        post_only: Some(true),
+        reduce_only: None,
+    };
+    let payload = sbe::encode_new_order_single(&order);
+    let frame = Frame::new(FrameType::Request, 20)
         .with_seq(1)
         .with_schema_id(schema_id::TRADING_ORDERS)
         .with_extension(Extension::text(
@@ -211,153 +333,28 @@ pub async fn run_demos(conn: &Connection) -> Result<()> {
             format!("trading/accounts/{ACCOUNT}/orders"),
         ))
         .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+        .with_extension(Extension::text(
+            ExtensionTag::ContentType,
+            "application/fig+sbe",
+        ))
         .with_extension(auth_ext(ACCOUNT))
-        .with_payload(codec::encode_cbor(&order)?);
-    let order_frames = send_and_read(conn, order_frame).await?;
-    log_frames("order", &order_frames);
-    assert_execution_report("order", &order_frames)?;
-
-    info!("=== Demo 2: SUBSCRIBE candles/5m ===");
-    let candle_sub = Frame::new(FrameType::Subscribe, 2)
-        .with_extension(Extension::text(
-            ExtensionTag::RoutingKey,
-            "marketdata/AAPL/candles/5m",
-        ))
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "marketdata/AAPL/candles/5m",
-        ));
-    let candle_frames = send_and_read(conn, candle_sub).await?;
-    log_frames("candles", &candle_frames);
-    assert_subscribe_ack("candles", &candle_frames)?;
-
-    info!("=== Demo 3: SUBSCRIBE balances ===");
-    let bal_sub = Frame::new(FrameType::Subscribe, 3)
-        .with_extension(Extension::text(
-            ExtensionTag::RoutingKey,
-            format!("accounts/{ACCOUNT}/balances"),
-        ))
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("accounts/{ACCOUNT}/balances"),
-        ))
-        .with_extension(auth_ext(ACCOUNT));
-    let bal_frames = send_and_read(conn, bal_sub).await?;
-    log_frames("balances", &bal_frames);
-    assert_subscribe_ack("balances", &bal_frames)?;
-
-    info!("=== Demo 4: GET candles/5m ===");
-    let candle_get = Frame::new(FrameType::Request, 4)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "marketdata/AAPL/candles/5m",
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-        .with_payload(codec::encode_cbor(&CandleBarRequest {
-            symbol: "AAPL".to_string(),
-            interval: "5m".to_string(),
-            start_time: None,
-            end_time: None,
-            limit: Some(10),
-            cursor: None,
-        })?);
-    let candle_query = send_and_read(conn, candle_get).await?;
-    log_frames("candle_query", &candle_query);
-    assert_query_response("candle_query", &candle_query)?;
-
-    info!("=== Demo 5: private + ticker queries ===");
-    let account_get = Frame::new(FrameType::Request, 5)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("accounts/{ACCOUNT}"),
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-        .with_extension(auth_ext(ACCOUNT));
-    let account_frames = send_and_read(conn, account_get).await?;
-    log_frames("account", &account_frames);
-    assert_query_response("account", &account_frames)?;
-
-    let ticker_get = Frame::new(FrameType::Request, 6)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "marketdata/AAPL/ticker",
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
-    let ticker_frames = send_and_read(conn, ticker_get).await?;
-    log_frames("ticker", &ticker_frames);
-    assert_query_response("ticker", &ticker_frames)?;
-
-    let funding_get = Frame::new(FrameType::Request, 7)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("accounts/{ACCOUNT}/funding"),
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-        .with_extension(auth_ext(ACCOUNT));
-    let funding_frames = send_and_read(conn, funding_get).await?;
-    log_frames("funding", &funding_frames);
-    assert_query_response("funding", &funding_frames)?;
-
-    let ledger_get = Frame::new(FrameType::Request, 8)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("accounts/{ACCOUNT}/ledger"),
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
-        .with_extension(auth_ext(ACCOUNT));
-    let ledger_frames = send_and_read(conn, ledger_get).await?;
-    log_frames("ledger", &ledger_frames);
-    assert_query_response("ledger", &ledger_frames)?;
-
-    info!("=== Demo 6: agg trades, mark price, margin ===");
-    let agg_sub = Frame::new(FrameType::Subscribe, 9)
-        .with_extension(Extension::text(
-            ExtensionTag::RoutingKey,
-            "marketdata/AAPL/aggtrades",
-        ))
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "marketdata/AAPL/aggtrades",
-        ));
-    let agg_frames = send_and_read(conn, agg_sub).await?;
-    log_frames("aggtrades", &agg_frames);
-    assert_subscribe_ack("aggtrades", &agg_frames)?;
-
-    let mark_get = Frame::new(FrameType::Request, 10)
-        .with_schema_id(schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "marketdata/AAPL/mark",
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
-    let mark_frames = send_and_read(conn, mark_get).await?;
-    log_frames("mark", &mark_frames);
-    assert_query_response("mark", &mark_frames)?;
-
-    let margin_sub = Frame::new(FrameType::Subscribe, 11)
-        .with_extension(Extension::text(
-            ExtensionTag::RoutingKey,
-            format!("accounts/{ACCOUNT}/margin"),
-        ))
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("accounts/{ACCOUNT}/margin"),
-        ))
-        .with_extension(auth_ext(ACCOUNT));
-    let margin_frames = send_and_read(conn, margin_sub).await?;
-    log_frames("margin", &margin_frames);
-    assert_subscribe_ack("margin", &margin_frames)?;
-
-    info!("=== Demo 7: PING/PONG ===");
-    let ping_frames = send_and_read(conn, Frame::ping()).await?;
-    log_frames("ping", &ping_frames);
-    assert_pong("ping", &ping_frames)?;
-
-    info!("=== Demo complete ===");
+        .with_payload(payload);
+    let frames = client.send_and_read(frame).await?;
+    log_frames("sbe_order", &frames);
+    assert_success_frames("sbe_order", &frames)?;
+    let has_report = frames.iter().any(|f| {
+        if f.payload.is_empty() {
+            return false;
+        }
+        if let Ok(report) = sbe::decode_execution_report(&f.payload) {
+            return report.cl_ord_id == "CLI-SBE-1";
+        }
+        codec::decode_cbor::<ExecutionReport>(&f.payload)
+            .map(|r| r.cl_ord_id == "CLI-SBE-1")
+            .unwrap_or(false)
+    });
+    if !has_report {
+        bail!("sbe_order: expected ExecutionReport for CLI-SBE-1");
+    }
     Ok(())
 }

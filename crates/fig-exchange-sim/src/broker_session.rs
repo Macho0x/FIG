@@ -82,8 +82,38 @@ pub fn capabilities_response() -> CapabilitiesResponse {
                 auth_required: false,
             },
         ],
-        symbols: vec!["AAPL".to_string(), "BTCUSDT".to_string()],
+        symbols: vec![
+            "AAPL".to_string(),
+            "BTC".to_string(),
+            "ETH".to_string(),
+            "BTCUSDT".to_string(),
+        ],
         intervals: vec!["1m".to_string(), "5m".to_string()],
+    }
+}
+
+pub fn instrument_catalog_response() -> InstrumentCatalogResponse {
+    InstrumentCatalogResponse {
+        instruments: vec![
+            InstrumentMetadata {
+                instrument_id: "BTC-PERP".to_string(),
+                symbol: "BTC".to_string(),
+                product_kind: "perp".to_string(),
+                margin_asset: Some("USDC".to_string()),
+                display_name: Some("Bitcoin Perpetual".to_string()),
+                tick_size: Some(0.1),
+                lot_size: Some(0.001),
+            },
+            InstrumentMetadata {
+                instrument_id: "ETH-PERP".to_string(),
+                symbol: "ETH".to_string(),
+                product_kind: "perp".to_string(),
+                margin_asset: Some("USDC".to_string()),
+                display_name: Some("Ethereum Perpetual".to_string()),
+                tick_size: Some(0.01),
+                lot_size: Some(0.01),
+            },
+        ],
     }
 }
 
@@ -118,6 +148,7 @@ pub fn persist_subscription(state: &Arc<ExchangeState>, session_id: Uuid, frame:
             AccountSubscriptionKind::Ledger => "ledger",
             AccountSubscriptionKind::Liquidations => "liquidations",
             AccountSubscriptionKind::OrderLists => "orderlists",
+            AccountSubscriptionKind::OpenOrders => "orders/open",
         };
         format!("acct:{account}:{tag}")
     } else if parse_md_subscription(&routing_key, &channel_path).is_some() {

@@ -103,6 +103,8 @@ fn make_sbe_order_bytes() -> Vec<u8> {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
     encode_new_order_single(&order)
 }

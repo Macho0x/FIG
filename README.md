@@ -337,6 +337,15 @@ let ws_sub = legacy_ws_json_to_fig_subscribe(
 
 Reference crates: [`fig-core`](crates/fig-core/) (protocol) · [`fig-gateways`](crates/fig-gateways/) (adapters) · [`fig-exchange-sim`](crates/fig-exchange-sim/) (demo server) · [`fig-fsl`](crates/fig-fsl/) (schemas). Module index: [docs/API.md](docs/API.md).
 
+### Venue adoption (one standard)
+
+FIG is **wire infrastructure**, not an exchange. Every broker follows the same path:
+Day 1 gateway for legacy clients, Day 2 native FIG over TREE for performance clients.
+Binance and Hyperliquid wire shapes are **gateway aliases only** — see [AGENTS.md](AGENTS.md)
+and [docs/GATEWAY.md](docs/GATEWAY.md#venue-adoption--day-1-gateway). Crypto perps use
+the shared instrument model ([ADR 0007](docs/adr/0007-crypto-instrument-model.md)); colo
+order entry uses [SBE order path](docs/SBE_ORDER_PATH.md).
+
 ---
 
 ## Quick start by language

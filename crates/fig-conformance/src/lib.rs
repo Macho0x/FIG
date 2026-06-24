@@ -14,10 +14,11 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceSnapshot, CandleBar, CandleBarBatch, CapabilitiesResponse, ExecType,
-    ExecutionReport, MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate,
-    MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot,
-    OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
-    PositionUpdate, Price, Quantity, Side, SymbolTicker, TimeInForce,
+    ExecutionReport, InstrumentCatalogResponse, InstrumentMetadata, MarkPriceUpdate,
+    MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle,
+    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch,
+    OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price,
+    Quantity, Side, SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -105,6 +106,11 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
             }
             "MarkPriceUpdate" => {
                 encode_cbor(&sample_mark_price_update()).map_err(|e| anyhow!("encode_cbor: {e}"))?
+            }
+            "InstrumentCatalogResponse" => {
+                let payload = payload.ok_or_else(|| anyhow!("cbor vector missing `payload`"))?;
+                let catalog: InstrumentCatalogResponse = serde_json::from_value(payload.clone())?;
+                encode_cbor(&catalog).map_err(|e| anyhow!("encode_cbor: {e}"))?
             }
             other => return Err(anyhow!("unsupported cbor message_type: {other}")),
         };
@@ -462,6 +468,8 @@ fn json_to_new_order_single(v: &serde_json::Value) -> Result<NewOrderSingle> {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: v.get("post_only").and_then(|b| b.as_bool()),
+        reduce_only: v.get("reduce_only").and_then(|b| b.as_bool()),
     })
 }
 

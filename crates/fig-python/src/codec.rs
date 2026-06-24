@@ -35,6 +35,8 @@ pub fn encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
     encode_cbor(&order).map_err(|e| e.to_string())
 }

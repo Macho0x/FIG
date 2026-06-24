@@ -9,15 +9,16 @@ use crate::messages::{
     CandleBarRequest, CandleInterval, CapabilitiesRequest, CapabilitiesResponse, CapabilityPath,
     CapabilityPathPattern, ClientOrderId, ExecType, ExecutionReport, FillHistoryBatch,
     FillHistoryRequest, FundingHistoryBatch, FundingHistoryRequest, FundingPayment,
+    InstrumentCatalogRequest, InstrumentCatalogResponse, InstrumentId, InstrumentMetadata,
     LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, LedgerUpdateKind, LiquidationTrade,
-    LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
-    MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate,
-    MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
-    OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderListStatusStatus, OrderType, PageInfo, PositionEntry, PositionRequest, PositionSnapshot,
-    PositionUpdate, Price, PriceLevel, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
-    SecurityIdSource, Side, Symbol, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
-    TradeTimestamp, UserLiquidation,
+    LiquidationTradeEvent, MarginAsset, MarginSummary, MarginUpdate, MarkPriceRequest,
+    MarkPriceUpdate, MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot,
+    MarketDataUpdate, MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus,
+    OrderBookDelta, OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest,
+    OrderListStatus, OrderListStatusStatus, OrderType, PageInfo, PositionEntry, PositionRequest,
+    PositionSnapshot, PositionUpdate, Price, PriceLevel, PublicTrade, PublicTradeBatch,
+    PublicTradeEvent, Quantity, SecurityIdSource, Side, Symbol, SymbolTicker, TickerRequest,
+    TimeInForce, TradeHistoryRequest, TradeTimestamp, UserLiquidation,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -878,6 +879,149 @@ impl PublicTradeDecoder {
     }
 }
 
+/// SBE body encoder for InstrumentMetadata
+pub struct InstrumentMetadataEncoder;
+
+impl InstrumentMetadataEncoder {
+    pub fn encode(value: &InstrumentMetadata, buf: &mut Vec<u8>) {
+        let instrument_id_bytes = value.instrument_id.as_bytes();
+        buf.extend_from_slice(&(instrument_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(instrument_id_bytes);
+        let symbol_bytes = value.symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        let product_kind_bytes = value.product_kind.as_bytes();
+        buf.extend_from_slice(&(product_kind_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(product_kind_bytes);
+        buf.push(if value.margin_asset.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.margin_asset {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.push(if value.display_name.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.display_name {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.extend_from_slice(&value.tick_size.unwrap_or(0.0).to_be_bytes());
+        buf.push(if value.tick_size.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&value.lot_size.unwrap_or(0.0).to_be_bytes());
+        buf.push(if value.lot_size.is_some() { 1 } else { 0 });
+    }
+}
+
+/// SBE body decoder for InstrumentMetadata
+pub struct InstrumentMetadataDecoder;
+
+impl InstrumentMetadataDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(InstrumentMetadata, usize), String> {
+        let mut pos: usize = 0;
+
+        let instrument_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
+        pos += 2;
+        let instrument_id_bytes = &buf[pos..pos + instrument_id_len];
+        pos += instrument_id_len;
+        let instrument_id = std::str::from_utf8(instrument_id_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?
+            .to_string();
+        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
+        pos += 2;
+        let symbol_bytes = &buf[pos..pos + symbol_len];
+        pos += symbol_len;
+        let symbol = std::str::from_utf8(symbol_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?
+            .to_string();
+        let product_kind_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
+        pos += 2;
+        let product_kind_bytes = &buf[pos..pos + product_kind_len];
+        pos += product_kind_len;
+        let product_kind = std::str::from_utf8(product_kind_bytes)
+            .map_err(|e| format!("invalid UTF-8: {}", e))?
+            .to_string();
+        let margin_asset = if buf[pos] == 1 {
+            pos += 1;
+            let margin_asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
+            pos += 2;
+            let margin_asset_bytes = &buf[pos..pos + margin_asset_len];
+            pos += margin_asset_len;
+            Some(
+                std::str::from_utf8(margin_asset_bytes)
+                    .map_err(|e| format!("invalid UTF-8: {}", e))?
+                    .to_string(),
+            )
+        } else {
+            pos += 1;
+            None
+        };
+        let display_name = if buf[pos] == 1 {
+            pos += 1;
+            let display_name_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
+            pos += 2;
+            let display_name_bytes = &buf[pos..pos + display_name_len];
+            pos += display_name_len;
+            Some(
+                std::str::from_utf8(display_name_bytes)
+                    .map_err(|e| format!("invalid UTF-8: {}", e))?
+                    .to_string(),
+            )
+        } else {
+            pos += 1;
+            None
+        };
+        let tick_size_raw = f64::from_be_bytes([
+            buf[pos + 0],
+            buf[pos + 1],
+            buf[pos + 2],
+            buf[pos + 3],
+            buf[pos + 4],
+            buf[pos + 5],
+            buf[pos + 6],
+            buf[pos + 7],
+        ]);
+        pos += 8;
+        let tick_size = if buf[pos] == 1 {
+            pos += 1;
+            Some(tick_size_raw)
+        } else {
+            pos += 1;
+            None
+        };
+        let lot_size_raw = f64::from_be_bytes([
+            buf[pos + 0],
+            buf[pos + 1],
+            buf[pos + 2],
+            buf[pos + 3],
+            buf[pos + 4],
+            buf[pos + 5],
+            buf[pos + 6],
+            buf[pos + 7],
+        ]);
+        pos += 8;
+        let lot_size = if buf[pos] == 1 {
+            pos += 1;
+            Some(lot_size_raw)
+        } else {
+            pos += 1;
+            None
+        };
+
+        Ok((
+            InstrumentMetadata {
+                instrument_id,
+                symbol,
+                product_kind,
+                margin_asset,
+                display_name,
+                tick_size,
+                lot_size,
+            },
+            pos,
+        ))
+    }
+}
+
 /// SBE body encoder for BalanceEntry
 pub struct BalanceEntryEncoder;
 
@@ -1192,6 +1336,10 @@ impl NewOrderSingleBodyEncoder {
             buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
             buf.extend_from_slice(b);
         }
+        buf.push(value.post_only.unwrap_or(false) as u8);
+        buf.push(u8::from(value.post_only.is_some()));
+        buf.push(value.reduce_only.unwrap_or(false) as u8);
+        buf.push(u8::from(value.reduce_only.is_some()));
     }
 }
 
@@ -1366,6 +1514,24 @@ impl NewOrderSingleBodyDecoder {
             pos += 1;
             None
         };
+        let post_only_val = buf[pos];
+        pos += 1;
+        let post_only = if buf[pos] == 1 {
+            pos += 1;
+            Some(post_only_val != 0)
+        } else {
+            pos += 1;
+            None
+        };
+        let reduce_only_val = buf[pos];
+        pos += 1;
+        let reduce_only = if buf[pos] == 1 {
+            pos += 1;
+            Some(reduce_only_val != 0)
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok((
             NewOrderSingle {
@@ -1383,6 +1549,8 @@ impl NewOrderSingleBodyDecoder {
                 security_id,
                 id_source,
                 security_exchange,
+                post_only,
+                reduce_only,
             },
             pos,
         ))
@@ -3762,6 +3930,68 @@ impl TickerRequestBodyDecoder {
     }
 }
 
+/// SBE body encoder for nested InstrumentCatalogRequest
+pub struct InstrumentCatalogRequestBodyEncoder;
+
+impl InstrumentCatalogRequestBodyEncoder {
+    pub fn encode(value: &InstrumentCatalogRequest, buf: &mut Vec<u8>) {}
+}
+
+/// SBE body decoder for nested InstrumentCatalogRequest
+pub struct InstrumentCatalogRequestBodyDecoder;
+
+impl InstrumentCatalogRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(InstrumentCatalogRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        Ok((InstrumentCatalogRequest {}, pos))
+    }
+}
+
+/// SBE body encoder for nested InstrumentCatalogResponse
+pub struct InstrumentCatalogResponseBodyEncoder;
+
+impl InstrumentCatalogResponseBodyEncoder {
+    pub fn encode(value: &InstrumentCatalogResponse, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(&(value.instruments.len() as u32).to_be_bytes());
+        for item in &value.instruments {
+            let mut item_buf = Vec::new();
+            InstrumentMetadataEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+    }
+}
+
+/// SBE body decoder for nested InstrumentCatalogResponse
+pub struct InstrumentCatalogResponseBodyDecoder;
+
+impl InstrumentCatalogResponseBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(InstrumentCatalogResponse, usize), String> {
+        let mut pos: usize = 0;
+
+        let instruments_count =
+            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+        pos += 4;
+        let mut instruments = Vec::with_capacity(instruments_count);
+        for _ in 0..instruments_count {
+            let item_len =
+                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+            pos += 4;
+            let (item, n) = InstrumentMetadataDecoder::decode(&buf[pos..pos + item_len])?;
+            if n != item_len {
+                return Err(format!(
+                    "InstrumentMetadata length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            pos += item_len;
+            instruments.push(item);
+        }
+
+        Ok((InstrumentCatalogResponse { instruments }, pos))
+    }
+}
+
 /// SBE body encoder for nested AccountSummary
 pub struct AccountSummaryBodyEncoder;
 
@@ -5795,6 +6025,8 @@ impl NewOrderSingleEncoder {
         security_id: Option<String>,
         id_source: Option<NewOrderSingleIdSource>,
         security_exchange: Option<String>,
+        post_only: Option<bool>,
+        reduce_only: Option<bool>,
     ) -> Vec<u8> {
         let mut buf = Vec::new();
 
@@ -5802,7 +6034,7 @@ impl NewOrderSingleEncoder {
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&1u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
-        buf.extend_from_slice(&36u16.to_be_bytes()); // block_length
+        buf.extend_from_slice(&38u16.to_be_bytes()); // block_length
 
         // Fixed fields
         let cl_ord_id_bytes = cl_ord_id.as_bytes();
@@ -5853,6 +6085,10 @@ impl NewOrderSingleEncoder {
             buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
             buf.extend_from_slice(b);
         }
+        buf.push(post_only.unwrap_or(false) as u8);
+        buf.push(u8::from(post_only.is_some()));
+        buf.push(reduce_only.unwrap_or(false) as u8);
+        buf.push(u8::from(reduce_only.is_some()));
 
         buf
     }
@@ -5875,6 +6111,8 @@ pub struct NewOrderSingleDecoder {
     pub security_id: Option<String>,
     pub id_source: Option<NewOrderSingleIdSource>,
     pub security_exchange: Option<String>,
+    pub post_only: Option<bool>,
+    pub reduce_only: Option<bool>,
 }
 
 impl NewOrderSingleDecoder {
@@ -6068,6 +6306,24 @@ impl NewOrderSingleDecoder {
             pos += 1;
             None
         };
+        let post_only_val = buf[pos];
+        pos += 1;
+        let post_only = if buf[pos] == 1 {
+            pos += 1;
+            Some(post_only_val != 0)
+        } else {
+            pos += 1;
+            None
+        };
+        let reduce_only_val = buf[pos];
+        pos += 1;
+        let reduce_only = if buf[pos] == 1 {
+            pos += 1;
+            Some(reduce_only_val != 0)
+        } else {
+            pos += 1;
+            None
+        };
 
         Ok(Self {
             cl_ord_id,
@@ -6084,6 +6340,8 @@ impl NewOrderSingleDecoder {
             security_id,
             id_source,
             security_exchange,
+            post_only,
+            reduce_only,
         })
     }
 }
@@ -9464,6 +9722,133 @@ impl TickerRequestDecoder {
     }
 }
 
+/// SBE encoder for InstrumentCatalogRequest
+pub struct InstrumentCatalogRequestEncoder;
+
+impl InstrumentCatalogRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode() -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&29u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+
+        buf
+    }
+}
+
+/// SBE decoder for InstrumentCatalogRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstrumentCatalogRequestDecoder {}
+
+impl InstrumentCatalogRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 29 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        Ok(Self {})
+    }
+}
+
+/// SBE encoder for InstrumentCatalogResponse
+pub struct InstrumentCatalogResponseEncoder;
+
+impl InstrumentCatalogResponseEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(instruments: Vec<InstrumentMetadata>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&30u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        buf.extend_from_slice(&(instruments.len() as u32).to_be_bytes());
+        for item in &instruments {
+            let mut item_buf = Vec::new();
+            InstrumentMetadataEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for InstrumentCatalogResponse
+#[derive(Debug, Clone, PartialEq)]
+pub struct InstrumentCatalogResponseDecoder {
+    pub instruments: Vec<InstrumentMetadata>,
+}
+
+impl InstrumentCatalogResponseDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 30 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let instruments_count =
+            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+        pos += 4;
+        let mut instruments = Vec::with_capacity(instruments_count);
+        for _ in 0..instruments_count {
+            let item_len =
+                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
+            pos += 4;
+            let (item, n) = InstrumentMetadataDecoder::decode(&buf[pos..pos + item_len])?;
+            if n != item_len {
+                return Err(format!(
+                    "InstrumentMetadata length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            pos += item_len;
+            instruments.push(item);
+        }
+
+        Ok(Self { instruments })
+    }
+}
+
 /// SBE encoder for AccountSummary
 pub struct AccountSummaryEncoder;
 
@@ -9475,7 +9860,7 @@ impl AccountSummaryEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&29u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&31u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&16u16.to_be_bytes()); // block_length
 
@@ -9517,7 +9902,7 @@ impl AccountSummaryDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 29 {
+        if tmpl_id != 31 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -9590,7 +9975,7 @@ impl MarginSummaryEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&30u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&32u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&40u16.to_be_bytes()); // block_length
 
@@ -9638,7 +10023,7 @@ impl MarginSummaryDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 30 {
+        if tmpl_id != 32 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -9746,7 +10131,7 @@ impl BalanceSnapshotEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&31u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&33u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -9791,7 +10176,7 @@ impl BalanceSnapshotDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 31 {
+        if tmpl_id != 33 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -9857,7 +10242,7 @@ impl BalanceUpdateEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&32u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&34u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&25u16.to_be_bytes()); // block_length
 
@@ -9903,7 +10288,7 @@ impl BalanceUpdateDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 32 {
+        if tmpl_id != 34 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -9990,7 +10375,7 @@ impl PositionSnapshotEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&33u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&35u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -10035,7 +10420,7 @@ impl PositionSnapshotDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 33 {
+        if tmpl_id != 35 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10100,7 +10485,7 @@ impl PositionUpdateEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&34u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&36u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
 
@@ -10144,7 +10529,7 @@ impl PositionUpdateDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 34 {
+        if tmpl_id != 36 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10222,7 +10607,7 @@ impl MarginUpdateEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&35u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&37u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -10261,7 +10646,7 @@ impl MarginUpdateDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 35 {
+        if tmpl_id != 37 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10311,7 +10696,7 @@ impl UserLiquidationEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&36u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&38u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
 
@@ -10355,7 +10740,7 @@ impl UserLiquidationDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 36 {
+        if tmpl_id != 38 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10438,7 +10823,7 @@ impl OrderListStatusEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&37u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&39u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -10485,7 +10870,7 @@ impl OrderListStatusDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 37 {
+        if tmpl_id != 39 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10552,7 +10937,7 @@ impl FillHistoryRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&38u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&40u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
 
@@ -10609,7 +10994,7 @@ impl FillHistoryRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 38 {
+        if tmpl_id != 40 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10725,7 +11110,7 @@ impl FillHistoryBatchEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&39u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&41u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -10776,7 +11161,7 @@ impl FillHistoryBatchDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 39 {
+        if tmpl_id != 41 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10850,7 +11235,7 @@ impl FundingPaymentEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&40u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&42u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
 
@@ -10897,7 +11282,7 @@ impl FundingPaymentDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 40 {
+        if tmpl_id != 42 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -10989,7 +11374,7 @@ impl FundingHistoryRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&41u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&43u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
 
@@ -11039,7 +11424,7 @@ impl FundingHistoryRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 41 {
+        if tmpl_id != 43 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11139,7 +11524,7 @@ impl FundingHistoryBatchEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&42u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&44u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -11190,7 +11575,7 @@ impl FundingHistoryBatchDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 42 {
+        if tmpl_id != 44 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11265,7 +11650,7 @@ impl LedgerUpdateEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&43u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&45u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&17u16.to_be_bytes()); // block_length
 
@@ -11316,7 +11701,7 @@ impl LedgerUpdateDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 43 {
+        if tmpl_id != 45 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11408,7 +11793,7 @@ impl LedgerHistoryRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&44u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&46u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
 
@@ -11458,7 +11843,7 @@ impl LedgerHistoryRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 44 {
+        if tmpl_id != 46 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11558,7 +11943,7 @@ impl LedgerHistoryBatchEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&45u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&47u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -11609,7 +11994,7 @@ impl LedgerHistoryBatchDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 45 {
+        if tmpl_id != 47 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11677,7 +12062,7 @@ impl OpenOrdersRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&46u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&48u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
 
@@ -11718,7 +12103,7 @@ impl OpenOrdersRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 46 {
+        if tmpl_id != 48 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11766,7 +12151,7 @@ impl OpenOrdersSnapshotEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&47u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&49u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -11811,7 +12196,7 @@ impl OpenOrdersSnapshotDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 47 {
+        if tmpl_id != 49 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -11877,7 +12262,7 @@ impl OrderHistoryRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&48u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&50u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
 
@@ -11934,7 +12319,7 @@ impl OrderHistoryRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 48 {
+        if tmpl_id != 50 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -12050,7 +12435,7 @@ impl OrderHistoryBatchEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&49u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&51u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
 
@@ -12101,7 +12486,7 @@ impl OrderHistoryBatchDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 49 {
+        if tmpl_id != 51 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -12169,7 +12554,7 @@ impl CapabilitiesRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&50u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&52u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
 
@@ -12198,7 +12583,7 @@ impl CapabilitiesRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 50 {
+        if tmpl_id != 52 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -12224,7 +12609,7 @@ impl CapabilitiesResponseEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&51u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&53u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
 
@@ -12277,7 +12662,7 @@ impl CapabilitiesResponseDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 51 {
+        if tmpl_id != 53 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
@@ -12336,7 +12721,7 @@ impl PositionRequestEncoder {
 
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
-        buf.extend_from_slice(&52u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&54u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
 
@@ -12370,7 +12755,7 @@ impl PositionRequestDecoder {
         if schema_id != 1 {
             return Err(format!("invalid schema_id: {}", schema_id));
         }
-        if tmpl_id != 52 {
+        if tmpl_id != 54 {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 

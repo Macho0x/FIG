@@ -525,4 +525,114 @@ mod tests {
         assert_eq!(frame.frame_type, FrameType::Subscribe);
         assert_eq!(frame.channel_id, 2);
     }
+
+    /// Every `subscription.type` handled by [`hyperliquid_subscribe_to_fig`] must map.
+    #[test]
+    fn hyperliquid_ws_catalog_completeness() {
+        let types = [
+            ("trades", serde_json::json!({"type": "trades", "coin": "BTC"})),
+            ("candle", serde_json::json!({"type": "candle", "coin": "BTC"})),
+            ("l2Book", serde_json::json!({"type": "l2Book", "coin": "BTC"})),
+            ("bbo", serde_json::json!({"type": "bbo", "coin": "BTC"})),
+            (
+                "orderUpdates",
+                serde_json::json!({"type": "orderUpdates", "user": "alice"}),
+            ),
+            (
+                "userFills",
+                serde_json::json!({"type": "userFills", "user": "alice"}),
+            ),
+            (
+                "userEvents",
+                serde_json::json!({"type": "userEvents", "user": "alice"}),
+            ),
+            (
+                "openOrders",
+                serde_json::json!({"type": "openOrders", "user": "alice"}),
+            ),
+            (
+                "orderState",
+                serde_json::json!({"type": "orderState", "user": "alice"}),
+            ),
+            (
+                "orderLists",
+                serde_json::json!({"type": "orderLists", "user": "alice"}),
+            ),
+            (
+                "listStatus",
+                serde_json::json!({"type": "listStatus", "user": "alice"}),
+            ),
+            (
+                "balanceUpdate",
+                serde_json::json!({"type": "balanceUpdate", "user": "alice"}),
+            ),
+            (
+                "spotState",
+                serde_json::json!({"type": "spotState", "user": "alice"}),
+            ),
+            (
+                "subscribeBalance",
+                serde_json::json!({"type": "subscribeBalance", "user": "alice"}),
+            ),
+            (
+                "clearinghouseState",
+                serde_json::json!({"type": "clearinghouseState", "user": "alice"}),
+            ),
+            (
+                "subscribePosition",
+                serde_json::json!({"type": "subscribePosition", "user": "alice"}),
+            ),
+            (
+                "userFunding",
+                serde_json::json!({"type": "userFunding", "user": "alice"}),
+            ),
+            (
+                "fundingHistory",
+                serde_json::json!({"type": "fundingHistory", "user": "alice"}),
+            ),
+            (
+                "ledgerUpdates",
+                serde_json::json!({"type": "ledgerUpdates", "user": "alice"}),
+            ),
+            (
+                "userNonFundingLedgerUpdates",
+                serde_json::json!({"type": "userNonFundingLedgerUpdates", "user": "alice"}),
+            ),
+            (
+                "liquidation",
+                serde_json::json!({"type": "liquidation", "user": "alice"}),
+            ),
+            (
+                "userLiquidation",
+                serde_json::json!({"type": "userLiquidation", "user": "alice"}),
+            ),
+            (
+                "activeAssetCtx",
+                serde_json::json!({"type": "activeAssetCtx", "coin": "BTC"}),
+            ),
+            (
+                "markPrice",
+                serde_json::json!({"type": "markPrice", "coin": "BTC"}),
+            ),
+            ("allMids", serde_json::json!({"type": "allMids"})),
+            ("miniTicker", serde_json::json!({"type": "miniTicker"})),
+            (
+                "aggTrades",
+                serde_json::json!({"type": "aggTrades", "coin": "BTC"}),
+            ),
+            ("liquidations", serde_json::json!({"type": "liquidations"})),
+            ("forceOrder", serde_json::json!({"type": "forceOrder"})),
+            ("margin", serde_json::json!({"type": "margin", "user": "alice"})),
+            (
+                "clearinghouseMargin",
+                serde_json::json!({"type": "clearinghouseMargin", "user": "alice"}),
+            ),
+        ];
+        for (name, sub) in types {
+            assert!(
+                hyperliquid_subscribe_to_fig(&sub).is_some(),
+                "missing HL mapping for type {name}"
+            );
+        }
+    }
 }

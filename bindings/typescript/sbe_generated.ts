@@ -396,13 +396,13 @@ export function CapabilityPathPatternFromValue(v: number): CapabilityPathPattern
 export function CapabilityPathPatternToValue(e: CapabilityPathPattern): number { return e; }
 
 /** SBE encoder for NewOrderSingle */
-export function NewOrderSingleEncoderEncode(cl_ord_id string, side NewOrderSingleSide, order_qty number, price number | null, stop_price number | null, symbol string, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time bigint | null, account string | null, strategy_id string | null, security_id string | null, id_source NewOrderSingleIdSource | null, security_exchange string | null): Uint8Array {
+export function NewOrderSingleEncoderEncode(cl_ord_id string, side NewOrderSingleSide, order_qty number, price number | null, stop_price number | null, symbol string, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time bigint | null, account string | null, strategy_id string | null, security_id string | null, id_source NewOrderSingleIdSource | null, security_exchange string | null, post_only number | null, reduce_only number | null): Uint8Array {
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 1);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 36);
+  writeU16BE(buf, 38);
 
   // Fixed fields
   writeString(buf, cl_ord_id);
@@ -421,6 +421,10 @@ export function NewOrderSingleEncoderEncode(cl_ord_id string, side NewOrderSingl
   if (security_id != null) { buf.push(1); writeString(buf, security_id); } else { buf.push(0); }
   buf.push(id_source != null ? NewOrderSingleIdSourceToValue(id_source) : 0);
   if (security_exchange != null) { buf.push(1); writeString(buf, security_exchange); } else { buf.push(0); }
+  buf.push(post_only ?? 0);
+  buf.push(post_only != null ? 1 : 0);
+  buf.push(reduce_only ?? 0);
+  buf.push(reduce_only != null ? 1 : 0);
 
   return new Uint8Array(buf);
 }
@@ -441,6 +445,8 @@ export interface NewOrderSingleDecoder {
   security_id: string | null;
   id_source: NewOrderSingleIdSource | null;
   security_exchange: string | null;
+  post_only: number | null;
+  reduce_only: number | null;
   encodedLen(): number;
 }
 
@@ -481,6 +487,10 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingleDeco
   if (id_source == null) throw new Error('invalid NewOrderSingleIdSource');
   let security_exchange: string | null;
   if (buf[pos.value++] === 1) security_exchange = readString(buf, pos); else security_exchange = null;
+  const v = buf[pos.value++];
+  const post_only = buf[pos.value++] === 1 ? v : null;
+  const v = buf[pos.value++];
+  const reduce_only = buf[pos.value++] === 1 ? v : null;
   return {
     cl_ord_id: cl_ord_id,
     side: side,
@@ -496,6 +506,8 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingleDeco
     security_id: security_id,
     id_source: id_source,
     security_exchange: security_exchange,
+    post_only: post_only,
+    reduce_only: reduce_only,
     encodedLen: () => 0,
   };
 }
@@ -1984,12 +1996,90 @@ export function TickerRequestDecoderDecode(buf: Uint8Array): TickerRequestDecode
   };
 }
 
+/** SBE encoder for InstrumentCatalogRequest */
+export function InstrumentCatalogRequestEncoderEncode(): Uint8Array {
+  const buf: number[] = [];
+  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 29);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+
+  // Fixed fields
+
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for InstrumentCatalogRequest */
+export interface InstrumentCatalogRequestDecoder {
+  encodedLen(): number;
+}
+
+export function InstrumentCatalogRequestDecoderDecode(buf: Uint8Array): InstrumentCatalogRequestDecoder {
+  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos); readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
+  if (tmplId !== 29) throw new Error('invalid template_id');
+  return {
+
+    encodedLen: () => 0,
+  };
+}
+
+/** SBE encoder for InstrumentCatalogResponse */
+export function InstrumentCatalogResponseEncoderEncode(instruments string[]): Uint8Array {
+  const buf: number[] = [];
+  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 30);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+
+  // Fixed fields
+  writeU32BE(buf, instruments.length);
+  for (const item of instruments) {
+    InstrumentMetadataEncode(item, buf);
+  }
+
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for InstrumentCatalogResponse */
+export interface InstrumentCatalogResponseDecoder {
+  instruments: string[];
+  encodedLen(): number;
+}
+
+export function InstrumentCatalogResponseDecoderDecode(buf: Uint8Array): InstrumentCatalogResponseDecoder {
+  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos); readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
+  if (tmplId !== 30) throw new Error('invalid template_id');
+  const instrumentsCount = readU32BE(buf, pos);
+  const instruments: InstrumentMetadata[] = [];
+  for (let i = 0; i < instrumentsCount; i++) {
+    const item = InstrumentMetadataDecoderDecode(buf.subarray(pos.value));
+    pos.value += item.encodedLen();
+    instruments.push(item);
+  }
+  return {
+    instruments: instruments,
+    encodedLen: () => 0,
+  };
+}
+
 /** SBE encoder for AccountSummary */
 export function AccountSummaryEncoderEncode(account string, balance number, buying_power number, currency string): Uint8Array {
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 29);
+  writeU16BE(buf, 31);
   writeU16BE(buf, 0);
   writeU16BE(buf, 16);
 
@@ -2018,7 +2108,7 @@ export function AccountSummaryDecoderDecode(buf: Uint8Array): AccountSummaryDeco
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 29) throw new Error('invalid template_id');
+  if (tmplId !== 31) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const balance = readF64BE(buf, pos);
   const buying_power = readF64BE(buf, pos);
@@ -2037,7 +2127,7 @@ export function MarginSummaryEncoderEncode(account string, balance number, buyin
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 30);
+  writeU16BE(buf, 32);
   writeU16BE(buf, 0);
   writeU16BE(buf, 40);
 
@@ -2072,7 +2162,7 @@ export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummaryDecode
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 30) throw new Error('invalid template_id');
+  if (tmplId !== 32) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const balance = readF64BE(buf, pos);
   const buying_power = readF64BE(buf, pos);
@@ -2097,7 +2187,7 @@ export function BalanceSnapshotEncoderEncode(account string, balances string[], 
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 31);
+  writeU16BE(buf, 33);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2128,7 +2218,7 @@ export function BalanceSnapshotDecoderDecode(buf: Uint8Array): BalanceSnapshotDe
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 31) throw new Error('invalid template_id');
+  if (tmplId !== 33) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const balancesCount = readU32BE(buf, pos);
   const balances: BalanceEntry[] = [];
@@ -2152,7 +2242,7 @@ export function BalanceUpdateEncoderEncode(account string, asset string, delta n
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 32);
+  writeU16BE(buf, 34);
   writeU16BE(buf, 0);
   writeU16BE(buf, 25);
 
@@ -2185,7 +2275,7 @@ export function BalanceUpdateDecoderDecode(buf: Uint8Array): BalanceUpdateDecode
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 32) throw new Error('invalid template_id');
+  if (tmplId !== 34) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
@@ -2210,7 +2300,7 @@ export function PositionSnapshotEncoderEncode(account string, positions string[]
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 33);
+  writeU16BE(buf, 35);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2241,7 +2331,7 @@ export function PositionSnapshotDecoderDecode(buf: Uint8Array): PositionSnapshot
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 33) throw new Error('invalid template_id');
+  if (tmplId !== 35) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const positionsCount = readU32BE(buf, pos);
   const positions: PositionEntry[] = [];
@@ -2265,7 +2355,7 @@ export function PositionUpdateEncoderEncode(account string, symbol string, qty n
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 34);
+  writeU16BE(buf, 36);
   writeU16BE(buf, 0);
   writeU16BE(buf, 24);
 
@@ -2296,7 +2386,7 @@ export function PositionUpdateDecoderDecode(buf: Uint8Array): PositionUpdateDeco
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 34) throw new Error('invalid template_id');
+  if (tmplId !== 36) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const symbol = readString(buf, pos);
   const qty = readF64BE(buf, pos);
@@ -2317,7 +2407,7 @@ export function MarginUpdateEncoderEncode(account string, summary string, is_sna
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 35);
+  writeU16BE(buf, 37);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2345,7 +2435,7 @@ export function MarginUpdateDecoderDecode(buf: Uint8Array): MarginUpdateDecoder 
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 35) throw new Error('invalid template_id');
+  if (tmplId !== 37) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const summary = readString(buf, pos);
   const v = buf[pos.value++];
@@ -2363,7 +2453,7 @@ export function UserLiquidationEncoderEncode(account string, symbol string, qty 
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 36);
+  writeU16BE(buf, 38);
   writeU16BE(buf, 0);
   writeU16BE(buf, 24);
 
@@ -2394,7 +2484,7 @@ export function UserLiquidationDecoderDecode(buf: Uint8Array): UserLiquidationDe
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 36) throw new Error('invalid template_id');
+  if (tmplId !== 38) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const symbol = readString(buf, pos);
   const qty = readF64BE(buf, pos);
@@ -2415,7 +2505,7 @@ export function OrderListStatusEncoderEncode(account string, list_id string, sta
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 37);
+  writeU16BE(buf, 39);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2444,7 +2534,7 @@ export function OrderListStatusDecoderDecode(buf: Uint8Array): OrderListStatusDe
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 37) throw new Error('invalid template_id');
+  if (tmplId !== 39) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const list_id = readString(buf, pos);
   const statusRaw = buf[pos.value++];
@@ -2466,7 +2556,7 @@ export function FillHistoryRequestEncoderEncode(account string, symbol string | 
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 38);
+  writeU16BE(buf, 40);
   writeU16BE(buf, 0);
   writeU16BE(buf, 20);
 
@@ -2499,7 +2589,7 @@ export function FillHistoryRequestDecoderDecode(buf: Uint8Array): FillHistoryReq
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 38) throw new Error('invalid template_id');
+  if (tmplId !== 40) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let symbol: string | null;
   if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
@@ -2526,7 +2616,7 @@ export function FillHistoryBatchEncoderEncode(account string, fills string[], ha
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 39);
+  writeU16BE(buf, 41);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2558,7 +2648,7 @@ export function FillHistoryBatchDecoderDecode(buf: Uint8Array): FillHistoryBatch
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 39) throw new Error('invalid template_id');
+  if (tmplId !== 41) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const fillsCount = readU32BE(buf, pos);
   const fills: ExecutionReport[] = [];
@@ -2584,7 +2674,7 @@ export function FundingPaymentEncoderEncode(account string, symbol string | null
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 40);
+  writeU16BE(buf, 42);
   writeU16BE(buf, 0);
   writeU16BE(buf, 24);
 
@@ -2615,7 +2705,7 @@ export function FundingPaymentDecoderDecode(buf: Uint8Array): FundingPaymentDeco
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 40) throw new Error('invalid template_id');
+  if (tmplId !== 42) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let symbol: string | null;
   if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
@@ -2637,7 +2727,7 @@ export function FundingHistoryRequestEncoderEncode(account string, start_time bi
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 41);
+  writeU16BE(buf, 43);
   writeU16BE(buf, 0);
   writeU16BE(buf, 20);
 
@@ -2668,7 +2758,7 @@ export function FundingHistoryRequestDecoderDecode(buf: Uint8Array): FundingHist
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 41) throw new Error('invalid template_id');
+  if (tmplId !== 43) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let start_time: bigint | null = null;
   if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
@@ -2692,7 +2782,7 @@ export function FundingHistoryBatchEncoderEncode(account string, payments string
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 42);
+  writeU16BE(buf, 44);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2724,7 +2814,7 @@ export function FundingHistoryBatchDecoderDecode(buf: Uint8Array): FundingHistor
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 42) throw new Error('invalid template_id');
+  if (tmplId !== 44) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const paymentsCount = readU32BE(buf, pos);
   const payments: FundingPayment[] = [];
@@ -2750,7 +2840,7 @@ export function LedgerUpdateEncoderEncode(account string, asset string, delta nu
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 43);
+  writeU16BE(buf, 45);
   writeU16BE(buf, 0);
   writeU16BE(buf, 17);
 
@@ -2783,7 +2873,7 @@ export function LedgerUpdateDecoderDecode(buf: Uint8Array): LedgerUpdateDecoder 
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 43) throw new Error('invalid template_id');
+  if (tmplId !== 45) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
@@ -2809,7 +2899,7 @@ export function LedgerHistoryRequestEncoderEncode(account string, start_time big
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 44);
+  writeU16BE(buf, 46);
   writeU16BE(buf, 0);
   writeU16BE(buf, 20);
 
@@ -2840,7 +2930,7 @@ export function LedgerHistoryRequestDecoderDecode(buf: Uint8Array): LedgerHistor
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 44) throw new Error('invalid template_id');
+  if (tmplId !== 46) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let start_time: bigint | null = null;
   if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
@@ -2864,7 +2954,7 @@ export function LedgerHistoryBatchEncoderEncode(account string, entries string[]
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 45);
+  writeU16BE(buf, 47);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2896,7 +2986,7 @@ export function LedgerHistoryBatchDecoderDecode(buf: Uint8Array): LedgerHistoryB
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 45) throw new Error('invalid template_id');
+  if (tmplId !== 47) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const entriesCount = readU32BE(buf, pos);
   const entries: LedgerUpdate[] = [];
@@ -2922,7 +3012,7 @@ export function OpenOrdersRequestEncoderEncode(account string, symbol string | n
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 46);
+  writeU16BE(buf, 48);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
 
@@ -2947,7 +3037,7 @@ export function OpenOrdersRequestDecoderDecode(buf: Uint8Array): OpenOrdersReque
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 46) throw new Error('invalid template_id');
+  if (tmplId !== 48) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let symbol: string | null;
   if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
@@ -2963,7 +3053,7 @@ export function OpenOrdersSnapshotEncoderEncode(account string, orders string[],
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 47);
+  writeU16BE(buf, 49);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -2994,7 +3084,7 @@ export function OpenOrdersSnapshotDecoderDecode(buf: Uint8Array): OpenOrdersSnap
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 47) throw new Error('invalid template_id');
+  if (tmplId !== 49) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const ordersCount = readU32BE(buf, pos);
   const orders: ExecutionReport[] = [];
@@ -3018,7 +3108,7 @@ export function OrderHistoryRequestEncoderEncode(account string, symbol string |
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 48);
+  writeU16BE(buf, 50);
   writeU16BE(buf, 0);
   writeU16BE(buf, 20);
 
@@ -3051,7 +3141,7 @@ export function OrderHistoryRequestDecoderDecode(buf: Uint8Array): OrderHistoryR
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 48) throw new Error('invalid template_id');
+  if (tmplId !== 50) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   let symbol: string | null;
   if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
@@ -3078,7 +3168,7 @@ export function OrderHistoryBatchEncoderEncode(account string, orders string[], 
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 49);
+  writeU16BE(buf, 51);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
 
@@ -3110,7 +3200,7 @@ export function OrderHistoryBatchDecoderDecode(buf: Uint8Array): OrderHistoryBat
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 49) throw new Error('invalid template_id');
+  if (tmplId !== 51) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const ordersCount = readU32BE(buf, pos);
   const orders: ExecutionReport[] = [];
@@ -3136,7 +3226,7 @@ export function CapabilitiesRequestEncoderEncode(): Uint8Array {
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 50);
+  writeU16BE(buf, 52);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
 
@@ -3157,7 +3247,7 @@ export function CapabilitiesRequestDecoderDecode(buf: Uint8Array): CapabilitiesR
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 50) throw new Error('invalid template_id');
+  if (tmplId !== 52) throw new Error('invalid template_id');
   return {
 
     encodedLen: () => 0,
@@ -3169,7 +3259,7 @@ export function CapabilitiesResponseEncoderEncode(schema_ids string[], paths str
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 51);
+  writeU16BE(buf, 53);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
 
@@ -3210,7 +3300,7 @@ export function CapabilitiesResponseDecoderDecode(buf: Uint8Array): Capabilities
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 51) throw new Error('invalid template_id');
+  if (tmplId !== 53) throw new Error('invalid template_id');
   const schema_idsCount = readU32BE(buf, pos);
   const schema_ids: u8[] = [];
   for (let i = 0; i < schema_idsCount; i++) {
@@ -3253,7 +3343,7 @@ export function PositionRequestEncoderEncode(account string): Uint8Array {
   const buf: number[] = [];
   // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 52);
+  writeU16BE(buf, 54);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
 
@@ -3276,7 +3366,7 @@ export function PositionRequestDecoderDecode(buf: Uint8Array): PositionRequestDe
   const tmplId = readU16BE(buf, pos);
   readU16BE(buf, pos); readU16BE(buf, pos);
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 52) throw new Error('invalid template_id');
+  if (tmplId !== 54) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   return {
     account: account,

@@ -434,13 +434,13 @@ inline uint8_t CapabilityPathPatternToValue(CapabilityPathPattern e) { return st
 
 // SBE encoder for NewOrderSingle
 struct NewOrderSingleEncoder {
-    static std::vector<uint8_t> encode(cl_ord_id std::string, side NewOrderSingleSide, order_qty double, price std::optional<double>, stop_price std::optional<double>, symbol std::string, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time std::optional<int64_t>, account std::optional<std::string>, strategy_id std::optional<std::string>, security_id std::optional<std::string>, id_source std::optional<NewOrderSingleIdSource>, security_exchange std::optional<std::string>) {
+    static std::vector<uint8_t> encode(cl_ord_id std::string, side NewOrderSingleSide, order_qty double, price std::optional<double>, stop_price std::optional<double>, symbol std::string, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time std::optional<int64_t>, account std::optional<std::string>, strategy_id std::optional<std::string>, security_id std::optional<std::string>, id_source std::optional<NewOrderSingleIdSource>, security_exchange std::optional<std::string>, post_only std::optional<uint8_t>, reduce_only std::optional<uint8_t>) {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
         write_u16_be(buf, 1);
         write_u16_be(buf, 0);
-        write_u16_be(buf, 36);
+        write_u16_be(buf, 38);
 
         // Fixed fields
         write_string(buf, cl_ord_id);
@@ -459,6 +459,10 @@ struct NewOrderSingleEncoder {
         if (security_id.has_value()) { buf.push_back(1); write_string(buf, *security_id); } else { buf.push_back(0); }
         buf.push_back(id_source.has_value() ? NewOrderSingleIdSourceToValue(*id_source) : 0);
         if (security_exchange.has_value()) { buf.push_back(1); write_string(buf, *security_exchange); } else { buf.push_back(0); }
+        buf.push_back(post_only.value_or(0));
+        buf.push_back(post_only.has_value() ? 1 : 0);
+        buf.push_back(reduce_only.value_or(0));
+        buf.push_back(reduce_only.has_value() ? 1 : 0);
         return buf;
     }
 };
@@ -479,6 +483,8 @@ struct NewOrderSingleDecoder {
     std::optional<std::string> security_id;
     std::optional<NewOrderSingleIdSource> id_source;
     std::optional<std::string> security_exchange;
+    std::optional<uint8_t> post_only;
+    std::optional<uint8_t> reduce_only;
     size_t encoded_len() const { return 0; }
 
     static NewOrderSingleDecoder decode(const std::vector<uint8_t>& buf) {
@@ -524,6 +530,12 @@ struct NewOrderSingleDecoder {
         NewOrderSingleIdSource id_source = *id_source_opt;
         std::optional<std::string> security_exchange;
         if (buf[pos++] == 1) security_exchange = read_string(buf, pos);
+        uint8_t v = buf[pos++];
+        std::optional<uint8_t> post_only;
+        if (buf[pos++] == 1) post_only = v;
+        uint8_t v = buf[pos++];
+        std::optional<uint8_t> reduce_only;
+        if (buf[pos++] == 1) reduce_only = v;
         NewOrderSingleDecoder out{};
         out.cl_ord_id = cl_ord_id;
         out.side = side;
@@ -539,6 +551,8 @@ struct NewOrderSingleDecoder {
         out.security_id = security_id;
         out.id_source = id_source;
         out.security_exchange = security_exchange;
+        out.post_only = post_only;
+        out.reduce_only = reduce_only;
         return out;
     }
 };
@@ -2059,13 +2073,92 @@ struct TickerRequestDecoder {
     }
 };
 
+// SBE encoder for InstrumentCatalogRequest
+struct InstrumentCatalogRequestEncoder {
+    static std::vector<uint8_t> encode() {
+        std::vector<uint8_t> buf;
+        // SBE Message Header (8 bytes)
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 29);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+
+        // Fixed fields
+        return buf;
+    }
+};
+
+// SBE decoder for InstrumentCatalogRequest
+struct InstrumentCatalogRequestDecoder {
+    size_t encoded_len() const { return 0; }
+
+    static InstrumentCatalogRequestDecoder decode(const std::vector<uint8_t>& buf) {
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        read_u16_be(buf, pos); read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 29) throw std::runtime_error("invalid template_id");
+        InstrumentCatalogRequestDecoder out{};
+
+        return out;
+    }
+};
+
+// SBE encoder for InstrumentCatalogResponse
+struct InstrumentCatalogResponseEncoder {
+    static std::vector<uint8_t> encode(instruments std::vector<std::string>) {
+        std::vector<uint8_t> buf;
+        // SBE Message Header (8 bytes)
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 30);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+
+        // Fixed fields
+        write_u32_be(buf, static_cast<uint32_t>(instruments.size()));
+        for (const auto& item : instruments) {
+            InstrumentMetadataEncoder::encode(item, buf);
+        }
+        return buf;
+    }
+};
+
+// SBE decoder for InstrumentCatalogResponse
+struct InstrumentCatalogResponseDecoder {
+    std::vector<std::string> instruments;
+    size_t encoded_len() const { return 0; }
+
+    static InstrumentCatalogResponseDecoder decode(const std::vector<uint8_t>& buf) {
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        read_u16_be(buf, pos); read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 30) throw std::runtime_error("invalid template_id");
+        uint32_t instruments_count = read_u32_be(buf, pos);
+        std::vector<InstrumentMetadata> instruments;
+        instruments.reserve(instruments_count);
+        for (uint32_t i = 0; i < instruments_count; ++i) {
+            auto item = InstrumentMetadataDecoder::decode(std::vector<uint8_t>(buf.begin() + pos, buf.end()));
+            pos += item.encoded_len();
+            instruments.push_back(item);
+        }
+        InstrumentCatalogResponseDecoder out{};
+        out.instruments = instruments;
+        return out;
+    }
+};
+
 // SBE encoder for AccountSummary
 struct AccountSummaryEncoder {
     static std::vector<uint8_t> encode(account std::string, balance double, buying_power double, currency std::string) {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 29);
+        write_u16_be(buf, 31);
         write_u16_be(buf, 0);
         write_u16_be(buf, 16);
 
@@ -2093,7 +2186,7 @@ struct AccountSummaryDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 29) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 31) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         double balance = read_f64_be(buf, pos);
         double buying_power = read_f64_be(buf, pos);
@@ -2113,7 +2206,7 @@ struct MarginSummaryEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 30);
+        write_u16_be(buf, 32);
         write_u16_be(buf, 0);
         write_u16_be(buf, 40);
 
@@ -2147,7 +2240,7 @@ struct MarginSummaryDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 30) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 32) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         double balance = read_f64_be(buf, pos);
         double buying_power = read_f64_be(buf, pos);
@@ -2173,7 +2266,7 @@ struct BalanceSnapshotEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 31);
+        write_u16_be(buf, 33);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2203,7 +2296,7 @@ struct BalanceSnapshotDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 31) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 33) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t balances_count = read_u32_be(buf, pos);
         std::vector<BalanceEntry> balances;
@@ -2230,7 +2323,7 @@ struct BalanceUpdateEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 32);
+        write_u16_be(buf, 34);
         write_u16_be(buf, 0);
         write_u16_be(buf, 25);
 
@@ -2262,7 +2355,7 @@ struct BalanceUpdateDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 32) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 34) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
         double delta = read_f64_be(buf, pos);
@@ -2289,7 +2382,7 @@ struct PositionSnapshotEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 33);
+        write_u16_be(buf, 35);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2319,7 +2412,7 @@ struct PositionSnapshotDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 33) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 35) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t positions_count = read_u32_be(buf, pos);
         std::vector<PositionEntry> positions;
@@ -2346,7 +2439,7 @@ struct PositionUpdateEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 34);
+        write_u16_be(buf, 36);
         write_u16_be(buf, 0);
         write_u16_be(buf, 24);
 
@@ -2376,7 +2469,7 @@ struct PositionUpdateDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 34) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 36) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
         double qty = read_f64_be(buf, pos);
@@ -2398,7 +2491,7 @@ struct MarginUpdateEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 35);
+        write_u16_be(buf, 37);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2425,7 +2518,7 @@ struct MarginUpdateDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 35) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 37) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string summary = read_string(buf, pos);
         uint8_t v = buf[pos++];
@@ -2445,7 +2538,7 @@ struct UserLiquidationEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 36);
+        write_u16_be(buf, 38);
         write_u16_be(buf, 0);
         write_u16_be(buf, 24);
 
@@ -2475,7 +2568,7 @@ struct UserLiquidationDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 36) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 38) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
         double qty = read_f64_be(buf, pos);
@@ -2497,7 +2590,7 @@ struct OrderListStatusEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 37);
+        write_u16_be(buf, 39);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2525,7 +2618,7 @@ struct OrderListStatusDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 37) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 39) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string list_id = read_string(buf, pos);
         uint8_t status_raw = buf[pos++];
@@ -2549,7 +2642,7 @@ struct FillHistoryRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 38);
+        write_u16_be(buf, 40);
         write_u16_be(buf, 0);
         write_u16_be(buf, 20);
 
@@ -2581,7 +2674,7 @@ struct FillHistoryRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 38) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 40) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<std::string> symbol;
         if (buf[pos++] == 1) symbol = read_string(buf, pos);
@@ -2609,7 +2702,7 @@ struct FillHistoryBatchEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 39);
+        write_u16_be(buf, 41);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2640,7 +2733,7 @@ struct FillHistoryBatchDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 39) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 41) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t fills_count = read_u32_be(buf, pos);
         std::vector<ExecutionReport> fills;
@@ -2668,7 +2761,7 @@ struct FundingPaymentEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 40);
+        write_u16_be(buf, 42);
         write_u16_be(buf, 0);
         write_u16_be(buf, 24);
 
@@ -2698,7 +2791,7 @@ struct FundingPaymentDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 40) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 42) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<std::string> symbol;
         if (buf[pos++] == 1) symbol = read_string(buf, pos);
@@ -2721,7 +2814,7 @@ struct FundingHistoryRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 41);
+        write_u16_be(buf, 43);
         write_u16_be(buf, 0);
         write_u16_be(buf, 20);
 
@@ -2751,7 +2844,7 @@ struct FundingHistoryRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 41) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 43) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<int64_t> start_time;
         if (buf[pos++] == 1) start_time = read_i64_be(buf, pos);
@@ -2776,7 +2869,7 @@ struct FundingHistoryBatchEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 42);
+        write_u16_be(buf, 44);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2807,7 +2900,7 @@ struct FundingHistoryBatchDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 42) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 44) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t payments_count = read_u32_be(buf, pos);
         std::vector<FundingPayment> payments;
@@ -2835,7 +2928,7 @@ struct LedgerUpdateEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 43);
+        write_u16_be(buf, 45);
         write_u16_be(buf, 0);
         write_u16_be(buf, 17);
 
@@ -2867,7 +2960,7 @@ struct LedgerUpdateDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 43) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 45) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
         double delta = read_f64_be(buf, pos);
@@ -2895,7 +2988,7 @@ struct LedgerHistoryRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 44);
+        write_u16_be(buf, 46);
         write_u16_be(buf, 0);
         write_u16_be(buf, 20);
 
@@ -2925,7 +3018,7 @@ struct LedgerHistoryRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 44) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 46) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<int64_t> start_time;
         if (buf[pos++] == 1) start_time = read_i64_be(buf, pos);
@@ -2950,7 +3043,7 @@ struct LedgerHistoryBatchEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 45);
+        write_u16_be(buf, 47);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -2981,7 +3074,7 @@ struct LedgerHistoryBatchDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 45) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 47) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t entries_count = read_u32_be(buf, pos);
         std::vector<LedgerUpdate> entries;
@@ -3009,7 +3102,7 @@ struct OpenOrdersRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 46);
+        write_u16_be(buf, 48);
         write_u16_be(buf, 0);
         write_u16_be(buf, 0);
 
@@ -3033,7 +3126,7 @@ struct OpenOrdersRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 46) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 48) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<std::string> symbol;
         if (buf[pos++] == 1) symbol = read_string(buf, pos);
@@ -3050,7 +3143,7 @@ struct OpenOrdersSnapshotEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 47);
+        write_u16_be(buf, 49);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -3080,7 +3173,7 @@ struct OpenOrdersSnapshotDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 47) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 49) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t orders_count = read_u32_be(buf, pos);
         std::vector<ExecutionReport> orders;
@@ -3107,7 +3200,7 @@ struct OrderHistoryRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 48);
+        write_u16_be(buf, 50);
         write_u16_be(buf, 0);
         write_u16_be(buf, 20);
 
@@ -3139,7 +3232,7 @@ struct OrderHistoryRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 48) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 50) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::optional<std::string> symbol;
         if (buf[pos++] == 1) symbol = read_string(buf, pos);
@@ -3167,7 +3260,7 @@ struct OrderHistoryBatchEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 49);
+        write_u16_be(buf, 51);
         write_u16_be(buf, 0);
         write_u16_be(buf, 1);
 
@@ -3198,7 +3291,7 @@ struct OrderHistoryBatchDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 49) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 51) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         uint32_t orders_count = read_u32_be(buf, pos);
         std::vector<ExecutionReport> orders;
@@ -3226,7 +3319,7 @@ struct CapabilitiesRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 50);
+        write_u16_be(buf, 52);
         write_u16_be(buf, 0);
         write_u16_be(buf, 0);
 
@@ -3246,7 +3339,7 @@ struct CapabilitiesRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 50) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 52) throw std::runtime_error("invalid template_id");
         CapabilitiesRequestDecoder out{};
 
         return out;
@@ -3259,7 +3352,7 @@ struct CapabilitiesResponseEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 51);
+        write_u16_be(buf, 53);
         write_u16_be(buf, 0);
         write_u16_be(buf, 0);
 
@@ -3299,7 +3392,7 @@ struct CapabilitiesResponseDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 51) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 53) throw std::runtime_error("invalid template_id");
         uint32_t schema_ids_count = read_u32_be(buf, pos);
         std::vector<u8> schema_ids;
         schema_ids.reserve(schema_ids_count);
@@ -3347,7 +3440,7 @@ struct PositionRequestEncoder {
         std::vector<uint8_t> buf;
         // SBE Message Header (8 bytes)
         write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 52);
+        write_u16_be(buf, 54);
         write_u16_be(buf, 0);
         write_u16_be(buf, 0);
 
@@ -3369,7 +3462,7 @@ struct PositionRequestDecoder {
         uint16_t tmpl_id = read_u16_be(buf, pos);
         read_u16_be(buf, pos); read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 52) throw std::runtime_error("invalid template_id");
+        if (tmpl_id != 54) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         PositionRequestDecoder out{};
         out.account = account;

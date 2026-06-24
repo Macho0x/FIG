@@ -399,14 +399,14 @@ pub fn CapabilityPathPatternToValue(e: CapabilityPathPattern) u8 { return @intFr
 
 /// SBE encoder for NewOrderSingle
 pub const NewOrderSingleEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, cl_ord_id []const u8, side NewOrderSingleSide, order_qty f64, price ?f64, stop_price ?f64, symbol []const u8, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time ?i64, account ?[]const u8, strategy_id ?[]const u8, security_id ?[]const u8, id_source ?NewOrderSingleIdSource, security_exchange ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, cl_ord_id []const u8, side NewOrderSingleSide, order_qty f64, price ?f64, stop_price ?f64, symbol []const u8, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time ?i64, account ?[]const u8, strategy_id ?[]const u8, security_id ?[]const u8, id_source ?NewOrderSingleIdSource, security_exchange ?[]const u8, post_only ?u8, reduce_only ?u8) ![]u8 {
         var buf = std.ArrayList(u8).init(allocator);
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
         try writeU16BE(&buf, 1);
         try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 36);
+        try writeU16BE(&buf, 38);
 
         // Fixed fields
         try writeString(&buf, cl_ord_id);
@@ -425,6 +425,10 @@ pub const NewOrderSingleEncoder = struct {
         if (security_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
         try buf.append(if (id_source) |v| NewOrderSingleIdSourceToValue(v) else 0);
         if (security_exchange) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        try buf.append(post_only orelse 0);
+        try buf.append(if (post_only != null) 1 else 0);
+        try buf.append(reduce_only orelse 0);
+        try buf.append(if (reduce_only != null) 1 else 0);
 
         return buf.toOwnedSlice();
     }
@@ -446,6 +450,8 @@ pub const NewOrderSingleDecoder = struct {
     security_id: ?[]const u8,
     id_source: ?NewOrderSingleIdSource,
     security_exchange: ?[]const u8,
+    post_only: ?u8,
+    reduce_only: ?u8,
     pub fn encodedLen(self: @This()) usize { return 0; }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !@This() {
@@ -487,6 +493,14 @@ pub const NewOrderSingleDecoder = struct {
         const id_source = try NewOrderSingleIdSourceFromValue(id_source_raw);
         var security_exchange: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; security_exchange = try readString(buf, &pos, allocator); } else { pos += 1; }
+        const v = buf[pos];
+        pos += 1;
+        var post_only: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; post_only = v; } else { pos += 1; }
+        const v = buf[pos];
+        pos += 1;
+        var reduce_only: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; reduce_only = v; } else { pos += 1; }
         return .{
             .cl_ord_id = cl_ord_id,
             .side = side,
@@ -502,6 +516,8 @@ pub const NewOrderSingleDecoder = struct {
             .security_id = security_id,
             .id_source = id_source,
             .security_exchange = security_exchange,
+            .post_only = post_only,
+            .reduce_only = reduce_only,
         };
     }
 };
@@ -2079,6 +2095,89 @@ pub const TickerRequestDecoder = struct {
     }
 };
 
+/// SBE encoder for InstrumentCatalogRequest
+pub const InstrumentCatalogRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, ) ![]u8 {
+        var buf = std.ArrayList(u8).init(allocator);
+        defer buf.deinit();
+        // SBE Message Header (8 bytes)
+        try writeU16BE(&buf, SCHEMA_ID);
+        try writeU16BE(&buf, 29);
+        try writeU16BE(&buf, 0);
+        try writeU16BE(&buf, 0);
+
+        // Fixed fields
+
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for InstrumentCatalogRequest
+pub const InstrumentCatalogRequestDecoder = struct {
+    pub fn encodedLen(self: @This()) usize { return 0; }
+
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !@This() {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 29) return error.InvalidTemplateId;
+        return .{
+
+        };
+    }
+};
+
+/// SBE encoder for InstrumentCatalogResponse
+pub const InstrumentCatalogResponseEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, instruments [][]const u8) ![]u8 {
+        var buf = std.ArrayList(u8).init(allocator);
+        defer buf.deinit();
+        // SBE Message Header (8 bytes)
+        try writeU16BE(&buf, SCHEMA_ID);
+        try writeU16BE(&buf, 30);
+        try writeU16BE(&buf, 0);
+        try writeU16BE(&buf, 0);
+
+        // Fixed fields
+        try writeU32BE(&buf, @intCast(instruments.len));
+        for (instruments) |item| {
+            try InstrumentMetadata.encode(allocator, item, &buf);
+        }
+
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for InstrumentCatalogResponse
+pub const InstrumentCatalogResponseDecoder = struct {
+    instruments: [][]const u8,
+    pub fn encodedLen(self: @This()) usize { return 0; }
+
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !@This() {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 30) return error.InvalidTemplateId;
+        const instruments_count = readU32BE(buf, &pos);
+        var instruments = try allocator.alloc(InstrumentMetadata, instruments_count);
+        var idx: usize = 0;
+        while (idx < instruments_count) : (idx += 1) {
+            const item = try InstrumentMetadataDecoder.decode(allocator, buf[pos..]);
+            pos += item.encodedLen();
+            instruments[idx] = item;
+        }
+        return .{
+            .instruments = instruments,
+        };
+    }
+};
+
 /// SBE encoder for AccountSummary
 pub const AccountSummaryEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account []const u8, balance f64, buying_power f64, currency []const u8) ![]u8 {
@@ -2086,7 +2185,7 @@ pub const AccountSummaryEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 29);
+        try writeU16BE(&buf, 31);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 16);
 
@@ -2115,7 +2214,7 @@ pub const AccountSummaryDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 29) return error.InvalidTemplateId;
+        if (tmpl_id != 31) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const balance = readF64BE(buf, &pos);
         const buying_power = readF64BE(buf, &pos);
@@ -2136,7 +2235,7 @@ pub const MarginSummaryEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 30);
+        try writeU16BE(&buf, 32);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 40);
 
@@ -2171,7 +2270,7 @@ pub const MarginSummaryDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 30) return error.InvalidTemplateId;
+        if (tmpl_id != 32) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const balance = readF64BE(buf, &pos);
         const buying_power = readF64BE(buf, &pos);
@@ -2198,7 +2297,7 @@ pub const BalanceSnapshotEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 31);
+        try writeU16BE(&buf, 33);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2229,7 +2328,7 @@ pub const BalanceSnapshotDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 31) return error.InvalidTemplateId;
+        if (tmpl_id != 33) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const balances_count = readU32BE(buf, &pos);
         var balances = try allocator.alloc(BalanceEntry, balances_count);
@@ -2258,7 +2357,7 @@ pub const BalanceUpdateEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 32);
+        try writeU16BE(&buf, 34);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 25);
 
@@ -2291,7 +2390,7 @@ pub const BalanceUpdateDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 32) return error.InvalidTemplateId;
+        if (tmpl_id != 34) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
@@ -2318,7 +2417,7 @@ pub const PositionSnapshotEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 33);
+        try writeU16BE(&buf, 35);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2349,7 +2448,7 @@ pub const PositionSnapshotDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 33) return error.InvalidTemplateId;
+        if (tmpl_id != 35) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const positions_count = readU32BE(buf, &pos);
         var positions = try allocator.alloc(PositionEntry, positions_count);
@@ -2378,7 +2477,7 @@ pub const PositionUpdateEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 34);
+        try writeU16BE(&buf, 36);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 24);
 
@@ -2409,7 +2508,7 @@ pub const PositionUpdateDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 34) return error.InvalidTemplateId;
+        if (tmpl_id != 36) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
         const qty = readF64BE(buf, &pos);
@@ -2432,7 +2531,7 @@ pub const MarginUpdateEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 35);
+        try writeU16BE(&buf, 37);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2460,7 +2559,7 @@ pub const MarginUpdateDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 35) return error.InvalidTemplateId;
+        if (tmpl_id != 37) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const summary = try readString(buf, &pos, allocator);
         const v = buf[pos];
@@ -2482,7 +2581,7 @@ pub const UserLiquidationEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 36);
+        try writeU16BE(&buf, 38);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 24);
 
@@ -2513,7 +2612,7 @@ pub const UserLiquidationDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 36) return error.InvalidTemplateId;
+        if (tmpl_id != 38) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
         const qty = readF64BE(buf, &pos);
@@ -2536,7 +2635,7 @@ pub const OrderListStatusEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 37);
+        try writeU16BE(&buf, 39);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2565,7 +2664,7 @@ pub const OrderListStatusDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 37) return error.InvalidTemplateId;
+        if (tmpl_id != 39) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const list_id = try readString(buf, &pos, allocator);
         const status_raw = buf[pos];
@@ -2589,7 +2688,7 @@ pub const FillHistoryRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 38);
+        try writeU16BE(&buf, 40);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 20);
 
@@ -2622,7 +2721,7 @@ pub const FillHistoryRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 38) return error.InvalidTemplateId;
+        if (tmpl_id != 40) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var symbol: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; symbol = try readString(buf, &pos, allocator); } else { pos += 1; }
@@ -2651,7 +2750,7 @@ pub const FillHistoryBatchEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 39);
+        try writeU16BE(&buf, 41);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2683,7 +2782,7 @@ pub const FillHistoryBatchDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 39) return error.InvalidTemplateId;
+        if (tmpl_id != 41) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const fills_count = readU32BE(buf, &pos);
         var fills = try allocator.alloc(ExecutionReport, fills_count);
@@ -2713,7 +2812,7 @@ pub const FundingPaymentEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 40);
+        try writeU16BE(&buf, 42);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 24);
 
@@ -2744,7 +2843,7 @@ pub const FundingPaymentDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 40) return error.InvalidTemplateId;
+        if (tmpl_id != 42) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var symbol: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; symbol = try readString(buf, &pos, allocator); } else { pos += 1; }
@@ -2768,7 +2867,7 @@ pub const FundingHistoryRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 41);
+        try writeU16BE(&buf, 43);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 20);
 
@@ -2799,7 +2898,7 @@ pub const FundingHistoryRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 41) return error.InvalidTemplateId;
+        if (tmpl_id != 43) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var start_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; start_time = readI64BE(buf, &pos); } else { pos += 1; }
@@ -2825,7 +2924,7 @@ pub const FundingHistoryBatchEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 42);
+        try writeU16BE(&buf, 44);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -2857,7 +2956,7 @@ pub const FundingHistoryBatchDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 42) return error.InvalidTemplateId;
+        if (tmpl_id != 44) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const payments_count = readU32BE(buf, &pos);
         var payments = try allocator.alloc(FundingPayment, payments_count);
@@ -2887,7 +2986,7 @@ pub const LedgerUpdateEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 43);
+        try writeU16BE(&buf, 45);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 17);
 
@@ -2920,7 +3019,7 @@ pub const LedgerUpdateDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 43) return error.InvalidTemplateId;
+        if (tmpl_id != 45) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
@@ -2948,7 +3047,7 @@ pub const LedgerHistoryRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 44);
+        try writeU16BE(&buf, 46);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 20);
 
@@ -2979,7 +3078,7 @@ pub const LedgerHistoryRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 44) return error.InvalidTemplateId;
+        if (tmpl_id != 46) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var start_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; start_time = readI64BE(buf, &pos); } else { pos += 1; }
@@ -3005,7 +3104,7 @@ pub const LedgerHistoryBatchEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 45);
+        try writeU16BE(&buf, 47);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -3037,7 +3136,7 @@ pub const LedgerHistoryBatchDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 45) return error.InvalidTemplateId;
+        if (tmpl_id != 47) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const entries_count = readU32BE(buf, &pos);
         var entries = try allocator.alloc(LedgerUpdate, entries_count);
@@ -3067,7 +3166,7 @@ pub const OpenOrdersRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 46);
+        try writeU16BE(&buf, 48);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 0);
 
@@ -3092,7 +3191,7 @@ pub const OpenOrdersRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 46) return error.InvalidTemplateId;
+        if (tmpl_id != 48) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var symbol: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; symbol = try readString(buf, &pos, allocator); } else { pos += 1; }
@@ -3110,7 +3209,7 @@ pub const OpenOrdersSnapshotEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 47);
+        try writeU16BE(&buf, 49);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -3141,7 +3240,7 @@ pub const OpenOrdersSnapshotDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 47) return error.InvalidTemplateId;
+        if (tmpl_id != 49) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const orders_count = readU32BE(buf, &pos);
         var orders = try allocator.alloc(ExecutionReport, orders_count);
@@ -3170,7 +3269,7 @@ pub const OrderHistoryRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 48);
+        try writeU16BE(&buf, 50);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 20);
 
@@ -3203,7 +3302,7 @@ pub const OrderHistoryRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 48) return error.InvalidTemplateId;
+        if (tmpl_id != 50) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         var symbol: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; symbol = try readString(buf, &pos, allocator); } else { pos += 1; }
@@ -3232,7 +3331,7 @@ pub const OrderHistoryBatchEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 49);
+        try writeU16BE(&buf, 51);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 1);
 
@@ -3264,7 +3363,7 @@ pub const OrderHistoryBatchDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 49) return error.InvalidTemplateId;
+        if (tmpl_id != 51) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const orders_count = readU32BE(buf, &pos);
         var orders = try allocator.alloc(ExecutionReport, orders_count);
@@ -3294,7 +3393,7 @@ pub const CapabilitiesRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 50);
+        try writeU16BE(&buf, 52);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 0);
 
@@ -3315,7 +3414,7 @@ pub const CapabilitiesRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 50) return error.InvalidTemplateId;
+        if (tmpl_id != 52) return error.InvalidTemplateId;
         return .{
 
         };
@@ -3329,7 +3428,7 @@ pub const CapabilitiesResponseEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 51);
+        try writeU16BE(&buf, 53);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 0);
 
@@ -3370,7 +3469,7 @@ pub const CapabilitiesResponseDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 51) return error.InvalidTemplateId;
+        if (tmpl_id != 53) return error.InvalidTemplateId;
         const schema_ids_count = readU32BE(buf, &pos);
         var schema_ids = try allocator.alloc(u8, schema_ids_count);
         var idx: usize = 0;
@@ -3419,7 +3518,7 @@ pub const PositionRequestEncoder = struct {
         defer buf.deinit();
         // SBE Message Header (8 bytes)
         try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 52);
+        try writeU16BE(&buf, 54);
         try writeU16BE(&buf, 0);
         try writeU16BE(&buf, 0);
 
@@ -3442,7 +3541,7 @@ pub const PositionRequestDecoder = struct {
         const tmpl_id = readU16BE(buf, &pos);
         _ = readU16BE(buf, &pos); _ = readU16BE(buf, &pos);
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 52) return error.InvalidTemplateId;
+        if (tmpl_id != 54) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         return .{
             .account = account,

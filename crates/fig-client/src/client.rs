@@ -4,16 +4,24 @@ use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
 use fig_core::messages::{
     AllMidsBatch, AllMidsRequest, BestBidOffer, CandleBarBatch, CandleBarRequest, ExecutionReport,
-    FillHistoryBatch, FillHistoryRequest, MarkPriceUpdate, MiniTicker, NewOrderSingle,
-    OpenOrdersSnapshot, OrderBookSnapshot, PublicTradeEvent,
+    FillHistoryBatch, FillHistoryRequest, FundingHistoryBatch, FundingHistoryRequest,
+    FundingPayment, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, MarkPriceUpdate,
+    MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrderBookSnapshot, PublicTradeEvent,
+    SymbolTicker, UserLiquidation, AccountSummary,
 };
+use fig_core::messages::{AggregateTradeEvent, LiquidationTradeEvent};
 use quinn::Connection;
 use thiserror::Error;
 
+use crate::account::AccountCache;
+use crate::agg_trades::AggTradeState;
 use crate::bbo::BboState;
 use crate::candles::CandleState;
 use crate::dev_auth_token;
 use crate::frames::{request_frame, subscribe_frame};
+use crate::funding::FundingState;
+use crate::ledger::LedgerState;
+use crate::liquidations::LiquidationState;
 use crate::mark_price::MarkPriceState;
 use crate::mids::MidsState;
 use crate::order_book::OrderBookState;
@@ -113,16 +121,18 @@ impl<'a> FigSdkClient<'a> {
         &self,
         req: CandleBarRequest,
         channel_id: u16,
-    ) -> Result<CandleBarBatch, ClientError> {
+    ) -> Result<(CandleBarBatch, Vec<Frame>), ClientError> {
         let symbol = req.symbol.clone();
         let interval = req.interval.clone();
         let path = format!("marketdata/{symbol}/candles/{interval}");
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
         let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
         let frames = self.send_and_read(frame).await?;
-        for f in frames {
+        for f in &frames {
             if f.frame_type == FrameType::Response {
-                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+                let batch: CandleBarBatch =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((batch, frames));
             }
         }
         Err(ClientError::NoResponse)
@@ -299,6 +309,236 @@ impl<'a> FigSdkClient<'a> {
         Ok((state, frames))
     }
 
+    pub async fn subscribe_balances(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(AccountCache, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/balances");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        let mut cache = AccountCache::default();
+        for f in &frames {
+            if let Ok(snap) = decode_cbor::<fig_core::messages::BalanceSnapshot>(&f.payload) {
+                cache.apply_balance_snapshot(&snap);
+            } else if let Ok(upd) = decode_cbor::<fig_core::messages::BalanceUpdate>(&f.payload) {
+                cache.apply_balance_update(&upd);
+            }
+        }
+        Ok((cache, frames))
+    }
+
+    pub async fn subscribe_margin(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(AccountCache, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/margin");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        let mut cache = AccountCache::default();
+        for f in &frames {
+            if let Ok(upd) = decode_cbor::<fig_core::messages::MarginUpdate>(&f.payload) {
+                cache.apply_margin_update(&upd);
+            }
+        }
+        Ok((cache, frames))
+    }
+
+    pub async fn request_account_summary(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(AccountSummary, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}");
+        let token = dev_auth_token(account);
+        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", None, Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        for f in &frames {
+            if f.frame_type == FrameType::Response {
+                let summary: AccountSummary =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((summary, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_ticker(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<(SymbolTicker, Vec<Frame>), ClientError> {
+        let path = format!("marketdata/{symbol}/ticker");
+        let req = fig_core::messages::TickerRequest {
+            symbol: symbol.to_string(),
+        };
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
+        let frames = self.send_and_read(frame).await?;
+        for f in &frames {
+            if f.frame_type == FrameType::Response {
+                let ticker: SymbolTicker =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((ticker, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_mark_price(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<(MarkPriceUpdate, Vec<Frame>), ClientError> {
+        let path = format!("marketdata/{symbol}/mark");
+        let req = fig_core::messages::MarkPriceRequest {
+            symbol: symbol.to_string(),
+        };
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
+        let frames = self.send_and_read(frame).await?;
+        for f in &frames {
+            if f.frame_type == FrameType::Response {
+                let mark: MarkPriceUpdate =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((mark, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn subscribe_agg_trades(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<(AggTradeState, Vec<Frame>), ClientError> {
+        let path = format!("marketdata/{symbol}/aggtrades");
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
+        let frames = self.send_and_read(frame).await?;
+        let mut state = AggTradeState::default();
+        for f in &frames {
+            if let Ok(ev) = decode_cbor::<AggregateTradeEvent>(&f.payload) {
+                state.push_event(&ev);
+            }
+        }
+        Ok((state, frames))
+    }
+
+    pub async fn subscribe_funding(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(FundingState, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/funding");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        let mut state = FundingState::default();
+        for f in &frames {
+            if let Ok(payment) = decode_cbor::<FundingPayment>(&f.payload) {
+                state.apply_payment(&payment);
+            }
+        }
+        Ok((state, frames))
+    }
+
+    pub async fn subscribe_ledger(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(LedgerState, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/ledger");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        let mut state = LedgerState::default();
+        for f in &frames {
+            if let Ok(entry) = decode_cbor::<LedgerUpdate>(&f.payload) {
+                state.apply_update(&entry);
+            }
+        }
+        Ok((state, frames))
+    }
+
+    pub async fn subscribe_liquidations(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(LiquidationState, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/liquidations");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_and_read(frame).await?;
+        let mut state = LiquidationState::default();
+        for f in &frames {
+            if let Ok(liq) = decode_cbor::<UserLiquidation>(&f.payload) {
+                state.apply_user_liquidation(&liq);
+            }
+        }
+        Ok((state, frames))
+    }
+
+    pub async fn request_funding_history(
+        &self,
+        account: &str,
+        req: FundingHistoryRequest,
+        channel_id: u16,
+    ) -> Result<(FundingHistoryBatch, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/funding");
+        let token = dev_auth_token(account);
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(
+            channel_id,
+            1,
+            0x01,
+            &path,
+            "GET",
+            Some(payload),
+            Some(&token),
+        )?;
+        let frames = self.send_and_read(frame).await?;
+        for f in &frames {
+            if f.frame_type == FrameType::Response {
+                let batch: FundingHistoryBatch =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((batch, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_ledger_history(
+        &self,
+        account: &str,
+        req: LedgerHistoryRequest,
+        channel_id: u16,
+    ) -> Result<(LedgerHistoryBatch, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/ledger");
+        let token = dev_auth_token(account);
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(
+            channel_id,
+            1,
+            0x01,
+            &path,
+            "GET",
+            Some(payload),
+            Some(&token),
+        )?;
+        let frames = self.send_and_read(frame).await?;
+        for f in &frames {
+            if f.frame_type == FrameType::Response {
+                let batch: LedgerHistoryBatch =
+                    decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
+                return Ok((batch, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
     /// Apply stream payloads from a frame batch into the appropriate merge states.
     pub fn apply_stream_frames(
         mids: &mut MidsState,
@@ -323,6 +563,45 @@ impl<'a> FigSdkClient<'a> {
                 orders.apply_execution_report(&r);
             } else if let Ok(snap) = decode_cbor::<OpenOrdersSnapshot>(&f.payload) {
                 orders.apply_open_orders_snapshot(&snap);
+            }
+        }
+    }
+
+    /// Apply private account stream payloads (funding, ledger, liquidations).
+    pub fn apply_account_stream_frames(
+        funding: &mut FundingState,
+        ledger: &mut LedgerState,
+        liquidations: &mut LiquidationState,
+        frames: &[Frame],
+    ) {
+        for f in frames {
+            if let Ok(payment) = decode_cbor::<FundingPayment>(&f.payload) {
+                funding.apply_payment(&payment);
+            } else if let Ok(entry) = decode_cbor::<LedgerUpdate>(&f.payload) {
+                ledger.apply_update(&entry);
+            } else if let Ok(liq) = decode_cbor::<UserLiquidation>(&f.payload) {
+                liquidations.apply_user_liquidation(&liq);
+            }
+        }
+    }
+
+    /// Apply all stream types including agg trades and public liquidations.
+    pub fn apply_all_stream_frames(
+        mids: &mut MidsState,
+        bbo: &mut BboState,
+        tape: &mut TradeTape,
+        agg: &mut AggTradeState,
+        marks: &mut MarkPriceState,
+        orders: &mut OrdersState,
+        liqs: &mut LiquidationState,
+        frames: &[Frame],
+    ) {
+        Self::apply_stream_frames(mids, bbo, tape, marks, orders, frames);
+        for f in frames {
+            if let Ok(ev) = decode_cbor::<AggregateTradeEvent>(&f.payload) {
+                agg.push_event(&ev);
+            } else if let Ok(ev) = decode_cbor::<LiquidationTradeEvent>(&f.payload) {
+                liqs.apply_public_event(&ev);
             }
         }
     }

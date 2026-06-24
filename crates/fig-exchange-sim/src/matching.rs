@@ -112,6 +112,29 @@ impl MatchingEngine {
         }
     }
 
+    fn would_cross(&mut self, order: &NewOrderSingle) -> bool {
+        if !matches!(
+            order.order_type,
+            OrderType::Limit | OrderType::StopLimit | OrderType::LimitOnClose
+        ) {
+            return false;
+        }
+        let Some(limit_px) = order.price.as_ref().map(|p| p.0) else {
+            return false;
+        };
+        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+        let book = self.book_for(&order.symbol);
+        if is_buy {
+            book.asks
+                .best_price()
+                .is_some_and(|ask| ask.0 <= limit_px)
+        } else {
+            book.bids
+                .best_price()
+                .is_some_and(|bid| bid.0 >= limit_px)
+        }
+    }
+
     fn available_liquidity(&mut self, order: &NewOrderSingle) -> f64 {
         let order_type = Self::effective_match_type(&order.order_type);
         let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
@@ -248,6 +271,14 @@ impl MatchingEngine {
                     reject_reason: Some("FOK not fully fillable".to_string()),
                 };
             }
+        }
+
+        if order.post_only == Some(true) && self.would_cross(order) {
+            return MatchResult {
+                fills: vec![],
+                resting_order: None,
+                reject_reason: Some("Post-only would cross".to_string()),
+            };
         }
 
         let match_type = Self::effective_match_type(&order.order_type);
@@ -471,6 +502,8 @@ impl MatchingEngine {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         };
 
         self.process_new_order(&new_order)
@@ -659,6 +692,8 @@ mod tests {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         }
     }
 
@@ -678,6 +713,8 @@ mod tests {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         }
     }
 
@@ -814,6 +851,23 @@ mod tests {
         assert_eq!(
             result.reject_reason.as_deref(),
             Some("FOK not fully fillable")
+        );
+    }
+
+    #[test]
+    fn test_post_only_rejects_when_would_cross() {
+        let mut engine = MatchingEngine::new();
+        let ask = make_limit_order("ASK-1", Side::Sell, "BTC", 50000.0, 1.0);
+        engine.process_new_order(&ask);
+
+        let mut buy = make_limit_order("BUY-1", Side::Buy, "BTC", 50000.0, 1.0);
+        buy.post_only = Some(true);
+        let result = engine.process_new_order(&buy);
+
+        assert!(result.fills.is_empty());
+        assert_eq!(
+            result.reject_reason.as_deref(),
+            Some("Post-only would cross")
         );
     }
 

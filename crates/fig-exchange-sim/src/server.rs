@@ -363,11 +363,29 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     order.price.as_ref()
                 );
 
+                let account = order.account.as_deref().unwrap_or("DEMO-ACCT");
+
+                if order.reduce_only == Some(true) {
+                    let accounts = state.accounts.lock().await;
+                    if let Some(acct) = accounts.get(account) {
+                        let pos = acct.positions.get(&order.symbol).map(|p| p.qty.0).unwrap_or(0.0);
+                        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+                        let would_increase = (is_buy && pos >= 0.0) || (!is_buy && pos <= 0.0);
+                        if pos.abs() < f64::EPSILON || would_increase {
+                            drop(accounts);
+                            return vec![make_error_frame(
+                                frame.channel_id,
+                                frame.stream_seq,
+                                "REDUCE_ONLY_WOULD_INCREASE",
+                            )];
+                        }
+                    }
+                    drop(accounts);
+                }
+
                 let mut engine = state.engine.lock().await;
                 let result = engine.process_new_order(&order);
                 drop(engine);
-
-                let account = order.account.as_deref().unwrap_or("DEMO-ACCT");
 
                 // Build execution report(s)
                 let mut responses = Vec::new();
@@ -699,8 +717,9 @@ pub async fn handle_subscribe(
         || channel_path.contains("/balances")
         || channel_path.contains("/positions")
         || channel_path.ends_with("/margin")
-        || channel_path.ends_with("/liquidations")
+        || (channel_path.starts_with("accounts/") && channel_path.ends_with("/liquidations"))
         || channel_path.ends_with("/orderlists")
+        || channel_path.ends_with("/orders/open")
         || channel_path.ends_with("/funding")
         || channel_path.ends_with("/ledger")
     {

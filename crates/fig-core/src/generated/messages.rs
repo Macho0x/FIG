@@ -21,7 +21,7 @@ pub struct Price(pub f64);
 pub struct Quantity(pub f64);
 
 /// Type: Symbol
-/// Constraints: max_len: 8, uppercase: true
+/// Constraints: max_len: 32, uppercase: true
 pub type Symbol = String;
 
 /// Type: TradeTimestamp
@@ -30,6 +30,14 @@ pub type TradeTimestamp = i64;
 /// Type: CandleInterval
 /// Constraints: max_len: 8
 pub type CandleInterval = String;
+
+/// Type: InstrumentId
+/// Constraints: max_len: 16
+pub type InstrumentId = String;
+
+/// Type: MarginAsset
+/// Constraints: max_len: 16, uppercase: true
+pub type MarginAsset = String;
 
 /// Struct type: AggregateTrade
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,6 +106,22 @@ pub struct PublicTrade {
     pub qty: Quantity,
     pub side: Side,
     pub timestamp: TradeTimestamp,
+}
+
+/// Struct type: InstrumentMetadata
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstrumentMetadata {
+    pub instrument_id: InstrumentId,
+    pub symbol: Symbol,
+    pub product_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub margin_asset: Option<MarginAsset>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tick_size: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lot_size: Option<f64>,
 }
 
 /// Struct type: BalanceEntry
@@ -489,6 +513,10 @@ pub struct NewOrderSingle {
     pub id_source: Option<SecurityIdSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub security_exchange: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reduce_only: Option<bool>,
 }
 
 impl NewOrderSingle {
@@ -1037,6 +1065,34 @@ pub struct TickerRequest {
 }
 
 impl TickerRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: InstrumentCatalogRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstrumentCatalogRequest {}
+
+impl InstrumentCatalogRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: InstrumentCatalogResponse (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstrumentCatalogResponse {
+    pub instruments: Vec<InstrumentMetadata>,
+}
+
+impl InstrumentCatalogResponse {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "request_response";
     /// Priority level

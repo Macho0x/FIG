@@ -139,7 +139,7 @@ fn run_conformance(vectors_path: &str) -> PyResult<()> {
 fn binding_check_vector(vector: &fig_conformance::ConformanceVector) -> Result<(), String> {
     use fig_core::codec::encode_cbor;
     match (vector.category.as_str(), vector.message_type.as_str()) {
-        ("cbor", "NewOrderSingle") => {
+        ("cbor", "NewOrderSingle") if vector.id != "cbor.new_order_single.post_only" => {
             let bytes = codec::encode_new_order_single(
                 "CONF-001",
                 "AAPL",

@@ -650,6 +650,8 @@ pub fn fix_to_fig_order(tags: &[(u32, String)]) -> FixResult<NewOrderSingle> {
         security_id,
         id_source,
         security_exchange,
+        post_only: None,
+        reduce_only: None,
     })
 }
 
@@ -1577,6 +1579,8 @@ mod tests {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         };
 
         let encoded = fig_to_fix_new_order_single(&order, &FixOutboundContext::default());

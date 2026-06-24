@@ -13,11 +13,11 @@ use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceEntry, BalanceSnapshot, CandleBar, CandleBarBatch, CandleBarRequest,
     CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, ExecType, ExecutionReport,
-    MarkPriceUpdate, MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker,
-    NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
-    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderListStatusStatus, OrderType, PositionUpdate, Price, PriceLevel, Quantity, Side,
-    SymbolTicker, TimeInForce,
+    InstrumentCatalogResponse, InstrumentMetadata, MarkPriceUpdate, MarketDataAction,
+    MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch,
+    OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate,
+    Price, PriceLevel, Quantity, Side, SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{
     encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch, encode_new_order_single,
@@ -750,6 +750,65 @@ fn build_suite() -> Result<ConformanceSuite> {
                     server_stream_id: server_stream,
                 }),
             },
+            {
+                let catalog = InstrumentCatalogResponse {
+                    instruments: vec![InstrumentMetadata {
+                        instrument_id: "BTC-PERP".to_string(),
+                        symbol: "BTC".to_string(),
+                        product_kind: "perp".to_string(),
+                        margin_asset: Some("USDC".to_string()),
+                        display_name: Some("Bitcoin Perpetual".to_string()),
+                        tick_size: Some(0.1),
+                        lot_size: Some(0.001),
+                    }],
+                };
+                ConformanceVector {
+                    id: "cbor.instrument_catalog.btc_perp".into(),
+                    category: "cbor".into(),
+                    description: "InstrumentCatalogResponse with BTC perp".into(),
+                    message_type: "InstrumentCatalogResponse".into(),
+                    expected_hex: hex::encode(encode_cbor(&catalog)?),
+                    frame: None,
+                    payload: Some(serde_json::json!({
+                        "instruments": [{
+                            "instrument_id": "BTC-PERP",
+                            "symbol": "BTC",
+                            "product_kind": "perp",
+                            "margin_asset": "USDC",
+                            "display_name": "Bitcoin Perpetual",
+                            "tick_size": 0.1,
+                            "lot_size": 0.001
+                        }]
+                    })),
+                    channel: None,
+                }
+            },
+            {
+                let post_only_order = NewOrderSingle {
+                    post_only: Some(true),
+                    reduce_only: None,
+                    ..sample_order()
+                };
+                ConformanceVector {
+                    id: "cbor.new_order_single.post_only".into(),
+                    category: "cbor".into(),
+                    description: "Limit buy with post_only=true".into(),
+                    message_type: "NewOrderSingle".into(),
+                    expected_hex: hex::encode(encode_cbor(&post_only_order)?),
+                    frame: None,
+                    payload: Some(serde_json::json!({
+                        "cl_ord_id": "CONF-001",
+                        "side": "Buy",
+                        "order_qty": 100.0,
+                        "price": 50.25,
+                        "symbol": "AAPL",
+                        "order_type": "Limit",
+                        "time_in_force": "Day",
+                        "post_only": true
+                    })),
+                    channel: None,
+                }
+            },
         ],
     })
 }
@@ -770,5 +829,7 @@ fn sample_order() -> NewOrderSingle {
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     }
 }

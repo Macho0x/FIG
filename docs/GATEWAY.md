@@ -99,3 +99,44 @@ docker run --rm -p 8443:8443/udp fig-exchange-sim
 Full stack (sim + gateway + metrics): `docker compose up`. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 See [Dockerfile](../Dockerfile) for the multi-stage build definition.
+
+## Venue adoption — Day 1 gateway
+
+Every exchange/broker follows the same track ([AGENTS.md](../AGENTS.md)): **native FIG
+is canonical**. The gateway translates legacy wire formats (FIX, REST, WebSocket JSON)
+to the same FSL payloads and `CHANNEL_PATH` values — there is no per-venue protocol fork.
+
+```text
+Legacy clients (any venue) ──► fig-gateway :8090 ──► FIG backend (TREE :8443)
+                                        │
+                    ws_catalog.rs / rest_query.rs = alias mappers only
+```
+
+Binance `@kline_5m` and Hyperliquid `subscription.type` JSON are **reference aliases**
+in `fig-gateways`, not separate FIG tracks. New venues add their own alias mappers
+pointing at the same native paths documented in [SPEC.md §9.1](../SPEC.md).
+
+### Topology with `--fig-backend`
+
+```bash
+# Terminal 1: venue FIG backend (or exchange-sim for testing)
+cargo run -p fig-exchange-sim
+
+# Terminal 2: gateway proxies legacy JSON/FIX to native FIG
+cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+```
+
+### Reference WebSocket alias coverage
+
+| Legacy alias source | Example input | Native FIG path |
+|---|---|---|
+| Binance WS | `@trade`, `@depth`, `@kline_5m` | `marketdata/{symbol}/trades`, `/book`, `/candles/{interval}` |
+| Hyperliquid WS | `trades`, `l2Book`, `userFunding` | same native paths (see `ws_catalog.rs`) |
+| FIG native | — | `SUBSCRIBE` with `ChannelPath` directly |
+
+Full mapping: [`crates/fig-gateways/src/ws_catalog.rs`](../crates/fig-gateways/src/ws_catalog.rs).
+Alias round-trip tests: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.
+
+Performance clients (colo MMs) connect directly to the backend with SBE or CBOR —
+see [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md).
+

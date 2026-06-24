@@ -825,7 +825,7 @@ impl Parser {
 /// Load and merge the split trading schema fragments used by codegen.
 pub fn load_merged_trading_schema() -> Schema {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas");
-    let fragments = ["orders.fsl", "marketdata.fsl", "account.fsl"];
+    let fragments = ["orders.fsl", "marketdata.fsl", "instruments.fsl", "account.fsl"];
     let mut schemas = Vec::new();
     for name in fragments {
         let input =

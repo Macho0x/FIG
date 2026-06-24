@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use quinn::crypto::rustls::QuicClientConfig as TreeClientConfig;
 use quinn::crypto::rustls::QuicServerConfig as TreeServerConfig;
@@ -21,6 +22,7 @@ use tokio::sync::Mutex;
 
 use crate::channel::{ChannelDirection, ChannelManager, ChannelMode};
 use crate::error::{ChannelError, FigError, FrameError};
+use crate::ext::ExtensionTag;
 use crate::frame::{Frame, FrameDecoder, MIN_FRAME_SIZE};
 use crate::migration::{
     apply_migration, prepare_migration, reconstruct_channels, validate_migration, MigrationToken,
@@ -693,6 +695,32 @@ impl FigConnection {
         Ok((channel_id, frame))
     }
 
+    /// On 0-RTT reconnect, read the first application frame (if any) and restore session state.
+    pub async fn try_restore_session_from_first_frame(&self) -> Option<Session> {
+        let result =
+            tokio::time::timeout(Duration::from_millis(250), self.accept_frame()).await;
+        let Ok(Ok((_, frame))) = result else {
+            return None;
+        };
+
+        let token = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::RedirectToken)
+            .map(|e| e.value.as_bytes())
+            .filter(|b| !b.is_empty())
+            .or_else(|| {
+                if frame.payload.is_empty() {
+                    None
+                } else {
+                    Some(frame.payload.clone())
+                }
+            })?;
+
+        crate::replay::validate_resumption_token(&token).ok()?;
+        Session::from_resumption_token(&token).ok()
+    }
+
     /// Drain additional frames already buffered on a channel decoder.
     pub async fn recv_buffered_frames(&self, channel_id: u16) -> Vec<Frame> {
         let mut out = Vec::new();
@@ -806,8 +834,16 @@ impl FigServer {
 
         let fig_conn = FigConnection::from_tree(conn, true);
 
-        // Resumption token arrives on first application frame in full deployments.
-        let restored_session = None;
+        let restored_session = fig_conn.try_restore_session_from_first_frame().await;
+        if let Some(ref session) = restored_session {
+            let span = span_session_resume(&session.session_id.to_string());
+            let _guard = span.enter();
+            tracing::info!(
+                session_id = %session.session_id,
+                "session restored from 0-RTT resumption token"
+            );
+            let _ = fig_conn.reconstruct_from_session(session).await;
+        }
 
         Ok((fig_conn, restored_session))
     }

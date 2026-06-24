@@ -352,6 +352,8 @@ mod tests {
             security_id: None,
             id_source: None,
             security_exchange: None,
+            post_only: None,
+            reduce_only: None,
         };
         let payload = crate::sbe::encode_new_order_single(&order);
         let frame = Frame::new(FrameType::Request, 1)

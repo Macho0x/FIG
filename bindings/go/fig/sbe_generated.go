@@ -585,13 +585,13 @@ func (e CapabilityPathPattern) ToValue() uint8 { return uint8(e) }
 // SBE encoder for NewOrderSingle
 type NewOrderSingleEncoder struct{}
 
-func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, OrderQty float64, Price *float64, StopPrice *float64, Symbol string, OrderType NewOrderSingleOrderType, TimeInForce NewOrderSingleTimeInForce, ExpireTime *int64, Account *string, StrategyId *string, SecurityId *string, IdSource *NewOrderSingleIdSource, SecurityExchange *string) ([]byte, error) {
+func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, OrderQty float64, Price *float64, StopPrice *float64, Symbol string, OrderType NewOrderSingleOrderType, TimeInForce NewOrderSingleTimeInForce, ExpireTime *int64, Account *string, StrategyId *string, SecurityId *string, IdSource *NewOrderSingleIdSource, SecurityExchange *string, PostOnly *uint8, ReduceOnly *uint8) ([]byte, error) {
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
 	writeU16BE(&buf, 1)
 	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 36)
+	writeU16BE(&buf, 38)
 
 	// Fixed fields
 	writeString(&buf, ClOrdId)
@@ -655,6 +655,26 @@ func (NewOrderSingleEncoder) Encode(ClOrdId string, Side NewOrderSingleSide, Ord
 	} else {
 		buf = append(buf, 0)
 	}
+	v := uint8(0)
+	if PostOnly != nil {
+		v = *PostOnly
+	}
+	buf = append(buf, v)
+	if PostOnly != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	v := uint8(0)
+	if ReduceOnly != nil {
+		v = *ReduceOnly
+	}
+	buf = append(buf, v)
+	if ReduceOnly != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
 
 	return buf, nil
 }
@@ -675,6 +695,8 @@ type NewOrderSingleDecoder struct {
 	SecurityId       *string
 	IdSource         *NewOrderSingleIdSource
 	SecurityExchange *string
+	PostOnly         *uint8
+	ReduceOnly       *uint8
 }
 
 func (NewOrderSingleDecoder) EncodedLen() int { return 0 }
@@ -777,6 +799,24 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingleDecoder, error) {
 		pos++
 		security_exchange = nil
 	}
+	v := buf[pos]
+	pos++
+	if buf[pos] == 1 {
+		pos++
+		post_only = &v
+	} else {
+		pos++
+		post_only = nil
+	}
+	v := buf[pos]
+	pos++
+	if buf[pos] == 1 {
+		pos++
+		reduce_only = &v
+	} else {
+		pos++
+		reduce_only = nil
+	}
 
 	return NewOrderSingleDecoder{
 		ClOrdId:          cl_ord_id,
@@ -793,6 +833,8 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingleDecoder, error) {
 		SecurityId:       security_id,
 		IdSource:         id_source,
 		SecurityExchange: security_exchange,
+		PostOnly:         post_only,
+		ReduceOnly:       reduce_only,
 	}, nil
 }
 
@@ -3016,6 +3058,105 @@ func TickerRequestDecoderDecode(buf []byte) (TickerRequestDecoder, error) {
 	}, nil
 }
 
+// SBE encoder for InstrumentCatalogRequest
+type InstrumentCatalogRequestEncoder struct{}
+
+func (InstrumentCatalogRequestEncoder) Encode() ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	// SBE Message Header (8 bytes)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 29)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+
+	// Fixed fields
+
+	return buf, nil
+}
+
+// SBE decoder for InstrumentCatalogRequest
+type InstrumentCatalogRequestDecoder struct {
+}
+
+func (InstrumentCatalogRequestDecoder) EncodedLen() int { return 0 }
+
+func InstrumentCatalogRequestDecoderDecode(buf []byte) (InstrumentCatalogRequestDecoder, error) {
+	if len(buf) < 8 {
+		return InstrumentCatalogRequestDecoder{}, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return InstrumentCatalogRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 29 {
+		return InstrumentCatalogRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+
+	return InstrumentCatalogRequestDecoder{}, nil
+}
+
+// SBE encoder for InstrumentCatalogResponse
+type InstrumentCatalogResponseEncoder struct{}
+
+func (InstrumentCatalogResponseEncoder) Encode(Instruments []string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	// SBE Message Header (8 bytes)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 30)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+
+	// Fixed fields
+	writeU32BE(&buf, uint32(len(Instruments)))
+	for _, item := range Instruments {
+		InstrumentMetadataEncoder{}.Encode(item, &buf)
+	}
+
+	return buf, nil
+}
+
+// SBE decoder for InstrumentCatalogResponse
+type InstrumentCatalogResponseDecoder struct {
+	Instruments []string
+}
+
+func (InstrumentCatalogResponseDecoder) EncodedLen() int { return 0 }
+
+func InstrumentCatalogResponseDecoderDecode(buf []byte) (InstrumentCatalogResponseDecoder, error) {
+	if len(buf) < 8 {
+		return InstrumentCatalogResponseDecoder{}, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return InstrumentCatalogResponseDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 30 {
+		return InstrumentCatalogResponseDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	instrumentsCount := int(readU32BE(buf, &pos))
+	instruments := make([]InstrumentMetadata, 0, instrumentsCount)
+	for i := 0; i < instrumentsCount; i++ {
+		item, err := InstrumentMetadataDecoder{}.Decode(buf[pos:])
+		if err != nil {
+			return InstrumentCatalogResponseDecoder{}, err
+		}
+		pos += item.EncodedLen()
+		instruments = append(instruments, item)
+	}
+
+	return InstrumentCatalogResponseDecoder{
+		Instruments: instruments,
+	}, nil
+}
+
 // SBE encoder for AccountSummary
 type AccountSummaryEncoder struct{}
 
@@ -3023,7 +3164,7 @@ func (AccountSummaryEncoder) Encode(Account string, Balance float64, BuyingPower
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 29)
+	writeU16BE(&buf, 31)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 16)
 
@@ -3058,7 +3199,7 @@ func AccountSummaryDecoderDecode(buf []byte) (AccountSummaryDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return AccountSummaryDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 29 {
+	if tmplID != 31 {
 		return AccountSummaryDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3081,7 +3222,7 @@ func (MarginSummaryEncoder) Encode(Account string, Balance float64, BuyingPower 
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 30)
+	writeU16BE(&buf, 32)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 40)
 
@@ -3122,7 +3263,7 @@ func MarginSummaryDecoderDecode(buf []byte) (MarginSummaryDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return MarginSummaryDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 30 {
+	if tmplID != 32 {
 		return MarginSummaryDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3151,7 +3292,7 @@ func (BalanceSnapshotEncoder) Encode(Account string, Balances []string, IsSnapsh
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 31)
+	writeU16BE(&buf, 33)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -3196,7 +3337,7 @@ func BalanceSnapshotDecoderDecode(buf []byte) (BalanceSnapshotDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return BalanceSnapshotDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 31 {
+	if tmplID != 33 {
 		return BalanceSnapshotDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3234,7 +3375,7 @@ func (BalanceUpdateEncoder) Encode(Account string, Asset string, Delta float64, 
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 32)
+	writeU16BE(&buf, 34)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 25)
 
@@ -3273,7 +3414,7 @@ func BalanceUpdateDecoderDecode(buf []byte) (BalanceUpdateDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return BalanceUpdateDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 32 {
+	if tmplID != 34 {
 		return BalanceUpdateDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3305,7 +3446,7 @@ func (PositionSnapshotEncoder) Encode(Account string, Positions []string, IsSnap
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 33)
+	writeU16BE(&buf, 35)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -3350,7 +3491,7 @@ func PositionSnapshotDecoderDecode(buf []byte) (PositionSnapshotDecoder, error) 
 	if schemaID != SCHEMA_ID {
 		return PositionSnapshotDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 33 {
+	if tmplID != 35 {
 		return PositionSnapshotDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3388,7 +3529,7 @@ func (PositionUpdateEncoder) Encode(Account string, Symbol string, Qty float64, 
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 34)
+	writeU16BE(&buf, 36)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 24)
 
@@ -3425,7 +3566,7 @@ func PositionUpdateDecoderDecode(buf []byte) (PositionUpdateDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return PositionUpdateDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 34 {
+	if tmplID != 36 {
 		return PositionUpdateDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3450,7 +3591,7 @@ func (MarginUpdateEncoder) Encode(Account string, Summary string, IsSnapshot *ui
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 35)
+	writeU16BE(&buf, 37)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -3492,7 +3633,7 @@ func MarginUpdateDecoderDecode(buf []byte) (MarginUpdateDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return MarginUpdateDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 35 {
+	if tmplID != 37 {
 		return MarginUpdateDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3521,7 +3662,7 @@ func (UserLiquidationEncoder) Encode(Account string, Symbol string, Qty float64,
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 36)
+	writeU16BE(&buf, 38)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 24)
 
@@ -3558,7 +3699,7 @@ func UserLiquidationDecoderDecode(buf []byte) (UserLiquidationDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return UserLiquidationDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 36 {
+	if tmplID != 38 {
 		return UserLiquidationDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3583,7 +3724,7 @@ func (OrderListStatusEncoder) Encode(Account string, ListId string, Status Order
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 37)
+	writeU16BE(&buf, 39)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -3623,7 +3764,7 @@ func OrderListStatusDecoderDecode(buf []byte) (OrderListStatusDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return OrderListStatusDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 37 {
+	if tmplID != 39 {
 		return OrderListStatusDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3658,7 +3799,7 @@ func (FillHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTim
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 38)
+	writeU16BE(&buf, 40)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 20)
 
@@ -3717,7 +3858,7 @@ func FillHistoryRequestDecoderDecode(buf []byte) (FillHistoryRequestDecoder, err
 	if schemaID != SCHEMA_ID {
 		return FillHistoryRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 38 {
+	if tmplID != 40 {
 		return FillHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3772,7 +3913,7 @@ func (FillHistoryBatchEncoder) Encode(Account string, Fills []string, HasMore ui
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 39)
+	writeU16BE(&buf, 41)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -3815,7 +3956,7 @@ func FillHistoryBatchDecoderDecode(buf []byte) (FillHistoryBatchDecoder, error) 
 	if schemaID != SCHEMA_ID {
 		return FillHistoryBatchDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 39 {
+	if tmplID != 41 {
 		return FillHistoryBatchDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3855,7 +3996,7 @@ func (FundingPaymentEncoder) Encode(Account string, Symbol *string, Amount float
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 40)
+	writeU16BE(&buf, 42)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 24)
 
@@ -3897,7 +4038,7 @@ func FundingPaymentDecoderDecode(buf []byte) (FundingPaymentDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return FundingPaymentDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 40 {
+	if tmplID != 42 {
 		return FundingPaymentDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -3929,7 +4070,7 @@ func (FundingHistoryRequestEncoder) Encode(Account string, StartTime *int64, End
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 41)
+	writeU16BE(&buf, 43)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 20)
 
@@ -3981,7 +4122,7 @@ func FundingHistoryRequestDecoderDecode(buf []byte) (FundingHistoryRequestDecode
 	if schemaID != SCHEMA_ID {
 		return FundingHistoryRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 41 {
+	if tmplID != 43 {
 		return FundingHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4027,7 +4168,7 @@ func (FundingHistoryBatchEncoder) Encode(Account string, Payments []string, HasM
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 42)
+	writeU16BE(&buf, 44)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -4070,7 +4211,7 @@ func FundingHistoryBatchDecoderDecode(buf []byte) (FundingHistoryBatchDecoder, e
 	if schemaID != SCHEMA_ID {
 		return FundingHistoryBatchDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 42 {
+	if tmplID != 44 {
 		return FundingHistoryBatchDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4110,7 +4251,7 @@ func (LedgerUpdateEncoder) Encode(Account string, Asset string, Delta float64, K
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 43)
+	writeU16BE(&buf, 45)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 17)
 
@@ -4154,7 +4295,7 @@ func LedgerUpdateDecoderDecode(buf []byte) (LedgerUpdateDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return LedgerUpdateDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 43 {
+	if tmplID != 45 {
 		return LedgerUpdateDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4193,7 +4334,7 @@ func (LedgerHistoryRequestEncoder) Encode(Account string, StartTime *int64, EndT
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 44)
+	writeU16BE(&buf, 46)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 20)
 
@@ -4245,7 +4386,7 @@ func LedgerHistoryRequestDecoderDecode(buf []byte) (LedgerHistoryRequestDecoder,
 	if schemaID != SCHEMA_ID {
 		return LedgerHistoryRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 44 {
+	if tmplID != 46 {
 		return LedgerHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4291,7 +4432,7 @@ func (LedgerHistoryBatchEncoder) Encode(Account string, Entries []string, HasMor
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 45)
+	writeU16BE(&buf, 47)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -4334,7 +4475,7 @@ func LedgerHistoryBatchDecoderDecode(buf []byte) (LedgerHistoryBatchDecoder, err
 	if schemaID != SCHEMA_ID {
 		return LedgerHistoryBatchDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 45 {
+	if tmplID != 47 {
 		return LedgerHistoryBatchDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4374,7 +4515,7 @@ func (OpenOrdersRequestEncoder) Encode(Account string, Symbol *string) ([]byte, 
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 46)
+	writeU16BE(&buf, 48)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 0)
 
@@ -4410,7 +4551,7 @@ func OpenOrdersRequestDecoderDecode(buf []byte) (OpenOrdersRequestDecoder, error
 	if schemaID != SCHEMA_ID {
 		return OpenOrdersRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 46 {
+	if tmplID != 48 {
 		return OpenOrdersRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4436,7 +4577,7 @@ func (OpenOrdersSnapshotEncoder) Encode(Account string, Orders []string, IsSnaps
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 47)
+	writeU16BE(&buf, 49)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -4481,7 +4622,7 @@ func OpenOrdersSnapshotDecoderDecode(buf []byte) (OpenOrdersSnapshotDecoder, err
 	if schemaID != SCHEMA_ID {
 		return OpenOrdersSnapshotDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 47 {
+	if tmplID != 49 {
 		return OpenOrdersSnapshotDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4519,7 +4660,7 @@ func (OrderHistoryRequestEncoder) Encode(Account string, Symbol *string, StartTi
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 48)
+	writeU16BE(&buf, 50)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 20)
 
@@ -4578,7 +4719,7 @@ func OrderHistoryRequestDecoderDecode(buf []byte) (OrderHistoryRequestDecoder, e
 	if schemaID != SCHEMA_ID {
 		return OrderHistoryRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 48 {
+	if tmplID != 50 {
 		return OrderHistoryRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4633,7 +4774,7 @@ func (OrderHistoryBatchEncoder) Encode(Account string, Orders []string, HasMore 
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 49)
+	writeU16BE(&buf, 51)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 1)
 
@@ -4676,7 +4817,7 @@ func OrderHistoryBatchDecoderDecode(buf []byte) (OrderHistoryBatchDecoder, error
 	if schemaID != SCHEMA_ID {
 		return OrderHistoryBatchDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 49 {
+	if tmplID != 51 {
 		return OrderHistoryBatchDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
@@ -4716,7 +4857,7 @@ func (CapabilitiesRequestEncoder) Encode() ([]byte, error) {
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 50)
+	writeU16BE(&buf, 52)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 0)
 
@@ -4743,7 +4884,7 @@ func CapabilitiesRequestDecoderDecode(buf []byte) (CapabilitiesRequestDecoder, e
 	if schemaID != SCHEMA_ID {
 		return CapabilitiesRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 50 {
+	if tmplID != 52 {
 		return CapabilitiesRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 
@@ -4757,7 +4898,7 @@ func (CapabilitiesResponseEncoder) Encode(SchemaIds []string, Paths []string, Sy
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 51)
+	writeU16BE(&buf, 53)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 0)
 
@@ -4804,7 +4945,7 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponseDecoder,
 	if schemaID != SCHEMA_ID {
 		return CapabilitiesResponseDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 51 {
+	if tmplID != 53 {
 		return CapabilitiesResponseDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	schema_idsCount := int(readU32BE(buf, &pos))
@@ -4863,7 +5004,7 @@ func (PositionRequestEncoder) Encode(Account string) ([]byte, error) {
 	buf := make([]byte, 0, 256)
 	// SBE Message Header (8 bytes)
 	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 52)
+	writeU16BE(&buf, 54)
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 0)
 
@@ -4892,7 +5033,7 @@ func PositionRequestDecoderDecode(buf []byte) (PositionRequestDecoder, error) {
 	if schemaID != SCHEMA_ID {
 		return PositionRequestDecoder{}, fmt.Errorf("invalid schema_id: %d", schemaID)
 	}
-	if tmplID != 52 {
+	if tmplID != 54 {
 		return PositionRequestDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)

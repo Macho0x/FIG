@@ -428,6 +428,17 @@ mod tests {
     }
 
     #[test]
+    fn test_json_order_flags_round_trip() {
+        let json = r#"{"cl_ord_id":"PO-1","symbol":"BTC","side":"buy","order_qty":1.0,"order_type":"Limit","price":50000.0,"time_in_force":"Day","post_only":true,"reduce_only":false}"#;
+        let cbor = json_to_cbor(json).unwrap();
+        let json_back = cbor_to_json(&cbor).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_back).unwrap();
+
+        assert_eq!(parsed["post_only"], true);
+        assert_eq!(parsed["reduce_only"], false);
+    }
+
+    #[test]
     fn test_json_cbor_nested() {
         let json = r#"{"order":{"id":"123","items":[{"symbol":"AAPL","qty":10},{"symbol":"MSFT","qty":20}]}}"#;
         let cbor = json_to_cbor(json).unwrap();

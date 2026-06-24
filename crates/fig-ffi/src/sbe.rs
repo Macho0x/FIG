@@ -48,6 +48,8 @@ pub unsafe extern "C" fn fig_sbe_encode_new_order_single(
         security_id: None,
         id_source: None,
         security_exchange: None,
+        post_only: None,
+        reduce_only: None,
     };
     *out = into_buffer(encode_new_order_single(&order));
     0

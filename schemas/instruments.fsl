@@ -1,0 +1,30 @@
+// FIG Schema Language — Crypto instrument metadata (§20.1)
+// Merged into trading.orders codegen bundle.
+
+schema trading.instruments v1.0.0 {
+    description: "Perpetual and spot instrument catalog for crypto venues"
+    well_known_id: 0x01
+
+    type InstrumentId: string(max_len: 16)
+    type MarginAsset: string(max_len: 16, uppercase: true)
+
+    type InstrumentMetadata {
+        instrument_id: InstrumentId
+        symbol: Symbol
+        product_kind: string(max_len: 8)
+        margin_asset: MarginAsset optional
+        display_name: string(max_len: 64) optional
+        tick_size: decimal64(precision: 8, min: 0) optional
+        lot_size: decimal64(precision: 8, min: 0) optional
+    }
+
+    message InstrumentCatalogRequest {
+        channel_type: request_response
+    }
+
+    message InstrumentCatalogResponse {
+        channel_type: request_response
+
+        instruments: list<InstrumentMetadata> @1
+    }
+}

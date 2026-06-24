@@ -33,10 +33,7 @@ fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {
 fn is_subscribe_forbidden_path(path: &str) -> bool {
     parse_capabilities_path(path)
         || parse_order_history_path(path).is_some()
-        || parse_open_orders_path(path).is_some()
         || path.ends_with("/fills")
-        || path.ends_with("/funding")
-        || path.ends_with("/ledger")
         || (path.starts_with("accounts/") && path.matches('/').count() == 1)
 }
 

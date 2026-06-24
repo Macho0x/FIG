@@ -273,3 +273,33 @@ curl 'http://127.0.0.1:8080/.well-known/capabilities'
 
 See [PROTOCOL.md](PROTOCOL.md) for frame-by-frame worked examples.
 
+## 8. Perps walkthrough (native FIG)
+
+This section uses **native FIG paths** — the same surface any crypto or equity venue
+implements. Gateway aliases (Binance `@markPrice`, Hyperliquid `activeAssetCtx`) map
+to these paths; see [AGENTS.md](../AGENTS.md).
+
+With the exchange simulator running and `fig-cli` as reference:
+
+```bash
+cargo run -p fig-exchange-sim   # terminal 1
+cargo test -p fig-cli           # exercises FigSdkClient perps streams
+```
+
+Native flows the CLI demos exercise via `FigSdkClient`:
+
+| Action | Native path | SDK helper |
+|---|---|---|
+| Mark price stream | `marketdata/BTC/mark` | `subscribe` + `MarkPriceUpdate` |
+| Aggregate trades | `marketdata/BTC/aggtrades` | `subscribe_agg_trades` |
+| Funding payments | `accounts/{acct}/funding` | `subscribe_funding` |
+| Ledger updates | `accounts/{acct}/ledger` | `subscribe_ledger` |
+| Post-only limit order | `trading/accounts/{acct}/orders` POST | `NewOrderSingle { post_only: Some(true), … }` |
+| Instrument catalog | `/.well-known/instruments` GET | `InstrumentCatalogRequest` |
+
+Merge helpers (`FundingState`, `LedgerState`, `AggTradeState`, `LiquidationState`)
+accumulate `STREAM_ITEM` payloads — see [STREAMING.md](STREAMING.md).
+
+SBE order entry for colo clients: `cargo test -p fig-cli cli_sbe_order_demo_successfully`
+and [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md).
+

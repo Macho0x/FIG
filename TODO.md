@@ -44,19 +44,19 @@ Detail sections (§18–21) add context; do not duplicate status here.
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
-| ⬜ | `FigServer::accept_0rtt` reads resumption token from first app frame | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | `FigServer::accept_0rtt` reads resumption token from first app frame | both | `fig-core::transport::try_restore_session_from_first_frame` |
 | ⬜ | Fuzz `frame_decode` in required CI | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | Shared `RedisReplayCache` for HA 0-RTT | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| 🔶 | 0-RTT replay on server accept path (criteria row) | both | [§18.2](#182-security) |
+| ✅ | 0-RTT replay on server accept path (criteria row) | both | `FigServer::accept_0rtt` + session restore — [§18.2](#182-security) |
 
 ### 0.3 P2 — Reference client and SDK polish
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
-| ⬜ | `fig-client`: funding, ledger, liquidations, agg trades merge helpers | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| ⬜ | `fig-cli` demos use `FigSdkClient` subscribe/request helpers | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | `fig-client`: funding, ledger, liquidations, agg trades merge helpers | both | `fig-client::{FundingState,LedgerState,AggTradeState,LiquidationState}` |
+| ✅ | `fig-cli` demos use `FigSdkClient` subscribe/request helpers | both | `cli_demos_complete_successfully` |
 | 🔶 | Tier 1 SDK: `FigSdkClient` as primary `request()` path | both | [§17.2](#172-cross-cutting-protocol-both-sides) |
-| 🔶 | Tier 3 SDK: pub/sub merge wrappers complete | both | [§17.2](#172-cross-cutting-protocol-both-sides) |
+| ✅ | Tier 3 SDK: pub/sub merge wrappers complete | both | perps + account merge helpers in `fig-client` |
 | ⬜ | §16 binding compile smoke for new stream types (Go/C#/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | JWT RS256/KMS reference + key rotation runbook | both | [§18.7](#187-post-10-outstanding-fig-project) |
@@ -69,21 +69,24 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ⬜ | Published artifacts (crates, bindings) + compatibility policy | both | [§19.1](#191-fig-project--protocol-release-maturity) |
 | ⬜ | Co-lo / tail-latency evidence on realistic topology | both | [§19.1](#191-fig-project--protocol-release-maturity) |
 | ⬜ | Per-language SBE hex parity CI | both | [§19.2](#192-fig-project--client-ecosystem) |
-| ⬜ | SBE-default order path documentation + examples | both | [§19.2](#192-fig-project--client-ecosystem) |
+| ✅ | SBE-default order path documentation + examples | both | [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md), `run_sbe_order_demo` |
 | 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | both | [§19.2](#192-fig-project--client-ecosystem) |
 
 ### 0.5 P3 — Crypto-perps track (pick one track at a time)
 
+**Deferred to Full §20.1** (venue product surface, not protocol forks): EIP-712 wallet auth,
+TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chain/L1 streams.
+
 | Status | Item | Track | Detail |
 |---|---|---|---|
-| ⬜ | Extended instrument model (long symbols, perp IDs, margin asset metadata) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
-| 🔶 | Gateway Hyperliquid JSON parity E2E test suite | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
+| ✅ | Extended instrument model (long symbols, perp IDs, margin asset metadata) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
+| ✅ | Gateway legacy WS alias E2E test suite (reference fixtures) | crypto | `gateway_legacy_ws_alias_e2e.rs` |
 | ⬜ | Cryptographic action auth (wallet signatures, EIP-712) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Batch / atomic multi-action `REQUEST` contract | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Chain / L1 event stream domain in FSL | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
-| ⬜ | Post-only, reduce-only, venue policy flags in SPEC | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
+| ✅ | Post-only, reduce-only, venue policy flags in SPEC | crypto | SPEC §9.4, `schemas/orders.fsl`, exchange-sim matcher |
 
 ### 0.6 P3 — Institutional track (pick one track at a time)
 
@@ -142,7 +145,7 @@ Optional rows improve confidence but do not block 1.0.
 | Status | Criterion | Blocker | Evidence |
 |---|---|---|---|
 | ✅ | 0-RTT replay protection (client path) | Required | `fig_core::replay`, client `connect_0rtt`, unit tests |
-| 🔶 | 0-RTT replay protection (server accept path) | Post-1.0* | `FigServer::accept_0rtt` — see §18.7 |
+| 🔶 | 0-RTT replay protection (server accept path) | Post-1.0* | `FigServer::accept_0rtt` token read ✅; Redis HA replay cache deferred |
 | ✅ | Frame decoder fuzz target | Required | `crates/fig-core/fuzz/frame_decode`, [CONTRIBUTING.md](CONTRIBUTING.md) |
 | ⬜ | Frame decoder fuzz in required CI | Post-1.0* | §18.7 |
 | ✅ | Load / flood smoke test | Required | `fig-load` bin, CI `FIG_LOAD_SECS=3` |
@@ -156,7 +159,7 @@ Optional rows improve confidence but do not block 1.0.
 | Status | Criterion | Blocker | Evidence |
 |---|---|---|---|
 | ✅ | `fig-client` merge helpers (book, candles, account, mids, bbo, trades, mark, orders) | Required | `crates/fig-client` tests |
-| 🔶 | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `send_and_read` + `dev_auth_token` ✅; demos still hand-build frames — §18.7 |
+| 🔶 | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `run_demos` via `FigSdkClient` — `cli_demos_complete_successfully` |
 | ✅ | Python + FFI exposure | Required | `PyOrderBookState`, `PyMidsState`, … + `fig_*` FFI |
 | ⬜ | Per-language generated SBE hex CI | Optional | FFI conformance required; native SBE compile-smoke only |
 
@@ -249,7 +252,7 @@ FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
 | Transport | TLS 1.3, mTLS, cert rotation | ✅ | Verify prod deploy uses `FIG_MTLS=1` |
 | Auth | Constant-time compare, JWT, path policy | ✅ | RS256/KMS is venue responsibility |
 | DoS | Rate limiter, flood guard, load smoke | ✅ | `fig-load` in CI |
-| 0-RTT | Replay cache | 🔶 | Server accept path partial — §18.7 |
+| 0-RTT | Replay cache | 🔶 | Server accept path ✅; shared Redis HA deferred — §18.7 |
 | Fuzz | Frame decoder | 🔶 | Target exists; not required CI |
 | External | Pen test | ⬜ | Optional for 1.0 |
 
@@ -336,10 +339,10 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | Medium | HL product surface |
 | ⬜ | Batch / atomic multi-action `REQUEST` contract | Medium | HL batches L1 actions; FIG is frame-per-request |
 | ⬜ | Chain / L1 event stream domain in FSL | Medium | Block height, finality, deposit confirmation, withdrawal status |
-| ⬜ | Extended instrument model (long symbols, perp identifiers, margin asset metadata) | High | FSL `Symbol` is `max_len: 8` uppercase |
-| ⬜ | Post-only, reduce-only, venue policy flags + surveillance hooks in SPEC | Medium | Partial order flags in FSL; venue semantics TBD |
-| 🔶 | Gateway Hyperliquid JSON parity test suite | Medium | `ws_catalog.rs` mappings exist; expand E2E |
-| ⬜ | `fig-client` + Python/FFI: funding, ledger, liquidations, agg trades | Medium | §18.7 |
+| ✅ | Extended instrument model (long symbols, perp identifiers, margin asset metadata) | High | `schemas/instruments.fsl`, ADR 0007, `Symbol` max_len 32 |
+| ✅ | Post-only, reduce-only, venue policy flags + surveillance hooks in SPEC | Medium | SPEC §9.4, exchange-sim matcher |
+| ✅ | Gateway legacy alias E2E test suite (Binance/HL/FIX fixtures) | Medium | `gateway_legacy_ws_alias_e2e.rs` |
+| ✅ | `fig-client` + Python/FFI: funding, ledger, liquidations, agg trades | Medium | `fig-client` merge helpers + subscribe APIs |
 
 ### 20.2 Venue-owned — backend (Hyperliquid-shaped)
 
@@ -358,9 +361,9 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 
 | Phase | Deliverable | FIG repo | Venue |
 |---|---|---|---|
-| **P1** | Gateway in front of existing JSON API | `fig-gateway` + `--fig-backend` | Proxy to real matching engine |
-| **P2** | Native FIG/TREE + SBE for colo MMs | §19.2 SBE path, §18 stable | Production order entry SLA |
-| **P3** | HL-only products on FIG wire | §20.1 FSL + auth extensions | Vaults, signed actions, chain events |
+| **P1** | Gateway in front of existing JSON API | ✅ `fig-gateway` + `--fig-backend`, HL alias E2E | Proxy to real matching engine |
+| **P2** | Native FIG/TREE + SBE for colo MMs | ✅ SBE order path doc + demo, instrument model, order flags | Production order entry SLA |
+| **P3** | Venue-specific products on FIG wire | §20.1 FSL + auth extensions (deferred) | Vaults, signed actions, chain events |
 
 **Rough effort:** §17 API surface ~70% for Binance/Hyperliquid-shaped perps;
 production venue **12–24+ months** venue engineering on top of §19.
@@ -1021,8 +1024,8 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
 | ✅ | E2E: private account subscribe suite | High | Auth + balance/margin/position/executions/orderlists |
 | ✅ | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/fill-history/pagination |
-| ✅ | E2E: gateway REST GET round-trip | High | `gateway_proxy_e2e.rs` capabilities via `proxy_frame` |
-| ✅ | E2E: gateway WS round-trip | Medium | `gateway_proxy_e2e.rs` Binance SUBSCRIBE via `proxy_frame` |
+| ✅ | E2E: gateway REST GET round-trip | High | `gateway_legacy_ws_alias_e2e.rs` capabilities via `proxy_frame` |
+| ✅ | E2E: gateway WS round-trip | Medium | `gateway_legacy_ws_alias_e2e.rs` Binance/HL SUBSCRIBE via `proxy_frame` |
 | ⬜ | §16 binding tests for new types | Medium | See [§0.3](#03-p2--reference-client-and-sdk-polish) |
 
 ---

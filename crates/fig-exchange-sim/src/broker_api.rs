@@ -12,7 +12,7 @@ use crate::account_state::{
 };
 use crate::auth::{account_from_private_path, authorize_private};
 use crate::broker_session::{
-    capabilities_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
+    capabilities_response, instrument_catalog_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
     parse_order_history_path, parse_position_query_path, respond_cbor, stream_agg_trade_batch,
     stream_candle_batch, stream_fill_history, stream_funding_batch, stream_ledger_batch,
     stream_order_history, stream_public_trade_batch,
@@ -91,6 +91,10 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
 
     if parse_capabilities_path(&channel_path) {
         return respond_cbor(frame, &capabilities_response(), None);
+    }
+
+    if channel_path == ".well-known/instruments" {
+        return respond_cbor(frame, &instrument_catalog_response(), None);
     }
 
     if let Some(symbol) = parse_order_book_path(&channel_path) {
@@ -706,6 +710,21 @@ pub async fn handle_account_subscribe(frame: Frame, state: &Arc<ExchangeState>) 
             }
         }
         AccountSubscriptionKind::OrderLists => {}
+        AccountSubscriptionKind::OpenOrders => {
+            drop(accounts);
+            let engine = state.engine.lock().await;
+            let snap = engine.open_orders(&account, None);
+            drop(engine);
+            if let Ok(payload) = codec::encode_cbor(&snap) {
+                frames.push(stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "trading/orders/open",
+                ));
+            }
+            return frames;
+        }
     }
     drop(accounts);
     if frames.is_empty() {
@@ -809,6 +828,7 @@ pub async fn post_fill_updates(
                     }
                     AccountSubscriptionKind::Funding => {}
                     AccountSubscriptionKind::Ledger => {}
+                    AccountSubscriptionKind::OpenOrders => {}
                 }
             }
             let ledger = LedgerUpdate {
