@@ -12,7 +12,7 @@ Central reference for FIG crates, modules, and project documentation.
 | [QUERY.md](QUERY.md) | Historical `REQUEST`/`RESPONSE` paths and REST GET mapping |
 | [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST/WebSocket gateway deployment |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Pre-1.0 security checklist |
-| [TODO.md §18](../TODO.md#18-fig-10-release-criteria) | 1.0 release criteria (central roadmap) |
+| [TODO.md §18](../TODO.md#18-fig-10-release-criteria) | 1.0 release criteria · [§0 backlog](../TODO.md#0-active-backlog-fig-repo) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | HA deployment and operations |
 | [PUBLISHING.md](PUBLISHING.md) | Build and install SDKs |
 | [adr/README.md](adr/README.md) | Architecture decision records |

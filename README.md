@@ -355,7 +355,8 @@ Reference crates: [`fig-core`](crates/fig-core/) (protocol) · [`fig-gateways`](
 
 ## Language SDKs
 
-Roadmap and parity definition: [TODO.md](TODO.md) (§16 SDK · §17 broker API · §18 1.0 release · §19–21 venue adoption). Status key: **✅** shipped · **🔶** partial · **⬜** planned · **🏛** venue-owned.
+Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) (active backlog) ·
+[§16–21](TODO.md) reference. Status key: **✅** shipped · **🔶** partial · **⬜** planned · **🏛** venue-owned.
 
 | Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
 |---|---|---|---|---|
@@ -385,6 +386,7 @@ Roadmap and parity definition: [TODO.md](TODO.md) (§16 SDK · §17 broker API �
 | [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Criterion microbenches + tail-latency harness |
 | [docs/API.md](docs/API.md) | Crate and module index |
+| [TODO.md §0](TODO.md#0-active-backlog-fig-repo) | Active backlog (priority-ordered open work) |
 | [TODO.md §18](TODO.md#18-fig-10-release-criteria) | 1.0 release criteria + venue adoption (§19–21) |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA deployment and operations |
 | [docs/PUBLISHING.md](docs/PUBLISHING.md) | Build and install SDKs |
