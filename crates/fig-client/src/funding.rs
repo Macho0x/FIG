@@ -47,6 +47,10 @@ impl FundingState {
     pub fn len(&self) -> usize {
         self.payments.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.payments.is_empty()
+    }
 }
 
 #[cfg(test)]

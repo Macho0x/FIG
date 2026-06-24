@@ -586,6 +586,7 @@ impl<'a> FigSdkClient<'a> {
     }
 
     /// Apply all stream types including agg trades and public liquidations.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_all_stream_frames(
         mids: &mut MidsState,
         bbo: &mut BboState,
