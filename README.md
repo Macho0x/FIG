@@ -159,6 +159,15 @@ Native FIG on **one TREE connection** (TLS + multiplexed channels). If you know 
 | **FIX** drop copy / MD incremental | `SUBSCRIBE` → `STREAM_ITEM` | `trading/accounts/{account}/executions` |
 | **Hyperliquid** `allMids` | `GET` → `AllMidsBatch` | `marketdata/ticker/all` |
 
+**Wire notation** (SPEC §4 names → Rust — not strings on the wire):
+
+| Wire (SPEC) | Rust | SDK helper |
+|-------------|------|------------|
+| `SUBSCRIBE` | `FrameType::Subscribe` | `subscribe_frame`, `subscribe_*` |
+| `REQUEST` | `FrameType::Request` | `request_frame`, `request_*`, `post_order` |
+| `RESPONSE` | `FrameType::Response` | one-shot reply to `REQUEST` |
+| `STREAM_ITEM` | `FrameType::StreamItem` | server push (decode CBOR payload) |
+
 Recommended path: [`fig-client`](crates/fig-client/) (`FigSdkClient`) — same wire as below, less boilerplate. Full demo: [`fig-cli`](crates/fig-cli/src/lib.rs) (`run_demos`).
 
 ```rust
@@ -178,27 +187,27 @@ let account = "DEMO-ACCT";
 
 ### 1. Live market data (WebSocket-style subscribe)
 
-Like Binance `@kline_5m` or a FIX market-data subscription — server pushes `STREAM_ITEM`s.
+Similar to Binance's `@kline_5m` or a FIX market-data subscription — server pushes `STREAM_ITEM`s.
 
 ```rust
-// Candles (partial + final bars merged in CandleState)
+// wire: SUBSCRIBE → STREAM_ITEM (CandleBarEvent)
 let (candles, _frames) = client.subscribe_candles("AAPL", "5m", 2).await?;
 if let Some(bar) = candles.current() {
     println!("close={}", bar.close.0);
 }
 
-// Top-of-book + implied mid (lighter than full L2 book)
+// wire: SUBSCRIBE → STREAM_ITEM (BestBidOffer)
 let (bbo, _frames) = client.subscribe_bbo("AAPL", 3).await?;
 println!("mid={:?}", bbo.implied_mid());
 
-// All symbols at once (Hyperliquid allMids-style dashboard)
+// wire: REQUEST GET → RESPONSE (AllMidsBatch)
 let (mids, _batch) = client.request_all_mids(4).await?;
 println!("AAPL mid={:?}", mids.mid("AAPL"));
 ```
 
 ### 2. Order entry (REST POST / FIX NewOrderSingle)
 
-Like `POST /accounts/{id}/orders` or FIX MsgType `D` — one shot, execution reports in the response stream.
+Similar to `POST /accounts/{id}/orders` or FIX MsgType `D` — one-shot, execution reports in the response stream.
 
 ```rust
 let order = NewOrderSingle {
@@ -217,18 +226,20 @@ let order = NewOrderSingle {
     id_source: None,
     security_exchange: None,
 };
+// wire: REQUEST POST → STREAM_ITEM (ExecutionReport)
 let frames = client.post_order(account, &order, 1).await?;
 // Decode ExecutionReport from frames (or use OrdersState for live merge)
 ```
 
 ### 3. Private account stream (authenticated WS / FIX drop copy)
 
-Like a user-data WebSocket or private FIX session — **`AUTH_TOKEN` required** on every open.
+Similar to a user-data WebSocket or private FIX session — **`AUTH_TOKEN` required** on every channel.
 
 ```rust
 use fig_client::frames::subscribe_frame;
 
 let token = dev_auth_token(account);
+// wire: SUBSCRIBE (FrameType::Subscribe via subscribe_frame)
 let bal_sub = subscribe_frame(
     5, 1,
     &format!("accounts/{account}/balances"),
@@ -236,9 +247,9 @@ let bal_sub = subscribe_frame(
     Some(&token),
 )?;
 let frames = client.send_and_read(bal_sub).await?;
-// → BalanceSnapshot (is_snapshot), then BalanceUpdate deltas
+// → STREAM_ITEM: BalanceSnapshot (is_snapshot), then BalanceUpdate
 
-// Live fills / order state (execution stream)
+// wire: SUBSCRIBE → STREAM_ITEM (ExecutionReport)
 let (orders, _frames) = client.subscribe_executions(account, 6).await?;
 println!("open orders={}", orders.open_count());
 ```
@@ -248,6 +259,7 @@ println!("open orders={}", orders.open_count());
 Like `GET /candles?limit=100` then subscribing to the live feed on the **same connection**.
 
 ```rust
+// wire: REQUEST GET → RESPONSE (CandleBarBatch)
 let batch = client.request_candles(
     CandleBarRequest {
         symbol: "AAPL".into(),
@@ -261,7 +273,7 @@ let batch = client.request_candles(
 ).await?;
 println!("history bars={}", batch.bars.len());
 
-// Same conn — switch to live (example 1)
+// wire: SUBSCRIBE → STREAM_ITEM (live candles, same connection)
 let (live, _) = client.subscribe_candles("AAPL", "5m", 8).await?;
 ```
 
@@ -275,13 +287,13 @@ use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws_catalog::legacy_ws_json_to_fig_subscribe;
 use fig_gateways::fix::{parse_fix_message, fix_to_fig_order};
 
-// REST GET → native FIG REQUEST (same path the simulator speaks)
+// wire: REST GET → REQUEST (FrameType::Request + Method GET)
 let get = parse_http_request(
     b"GET /marketdata/AAPL/ticker HTTP/1.1\r\nHost: localhost\r\n\r\n",
 )?;
 let ticker_req = http_get_to_fig_request(&get)?;
 
-// Binance-style WS JSON → FIG SUBSCRIBE
+// wire: WS JSON SUBSCRIBE → SUBSCRIBE (FrameType::Subscribe)
 let ws_sub = legacy_ws_json_to_fig_subscribe(
     r#"{"method":"SUBSCRIBE","params":["aapl@ticker"]}"#,
     1,
@@ -292,12 +304,12 @@ let ws_sub = legacy_ws_json_to_fig_subscribe(
 // let backend = connect_backend("127.0.0.1:8443".parse()?).await?;
 // let responses = proxy_frame(&backend, ticker_req).await?;
 
-// FIX NewOrderSingle (35=D) → CBOR body, then FIG REQUEST POST
+// wire: FIX 35=D → CBOR NewOrderSingle, then REQUEST POST at gateway
 // let fix = parse_fix_message(b"8=FIX.4.4\x0135=D\x0111=CLI-001\x01...")?;
 // let order = fix_to_fig_order(&fix.tags)?;
 ```
 
-**Low-level wire:** build `Frame` + extensions directly with `fig_core` (see [SPEC §9](SPEC.md)). Python/Go/C++ use the same paths via [`fig-ffi`](crates/fig-ffi/) / [`bindings/`](bindings/README.md).
+**Low-level wire:** build `Frame::new(FrameType::Subscribe, …)` (or `Request`, etc.) with `fig_core` — see [SPEC §4](SPEC.md). Python/Go/C++ use the same frame types via [`fig-ffi`](crates/fig-ffi/) / [`bindings/`](bindings/README.md).
 
 ---
 
