@@ -530,9 +530,18 @@ mod tests {
     #[test]
     fn hyperliquid_ws_catalog_completeness() {
         let types = [
-            ("trades", serde_json::json!({"type": "trades", "coin": "BTC"})),
-            ("candle", serde_json::json!({"type": "candle", "coin": "BTC"})),
-            ("l2Book", serde_json::json!({"type": "l2Book", "coin": "BTC"})),
+            (
+                "trades",
+                serde_json::json!({"type": "trades", "coin": "BTC"}),
+            ),
+            (
+                "candle",
+                serde_json::json!({"type": "candle", "coin": "BTC"}),
+            ),
+            (
+                "l2Book",
+                serde_json::json!({"type": "l2Book", "coin": "BTC"}),
+            ),
             ("bbo", serde_json::json!({"type": "bbo", "coin": "BTC"})),
             (
                 "orderUpdates",
@@ -622,7 +631,10 @@ mod tests {
             ),
             ("liquidations", serde_json::json!({"type": "liquidations"})),
             ("forceOrder", serde_json::json!({"type": "forceOrder"})),
-            ("margin", serde_json::json!({"type": "margin", "user": "alice"})),
+            (
+                "margin",
+                serde_json::json!({"type": "margin", "user": "alice"}),
+            ),
             (
                 "clearinghouseMargin",
                 serde_json::json!({"type": "clearinghouseMargin", "user": "alice"}),

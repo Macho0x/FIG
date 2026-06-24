@@ -368,7 +368,11 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 if order.reduce_only == Some(true) {
                     let accounts = state.accounts.lock().await;
                     if let Some(acct) = accounts.get(account) {
-                        let pos = acct.positions.get(&order.symbol).map(|p| p.qty.0).unwrap_or(0.0);
+                        let pos = acct
+                            .positions
+                            .get(&order.symbol)
+                            .map(|p| p.qty.0)
+                            .unwrap_or(0.0);
                         let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
                         let would_increase = (is_buy && pos >= 0.0) || (!is_buy && pos <= 0.0);
                         if pos.abs() < f64::EPSILON || would_increase {

@@ -4,14 +4,14 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use fig_client::{
-    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState, MidsState,
-    OrdersState, TradeTape,
+    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState,
+    MidsState, OrdersState, TradeTape,
 };
 use fig_core::codec::decode_cbor;
 use fig_core::messages::{
-    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment,
-    LedgerUpdate, LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
-    PublicTradeEvent, UserLiquidation,
+    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment, LedgerUpdate,
+    LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot, PublicTradeEvent,
+    UserLiquidation,
 };
 
 #[pyclass]

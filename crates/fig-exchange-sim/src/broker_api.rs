@@ -12,10 +12,11 @@ use crate::account_state::{
 };
 use crate::auth::{account_from_private_path, authorize_private};
 use crate::broker_session::{
-    capabilities_response, instrument_catalog_response, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
-    parse_order_history_path, parse_position_query_path, respond_cbor, stream_agg_trade_batch,
-    stream_candle_batch, stream_fill_history, stream_funding_batch, stream_ledger_batch,
-    stream_order_history, stream_public_trade_batch,
+    capabilities_response, instrument_catalog_response, parse_capabilities_path,
+    parse_open_orders_path, parse_order_book_path, parse_order_history_path,
+    parse_position_query_path, respond_cbor, stream_agg_trade_batch, stream_candle_batch,
+    stream_fill_history, stream_funding_batch, stream_ledger_batch, stream_order_history,
+    stream_public_trade_batch,
 };
 use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_candle_query_path,

@@ -16,8 +16,8 @@ use fig_core::messages::{
     InstrumentCatalogResponse, InstrumentMetadata, MarkPriceUpdate, MarketDataAction,
     MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle, OpenOrdersRequest,
     OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch,
-    OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate,
-    Price, PriceLevel, Quantity, Side, SymbolTicker, TimeInForce,
+    OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price,
+    PriceLevel, Quantity, Side, SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{
     encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch, encode_new_order_single,

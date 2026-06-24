@@ -697,8 +697,7 @@ impl FigConnection {
 
     /// On 0-RTT reconnect, read the first application frame (if any) and restore session state.
     pub async fn try_restore_session_from_first_frame(&self) -> Option<Session> {
-        let result =
-            tokio::time::timeout(Duration::from_millis(250), self.accept_frame()).await;
+        let result = tokio::time::timeout(Duration::from_millis(250), self.accept_frame()).await;
         let Ok(Ok((_, frame))) = result else {
             return None;
         };

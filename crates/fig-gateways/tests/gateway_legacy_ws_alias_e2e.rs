@@ -86,14 +86,26 @@ fn hyperliquid_ws_fixtures() -> Vec<LegacyWsCase> {
     }
 
     vec![
-        hl("trades", serde_json::json!({"type": "trades", "coin": "BTC"}), false),
+        hl(
+            "trades",
+            serde_json::json!({"type": "trades", "coin": "BTC"}),
+            false,
+        ),
         hl(
             "candle",
             serde_json::json!({"type": "candle", "coin": "ETH", "interval": "5m"}),
             false,
         ),
-        hl("l2Book", serde_json::json!({"type": "l2Book", "coin": "BTC"}), false),
-        hl("bbo", serde_json::json!({"type": "bbo", "coin": "BTC"}), false),
+        hl(
+            "l2Book",
+            serde_json::json!({"type": "l2Book", "coin": "BTC"}),
+            false,
+        ),
+        hl(
+            "bbo",
+            serde_json::json!({"type": "bbo", "coin": "BTC"}),
+            false,
+        ),
         hl(
             "orderUpdates",
             serde_json::json!({"type": "orderUpdates", "user": ACCOUNT}),
@@ -190,14 +202,26 @@ fn hyperliquid_ws_fixtures() -> Vec<LegacyWsCase> {
             false,
         ),
         hl("allMids", serde_json::json!({"type": "allMids"}), false),
-        hl("miniTicker", serde_json::json!({"type": "miniTicker"}), false),
+        hl(
+            "miniTicker",
+            serde_json::json!({"type": "miniTicker"}),
+            false,
+        ),
         hl(
             "aggTrades",
             serde_json::json!({"type": "aggTrades", "coin": "BTC"}),
             false,
         ),
-        hl("liquidations", serde_json::json!({"type": "liquidations"}), false),
-        hl("forceOrder", serde_json::json!({"type": "forceOrder"}), false),
+        hl(
+            "liquidations",
+            serde_json::json!({"type": "liquidations"}),
+            false,
+        ),
+        hl(
+            "forceOrder",
+            serde_json::json!({"type": "forceOrder"}),
+            false,
+        ),
         hl(
             "margin",
             serde_json::json!({"type": "margin", "user": ACCOUNT}),
@@ -321,7 +345,9 @@ async fn assert_ws_aliases_round_trip(addr: SocketAddr, cases: &[LegacyWsCase]) 
             .unwrap_or_else(|e| panic!("[{}] {} proxy: {e}", case.source, case.name));
 
         assert!(
-            !frames.iter().any(|f| f.frame_type == FrameType::StreamError),
+            !frames
+                .iter()
+                .any(|f| f.frame_type == FrameType::StreamError),
             "[{}] {} STREAM_ERROR",
             case.source,
             case.name
@@ -377,7 +403,9 @@ async fn legacy_fix_order_aliases_round_trip_through_backend() {
             .unwrap_or_else(|e| panic!("[{}] {} proxy: {e}", case.source, case.name));
 
         assert!(
-            !frames.iter().any(|f| f.frame_type == FrameType::StreamError),
+            !frames
+                .iter()
+                .any(|f| f.frame_type == FrameType::StreamError),
             "[{}] {} STREAM_ERROR",
             case.source,
             case.name
@@ -385,9 +413,7 @@ async fn legacy_fix_order_aliases_round_trip_through_backend() {
 
         let payload_frame = frames
             .iter()
-            .find(|f| {
-                f.frame_type == FrameType::Response || f.frame_type == FrameType::StreamItem
-            })
+            .find(|f| f.frame_type == FrameType::Response || f.frame_type == FrameType::StreamItem)
             .unwrap_or_else(|| {
                 panic!(
                     "[{}] {} missing order ack, got: {:?}",
@@ -414,7 +440,9 @@ async fn legacy_rest_get_aliases_round_trip_through_backend() {
     let caps_raw = b"GET /.well-known/capabilities HTTP/1.1\r\n\r\n";
     let caps_http = parse_http_request(caps_raw).expect("parse capabilities http");
     let caps_frame = http_get_to_fig_request(&caps_http).expect("map capabilities");
-    let caps_frames = proxy_frame(addr, caps_frame).await.expect("proxy capabilities");
+    let caps_frames = proxy_frame(addr, caps_frame)
+        .await
+        .expect("proxy capabilities");
     let caps_resp = caps_frames
         .iter()
         .find(|f| f.frame_type == FrameType::Response)

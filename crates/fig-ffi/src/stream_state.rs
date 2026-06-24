@@ -3,14 +3,14 @@
 use std::slice;
 
 use fig_client::{
-    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState, MidsState,
-    OrdersState, TradeTape,
+    AggTradeState, BboState, FundingState, LedgerState, LiquidationState, MarkPriceState,
+    MidsState, OrdersState, TradeTape,
 };
 use fig_core::codec::decode_cbor;
 use fig_core::messages::{
-    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment,
-    LedgerUpdate, LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot,
-    PublicTradeEvent, UserLiquidation,
+    AggregateTradeEvent, AllMidsBatch, BestBidOffer, ExecutionReport, FundingPayment, LedgerUpdate,
+    LiquidationTradeEvent, MarkPriceUpdate, MiniTicker, OpenOrdersSnapshot, PublicTradeEvent,
+    UserLiquidation,
 };
 
 /// Opaque mids cache for C bindings.
@@ -415,7 +415,9 @@ pub unsafe extern "C" fn fig_funding_apply(
     if handle.is_null() {
         return -1;
     }
-    apply_cbor(payload, len, |p: &FundingPayment| (*handle).state.apply_payment(p))
+    apply_cbor(payload, len, |p: &FundingPayment| {
+        (*handle).state.apply_payment(p)
+    })
 }
 
 #[no_mangle]
@@ -463,7 +465,9 @@ pub unsafe extern "C" fn fig_ledger_apply(
     if handle.is_null() {
         return -1;
     }
-    apply_cbor(payload, len, |u: &LedgerUpdate| (*handle).state.apply_update(u))
+    apply_cbor(payload, len, |u: &LedgerUpdate| {
+        (*handle).state.apply_update(u)
+    })
 }
 
 #[no_mangle]

@@ -52,7 +52,10 @@ fn binding_check_vector(vector: &ConformanceVector) -> Result<(), String> {
         }
         ("cbor", "InstrumentCatalogResponse") => {
             let mut out = empty_buf();
-            assert_eq!(unsafe { fig_cbor_encode_instrument_catalog_response(&mut out) }, 0);
+            assert_eq!(
+                unsafe { fig_cbor_encode_instrument_catalog_response(&mut out) },
+                0
+            );
             unsafe {
                 check_hex(&vector.expected_hex, &buf_slice(&out))?;
                 free_buf(out);

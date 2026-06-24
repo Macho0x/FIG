@@ -201,7 +201,11 @@ fn generate_sbe_imports(
         }
     }
     for name in message_named {
-        if schema.type_defs.iter().any(|td| td.name == name && td.fields.is_none()) {
+        if schema
+            .type_defs
+            .iter()
+            .any(|td| td.name == name && td.fields.is_none())
+        {
             types.insert(name);
         }
     }

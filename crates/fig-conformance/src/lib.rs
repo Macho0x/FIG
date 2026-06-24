@@ -14,11 +14,11 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AggregateTrade, BalanceSnapshot, CandleBar, CandleBarBatch, CapabilitiesResponse, ExecType,
-    ExecutionReport, InstrumentCatalogResponse, MarkPriceUpdate,
-    MarketDataAction, MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle,
-    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch,
-    OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price,
-    Quantity, Side, SymbolTicker, TimeInForce,
+    ExecutionReport, InstrumentCatalogResponse, MarkPriceUpdate, MarketDataAction,
+    MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle, OpenOrdersSnapshot,
+    OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest,
+    OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price, Quantity, Side,
+    SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;

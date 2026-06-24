@@ -125,13 +125,9 @@ impl MatchingEngine {
         let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
         let book = self.book_for(&order.symbol);
         if is_buy {
-            book.asks
-                .best_price()
-                .is_some_and(|ask| ask.0 <= limit_px)
+            book.asks.best_price().is_some_and(|ask| ask.0 <= limit_px)
         } else {
-            book.bids
-                .best_price()
-                .is_some_and(|bid| bid.0 >= limit_px)
+            book.bids.best_price().is_some_and(|bid| bid.0 >= limit_px)
         }
     }
 
