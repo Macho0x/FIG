@@ -5,7 +5,7 @@ use fig_core::messages::{
     AggregateTrade, AggregateTradeEvent, FundingPayment, LedgerUpdate, LedgerUpdateKind,
     LiquidationTrade, LiquidationTradeEvent, Price, Quantity, Side, UserLiquidation,
 };
-use fig_ffi::{
+use fig_ffi::stream_state::{
     fig_agg_trades_apply, fig_agg_trades_free, fig_agg_trades_latest_price, fig_agg_trades_len,
     fig_agg_trades_new, fig_funding_apply, fig_funding_free, fig_funding_latest_amount,
     fig_funding_len, fig_funding_new, fig_ledger_apply, fig_ledger_free, fig_ledger_len,
