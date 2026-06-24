@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use fig_bench::criterion_config::criterion;
 
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::messages::{
@@ -106,13 +107,14 @@ fn bench_sbe_encode_execution_report(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_cbor_encode_order,
-    bench_cbor_decode_order,
-    bench_sbe_encode_order,
-    bench_sbe_decode_order,
-    bench_cbor_encode_execution_report,
-    bench_sbe_encode_execution_report,
-);
+criterion_group! {
+    name = benches;
+    config = criterion();
+    targets = bench_cbor_encode_order,
+        bench_cbor_decode_order,
+        bench_sbe_encode_order,
+        bench_sbe_decode_order,
+        bench_cbor_encode_execution_report,
+        bench_sbe_encode_execution_report,
+}
 criterion_main!(benches);

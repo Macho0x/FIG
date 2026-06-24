@@ -3,6 +3,7 @@
 //! Criterion microbenches live under `benches/`. Tail-latency percentile
 //! reporting is in [`latency`] and exposed via the `fig-latency` binary.
 
+pub mod criterion_config;
 pub mod latency;
 pub mod matching_latency;
 

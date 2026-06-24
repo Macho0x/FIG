@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use fig_bench::criterion_config::criterion;
 
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
@@ -43,35 +44,35 @@ fn bench_decoder_reuse(c: &mut Criterion) {
 }
 
 #[cfg(feature = "alloc")]
-fn bench_preallocated_encode_buffer(c: &mut Criterion) {
+fn bench_encode_into_reused_vec(c: &mut Criterion) {
     let frame = make_payload_frame(4);
     let mut buf = vec![0u8; frame.encoded_size()];
-    c.bench_function("encode_preallocated_buffer_4kb", |b| {
+    c.bench_function("encode_into_reused_vec_4kb", |b| {
         b.iter(|| {
             let encoded = frame.encode().unwrap();
-            if encoded.len() <= buf.len() {
-                buf[..encoded.len()].copy_from_slice(&encoded);
-            }
+            buf[..encoded.len()].copy_from_slice(&encoded);
             black_box(&buf[..encoded.len()]);
         });
     });
 }
 
 #[cfg(feature = "alloc")]
-criterion_group!(
-    alloc_benches,
-    bench_encode_allocating,
-    bench_decode_allocating,
-    bench_decoder_reuse,
-    bench_preallocated_encode_buffer
-);
+criterion_group! {
+    name = alloc_benches;
+    config = criterion();
+    targets = bench_encode_allocating,
+        bench_decode_allocating,
+        bench_decoder_reuse,
+        bench_encode_into_reused_vec,
+}
 
 #[cfg(not(feature = "alloc"))]
-criterion_group!(
-    alloc_benches,
-    bench_encode_allocating,
-    bench_decode_allocating,
-    bench_decoder_reuse
-);
+criterion_group! {
+    name = alloc_benches;
+    config = criterion();
+    targets = bench_encode_allocating,
+        bench_decode_allocating,
+        bench_decoder_reuse,
+}
 
 criterion_main!(alloc_benches);

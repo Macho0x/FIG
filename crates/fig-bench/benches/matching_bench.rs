@@ -1,6 +1,5 @@
-use std::time::Duration;
-
-use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode, Throughput};
+use fig_bench::criterion_config::criterion_slow;
 
 use fig_core::messages::{
     CancelRequest, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
@@ -66,10 +65,9 @@ fn make_resting_order(id: &str, side: Side, symbol: &str, price: f64, qty: f64) 
 fn bench_order_book_add(c: &mut Criterion) {
     let mut group = c.benchmark_group("matching");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(30);
-    group.measurement_time(Duration::from_secs(5));
+    group.throughput(Throughput::Elements(1000));
 
-    group.bench_function("order_book_add", |b| {
+    group.bench_function("order_book_add_1000", |b| {
         b.iter(|| {
             let mut book = OrderBook::new("AAPL".to_string());
             for i in 0..1000 {
@@ -84,13 +82,23 @@ fn bench_order_book_add(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_order_book_add_single(c: &mut Criterion) {
+    let order = make_resting_order("ORD-1", Side::Buy, "AAPL", 100.0, 10.0);
+    c.bench_function("order_book_add_single", |b| {
+        b.iter(|| {
+            let mut book = OrderBook::new("AAPL".to_string());
+            book.add_order(black_box(order.clone()));
+            black_box(book);
+        })
+    });
+}
+
 fn bench_matching_engine_process_order(c: &mut Criterion) {
     let market_buy = make_market_order("MB-1", Side::Buy, "AAPL", 100.0);
 
     let mut group = c.benchmark_group("matching");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(30);
-    group.measurement_time(Duration::from_secs(5));
+    group.throughput(Throughput::Elements(501));
 
     group.bench_function("matching_engine_process_order", |b| {
         b.iter(|| {
@@ -114,11 +122,7 @@ fn bench_matching_engine_process_order(c: &mut Criterion) {
 }
 
 fn bench_matching_engine_cancel(c: &mut Criterion) {
-    let mut group = c.benchmark_group("matching");
-    group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(50);
-
-    group.bench_function("matching_engine_cancel", |b| {
+    c.bench_function("matching_engine_cancel", |b| {
         b.iter(|| {
             let mut engine = MatchingEngine::new();
             let order = make_limit_order("CXL-1", Side::Buy, "AAPL", 100.0, 50.0);
@@ -135,13 +139,14 @@ fn bench_matching_engine_cancel(c: &mut Criterion) {
             black_box(cancelled);
         })
     });
-    group.finish();
 }
 
-criterion_group!(
-    benches,
-    bench_order_book_add,
-    bench_matching_engine_process_order,
-    bench_matching_engine_cancel,
-);
+criterion_group! {
+    name = benches;
+    config = criterion_slow();
+    targets = bench_order_book_add,
+        bench_order_book_add_single,
+        bench_matching_engine_process_order,
+        bench_matching_engine_cancel,
+}
 criterion_main!(benches);

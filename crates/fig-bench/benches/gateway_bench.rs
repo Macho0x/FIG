@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use fig_bench::criterion_config::criterion;
 
 use fig_core::messages::{
     ExecType, ExecutionReport, NewOrderSingle, OrdStatus, Price, Quantity, Side,
@@ -180,17 +181,33 @@ fn bench_ws_serialize_text_frame(c: &mut Criterion) {
 // ─── Protocol comparison benchmarks ─────────────────────────────
 
 fn bench_protocol_comparison_new_order(c: &mut Criterion) {
-    use fig_core::ext::{Extension, ExtensionTag};
-    use fig_core::frame::{Frame, FrameType};
+    use fig_core::messages::{
+        NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
+    };
+    use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
     use fig_gateways::rest::{http_to_fig_frame, parse_http_request};
 
     let fix_msg = make_fix_new_order_single_bytes();
     let fix_tags = parse_fix_message(&fix_msg).unwrap();
     let http_bytes = b"POST /trading/orders HTTP/1.1\r\nContent-Type: application/json\r\n\r\n{\"cl_ord_id\":\"ORD-1\",\"symbol\":\"AAPL\",\"side\":\"Buy\",\"order_qty\":100,\"price\":150.25}";
 
-    let fig_frame = Frame::new(FrameType::Request, 1)
-        .with_extension(Extension::text(ExtensionTag::ChannelPath, "trading/orders"))
-        .with_payload(vec![]);
+    let order = NewOrderSingle {
+        cl_ord_id: "ORD-001".to_string(),
+        side: Side::Buy,
+        order_qty: Quantity(100.0),
+        price: Some(Price(150.25)),
+        stop_price: None,
+        symbol: "AAPL".to_string(),
+        order_type: OrderType::Limit,
+        time_in_force: TimeInForce::Day,
+        expire_time: None,
+        account: Some("ACCT-123".to_string()),
+        strategy_id: None,
+        security_id: None,
+        id_source: None,
+        security_exchange: None,
+    };
+    let sbe_wire = encode_new_order_single(&order);
 
     let mut group = c.benchmark_group("protocol_comparison_new_order");
     group.bench_function("fix_parse", |b| {
@@ -199,10 +216,16 @@ fn bench_protocol_comparison_new_order(c: &mut Criterion) {
             black_box(tags);
         })
     });
-    group.bench_function("fig_native_encode", |b| {
+    group.bench_function("sbe_encode_order", |b| {
         b.iter(|| {
-            let encoded = black_box(&fig_frame).encode().unwrap();
+            let encoded = encode_new_order_single(black_box(&order));
             black_box(encoded);
+        })
+    });
+    group.bench_function("sbe_decode_order", |b| {
+        b.iter(|| {
+            let decoded = decode_new_order_single(black_box(&sbe_wire)).unwrap();
+            black_box(decoded);
         })
     });
     group.bench_function("rest_parse", |b| {
@@ -227,16 +250,17 @@ fn bench_protocol_comparison_new_order(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    bench_fix_parse,
-    bench_fix_serialize,
-    bench_fix_to_fig_order,
-    bench_fig_to_fix_execution_report,
-    bench_rest_parse_request,
-    bench_rest_serialize_response,
-    bench_ws_parse_text_frame,
-    bench_ws_serialize_text_frame,
-    bench_protocol_comparison_new_order,
-);
+criterion_group! {
+    name = benches;
+    config = criterion();
+    targets = bench_fix_parse,
+        bench_fix_serialize,
+        bench_fix_to_fig_order,
+        bench_fig_to_fix_execution_report,
+        bench_rest_parse_request,
+        bench_rest_serialize_response,
+        bench_ws_parse_text_frame,
+        bench_ws_serialize_text_frame,
+        bench_protocol_comparison_new_order,
+}
 criterion_main!(benches);

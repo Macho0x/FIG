@@ -65,6 +65,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Run codec benchmarks (smoke)
+        run: cargo bench -p fig-bench --bench codec_bench -- --sample-size 10
       - name: Run frame benchmarks (smoke)
         run: cargo bench -p fig-bench --bench frame_bench -- --sample-size 10
       - name: Run transport benchmarks (smoke)

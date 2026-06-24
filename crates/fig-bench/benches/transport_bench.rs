@@ -1,7 +1,7 @@
 use std::cell::Cell;
-use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
+use fig_bench::criterion_config::criterion_slow;
 use fig_core::frame::Frame;
 use fig_core::transport::{
     client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
@@ -19,8 +19,6 @@ fn tree_ping_pong_cold_start(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("transport");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(10);
-    group.measurement_time(Duration::from_secs(1));
 
     group.bench_function("tree_ping_pong_cold_start", |b| {
         b.iter(|| {
@@ -85,8 +83,6 @@ fn tree_ping_pong_steady_state(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("transport");
     group.sampling_mode(SamplingMode::Flat);
-    group.sample_size(10);
-    group.measurement_time(Duration::from_secs(1));
 
     group.bench_function("tree_ping_pong_steady_state", |b| {
         b.iter(|| {
@@ -114,9 +110,10 @@ fn tree_ping_pong_steady_state(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    tree_ping_pong_cold_start,
-    tree_ping_pong_steady_state
-);
+criterion_group! {
+    name = benches;
+    config = criterion_slow();
+    targets = tree_ping_pong_cold_start,
+        tree_ping_pong_steady_state,
+}
 criterion_main!(benches);

@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use fig_bench::criterion_config::criterion;
 
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
@@ -77,11 +78,12 @@ fn bench_frame_encode_large_payload(c: &mut Criterion) {
     });
 }
 
-criterion_group!(
-    benches,
-    bench_frame_encode,
-    bench_frame_decode,
-    bench_frame_decoder_streaming,
-    bench_frame_encode_large_payload,
-);
+criterion_group! {
+    name = benches;
+    config = criterion();
+    targets = bench_frame_encode,
+        bench_frame_decode,
+        bench_frame_decoder_streaming,
+        bench_frame_encode_large_payload,
+}
 criterion_main!(benches);
