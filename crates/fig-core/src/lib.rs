@@ -63,7 +63,6 @@
 //! | [`tcp`] | TCP downgrade transport (`FIG\x01` magic prefix) |
 //! | [`migration`] | Connection migration tokens and channel reconstruction |
 //! | [`codec`] | CBOR encode/decode helpers; JSON ↔ CBOR for gateways |
-//! | [`protobuf`] | Protobuf wire encoding for schema-evolving payloads |
 //! | [`compression`] | zstd payload compression |
 //! | [`fragment`] | Payload fragmentation and reassembly |
 //! | [`sbe`] | SBE binary encoder/decoder for trading messages (zero-alloc) |
@@ -89,15 +88,14 @@ pub mod error;
 pub mod ext;
 pub mod fragment;
 pub mod frame;
+pub mod generated;
 pub mod jwt;
 pub mod messages;
 pub mod migration;
 pub mod oauth;
 pub mod observability;
-pub mod protobuf;
 pub mod rate_limit;
 pub mod sbe;
-pub mod sbe_stream;
 pub mod session;
 pub mod tcp;
 pub mod trace;
@@ -118,7 +116,6 @@ pub use jwt::*;
 pub use migration::*;
 pub use oauth::*;
 pub use observability::*;
-pub use protobuf::*;
 pub use rate_limit::*;
 pub use sbe::*;
 pub use session::*;

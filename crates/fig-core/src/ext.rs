@@ -11,7 +11,6 @@ use crate::FrameResult;
 pub const CONTENT_TYPE_CBOR: &str = "application/cbor";
 pub const CONTENT_TYPE_SBE: &str = "application/fig+sbe";
 pub const CONTENT_TYPE_JSON: &str = "application/json";
-pub const CONTENT_TYPE_PROTOBUF: &str = "application/x-protobuf";
 
 // ─── Extension Tag ──────────────────────────────────────────────
 
@@ -541,6 +540,5 @@ mod tests {
         assert_eq!(CONTENT_TYPE_CBOR, "application/cbor");
         assert_eq!(CONTENT_TYPE_SBE, "application/fig+sbe");
         assert_eq!(CONTENT_TYPE_JSON, "application/json");
-        assert_eq!(CONTENT_TYPE_PROTOBUF, "application/x-protobuf");
     }
 }

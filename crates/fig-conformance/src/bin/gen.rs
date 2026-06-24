@@ -19,9 +19,8 @@ use fig_core::messages::{
     OrderListStatusStatus, OrderType, PositionUpdate, Price, PriceLevel, Quantity, Side,
     SymbolTicker, TimeInForce,
 };
-use fig_core::sbe::encode_new_order_single;
-use fig_core::sbe_stream::{
-    encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
+use fig_core::sbe::{
+    encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch, encode_new_order_single,
     encode_order_book_snapshot, encode_symbol_ticker,
 };
 

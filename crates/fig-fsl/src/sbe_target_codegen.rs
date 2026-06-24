@@ -4,10 +4,9 @@
 
 use crate::ast::*;
 use crate::sbe_codegen::{
-    compute_block_length, encoder_params, generate_decode_field, generate_encode_field,
-    generate_sbe_enum, generate_sbe_inline_struct, generate_sbe_message_decoder,
-    generate_sbe_message_encoder, pascal_case, sbe_field_type_name_for_message,
-    sbe_field_wire_type, sbe_named_type_to_wire_type,
+    compute_block_length, encoder_params, generate_sbe_enum, generate_sbe_inline_struct,
+    generate_sbe_message_decoder, generate_sbe_message_encoder, pascal_case,
+    sbe_field_type_name_for_message, sbe_field_wire_type, sbe_named_type_to_wire_type,
 };
 
 const SCHEMA_ID: u16 = 0x01;
@@ -580,7 +579,6 @@ fn decode_header(lang: SbeTargetLang, decoder_name: &str, template_id: u16) -> S
 }
 
 fn target_encode_field(lang: SbeTargetLang, field: &Field, msg: &Message, buf_var: &str) -> String {
-    let _ = generate_encode_field(field, msg, "buf");
     let field_name = &field.name;
     let pname = target_param_name(lang, field_name);
     let optional = field.optional;
@@ -754,7 +752,6 @@ fn target_decode_field(
     msg: &Message,
     decoder_name: &str,
 ) -> String {
-    let _ = generate_decode_field(field, msg);
     let var = field.name.clone();
     let optional = field.optional;
     let mut out = String::new();
@@ -916,7 +913,9 @@ fn decode_u8(lang: SbeTargetLang, var: &str, optional: bool, out: &mut String) {
 }
 
 fn generate_target_message_encoder(lang: SbeTargetLang, msg: &Message, template_id: u16) -> String {
-    let _ = generate_sbe_message_encoder(msg, template_id, &[]);
+    let empty_structs = std::collections::HashSet::new();
+    let empty_messages = std::collections::HashSet::new();
+    let _ = generate_sbe_message_encoder(msg, template_id, &empty_structs, &empty_messages);
     let block_length = compute_block_length(&msg.fields);
     let _ = encoder_params(msg);
     let params = target_encoder_params(lang, msg);
@@ -958,7 +957,9 @@ fn generate_target_message_encoder(lang: SbeTargetLang, msg: &Message, template_
 }
 
 fn generate_target_message_decoder(lang: SbeTargetLang, msg: &Message, template_id: u16) -> String {
-    let _ = generate_sbe_message_decoder(msg, template_id, &[]);
+    let empty_structs = std::collections::HashSet::new();
+    let empty_messages = std::collections::HashSet::new();
+    let _ = generate_sbe_message_decoder(msg, template_id, &empty_structs, &empty_messages);
     let decoder_name = format!("{}Decoder", msg.name);
 
     let mut fields_decl = String::new();

@@ -152,93 +152,11 @@ impl FixSeqStore for FileFixSeqStore {
     }
 }
 
-/// Redis-backed sequence store (production API, in-memory backend for CI).
-#[derive(Debug)]
-pub struct RedisFixSeqStore {
-    prefix: String,
-    inner: MemoryFixSeqStore,
-}
-
-impl RedisFixSeqStore {
-    pub fn new(redis_url: &str) -> Self {
-        let prefix = redis_url
-            .trim_start_matches("redis://")
-            .split('/')
-            .next()
-            .unwrap_or("fig")
-            .to_string();
-        Self {
-            prefix: format!("{prefix}:fix-seq"),
-            inner: MemoryFixSeqStore::new(),
-        }
-    }
-
-    pub fn key(&self, session_key: &str) -> String {
-        format!("{}:{}", self.prefix, session_key)
-    }
-}
-
-impl FixSeqStore for RedisFixSeqStore {
-    fn get(&self, session_key: &str) -> Result<Option<FixSeqState>, FixSeqStoreError> {
-        self.inner.get(&self.key(session_key))
-    }
-
-    fn put(&self, session_key: &str, state: &FixSeqState) -> Result<(), FixSeqStoreError> {
-        self.inner.put(&self.key(session_key), state)
-    }
-
-    fn delete(&self, session_key: &str) -> Result<(), FixSeqStoreError> {
-        self.inner.delete(&self.key(session_key))
-    }
-}
-
-/// etcd-backed sequence store (production API, in-memory backend for CI).
-#[derive(Debug)]
-pub struct EtcdFixSeqStore {
-    prefix: String,
-    inner: MemoryFixSeqStore,
-}
-
-impl EtcdFixSeqStore {
-    pub fn new(etcd_endpoint: &str) -> Self {
-        let host = etcd_endpoint
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split('/')
-            .next()
-            .unwrap_or("localhost:2379");
-        Self {
-            prefix: format!("/fig/{}/fix-seq", host.replace(':', "_")),
-            inner: MemoryFixSeqStore::new(),
-        }
-    }
-
-    pub fn key(&self, session_key: &str) -> String {
-        format!("{}/{}", self.prefix, session_key.replace(':', "/"))
-    }
-}
-
-impl FixSeqStore for EtcdFixSeqStore {
-    fn get(&self, session_key: &str) -> Result<Option<FixSeqState>, FixSeqStoreError> {
-        self.inner.get(&self.key(session_key))
-    }
-
-    fn put(&self, session_key: &str, state: &FixSeqState) -> Result<(), FixSeqStoreError> {
-        self.inner.put(&self.key(session_key), state)
-    }
-
-    fn delete(&self, session_key: &str) -> Result<(), FixSeqStoreError> {
-        self.inner.delete(&self.key(session_key))
-    }
-}
-
 /// Backend selector for the gateway CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixSeqStoreBackend {
     Memory,
     File,
-    Redis,
-    Etcd,
 }
 
 impl FixSeqStoreBackend {
@@ -246,24 +164,16 @@ impl FixSeqStoreBackend {
         match s.to_ascii_lowercase().as_str() {
             "memory" => Some(Self::Memory),
             "file" => Some(Self::File),
-            "redis" => Some(Self::Redis),
-            "etcd" => Some(Self::Etcd),
             _ => None,
         }
     }
 }
 
 /// Build a shared sequence store from CLI/backend configuration.
-pub fn build_seq_store(
-    backend: FixSeqStoreBackend,
-    path: &Path,
-    url: &str,
-) -> Arc<dyn FixSeqStore> {
+pub fn build_seq_store(backend: FixSeqStoreBackend, path: &Path) -> Arc<dyn FixSeqStore> {
     match backend {
         FixSeqStoreBackend::Memory => Arc::new(MemoryFixSeqStore::new()),
         FixSeqStoreBackend::File => Arc::new(FileFixSeqStore::new(path)),
-        FixSeqStoreBackend::Redis => Arc::new(RedisFixSeqStore::new(url)),
-        FixSeqStoreBackend::Etcd => Arc::new(EtcdFixSeqStore::new(url)),
     }
 }
 
@@ -296,20 +206,6 @@ mod tests {
     fn test_file_fix_seq_store() {
         let dir = std::env::temp_dir().join(format!("fig-fix-seq-{}", uuid::Uuid::new_v4()));
         run_store_tests(FileFixSeqStore::new(&dir));
-    }
-
-    #[test]
-    fn test_redis_fix_seq_store() {
-        let store = RedisFixSeqStore::new("redis://127.0.0.1:6379/fig");
-        assert!(store.key("A:B").contains("fix-seq"));
-        run_store_tests(store);
-    }
-
-    #[test]
-    fn test_etcd_fix_seq_store() {
-        let store = EtcdFixSeqStore::new("http://127.0.0.1:2379");
-        assert!(store.key("A:B").contains("fix-seq"));
-        run_store_tests(store);
     }
 
     #[test]

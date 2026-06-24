@@ -49,15 +49,12 @@ struct Args {
     /// Enable TLS on the FIX acceptor
     #[arg(long)]
     fix_tls: bool,
-    /// FIX sequence store backend: memory, file, redis, etcd
+    /// FIX sequence store backend: memory, file
     #[arg(long, default_value = "memory")]
     fix_seq_store: String,
     /// Directory for file-backed FIX sequence store
     #[arg(long, default_value = "/tmp/fig-fix-seq")]
     fix_seq_path: PathBuf,
-    /// Redis/etcd URL for shared FIX sequence store
-    #[arg(long, default_value = "redis://127.0.0.1:6379/fig")]
-    fix_seq_url: String,
     /// Optional FIG backend to proxy translated frames (host:port)
     #[arg(long)]
     fig_backend: Option<SocketAddr>,
@@ -70,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 
     let seq_backend = FixSeqStoreBackend::parse(&args.fix_seq_store)
         .ok_or_else(|| anyhow::anyhow!("invalid --fix-seq-store: {}", args.fix_seq_store))?;
-    let seq_store = build_seq_store(seq_backend, &args.fix_seq_path, &args.fix_seq_url);
+    let seq_store = build_seq_store(seq_backend, &args.fix_seq_path);
 
     info!("FIG gateway starting");
     info!("  REST: {}", args.rest_addr);

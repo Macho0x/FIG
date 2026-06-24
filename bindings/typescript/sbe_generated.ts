@@ -1378,7 +1378,8 @@ export function MarkPriceUpdateEncoderEncode(symbol string, mark_price number, i
   writeF64BE(buf, mark_price);
   writeF64BE(buf, index_price ?? 0);
   buf.push(index_price != null ? 1 : 0);
-  if (funding_rate != null) { buf.push(1); writeI64BE(buf, funding_rate); } else { buf.push(0); }
+  writeF64BE(buf, funding_rate ?? 0);
+  buf.push(funding_rate != null ? 1 : 0);
   writeI64BE(buf, timestamp);
   buf.push(is_snapshot ?? 0);
   buf.push(is_snapshot != null ? 1 : 0);
@@ -1409,8 +1410,8 @@ export function MarkPriceUpdateDecoderDecode(buf: Uint8Array): MarkPriceUpdateDe
   const mark_price = readF64BE(buf, pos);
   const index_priceRaw = readF64BE(buf, pos);
   const index_price = buf[pos.value++] === 1 ? index_priceRaw : null;
-  let funding_rate: bigint | null = null;
-  if (buf[pos.value++] === 1) funding_rate = readI64BE(buf, pos);
+  const funding_rateRaw = readF64BE(buf, pos);
+  const funding_rate = buf[pos.value++] === 1 ? funding_rateRaw : null;
   const timestamp = readI64BE(buf, pos);
   const v = buf[pos.value++];
   const is_snapshot = buf[pos.value++] === 1 ? v : null;
@@ -1885,8 +1886,8 @@ export function SymbolTickerEncoderEncode(symbol string, last_price number, pric
   // Fixed fields
   writeString(buf, symbol);
   writeF64BE(buf, last_price);
-  writeI64BE(buf, price_change);
-  writeI64BE(buf, price_change_pct);
+  writeF64BE(buf, price_change);
+  writeF64BE(buf, price_change_pct);
   writeF64BE(buf, volume);
   writeF64BE(buf, high);
   writeF64BE(buf, low);
@@ -1923,8 +1924,8 @@ export function SymbolTickerDecoderDecode(buf: Uint8Array): SymbolTickerDecoder 
   if (tmplId !== 27) throw new Error('invalid template_id');
   const symbol = readString(buf, pos);
   const last_price = readF64BE(buf, pos);
-  const price_change = readI64BE(buf, pos);
-  const price_change_pct = readI64BE(buf, pos);
+  const price_change = readF64BE(buf, pos);
+  const price_change_pct = readF64BE(buf, pos);
   const volume = readF64BE(buf, pos);
   const high = readF64BE(buf, pos);
   const low = readF64BE(buf, pos);
@@ -1994,8 +1995,8 @@ export function AccountSummaryEncoderEncode(account string, balance number, buyi
 
   // Fixed fields
   writeString(buf, account);
-  writeI64BE(buf, balance);
-  writeI64BE(buf, buying_power);
+  writeF64BE(buf, balance);
+  writeF64BE(buf, buying_power);
   writeString(buf, currency);
 
   return new Uint8Array(buf);
@@ -2019,8 +2020,8 @@ export function AccountSummaryDecoderDecode(buf: Uint8Array): AccountSummaryDeco
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
   if (tmplId !== 29) throw new Error('invalid template_id');
   const account = readString(buf, pos);
-  const balance = readI64BE(buf, pos);
-  const buying_power = readI64BE(buf, pos);
+  const balance = readF64BE(buf, pos);
+  const buying_power = readF64BE(buf, pos);
   const currency = readString(buf, pos);
   return {
     account: account,
@@ -2042,11 +2043,11 @@ export function MarginSummaryEncoderEncode(account string, balance number, buyin
 
   // Fixed fields
   writeString(buf, account);
-  writeI64BE(buf, balance);
-  writeI64BE(buf, buying_power);
-  writeI64BE(buf, equity);
-  writeI64BE(buf, margin_used);
-  writeI64BE(buf, available);
+  writeF64BE(buf, balance);
+  writeF64BE(buf, buying_power);
+  writeF64BE(buf, equity);
+  writeF64BE(buf, margin_used);
+  writeF64BE(buf, available);
   writeString(buf, currency);
 
   return new Uint8Array(buf);
@@ -2073,11 +2074,11 @@ export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummaryDecode
   if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
   if (tmplId !== 30) throw new Error('invalid template_id');
   const account = readString(buf, pos);
-  const balance = readI64BE(buf, pos);
-  const buying_power = readI64BE(buf, pos);
-  const equity = readI64BE(buf, pos);
-  const margin_used = readI64BE(buf, pos);
-  const available = readI64BE(buf, pos);
+  const balance = readF64BE(buf, pos);
+  const buying_power = readF64BE(buf, pos);
+  const equity = readF64BE(buf, pos);
+  const margin_used = readF64BE(buf, pos);
+  const available = readF64BE(buf, pos);
   const currency = readString(buf, pos);
   return {
     account: account,
@@ -2158,9 +2159,9 @@ export function BalanceUpdateEncoderEncode(account string, asset string, delta n
   // Fixed fields
   writeString(buf, account);
   writeString(buf, asset);
-  writeI64BE(buf, delta);
-  writeI64BE(buf, total);
-  writeI64BE(buf, available);
+  writeF64BE(buf, delta);
+  writeF64BE(buf, total);
+  writeF64BE(buf, available);
   buf.push(BalanceUpdateReasonToValue(reason));
 
   return new Uint8Array(buf);
@@ -2187,9 +2188,9 @@ export function BalanceUpdateDecoderDecode(buf: Uint8Array): BalanceUpdateDecode
   if (tmplId !== 32) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
-  const delta = readI64BE(buf, pos);
-  const total = readI64BE(buf, pos);
-  const available = readI64BE(buf, pos);
+  const delta = readF64BE(buf, pos);
+  const total = readF64BE(buf, pos);
+  const available = readF64BE(buf, pos);
   const reasonRaw = buf[pos.value++];
   const reason = BalanceUpdateReasonFromValue(reasonRaw);
   if (reason == null) throw new Error('invalid BalanceUpdateReason');
@@ -2273,7 +2274,7 @@ export function PositionUpdateEncoderEncode(account string, symbol string, qty n
   writeString(buf, symbol);
   writeF64BE(buf, qty);
   writeF64BE(buf, entry_price);
-  writeI64BE(buf, unrealized_pnl);
+  writeF64BE(buf, unrealized_pnl);
 
   return new Uint8Array(buf);
 }
@@ -2300,7 +2301,7 @@ export function PositionUpdateDecoderDecode(buf: Uint8Array): PositionUpdateDeco
   const symbol = readString(buf, pos);
   const qty = readF64BE(buf, pos);
   const entry_price = readF64BE(buf, pos);
-  const unrealized_pnl = readI64BE(buf, pos);
+  const unrealized_pnl = readF64BE(buf, pos);
   return {
     account: account,
     symbol: symbol,
@@ -2590,8 +2591,8 @@ export function FundingPaymentEncoderEncode(account string, symbol string | null
   // Fixed fields
   writeString(buf, account);
   if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-  writeI64BE(buf, amount);
-  writeI64BE(buf, rate);
+  writeF64BE(buf, amount);
+  writeF64BE(buf, rate);
   writeI64BE(buf, timestamp);
 
   return new Uint8Array(buf);
@@ -2618,8 +2619,8 @@ export function FundingPaymentDecoderDecode(buf: Uint8Array): FundingPaymentDeco
   const account = readString(buf, pos);
   let symbol: string | null;
   if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
-  const amount = readI64BE(buf, pos);
-  const rate = readI64BE(buf, pos);
+  const amount = readF64BE(buf, pos);
+  const rate = readF64BE(buf, pos);
   const timestamp = readI64BE(buf, pos);
   return {
     account: account,
@@ -2756,7 +2757,7 @@ export function LedgerUpdateEncoderEncode(account string, asset string, delta nu
   // Fixed fields
   writeString(buf, account);
   writeString(buf, asset);
-  writeI64BE(buf, delta);
+  writeF64BE(buf, delta);
   buf.push(LedgerUpdateKindToValue(kind));
   writeI64BE(buf, timestamp);
   if (reference_id != null) { buf.push(1); writeString(buf, reference_id); } else { buf.push(0); }
@@ -2785,7 +2786,7 @@ export function LedgerUpdateDecoderDecode(buf: Uint8Array): LedgerUpdateDecoder 
   if (tmplId !== 43) throw new Error('invalid template_id');
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
-  const delta = readI64BE(buf, pos);
+  const delta = readF64BE(buf, pos);
   const kindRaw = buf[pos.value++];
   const kind = LedgerUpdateKindFromValue(kindRaw);
   if (kind == null) throw new Error('invalid LedgerUpdateKind');

@@ -1435,7 +1435,8 @@ pub const MarkPriceUpdateEncoder = struct {
         try writeF64BE(&buf, mark_price);
         try writeF64BE(&buf, index_price orelse 0);
         try buf.append(if (index_price != null) 1 else 0);
-        if (funding_rate) |v| { try buf.append(1); try writeI64BE(&buf, v); } else { try buf.append(0); }
+        try writeF64BE(&buf, funding_rate orelse 0);
+        try buf.append(if (funding_rate != null) 1 else 0);
         try writeI64BE(&buf, timestamp);
         try buf.append(is_snapshot orelse 0);
         try buf.append(if (is_snapshot != null) 1 else 0);
@@ -1467,8 +1468,9 @@ pub const MarkPriceUpdateDecoder = struct {
         const index_price_raw = readF64BE(buf, &pos);
         var index_price: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; index_price = index_price_raw; } else { pos += 1; }
-        var funding_rate: ?i64 = null;
-        if (buf[pos] == 1) { pos += 1; funding_rate = readI64BE(buf, &pos); } else { pos += 1; }
+        const funding_rate_raw = readF64BE(buf, &pos);
+        var funding_rate: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; funding_rate = funding_rate_raw; } else { pos += 1; }
         const timestamp = readI64BE(buf, &pos);
         const v = buf[pos];
         pos += 1;
@@ -1975,8 +1977,8 @@ pub const SymbolTickerEncoder = struct {
         // Fixed fields
         try writeString(&buf, symbol);
         try writeF64BE(&buf, last_price);
-        try writeI64BE(&buf, price_change);
-        try writeI64BE(&buf, price_change_pct);
+        try writeF64BE(&buf, price_change);
+        try writeF64BE(&buf, price_change_pct);
         try writeF64BE(&buf, volume);
         try writeF64BE(&buf, high);
         try writeF64BE(&buf, low);
@@ -2013,8 +2015,8 @@ pub const SymbolTickerDecoder = struct {
         if (tmpl_id != 27) return error.InvalidTemplateId;
         const symbol = try readString(buf, &pos, allocator);
         const last_price = readF64BE(buf, &pos);
-        const price_change = readI64BE(buf, &pos);
-        const price_change_pct = readI64BE(buf, &pos);
+        const price_change = readF64BE(buf, &pos);
+        const price_change_pct = readF64BE(buf, &pos);
         const volume = readF64BE(buf, &pos);
         const high = readF64BE(buf, &pos);
         const low = readF64BE(buf, &pos);
@@ -2090,8 +2092,8 @@ pub const AccountSummaryEncoder = struct {
 
         // Fixed fields
         try writeString(&buf, account);
-        try writeI64BE(&buf, balance);
-        try writeI64BE(&buf, buying_power);
+        try writeF64BE(&buf, balance);
+        try writeF64BE(&buf, buying_power);
         try writeString(&buf, currency);
 
         return buf.toOwnedSlice();
@@ -2115,8 +2117,8 @@ pub const AccountSummaryDecoder = struct {
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
         if (tmpl_id != 29) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
-        const balance = readI64BE(buf, &pos);
-        const buying_power = readI64BE(buf, &pos);
+        const balance = readF64BE(buf, &pos);
+        const buying_power = readF64BE(buf, &pos);
         const currency = try readString(buf, &pos, allocator);
         return .{
             .account = account,
@@ -2140,11 +2142,11 @@ pub const MarginSummaryEncoder = struct {
 
         // Fixed fields
         try writeString(&buf, account);
-        try writeI64BE(&buf, balance);
-        try writeI64BE(&buf, buying_power);
-        try writeI64BE(&buf, equity);
-        try writeI64BE(&buf, margin_used);
-        try writeI64BE(&buf, available);
+        try writeF64BE(&buf, balance);
+        try writeF64BE(&buf, buying_power);
+        try writeF64BE(&buf, equity);
+        try writeF64BE(&buf, margin_used);
+        try writeF64BE(&buf, available);
         try writeString(&buf, currency);
 
         return buf.toOwnedSlice();
@@ -2171,11 +2173,11 @@ pub const MarginSummaryDecoder = struct {
         if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
         if (tmpl_id != 30) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
-        const balance = readI64BE(buf, &pos);
-        const buying_power = readI64BE(buf, &pos);
-        const equity = readI64BE(buf, &pos);
-        const margin_used = readI64BE(buf, &pos);
-        const available = readI64BE(buf, &pos);
+        const balance = readF64BE(buf, &pos);
+        const buying_power = readF64BE(buf, &pos);
+        const equity = readF64BE(buf, &pos);
+        const margin_used = readF64BE(buf, &pos);
+        const available = readF64BE(buf, &pos);
         const currency = try readString(buf, &pos, allocator);
         return .{
             .account = account,
@@ -2263,9 +2265,9 @@ pub const BalanceUpdateEncoder = struct {
         // Fixed fields
         try writeString(&buf, account);
         try writeString(&buf, asset);
-        try writeI64BE(&buf, delta);
-        try writeI64BE(&buf, total);
-        try writeI64BE(&buf, available);
+        try writeF64BE(&buf, delta);
+        try writeF64BE(&buf, total);
+        try writeF64BE(&buf, available);
         try buf.append(BalanceUpdateReasonToValue(reason));
 
         return buf.toOwnedSlice();
@@ -2292,9 +2294,9 @@ pub const BalanceUpdateDecoder = struct {
         if (tmpl_id != 32) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
-        const delta = readI64BE(buf, &pos);
-        const total = readI64BE(buf, &pos);
-        const available = readI64BE(buf, &pos);
+        const delta = readF64BE(buf, &pos);
+        const total = readF64BE(buf, &pos);
+        const available = readF64BE(buf, &pos);
         const reason_raw = buf[pos];
         pos += 1;
         const reason = try BalanceUpdateReasonFromValue(reason_raw);
@@ -2385,7 +2387,7 @@ pub const PositionUpdateEncoder = struct {
         try writeString(&buf, symbol);
         try writeF64BE(&buf, qty);
         try writeF64BE(&buf, entry_price);
-        try writeI64BE(&buf, unrealized_pnl);
+        try writeF64BE(&buf, unrealized_pnl);
 
         return buf.toOwnedSlice();
     }
@@ -2412,7 +2414,7 @@ pub const PositionUpdateDecoder = struct {
         const symbol = try readString(buf, &pos, allocator);
         const qty = readF64BE(buf, &pos);
         const entry_price = readF64BE(buf, &pos);
-        const unrealized_pnl = readI64BE(buf, &pos);
+        const unrealized_pnl = readF64BE(buf, &pos);
         return .{
             .account = account,
             .symbol = symbol,
@@ -2718,8 +2720,8 @@ pub const FundingPaymentEncoder = struct {
         // Fixed fields
         try writeString(&buf, account);
         if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeI64BE(&buf, amount);
-        try writeI64BE(&buf, rate);
+        try writeF64BE(&buf, amount);
+        try writeF64BE(&buf, rate);
         try writeI64BE(&buf, timestamp);
 
         return buf.toOwnedSlice();
@@ -2746,8 +2748,8 @@ pub const FundingPaymentDecoder = struct {
         const account = try readString(buf, &pos, allocator);
         var symbol: ?[]u8 = null;
         if (buf[pos] == 1) { pos += 1; symbol = try readString(buf, &pos, allocator); } else { pos += 1; }
-        const amount = readI64BE(buf, &pos);
-        const rate = readI64BE(buf, &pos);
+        const amount = readF64BE(buf, &pos);
+        const rate = readF64BE(buf, &pos);
         const timestamp = readI64BE(buf, &pos);
         return .{
             .account = account,
@@ -2892,7 +2894,7 @@ pub const LedgerUpdateEncoder = struct {
         // Fixed fields
         try writeString(&buf, account);
         try writeString(&buf, asset);
-        try writeI64BE(&buf, delta);
+        try writeF64BE(&buf, delta);
         try buf.append(LedgerUpdateKindToValue(kind));
         try writeI64BE(&buf, timestamp);
         if (reference_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
@@ -2921,7 +2923,7 @@ pub const LedgerUpdateDecoder = struct {
         if (tmpl_id != 43) return error.InvalidTemplateId;
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
-        const delta = readI64BE(buf, &pos);
+        const delta = readF64BE(buf, &pos);
         const kind_raw = buf[pos];
         pos += 1;
         const kind = try LedgerUpdateKindFromValue(kind_raw);

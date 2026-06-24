@@ -323,7 +323,7 @@ fn sample_symbol_ticker() -> SymbolTicker {
 }
 
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
-    use fig_core::sbe_stream::{
+    use fig_core::sbe::{
         encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
         encode_order_book_snapshot, encode_symbol_ticker,
     };

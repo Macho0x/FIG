@@ -1456,7 +1456,8 @@ namespace Fig.Sbe
                 Wire.WriteF64BE(buf, MarkPrice);
                 Wire.WriteF64BE(buf, IndexPrice ?? 0.0);
                 buf.Add((byte)(IndexPrice.HasValue ? 1 : 0));
-                if (FundingRate.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, FundingRate.Value); } else { buf.Add(0); }
+                Wire.WriteF64BE(buf, FundingRate ?? 0.0);
+                buf.Add((byte)(FundingRate.HasValue ? 1 : 0));
                 Wire.WriteI64BE(buf, Timestamp);
                 buf.Add(IsSnapshot ?? 0);
                 buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
@@ -1488,8 +1489,8 @@ namespace Fig.Sbe
             double mark_price = Wire.ReadF64BE(buf, ref pos);
             double index_priceRaw = Wire.ReadF64BE(buf, ref pos);
             double? index_price = buf[pos++] == 1 ? index_priceRaw : null;
-            long? funding_rate;
-            if (buf[pos++] == 1) funding_rate = Wire.ReadI64BE(buf, ref pos);
+            double funding_rateRaw = Wire.ReadF64BE(buf, ref pos);
+            double? funding_rate = buf[pos++] == 1 ? funding_rateRaw : null;
             long timestamp = Wire.ReadI64BE(buf, ref pos);
             byte v = buf[pos++];
             byte? is_snapshot = buf[pos++] == 1 ? v : null;
@@ -2013,8 +2014,8 @@ namespace Fig.Sbe
             // Fixed fields
                 Wire.WriteString(buf, Symbol);
                 Wire.WriteF64BE(buf, LastPrice);
-                Wire.WriteI64BE(buf, PriceChange);
-                Wire.WriteI64BE(buf, PriceChangePct);
+                Wire.WriteF64BE(buf, PriceChange);
+                Wire.WriteF64BE(buf, PriceChangePct);
                 Wire.WriteF64BE(buf, Volume);
                 Wire.WriteF64BE(buf, High);
                 Wire.WriteF64BE(buf, Low);
@@ -2052,8 +2053,8 @@ namespace Fig.Sbe
             if (tmplId != 27) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
             double last_price = Wire.ReadF64BE(buf, ref pos);
-            long price_change = Wire.ReadI64BE(buf, ref pos);
-            long price_change_pct = Wire.ReadI64BE(buf, ref pos);
+            double price_change = Wire.ReadF64BE(buf, ref pos);
+            double price_change_pct = Wire.ReadF64BE(buf, ref pos);
             double volume = Wire.ReadF64BE(buf, ref pos);
             double high = Wire.ReadF64BE(buf, ref pos);
             double low = Wire.ReadF64BE(buf, ref pos);
@@ -2132,8 +2133,8 @@ namespace Fig.Sbe
 
             // Fixed fields
                 Wire.WriteString(buf, Account);
-                Wire.WriteI64BE(buf, Balance);
-                Wire.WriteI64BE(buf, BuyingPower);
+                Wire.WriteF64BE(buf, Balance);
+                Wire.WriteF64BE(buf, BuyingPower);
                 Wire.WriteString(buf, Currency);
             return buf.ToArray();
         }
@@ -2158,8 +2159,8 @@ namespace Fig.Sbe
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 29) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            long balance = Wire.ReadI64BE(buf, ref pos);
-            long buying_power = Wire.ReadI64BE(buf, ref pos);
+            double balance = Wire.ReadF64BE(buf, ref pos);
+            double buying_power = Wire.ReadF64BE(buf, ref pos);
             string currency = Wire.ReadString(buf, ref pos);
             return new AccountSummaryDecoder
             {
@@ -2185,11 +2186,11 @@ namespace Fig.Sbe
 
             // Fixed fields
                 Wire.WriteString(buf, Account);
-                Wire.WriteI64BE(buf, Balance);
-                Wire.WriteI64BE(buf, BuyingPower);
-                Wire.WriteI64BE(buf, Equity);
-                Wire.WriteI64BE(buf, MarginUsed);
-                Wire.WriteI64BE(buf, Available);
+                Wire.WriteF64BE(buf, Balance);
+                Wire.WriteF64BE(buf, BuyingPower);
+                Wire.WriteF64BE(buf, Equity);
+                Wire.WriteF64BE(buf, MarginUsed);
+                Wire.WriteF64BE(buf, Available);
                 Wire.WriteString(buf, Currency);
             return buf.ToArray();
         }
@@ -2217,11 +2218,11 @@ namespace Fig.Sbe
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 30) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            long balance = Wire.ReadI64BE(buf, ref pos);
-            long buying_power = Wire.ReadI64BE(buf, ref pos);
-            long equity = Wire.ReadI64BE(buf, ref pos);
-            long margin_used = Wire.ReadI64BE(buf, ref pos);
-            long available = Wire.ReadI64BE(buf, ref pos);
+            double balance = Wire.ReadF64BE(buf, ref pos);
+            double buying_power = Wire.ReadF64BE(buf, ref pos);
+            double equity = Wire.ReadF64BE(buf, ref pos);
+            double margin_used = Wire.ReadF64BE(buf, ref pos);
+            double available = Wire.ReadF64BE(buf, ref pos);
             string currency = Wire.ReadString(buf, ref pos);
             return new MarginSummaryDecoder
             {
@@ -2311,9 +2312,9 @@ namespace Fig.Sbe
             // Fixed fields
                 Wire.WriteString(buf, Account);
                 Wire.WriteString(buf, Asset);
-                Wire.WriteI64BE(buf, Delta);
-                Wire.WriteI64BE(buf, Total);
-                Wire.WriteI64BE(buf, Available);
+                Wire.WriteF64BE(buf, Delta);
+                Wire.WriteF64BE(buf, Total);
+                Wire.WriteF64BE(buf, Available);
                 buf.Add(BalanceUpdateReasonToValue(Reason));
             return buf.ToArray();
         }
@@ -2341,9 +2342,9 @@ namespace Fig.Sbe
             if (tmplId != 32) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string asset = Wire.ReadString(buf, ref pos);
-            long delta = Wire.ReadI64BE(buf, ref pos);
-            long total = Wire.ReadI64BE(buf, ref pos);
-            long available = Wire.ReadI64BE(buf, ref pos);
+            double delta = Wire.ReadF64BE(buf, ref pos);
+            double total = Wire.ReadF64BE(buf, ref pos);
+            double available = Wire.ReadF64BE(buf, ref pos);
             byte reasonRaw = buf[pos++];
             var reason = BalanceUpdateReasonFromValue(reasonRaw) ?? throw new InvalidOperationException("invalid BalanceUpdateReason");
             return new BalanceUpdateDecoder
@@ -2435,7 +2436,7 @@ namespace Fig.Sbe
                 Wire.WriteString(buf, Symbol);
                 Wire.WriteF64BE(buf, Qty);
                 Wire.WriteF64BE(buf, EntryPrice);
-                Wire.WriteI64BE(buf, UnrealizedPnl);
+                Wire.WriteF64BE(buf, UnrealizedPnl);
             return buf.ToArray();
         }
     }
@@ -2463,7 +2464,7 @@ namespace Fig.Sbe
             string symbol = Wire.ReadString(buf, ref pos);
             double qty = Wire.ReadF64BE(buf, ref pos);
             double entry_price = Wire.ReadF64BE(buf, ref pos);
-            long unrealized_pnl = Wire.ReadI64BE(buf, ref pos);
+            double unrealized_pnl = Wire.ReadF64BE(buf, ref pos);
             return new PositionUpdateDecoder
             {
                 Account = account,
@@ -2781,8 +2782,8 @@ namespace Fig.Sbe
             // Fixed fields
                 Wire.WriteString(buf, Account);
                 if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
-                Wire.WriteI64BE(buf, Amount);
-                Wire.WriteI64BE(buf, Rate);
+                Wire.WriteF64BE(buf, Amount);
+                Wire.WriteF64BE(buf, Rate);
                 Wire.WriteI64BE(buf, Timestamp);
             return buf.ToArray();
         }
@@ -2810,8 +2811,8 @@ namespace Fig.Sbe
             string account = Wire.ReadString(buf, ref pos);
             string? symbol;
             if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
-            long amount = Wire.ReadI64BE(buf, ref pos);
-            long rate = Wire.ReadI64BE(buf, ref pos);
+            double amount = Wire.ReadF64BE(buf, ref pos);
+            double rate = Wire.ReadF64BE(buf, ref pos);
             long timestamp = Wire.ReadI64BE(buf, ref pos);
             return new FundingPaymentDecoder
             {
@@ -2962,7 +2963,7 @@ namespace Fig.Sbe
             // Fixed fields
                 Wire.WriteString(buf, Account);
                 Wire.WriteString(buf, Asset);
-                Wire.WriteI64BE(buf, Delta);
+                Wire.WriteF64BE(buf, Delta);
                 buf.Add(LedgerUpdateKindToValue(Kind));
                 Wire.WriteI64BE(buf, Timestamp);
                 if (ReferenceId.HasValue) { buf.Add(1); Wire.WriteString(buf, ReferenceId.Value); } else { buf.Add(0); }
@@ -2992,7 +2993,7 @@ namespace Fig.Sbe
             if (tmplId != 43) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string asset = Wire.ReadString(buf, ref pos);
-            long delta = Wire.ReadI64BE(buf, ref pos);
+            double delta = Wire.ReadF64BE(buf, ref pos);
             byte kindRaw = buf[pos++];
             var kind = LedgerUpdateKindFromValue(kindRaw) ?? throw new InvalidOperationException("invalid LedgerUpdateKind");
             long timestamp = Wire.ReadI64BE(buf, ref pos);

@@ -1443,7 +1443,8 @@ struct MarkPriceUpdateEncoder {
         write_f64_be(buf, mark_price);
         write_f64_be(buf, index_price.value_or(0.0));
         buf.push_back(index_price.has_value() ? 1 : 0);
-        if (funding_rate.has_value()) { buf.push_back(1); write_i64_be(buf, *funding_rate); } else { buf.push_back(0); }
+        write_f64_be(buf, funding_rate.value_or(0.0));
+        buf.push_back(funding_rate.has_value() ? 1 : 0);
         write_i64_be(buf, timestamp);
         buf.push_back(is_snapshot.value_or(0));
         buf.push_back(is_snapshot.has_value() ? 1 : 0);
@@ -1474,8 +1475,9 @@ struct MarkPriceUpdateDecoder {
         double index_price_raw = read_f64_be(buf, pos);
         std::optional<double> index_price;
         if (buf[pos++] == 1) index_price = index_price_raw;
-        std::optional<int64_t> funding_rate;
-        if (buf[pos++] == 1) funding_rate = read_i64_be(buf, pos);
+        double funding_rate_raw = read_f64_be(buf, pos);
+        std::optional<double> funding_rate;
+        if (buf[pos++] == 1) funding_rate = funding_rate_raw;
         int64_t timestamp = read_i64_be(buf, pos);
         uint8_t v = buf[pos++];
         std::optional<uint8_t> is_snapshot;
@@ -1959,8 +1961,8 @@ struct SymbolTickerEncoder {
         // Fixed fields
         write_string(buf, symbol);
         write_f64_be(buf, last_price);
-        write_i64_be(buf, price_change);
-        write_i64_be(buf, price_change_pct);
+        write_f64_be(buf, price_change);
+        write_f64_be(buf, price_change_pct);
         write_f64_be(buf, volume);
         write_f64_be(buf, high);
         write_f64_be(buf, low);
@@ -1996,8 +1998,8 @@ struct SymbolTickerDecoder {
         if (tmpl_id != 27) throw std::runtime_error("invalid template_id");
         std::string symbol = read_string(buf, pos);
         double last_price = read_f64_be(buf, pos);
-        int64_t price_change = read_i64_be(buf, pos);
-        int64_t price_change_pct = read_i64_be(buf, pos);
+        double price_change = read_f64_be(buf, pos);
+        double price_change_pct = read_f64_be(buf, pos);
         double volume = read_f64_be(buf, pos);
         double high = read_f64_be(buf, pos);
         double low = read_f64_be(buf, pos);
@@ -2069,8 +2071,8 @@ struct AccountSummaryEncoder {
 
         // Fixed fields
         write_string(buf, account);
-        write_i64_be(buf, balance);
-        write_i64_be(buf, buying_power);
+        write_f64_be(buf, balance);
+        write_f64_be(buf, buying_power);
         write_string(buf, currency);
         return buf;
     }
@@ -2093,8 +2095,8 @@ struct AccountSummaryDecoder {
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
         if (tmpl_id != 29) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
-        int64_t balance = read_i64_be(buf, pos);
-        int64_t buying_power = read_i64_be(buf, pos);
+        double balance = read_f64_be(buf, pos);
+        double buying_power = read_f64_be(buf, pos);
         std::string currency = read_string(buf, pos);
         AccountSummaryDecoder out{};
         out.account = account;
@@ -2117,11 +2119,11 @@ struct MarginSummaryEncoder {
 
         // Fixed fields
         write_string(buf, account);
-        write_i64_be(buf, balance);
-        write_i64_be(buf, buying_power);
-        write_i64_be(buf, equity);
-        write_i64_be(buf, margin_used);
-        write_i64_be(buf, available);
+        write_f64_be(buf, balance);
+        write_f64_be(buf, buying_power);
+        write_f64_be(buf, equity);
+        write_f64_be(buf, margin_used);
+        write_f64_be(buf, available);
         write_string(buf, currency);
         return buf;
     }
@@ -2147,11 +2149,11 @@ struct MarginSummaryDecoder {
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
         if (tmpl_id != 30) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
-        int64_t balance = read_i64_be(buf, pos);
-        int64_t buying_power = read_i64_be(buf, pos);
-        int64_t equity = read_i64_be(buf, pos);
-        int64_t margin_used = read_i64_be(buf, pos);
-        int64_t available = read_i64_be(buf, pos);
+        double balance = read_f64_be(buf, pos);
+        double buying_power = read_f64_be(buf, pos);
+        double equity = read_f64_be(buf, pos);
+        double margin_used = read_f64_be(buf, pos);
+        double available = read_f64_be(buf, pos);
         std::string currency = read_string(buf, pos);
         MarginSummaryDecoder out{};
         out.account = account;
@@ -2235,9 +2237,9 @@ struct BalanceUpdateEncoder {
         // Fixed fields
         write_string(buf, account);
         write_string(buf, asset);
-        write_i64_be(buf, delta);
-        write_i64_be(buf, total);
-        write_i64_be(buf, available);
+        write_f64_be(buf, delta);
+        write_f64_be(buf, total);
+        write_f64_be(buf, available);
         buf.push_back(BalanceUpdateReasonToValue(reason));
         return buf;
     }
@@ -2263,9 +2265,9 @@ struct BalanceUpdateDecoder {
         if (tmpl_id != 32) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
-        int64_t delta = read_i64_be(buf, pos);
-        int64_t total = read_i64_be(buf, pos);
-        int64_t available = read_i64_be(buf, pos);
+        double delta = read_f64_be(buf, pos);
+        double total = read_f64_be(buf, pos);
+        double available = read_f64_be(buf, pos);
         uint8_t reason_raw = buf[pos++];
         auto reason_opt = BalanceUpdateReasonFromValue(reason_raw);
         if (!reason_opt) throw std::runtime_error("invalid BalanceUpdateReason");
@@ -2353,7 +2355,7 @@ struct PositionUpdateEncoder {
         write_string(buf, symbol);
         write_f64_be(buf, qty);
         write_f64_be(buf, entry_price);
-        write_i64_be(buf, unrealized_pnl);
+        write_f64_be(buf, unrealized_pnl);
         return buf;
     }
 };
@@ -2379,7 +2381,7 @@ struct PositionUpdateDecoder {
         std::string symbol = read_string(buf, pos);
         double qty = read_f64_be(buf, pos);
         double entry_price = read_f64_be(buf, pos);
-        int64_t unrealized_pnl = read_i64_be(buf, pos);
+        double unrealized_pnl = read_f64_be(buf, pos);
         PositionUpdateDecoder out{};
         out.account = account;
         out.symbol = symbol;
@@ -2673,8 +2675,8 @@ struct FundingPaymentEncoder {
         // Fixed fields
         write_string(buf, account);
         if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
-        write_i64_be(buf, amount);
-        write_i64_be(buf, rate);
+        write_f64_be(buf, amount);
+        write_f64_be(buf, rate);
         write_i64_be(buf, timestamp);
         return buf;
     }
@@ -2700,8 +2702,8 @@ struct FundingPaymentDecoder {
         std::string account = read_string(buf, pos);
         std::optional<std::string> symbol;
         if (buf[pos++] == 1) symbol = read_string(buf, pos);
-        int64_t amount = read_i64_be(buf, pos);
-        int64_t rate = read_i64_be(buf, pos);
+        double amount = read_f64_be(buf, pos);
+        double rate = read_f64_be(buf, pos);
         int64_t timestamp = read_i64_be(buf, pos);
         FundingPaymentDecoder out{};
         out.account = account;
@@ -2840,7 +2842,7 @@ struct LedgerUpdateEncoder {
         // Fixed fields
         write_string(buf, account);
         write_string(buf, asset);
-        write_i64_be(buf, delta);
+        write_f64_be(buf, delta);
         buf.push_back(LedgerUpdateKindToValue(kind));
         write_i64_be(buf, timestamp);
         if (reference_id.has_value()) { buf.push_back(1); write_string(buf, *reference_id); } else { buf.push_back(0); }
@@ -2868,7 +2870,7 @@ struct LedgerUpdateDecoder {
         if (tmpl_id != 43) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
-        int64_t delta = read_i64_be(buf, pos);
+        double delta = read_f64_be(buf, pos);
         uint8_t kind_raw = buf[pos++];
         auto kind_opt = LedgerUpdateKindFromValue(kind_raw);
         if (!kind_opt) throw std::runtime_error("invalid LedgerUpdateKind");

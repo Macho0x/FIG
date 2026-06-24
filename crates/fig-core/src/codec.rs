@@ -76,10 +76,6 @@ pub fn decode_new_order_single_frame(
             crate::sbe::decode_new_order_single(&frame.payload)
                 .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
         }
-        "application/x-protobuf" | "application/protobuf" => {
-            let json = crate::protobuf::protobuf_to_json(&frame.payload)?;
-            serde_json::from_str(&json).map_err(|e| FrameError::CborDecodeError(e.to_string()))
-        }
         _ => decode_cbor(&frame.payload),
     }
 }
@@ -91,16 +87,11 @@ pub fn encode_new_order_single_payload(
 ) -> Result<Vec<u8>, FrameError> {
     match content_type {
         "application/fig+sbe" | "application/sbe" => Ok(crate::sbe::encode_new_order_single(order)),
-        "application/x-protobuf" | "application/protobuf" => {
-            let json = serde_json::to_string(order)
-                .map_err(|e| FrameError::CborEncodeError(e.to_string()))?;
-            crate::protobuf::json_to_protobuf(&json)
-        }
         _ => encode_cbor(order),
     }
 }
 
-/// Decode a request payload honoring `ContentType` (CBOR default, Protobuf via JSON bridge).
+/// Decode a request payload honoring `ContentType` (CBOR default).
 pub fn decode_request_payload_or<T: serde::de::DeserializeOwned + Clone>(
     frame: &crate::frame::Frame,
     default: T,
@@ -108,30 +99,15 @@ pub fn decode_request_payload_or<T: serde::de::DeserializeOwned + Clone>(
     if frame.payload.is_empty() {
         return default;
     }
-    match frame_content_type(frame) {
-        "application/x-protobuf" | "application/protobuf" => {
-            match crate::protobuf::protobuf_to_json(&frame.payload) {
-                Ok(json) => serde_json::from_str(&json).unwrap_or(default),
-                Err(_) => default,
-            }
-        }
-        _ => decode_cbor(&frame.payload).unwrap_or(default),
-    }
+    decode_cbor(&frame.payload).unwrap_or(default)
 }
 
 /// Encode a query/response payload matching the request `ContentType`.
 pub fn encode_response_payload<T: serde::Serialize>(
-    frame: &crate::frame::Frame,
+    _frame: &crate::frame::Frame,
     value: &T,
 ) -> Result<Vec<u8>, FrameError> {
-    match frame_content_type(frame) {
-        "application/x-protobuf" | "application/protobuf" => {
-            let json = serde_json::to_string(value)
-                .map_err(|e| FrameError::CborEncodeError(e.to_string()))?;
-            crate::protobuf::json_to_protobuf(&json)
-        }
-        _ => encode_cbor(value),
-    }
+    encode_cbor(value)
 }
 
 /// Encode an execution report matching the inbound order frame content type.
@@ -142,11 +118,6 @@ pub fn encode_execution_report_frame(
     match frame_content_type(frame) {
         "application/fig+sbe" | "application/sbe" => {
             Ok(crate::sbe::encode_execution_report(report))
-        }
-        "application/x-protobuf" | "application/protobuf" => {
-            let json = serde_json::to_string(report)
-                .map_err(|e| FrameError::CborEncodeError(e.to_string()))?;
-            crate::protobuf::json_to_protobuf(&json)
         }
         _ => encode_cbor(report),
     }
@@ -160,10 +131,6 @@ pub fn decode_cancel_request_frame(
         "application/fig+sbe" | "application/sbe" => {
             crate::sbe::decode_cancel_request(&frame.payload)
                 .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
-        }
-        "application/x-protobuf" | "application/protobuf" => {
-            let json = crate::protobuf::protobuf_to_json(&frame.payload)?;
-            serde_json::from_str(&json).map_err(|e| FrameError::CborDecodeError(e.to_string()))
         }
         _ => decode_cbor(&frame.payload),
     }

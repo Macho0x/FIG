@@ -1,4 +1,4 @@
-//! SBE message FFI over `fig_core::sbe` and `fig_core::sbe_stream`.
+//! SBE message FFI over `fig_core::sbe`.
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -7,8 +7,9 @@ use std::slice;
 use fig_core::messages::{
     CandleBar, NewOrderSingle, OrderType, Price, Quantity, Side, SymbolTicker, TimeInForce,
 };
-use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
-use fig_core::sbe_stream::{encode_candle_bar, encode_symbol_ticker};
+use fig_core::sbe::{
+    decode_new_order_single, encode_candle_bar, encode_new_order_single, encode_symbol_ticker,
+};
 
 use crate::{into_buffer, FigBuffer};
 

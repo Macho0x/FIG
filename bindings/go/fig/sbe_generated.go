@@ -1721,7 +1721,10 @@ func (MarkPriceUpdateEncoder) Encode(Symbol string, MarkPrice float64, IndexPric
 	if IndexPrice != nil { v = *IndexPrice }
 	writeF64BE(&buf, v)
 	if IndexPrice != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
-	if FundingRate != nil { buf = append(buf, 1); writeI64BE(&buf, *FundingRate) } else { buf = append(buf, 0) }
+	v := 0.0
+	if FundingRate != nil { v = *FundingRate }
+	writeF64BE(&buf, v)
+	if FundingRate != nil { buf = append(buf, 1) } else { buf = append(buf, 0) }
 	writeI64BE(&buf, Timestamp)
 	v := uint8(0)
 	if IsSnapshot != nil { v = *IsSnapshot }
@@ -1762,7 +1765,8 @@ func MarkPriceUpdateDecoderDecode(buf []byte) (MarkPriceUpdateDecoder, error) {
 	mark_price := readF64BE(buf, &pos)
 	raw := readF64BE(buf, &pos)
 	if buf[pos] == 1 { pos++; index_price = &raw } else { pos++; index_price = nil }
-	if buf[pos] == 1 { pos++; v := readI64BE(buf, &pos); funding_rate = &v } else { pos++; funding_rate = nil }
+	raw := readF64BE(buf, &pos)
+	if buf[pos] == 1 { pos++; funding_rate = &raw } else { pos++; funding_rate = nil }
 	timestamp := readI64BE(buf, &pos)
 	v := buf[pos]
 	pos++
@@ -2385,8 +2389,8 @@ func (SymbolTickerEncoder) Encode(Symbol string, LastPrice float64, PriceChange 
 	// Fixed fields
 	writeString(&buf, Symbol)
 	writeF64BE(&buf, LastPrice)
-	writeI64BE(&buf, PriceChange)
-	writeI64BE(&buf, PriceChangePct)
+	writeF64BE(&buf, PriceChange)
+	writeF64BE(&buf, PriceChangePct)
 	writeF64BE(&buf, Volume)
 	writeF64BE(&buf, High)
 	writeF64BE(&buf, Low)
@@ -2433,8 +2437,8 @@ func SymbolTickerDecoderDecode(buf []byte) (SymbolTickerDecoder, error) {
 	}
 	symbol := readString(buf, &pos)
 	last_price := readF64BE(buf, &pos)
-	price_change := readI64BE(buf, &pos)
-	price_change_pct := readI64BE(buf, &pos)
+	price_change := readF64BE(buf, &pos)
+	price_change_pct := readF64BE(buf, &pos)
 	volume := readF64BE(buf, &pos)
 	high := readF64BE(buf, &pos)
 	low := readF64BE(buf, &pos)
@@ -2517,8 +2521,8 @@ func (AccountSummaryEncoder) Encode(Account string, Balance float64, BuyingPower
 
 	// Fixed fields
 	writeString(&buf, Account)
-	writeI64BE(&buf, Balance)
-	writeI64BE(&buf, BuyingPower)
+	writeF64BE(&buf, Balance)
+	writeF64BE(&buf, BuyingPower)
 	writeString(&buf, Currency)
 
 	return buf, nil
@@ -2550,8 +2554,8 @@ func AccountSummaryDecoderDecode(buf []byte) (AccountSummaryDecoder, error) {
 		return AccountSummaryDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
-	balance := readI64BE(buf, &pos)
-	buying_power := readI64BE(buf, &pos)
+	balance := readF64BE(buf, &pos)
+	buying_power := readF64BE(buf, &pos)
 	currency := readString(buf, &pos)
 
 	return AccountSummaryDecoder{
@@ -2575,11 +2579,11 @@ func (MarginSummaryEncoder) Encode(Account string, Balance float64, BuyingPower 
 
 	// Fixed fields
 	writeString(&buf, Account)
-	writeI64BE(&buf, Balance)
-	writeI64BE(&buf, BuyingPower)
-	writeI64BE(&buf, Equity)
-	writeI64BE(&buf, MarginUsed)
-	writeI64BE(&buf, Available)
+	writeF64BE(&buf, Balance)
+	writeF64BE(&buf, BuyingPower)
+	writeF64BE(&buf, Equity)
+	writeF64BE(&buf, MarginUsed)
+	writeF64BE(&buf, Available)
 	writeString(&buf, Currency)
 
 	return buf, nil
@@ -2614,11 +2618,11 @@ func MarginSummaryDecoderDecode(buf []byte) (MarginSummaryDecoder, error) {
 		return MarginSummaryDecoder{}, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	account := readString(buf, &pos)
-	balance := readI64BE(buf, &pos)
-	buying_power := readI64BE(buf, &pos)
-	equity := readI64BE(buf, &pos)
-	margin_used := readI64BE(buf, &pos)
-	available := readI64BE(buf, &pos)
+	balance := readF64BE(buf, &pos)
+	buying_power := readF64BE(buf, &pos)
+	equity := readF64BE(buf, &pos)
+	margin_used := readF64BE(buf, &pos)
+	available := readF64BE(buf, &pos)
 	currency := readString(buf, &pos)
 
 	return MarginSummaryDecoder{
@@ -2715,9 +2719,9 @@ func (BalanceUpdateEncoder) Encode(Account string, Asset string, Delta float64, 
 	// Fixed fields
 	writeString(&buf, Account)
 	writeString(&buf, Asset)
-	writeI64BE(&buf, Delta)
-	writeI64BE(&buf, Total)
-	writeI64BE(&buf, Available)
+	writeF64BE(&buf, Delta)
+	writeF64BE(&buf, Total)
+	writeF64BE(&buf, Available)
 	buf = append(buf, byte(Reason.ToValue()))
 
 	return buf, nil
@@ -2752,9 +2756,9 @@ func BalanceUpdateDecoderDecode(buf []byte) (BalanceUpdateDecoder, error) {
 	}
 	account := readString(buf, &pos)
 	asset := readString(buf, &pos)
-	delta := readI64BE(buf, &pos)
-	total := readI64BE(buf, &pos)
-	available := readI64BE(buf, &pos)
+	delta := readF64BE(buf, &pos)
+	total := readF64BE(buf, &pos)
+	available := readF64BE(buf, &pos)
 	reasonRaw := buf[pos]
 	pos++
 	reason, err := BalanceUpdateReasonFromValue(reasonRaw)
@@ -2855,7 +2859,7 @@ func (PositionUpdateEncoder) Encode(Account string, Symbol string, Qty float64, 
 	writeString(&buf, Symbol)
 	writeF64BE(&buf, Qty)
 	writeF64BE(&buf, EntryPrice)
-	writeI64BE(&buf, UnrealizedPnl)
+	writeF64BE(&buf, UnrealizedPnl)
 
 	return buf, nil
 }
@@ -2890,7 +2894,7 @@ func PositionUpdateDecoderDecode(buf []byte) (PositionUpdateDecoder, error) {
 	symbol := readString(buf, &pos)
 	qty := readF64BE(buf, &pos)
 	entry_price := readF64BE(buf, &pos)
-	unrealized_pnl := readI64BE(buf, &pos)
+	unrealized_pnl := readF64BE(buf, &pos)
 
 	return PositionUpdateDecoder{
 		Account: account,
@@ -3285,8 +3289,8 @@ func (FundingPaymentEncoder) Encode(Account string, Symbol *string, Amount float
 	} else {
 		buf = append(buf, 0)
 	}
-	writeI64BE(&buf, Amount)
-	writeI64BE(&buf, Rate)
+	writeF64BE(&buf, Amount)
+	writeF64BE(&buf, Rate)
 	writeI64BE(&buf, Timestamp)
 
 	return buf, nil
@@ -3327,8 +3331,8 @@ func FundingPaymentDecoderDecode(buf []byte) (FundingPaymentDecoder, error) {
 		pos++
 		symbol = nil
 	}
-	amount := readI64BE(buf, &pos)
-	rate := readI64BE(buf, &pos)
+	amount := readF64BE(buf, &pos)
+	rate := readF64BE(buf, &pos)
 	timestamp := readI64BE(buf, &pos)
 
 	return FundingPaymentDecoder{
@@ -3509,7 +3513,7 @@ func (LedgerUpdateEncoder) Encode(Account string, Asset string, Delta float64, K
 	// Fixed fields
 	writeString(&buf, Account)
 	writeString(&buf, Asset)
-	writeI64BE(&buf, Delta)
+	writeF64BE(&buf, Delta)
 	buf = append(buf, byte(Kind.ToValue()))
 	writeI64BE(&buf, Timestamp)
 	if ReferenceId != nil {
@@ -3551,7 +3555,7 @@ func LedgerUpdateDecoderDecode(buf []byte) (LedgerUpdateDecoder, error) {
 	}
 	account := readString(buf, &pos)
 	asset := readString(buf, &pos)
-	delta := readI64BE(buf, &pos)
+	delta := readF64BE(buf, &pos)
 	kindRaw := buf[pos]
 	pos++
 	kind, err := LedgerUpdateKindFromValue(kindRaw)
