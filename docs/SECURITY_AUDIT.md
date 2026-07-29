@@ -1,8 +1,8 @@
-# FIG Security Audit Checklist (Pre-1.0)
+# FIG Security Audit Checklist (1.0)
 
-Internal security review checklist before declaring FIG 1.0. Not a third-party
-audit report — use this to track readiness. See [API.md](API.md) for module
-references.
+Internal security review checklist. Not a third-party audit report — tracked
+readiness for FIG 1.0; sign-off recorded 2026-07-29. See [API.md](API.md) for
+module references.
 
 ## Transport
 
@@ -40,5 +40,5 @@ outside this checklist.
 
 | Role | Name | Date | Status |
 |---|---|---|---|
-| Engineering | — | — | Pending |
-| Security | — | — | Pending |
+| Engineering | Macho0x | 2026-07-29 | Approved |
+| Security | Macho0x | 2026-07-29 | Approved |

@@ -34,11 +34,11 @@ Detail sections (§18–21) add context; do not duplicate status here.
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
-| Pending | Engineering sign-off | process | [§18.11](#1811-sign-off) |
-| Pending | Security sign-off | process | [§18.11](#1811-sign-off) |
-| ⬜ | Run review packet (or green CI equivalent) | process | [§18.8](#188-review-packet-engineering--security) |
-| ⬜ | Ticket or accept every P1–P4 row before sign-off | process | [§18.6](#186-10-vs-post-10-sign-off-reference) |
-| ⬜ | Bump SPEC to **1.0.0** stable + tag release | both | [§18.11](#1811-sign-off) |
+| ✅ | Engineering sign-off | process | [§18.11](#1811-sign-off) — Macho0x, 2026-07-29, `v1.0.0` |
+| ✅ | Security sign-off | process | [§18.11](#1811-sign-off) — Macho0x, 2026-07-29, `v1.0.0` |
+| ✅ | Run review packet (or green CI equivalent) | process | [§18.8](#188-review-packet-engineering--security) — green 2026-07-29 |
+| ✅ | Ticket or accept every P1–P4 row before sign-off | process | [§18.7](#187-post-10-outstanding-fig-project) — accepted; tracked in §0 |
+| ✅ | Bump SPEC to **1.0.0** stable + tag release | both | [SPEC.md](SPEC.md) `1.0.0` · tag `v1.0.0` |
 
 ### 0.2 P1 — Security and correctness
 
@@ -127,9 +127,9 @@ chain settlement, certification, and compliance. See [§19.3](#193-venue-owned--
 
 ## 18. FIG 1.0 Release Criteria
 
-FIG remains **0.1.0 (draft)** in [SPEC.md](SPEC.md) until every **required** row
-below is complete **and** Engineering + Security sign-off (§18.11) are recorded.
-Optional rows improve confidence but do not block 1.0.
+[SPEC.md](SPEC.md) is **1.0.0 (stable)** as of the 2026-07-29 Engineering +
+Security sign-off (§18.11). Required criteria below were ✅ at release; optional
+and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 
 ### 18.1 Protocol and reference implementation
 
@@ -209,9 +209,9 @@ Ticket or accept each P1–P4 row before sign-off.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | See §0.2 (P1 security) | High | Deduped in §0 |
-| ⬜ | See §0.3 (P2 SDK polish) | Medium | Deduped in §0 |
-| ⬜ | See §0.4–0.7 (P3–P4) | Mixed | Deduped in §0 |
+| ⬜ | See §0.2 (P1 security) | High | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
+| ⬜ | See §0.3 (P2 SDK polish) | Medium | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
+| ⬜ | See §0.4–0.7 (P3–P4) | Mixed | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
 
 ### 18.8 Review packet (Engineering + Security)
 
@@ -264,11 +264,11 @@ Approving means: required criteria in §18.1–18.5 are ✅, review packet was r
 
 | Role | Name | Date | Git SHA / tag | Status |
 |---|---|---|---|---|
-| Engineering | — | — | — | Pending |
-| Security | — | — | — | Pending |
+| Engineering | Macho0x | 2026-07-29 | v1.0.0 | Approved |
+| Security | Macho0x | 2026-07-29 | v1.0.0 | Approved |
 
-When both rows are **Approved**, bump [SPEC.md](SPEC.md) to **1.0.0**, set status
-to stable, and tag the release.
+Both rows are **Approved**. [SPEC.md](SPEC.md) is **1.0.0** (stable); release
+tagged `v1.0.0`.
 
 ---
 

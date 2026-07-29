@@ -1,7 +1,7 @@
 # FIG — Protocol Specification
 
-**Version:** 0.1.0 (draft)
-**Status:** Experimental — breaking changes expected before 1.0
+**Version:** 1.0.0
+**Status:** Stable
 
 ---
 

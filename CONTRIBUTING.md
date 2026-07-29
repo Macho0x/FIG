@@ -158,7 +158,7 @@ GitHub Actions runs on every push to `main`:
 
 Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
 
-## Fuzzing (optional, pre-1.0)
+## Fuzzing (optional)
 
 Install `cargo-fuzz`, then from `crates/fig-core/fuzz`:
 
