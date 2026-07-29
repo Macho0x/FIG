@@ -118,7 +118,7 @@ impl Parser {
                     while i < len && chars[i].is_ascii_hexdigit() {
                         i += 1;
                     }
-                    let text = format!("0x{}", &chars[start..i].iter().collect::<String>());
+                    let text = format!("0x{}", chars[start..i].iter().collect::<String>());
                     tokens.push(Token {
                         kind: TokenKind::Number,
                         text,

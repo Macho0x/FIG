@@ -604,9 +604,9 @@ pub(crate) fn encoder_params(msg: &Message) -> String {
     for field in &msg.fields {
         let rust_type = sbe_field_type_name_for_message(&field.field_type, &msg.name, &field.name);
         let param_type = if field.optional {
-            format!("{}: Option<{}>", &field.name, rust_type)
+            format!("{}: Option<{}>", field.name, rust_type)
         } else {
-            format!("{}: {}", &field.name, rust_type)
+            format!("{}: {}", field.name, rust_type)
         };
         params.push(param_type);
     }
@@ -675,7 +675,7 @@ pub(crate) fn generate_sbe_message_decoder(
     // Build return value
     out.push_str("\n        Ok(Self {\n");
     for field in &msg.fields {
-        out.push_str(&format!("            {},\n", &field.name));
+        out.push_str(&format!("            {},\n", field.name));
     }
     out.push_str("        })\n");
     out.push_str("    }\n");
