@@ -652,7 +652,7 @@ schema trading.orders v1.0.0 {
 | SBE | Per-language `sbe_generated.*` + Rust codec | ✅ Rust reference; compile-smoke elsewhere |
 | Python | PyO3 (`fig-python`) + `fig-client` merge helpers | ✅ CBOR via FFI / PyO3 |
 | Go / C++ / C# / TypeScript / Zig | Generated types + thin FFI wrapper | ✅ Wire via `fig-ffi` (CBOR + frames) |
-| OCaml | FSL types + ctypes | 🔶 Types; wire via `fig-ffi` |
+| OCaml | FSL types + C stubs | ✅ Wire via `fig-ffi` |
 | JSON Schema | `.schema.json` (REST docs) | N/A (documentation) |
 | FIX mapping | `.fix.yaml` (gateway config) | N/A (gateway translation) |
 | Protobuf | — | ❌ Removed from FIG wire (was experimental) |

@@ -9,6 +9,5 @@ bash bindings/zig/smoke/run.sh
 # prints: fig-zig smoke OK <crate-version>
 ```
 
-CI uses Zig 0.14. Link `libfig_ffi` and include `crates/fig-ffi/include`.
-
-See [`fig.zig`](fig.zig) for connect, ping, compression, and subscribe-auth helpers.
+CI uses Zig 0.14. See [`fig.zig`](fig.zig) for `subscribe` / `Subscription.next`
+(live SUBSCRIBE) and `requestAndRecv` (REQUEST only).

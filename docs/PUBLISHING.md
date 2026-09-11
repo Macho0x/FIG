@@ -81,5 +81,6 @@ bash bindings/zig/smoke/run.sh           # needs zig
 bash bindings/ocaml/smoke/run.sh         # needs ocamlopt
 ```
 
-TypeScript is **Bun** (`bun:ffi`) compile smoke. Python `FigPyClient.request()` is
-REQUEST (EOF); `subscribe_live()` holds the stream. Browsers/Node use the gateway.
+TypeScript is **Bun** (`bun:ffi`) — `FigClient.subscribe` / `FigSubscription.next`.
+Python `FigPyClient.request()` is REQUEST (EOF); `subscribe_live()` holds the stream.
+Browsers and Node use the gateway.

@@ -195,7 +195,7 @@ items do not block the SPEC version bump if accepted or ticketed in §18.7.
 | **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
 | **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
 | **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
-| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C# compile smoke + SBE hex via FFI | Native TREE per language; full per-lang generated SBE hex matrix |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers + SBE hex | Native TREE per language; full per-lang generated SBE hex matrix |
 | **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
 | **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
 | **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |
@@ -560,9 +560,9 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 | ✅ | `fig-csharp` (P/Invoke) | Medium | `FigClient.Subscribe` / `FigSubscription.Next` + JWT + SBE |
 | ✅ | `fig-go` (cgo) | Medium | `Client.Subscribe` / `Subscription.Next` + JWT + SBE |
 | ✅ | `fig-cpp` (header + link staticlib) | Medium | `fig::Client::subscribe` / `Subscription::next` + JWT + SBE |
-| 🔶 | `fig-ocaml` (ctypes) | Low | Compile smoke over `fig.h` — not a live-sub SDK |
-| 🔶 | `fig-zig` (`@cImport fig.h`) | Low | Compile smoke — not a live-sub SDK |
-| 🔶 | TypeScript / Bun (`bun:ffi`) | Medium | `version()` smoke; browsers/Node use gateway |
+| ✅ | `fig-ocaml` (C stubs) | Low | `subscribe` / `sub_next` over `fig.h` — no ctypes-foreign |
+| ✅ | `fig-zig` (`@cImport fig.h`) | Low | `subscribe` / `Subscription.next` |
+| ✅ | TypeScript / Bun (`bun:ffi`) | Medium | `FigClient.subscribe` / `FigSubscription.next`; browsers/Node use gateway |
 | ✅ | `fig-java` (JNI) | Low | `figClientSubscribe` / `figClientSubNext` + JWT/SBE |
 | ✅ | Perps merge FFI handles (funding, ledger, liquidations, agg trades) | Medium | `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*`, `fig_agg_trades_*` |
 | ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` + `stream_state` tests |
@@ -587,7 +587,7 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 |---|---|---|---|
 | ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | All FFI bindings + `fig-python` |
 | ✅ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + JWT encode/decode/verify in all bindings |
-| ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Live recv: `fig_client_subscribe` + Python `subscribe_live`; Go/C++/C#/Java wrappers |
+| ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Live recv: `fig_client_subscribe` + Python `subscribe_live`; Go/C++/C#/Java/TS/OCaml/Zig wrappers |
 | ✅ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
 
 ---
@@ -631,8 +631,8 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 | C# | classes + System.Text.Json | P/Invoke → `fig-ffi` | Common in trading |
 | C++ | full structs + SBE | Generated protocol or cbindgen | Low-latency HFT |
 | Go | structs + tags + CBOR | cgo or pure Go port | `--lang go` exists |
-| TypeScript | interfaces + CBOR | N-API / Deno FFI → `fig-ffi` (Node, Bun, Deno) | No WASM; browser uses gateway |
-| OCaml | variant enums + CBOR | ctypes → `fig-ffi` | Quant/research |
+| TypeScript | interfaces + CBOR | Bun `bun:ffi` → `fig-ffi` | No WASM; browser uses gateway; Node N-API not in repo |
+| OCaml | variant enums + CBOR | C stubs → `fig-ffi` | Quant/research |
 | Zig | struct layout + comptime | `@cImport fig.h` or pure Zig | Comptime-friendly codegen |
 | Java | `--lang java` | JNI → `fig-ffi` | `figClientSubscribe` / `figClientSubNext` |
 
@@ -673,10 +673,10 @@ FSL codegen (full) + PyO3/FFI client (Tier 2) + CBOR only + conformance tests
 | Priority | Items |
 |---|---|
 | **High** | ✅ §16.1 conformance vectors · §16.2 enum/nested/serializer + SBE codegen · §16.3 `fig-ffi` live subscribe + Python · §16.4 Tier 1–3 on production langs · §16.5 multi-codec exchange-sim |
-| **Medium** | ✅ C# / Go / C++ / Java live-sub wrappers · SBE per-language codegen · gateway proxy · 🔶 TypeScript compile smoke · ✅ pure protocol libs (C++) |
-| **Low** | 🔶 OCaml / Zig compile smokes · ✅ Tier 4 advanced in `fig-ffi` · ✅ Java target · ✅ pure Zig protocol lib · ⬜ TREE transport per language |
+| **Medium** | ✅ C# / Go / C++ / Java / TypeScript live-sub wrappers · SBE per-language codegen · gateway proxy · ✅ pure protocol libs (C++) |
+| **Low** | ✅ OCaml / Zig live-sub wrappers · ✅ Tier 4 advanced in `fig-ffi` · ✅ Java target · ✅ pure Zig protocol lib · ⬜ TREE transport per language |
 
-Live subscribe bar (Python + FFI, wrappers inherit): `subscribe_live` a positions stream, get a fill, do not hang — with a test. Per-language TREE and smoke-only langs as SDKs stay optional ([§0.7](#07-p4--long-horizon--optional)).
+Live subscribe bar (Python + FFI, wrappers inherit): `subscribe_live` a positions stream, get a fill, do not hang — with a test. Per-language TREE stays optional ([§0.7](#07-p4--long-horizon--optional)).
 
 ---
 

@@ -11,10 +11,10 @@ Build `fig-ffi` first (`cargo build -p fig-ffi`) and link `libfig_ffi`.
 | `cpp/include/fig` | C++ | RAII `fig::Client::subscribe` + `Subscription::next` + JWT/SBE |
 | `cpp/pure/fig_protocol.hpp` | C++ | Pure protocol library (frame/ext/channel, no Rust runtime) |
 | `csharp/Fig` | C# | P/Invoke `FigClient.Subscribe` / `FigSubscription.Next` + JWT/SBE |
-| `typescript/fig.ts` | TypeScript | Bun `version()` smoke — not a live-sub SDK; browsers/Node use the gateway |
+| `typescript/fig.ts` | TypeScript | Bun `FigClient.subscribe` / `FigSubscription.next` + JWT/SBE; browsers/Node use the gateway |
 | `typescript/sbe_generated.ts` | TypeScript | FSL-generated SBE serializers |
-| `ocaml/fig.ml` | OCaml | ctypes compile smoke over `fig.h` |
-| `zig/fig.zig` | Zig | `@cImport` compile smoke |
+| `ocaml/fig.ml` | OCaml | C stubs — `subscribe` / `sub_next` + JWT/SBE |
+| `zig/fig.zig` | Zig | `@cImport` — `subscribe` / `Subscription.next` + JWT/SBE |
 | `zig/pure/protocol.zig` | Zig | Pure protocol library (frame/ext/channel) |
 | `zig/sbe_generated.zig` | Zig | FSL-generated SBE serializers |
 | `java/` | Java | JNI `figClientSubscribe` / `figClientSubNext` + JWT/SBE |
@@ -81,8 +81,8 @@ bash bindings/csharp/smoke/run.sh
 
 Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformance/vectors/v1.json` (including CandleBar CBOR/SBE).
 
-**Live subscribe:** `fig_client_subscribe` / `fig_client_sub_next` (C), `FigPyClient.subscribe_live` (Python), and the Go/C++/C#/Java wrappers. `fig_client_request_and_recv` is REQUEST only. Test: `cargo test -p fig-ffi --test client_integration`.
+**Live subscribe:** `fig_client_subscribe` / `fig_client_sub_next` (C), `FigPyClient.subscribe_live` (Python), and the Go/C++/C#/Java/TS/OCaml/Zig wrappers. `fig_client_request_and_recv` is REQUEST only. Test: `cargo test -p fig-ffi --test client_integration`.
 
-**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. Go/C++/C# SBE hex parity uses FFI `fig_sbe_encode_*` against §16.1 vectors. OCaml/Zig/TypeScript are compile smokes, not live-sub SDKs.
+**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. Go/C++/C#/TS/OCaml/Zig SBE hex parity uses FFI `fig_sbe_encode_*` against §16.1 vectors.
 
 Go smoke: `cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance`.

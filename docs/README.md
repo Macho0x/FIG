@@ -33,7 +33,8 @@ uses `BackendSession` (held open).
 
 ## Binding caveats
 
-- **TypeScript** smoke uses **Bun** (`bun:ffi`). There is no Node `node:ffi` runtime. Browsers and Node talk to FIG through the [gateway](GATEWAY.md).
+- **TypeScript** uses **Bun** (`bun:ffi`) — `FigClient.subscribe` / `FigSubscription.next`. There is no Node `node:ffi` runtime. Browsers and Node talk to FIG through the [gateway](GATEWAY.md).
+- **OCaml** C stubs (`fig_stubs.c`) and **Zig** `@cImport` wrap the same `fig_client_subscribe` / `sub_next` ABI.
 - **Python** `FigPyClient.request()` is REQUEST (EOF). `subscribe()` returns the snapshot without waiting for EOF. `subscribe_live()` returns `FigPySubscription` (`next()` / `close()`).
 - **C ABI** live subscribe is `fig_client_subscribe` / `fig_client_sub_next` / `fig_client_sub_close`. `fig_client_request_and_recv` is REQUEST only.
 - **C / FFI** `fig_version()` returns the crate version (`CARGO_PKG_VERSION`).

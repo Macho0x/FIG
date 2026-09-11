@@ -13,14 +13,9 @@ bash bindings/typescript/smoke/run.sh
 # prints: fig-ts smoke OK <crate-version>
 ```
 
-Or:
-
-```bash
-bun -e "import { version } from './bindings/typescript/fig.ts'; console.log(version())"
-```
-
-See [`fig.ts`](fig.ts) for `version()`, `jwtEncode`, and `FigClient` (connect / request).
-`dlopen` uses Bun's `args` / `returns` (not Node `node:ffi`).
+See [`fig.ts`](fig.ts) for `FigClient.subscribe` / `FigSubscription.next`,
+`request` (EOF), JWT, and SBE. `dlopen` uses Bun's `args` / `returns`
+(not Node `node:ffi`). Do not use `requestAndRecv` for live `SUBSCRIBE`.
 
 ## Approach
 

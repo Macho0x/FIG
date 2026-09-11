@@ -20,8 +20,9 @@ const libPath =
 
 const fig = dlopen(libPath, {
   fig_version: { args: [], returns: FFIType.cstring },
-  fig_buffer_free: { args: [FFIType.pointer], returns: FFIType.void },
-  fig_frame_list_free: { args: [FFIType.pointer], returns: FFIType.void },
+  // FigBuffer / FigFrameList are two INTEGER-class fields; SysV passes them in two regs.
+  fig_buffer_free: { args: [FFIType.pointer, FFIType.u64], returns: FFIType.void },
+  fig_frame_list_free: { args: [FFIType.pointer, FFIType.u64], returns: FFIType.void },
   fig_string_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_client_connect: {
     args: [FFIType.cstring, FFIType.cstring, FFIType.pointer],
@@ -42,6 +43,24 @@ const fig = dlopen(libPath, {
   fig_client_request_and_recv: {
     args: [FFIType.pointer, FFIType.pointer, FFIType.u64, FFIType.pointer],
     returns: FFIType.i32,
+  },
+  fig_client_subscribe: {
+    args: [
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.u64,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.i32,
+  },
+  fig_client_sub_next: {
+    args: [FFIType.pointer, FFIType.u32, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_client_sub_close: {
+    args: [FFIType.pointer],
+    returns: FFIType.void,
   },
   fig_frame_encode_request_auth: {
     args: [
@@ -152,29 +171,106 @@ const fig = dlopen(libPath, {
   fig_liquidation_user_count: { args: [FFIType.pointer], returns: FFIType.u64 },
 });
 
-function copyBuffer(buf: FigBuffer): Buffer {
-  if (!buf.data || buf.len === 0) {
-    fig.symbols.fig_buffer_free(buf);
-    return Buffer.alloc(0);
-  }
-  const slice = buf.data.readBuffer(buf.len);
-  fig.symbols.fig_buffer_free(buf);
-  return Buffer.from(slice);
+const libc = dlopen(
+  process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6",
+  {
+    memcpy: {
+      args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+      returns: FFIType.pointer,
+    },
+    strlen: { args: [FFIType.pointer], returns: FFIType.u64 },
+  },
+);
+
+function outSlot(): Buffer {
+  return Buffer.alloc(16);
 }
 
-function emptyOutBuffer(): { buf: FigBuffer } {
-  return { buf: { data: ptr(null), len: 0 } };
+function copyRaw(addr: number, len: number): Buffer {
+  const out = Buffer.alloc(len);
+  libc.symbols.memcpy(ptr(out), addr, len);
+  return out;
+}
+
+function takeOwnedBytes(slot: Buffer): Buffer {
+  const data = Number(slot.readBigUInt64LE(0));
+  const len = Number(slot.readBigUInt64LE(8));
+  if (!data || len === 0) {
+    return Buffer.alloc(0);
+  }
+  const copied = copyRaw(data, len);
+  fig.symbols.fig_buffer_free(data, len);
+  return copied;
+}
+
+function takeFrameList(slot: Buffer): Buffer[] {
+  const framesPtr = Number(slot.readBigUInt64LE(0));
+  const count = Number(slot.readBigUInt64LE(8));
+  if (!framesPtr || count === 0) {
+    return [];
+  }
+  const table = copyRaw(framesPtr, count * 16);
+  const out: Buffer[] = [];
+  for (let i = 0; i < count; i++) {
+    const data = Number(table.readBigUInt64LE(i * 16));
+    const len = Number(table.readBigUInt64LE(i * 16 + 8));
+    if (data && len > 0) {
+      out.push(copyRaw(data, len));
+    }
+  }
+  fig.symbols.fig_frame_list_free(framesPtr, count);
+  return out;
+}
+
+function readHandle(slot: Buffer): Pointer {
+  return Number(slot.readBigUInt64LE(0)) as unknown as Pointer;
 }
 
 export function version(): string {
   return fig.symbols.fig_version() as string;
 }
 
+/** Held-open SUBSCRIBE recv stream. timeoutMs 0 waits forever. */
+export class FigSubscription {
+  private handle: Pointer;
+
+  constructor(handle: Pointer) {
+    this.handle = handle;
+  }
+
+  /** Next live frame. `null` on EOF. */
+  next(timeoutMs = 0): Buffer | null {
+    const out = outSlot();
+    const rc = fig.symbols.fig_client_sub_next(
+      this.handle,
+      timeoutMs,
+      ptr(out),
+    ) as number;
+    if (rc === 1) {
+      throw new Error("fig_client_sub_next timeout");
+    }
+    if (rc === 2) {
+      return null;
+    }
+    if (rc !== 0) {
+      throw new Error(`fig_client_sub_next failed: ${rc}`);
+    }
+    return takeOwnedBytes(out);
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_client_sub_close(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
 export class FigClient {
   private handle: Pointer;
 
   constructor(addr: string, serverName: string | null = "localhost", resumptionToken?: Buffer) {
-    const out = ptr(null);
+    const out = Buffer.alloc(8);
     let rc: number;
     if (resumptionToken && resumptionToken.length > 0) {
       rc = fig.symbols.fig_client_connect_0rtt(
@@ -182,15 +278,15 @@ export class FigClient {
         serverName,
         resumptionToken,
         resumptionToken.length,
-        out,
+        ptr(out),
       ) as number;
     } else {
-      rc = fig.symbols.fig_client_connect(addr, serverName, out) as number;
+      rc = fig.symbols.fig_client_connect(addr, serverName, ptr(out)) as number;
     }
     if (rc !== 0) {
       throw new Error(`fig_client_connect failed: ${rc}`);
     }
-    this.handle = out.deref() as Pointer;
+    this.handle = readHandle(out);
   }
 
   ping(): void {
@@ -212,7 +308,7 @@ export class FigClient {
       schemaId?: number;
     } = {},
   ): Buffer[] {
-    const { buf: frameBuf } = emptyOutBuffer();
+    const frameBuf = outSlot();
     const rc = fig.symbols.fig_frame_encode_request_auth(
       opts.channelId ?? 1,
       opts.streamSeq ?? 1,
@@ -228,18 +324,18 @@ export class FigClient {
     if (rc !== 0) {
       throw new Error(`fig_frame_encode_request_auth failed: ${rc}`);
     }
-    const encoded = copyBuffer(frameBuf);
-    return this.requestAndRecv(encoded);
+    return this.requestAndRecv(takeOwnedBytes(frameBuf));
   }
 
+  /** SUBSCRIBE snapshot plus a live handle. Do not use requestAndRecv for SUBSCRIBE. */
   subscribe(
     channelPath: string,
     routingKey?: string,
     authToken?: string | null,
     channelId = 1,
     streamSeq = 1,
-  ): Buffer[] {
-    const { buf: frameBuf } = emptyOutBuffer();
+  ): { snapshot: Buffer[]; subscription: FigSubscription } {
+    const frameBuf = outSlot();
     const rc = fig.symbols.fig_frame_encode_subscribe_auth(
       channelId,
       streamSeq,
@@ -251,12 +347,30 @@ export class FigClient {
     if (rc !== 0) {
       throw new Error(`fig_frame_encode_subscribe_auth failed: ${rc}`);
     }
-    const encoded = copyBuffer(frameBuf);
-    return this.requestAndRecv(encoded);
+    return this.subscribeFrame(takeOwnedBytes(frameBuf));
+  }
+
+  subscribeFrame(frameBytes: Buffer): { snapshot: Buffer[]; subscription: FigSubscription } {
+    const list = outSlot();
+    const subOut = Buffer.alloc(8);
+    const rc = fig.symbols.fig_client_subscribe(
+      this.handle,
+      frameBytes,
+      frameBytes.length,
+      ptr(list),
+      ptr(subOut),
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_client_subscribe failed: ${rc}`);
+    }
+    return {
+      snapshot: takeFrameList(list),
+      subscription: new FigSubscription(readHandle(subOut)),
+    };
   }
 
   requestAndRecv(frameBytes: Buffer): Buffer[] {
-    const list: FigFrameList = { frames: ptr(null), count: 0 };
+    const list = outSlot();
     const rc = fig.symbols.fig_client_request_and_recv(
       this.handle,
       frameBytes,
@@ -266,43 +380,30 @@ export class FigClient {
     if (rc !== 0) {
       throw new Error(`fig_client_request_and_recv failed: ${rc}`);
     }
-    if (!list.frames || list.count === 0) {
-      fig.symbols.fig_frame_list_free(list);
-      return [];
-    }
-    const stride = 16; // FigBuffer layout: ptr + len
-    const out: Buffer[] = [];
-    for (let i = 0; i < list.count; i++) {
-      const framePtr = list.frames.add(i * stride);
-      const data = framePtr.readPointer();
-      const len = Number(framePtr.add(8).readBigUInt64LE());
-      if (data && len > 0) {
-        out.push(Buffer.from(data.readBuffer(len)));
-      }
-    }
-    fig.symbols.fig_frame_list_free(list);
-    return out;
+    return takeFrameList(list);
   }
 
   /** Decode STREAM_ITEM payload helpers for typed streams. */
   decodeExecutionClOrdId(frame: Buffer): string {
-    const out = ptr(null);
+    const out = Buffer.alloc(8);
     const payload = this.framePayload(frame);
     const rc = fig.symbols.fig_cbor_decode_execution_report_cl_ord_id(
       payload,
       payload.length,
-      out,
+      ptr(out),
     ) as number;
     if (rc !== 0) {
       throw new Error(`decode execution report failed: ${rc}`);
     }
-    const s = out.deref() as unknown as string;
-    fig.symbols.fig_string_free(out.deref() as Pointer);
+    const p = Number(readHandle(out));
+    const n = Number(libc.symbols.strlen(p));
+    const s = copyRaw(p, n).toString("utf8");
+    fig.symbols.fig_string_free(p);
     return s;
   }
 
   framePayload(frame: Buffer): Buffer {
-    const { buf: out } = emptyOutBuffer();
+    const out = outSlot();
     const rc = fig.symbols.fig_frame_payload(
       frame,
       frame.length,
@@ -313,7 +414,7 @@ export class FigClient {
     if (rc !== 0) {
       throw new Error(`fig_frame_payload failed: ${rc}`);
     }
-    return copyBuffer(out);
+    return takeOwnedBytes(out);
   }
 
   isStreamItem(frame: Buffer): boolean {
@@ -321,7 +422,7 @@ export class FigClient {
   }
 
   compressPayload(data: Buffer): Buffer {
-    const { buf: out } = emptyOutBuffer();
+    const out = outSlot();
     const rc = fig.symbols.fig_payload_compress(
       data,
       data.length,
@@ -330,7 +431,7 @@ export class FigClient {
     if (rc !== 0) {
       throw new Error(`fig_payload_compress failed: ${rc}`);
     }
-    return copyBuffer(out);
+    return takeOwnedBytes(out);
   }
 
   close(): void {
@@ -342,7 +443,7 @@ export class FigClient {
 }
 
 export function jwtEncode(sub: string, exp: bigint, secret: string): string {
-  const { buf: out } = emptyOutBuffer();
+  const out = outSlot();
   const rc = fig.symbols.fig_jwt_encode(
     sub,
     exp,
@@ -352,7 +453,7 @@ export function jwtEncode(sub: string, exp: bigint, secret: string): string {
   if (rc !== 0) {
     throw new Error(`fig_jwt_encode failed: ${rc}`);
   }
-  return copyBuffer(out).toString("utf8");
+  return takeOwnedBytes(out).toString("utf8");
 }
 
 export function jwtVerifyBearer(token: string, secret: string): void {
@@ -369,7 +470,7 @@ export function sbeEncodeNewOrderSingle(
   qty: number,
   price: number,
 ): Buffer {
-  const { buf: out } = emptyOutBuffer();
+  const out = outSlot();
   const rc = fig.symbols.fig_sbe_encode_new_order_single(
     clOrdId,
     symbol,
@@ -383,7 +484,7 @@ export function sbeEncodeNewOrderSingle(
   if (rc !== 0) {
     throw new Error(`fig_sbe_encode_new_order_single failed: ${rc}`);
   }
-  return copyBuffer(out);
+  return takeOwnedBytes(out);
 }
 
 /** RAII merge-state wrappers over fig.h stream merge handles. */

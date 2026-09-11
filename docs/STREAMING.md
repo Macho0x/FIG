@@ -112,6 +112,24 @@ frame = sub.next(timeout_ms=5000)
 sub.close()
 ```
 
+```ts
+const { snapshot, subscription } = client.subscribe("accounts/DEMO/positions", undefined, token);
+const frame = subscription.next(5000);
+subscription.close();
+```
+
+```zig
+const r = try fig.subscribe(handle, frame);
+defer r.sub.close();
+const nxt = try r.sub.next(5000);
+```
+
+```ocaml
+let snapshot, sub = Fig.subscribe client frame in
+let nxt = Fig.sub_next sub 5000 in
+Fig.sub_close sub
+```
+
 Batch-apply helpers (`apply_account_stream_frames`, `apply_all_stream_frames`)
 
 Batch-apply helpers (`apply_account_stream_frames`, `apply_all_stream_frames`)

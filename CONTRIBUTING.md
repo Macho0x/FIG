@@ -157,7 +157,7 @@ GitHub Actions runs on every push to `main`:
 
 | Job | What it runs |
 |---|---|
-| `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux), Redis session round-trip, Java/TS/Zig/OCaml smoke |
+| `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux), Redis session round-trip, Java/TS/Zig/OCaml FFI wrapper smokes |
 | `coverage` | `cargo llvm-cov` coverage report |
 | `benchmarks` | Smoke-run frame, transport, gateway, alloc, and tail-latency benches |
 | `cross-platform` | `cargo test --workspace --all-features` on Linux, macOS, Windows |

@@ -81,8 +81,8 @@ Live `SUBSCRIBE` is one C ABI, not a per-language TREE stack:
 
 - `fig_client_subscribe` / `fig_client_sub_next` / `fig_client_sub_close` in `fig.h`
 - Python (`fig-python`) is PyO3 over `fig-client::LiveSubscription`, not the C ABI
-- Production wrappers over `fig.h`: C++, Java, C#, Go
-- OCaml, Zig, and TypeScript stay compile smokes; browsers and Node use `fig-gateway`
+- Production wrappers over `fig.h`: C++, Java, C#, Go, TypeScript (Bun), OCaml (C stubs), Zig
+- Browser TypeScript uses `fig-gateway`; Node has no N-API addon in this repo
 - Native QUIC per language remains deferred (§16.6)
 
 ## References

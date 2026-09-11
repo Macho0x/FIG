@@ -8,18 +8,19 @@ if ! command -v ocamlopt >/dev/null 2>&1; then
   exit 1
 fi
 export LD_LIBRARY_PATH="$root/target/release:${LD_LIBRARY_PATH:-}"
+export FIG_REPO_ROOT="$root"
 out="$(mktemp -d)"
 trap 'rm -rf "$out"' EXIT
-cp bindings/ocaml/smoke/version.ml bindings/ocaml/smoke/version_stub.c "$out/"
+cp bindings/ocaml/fig.ml bindings/ocaml/fig_stubs.c bindings/ocaml/smoke/main.ml "$out/"
 (
   cd "$out"
-  gcc -c -I"$root/crates/fig-ffi/include" -I"$(ocamlc -where)" version_stub.c -o version_stub.o
+  gcc -c -I"$root/crates/fig-ffi/include" -I"$(ocamlc -where)" fig_stubs.c -o fig_stubs.o
   # Ubuntu ocamlopt can pass -lfig_ffi before objects; GNU ld then drops the
-  # .so (--as-needed). Force the symbol and link the static archive last.
-  ocamlopt -ccopt "-Wl,-u,fig_version" \
+  # .so (--as-needed). Force symbols and link the static archive last.
+  ocamlopt -ccopt "-Wl,-u,fig_version,-u,fig_sbe_encode_new_order_single,-u,fig_client_subscribe" \
     -ccopt "$root/target/release/libfig_ffi.a" \
     -cclib -lpthread -cclib -ldl -cclib -lm \
     -o fig_ocaml_smoke \
-    version_stub.o version.ml
+    fig_stubs.o fig.ml main.ml
   ./fig_ocaml_smoke
 )

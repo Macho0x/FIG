@@ -1,27 +1,15 @@
 # OCaml bindings
 
-ctypes wrapper over [`fig.h`](../../crates/fig-ffi/include/fig.h).
+C stubs over [`fig.h`](../../crates/fig-ffi/include/fig.h). Does not use
+`ctypes-foreign` (not packaged on Ubuntu 24.04).
 
 ## Quick check (same as CI)
 
 ```bash
-# Ubuntu: ocaml ocaml-findlib libctypes-ocaml-dev
+# Ubuntu: ocaml (ocamlopt)
 bash bindings/ocaml/smoke/run.sh
 # prints: fig-ocaml smoke OK <crate-version>
 ```
 
-# OCaml bindings
-
-ctypes wrapper over [`fig.h`](../../crates/fig-ffi/include/fig.h).
-
-## Quick check (same as CI)
-
-```bash
-bash bindings/ocaml/smoke/run.sh
-# prints: fig-ocaml smoke OK <crate-version>
-```
-
-The smoke uses a tiny C stub (`caml_fig_version`) so it does not depend on
-`ctypes-foreign` (not packaged on Ubuntu 24.04). See [`fig.ml`](fig.ml) for the
-ctypes client bindings.
-
+See [`fig.ml`](fig.ml) and [`fig_stubs.c`](fig_stubs.c) for `subscribe` /
+`sub_next` (live SUBSCRIBE) and `request_and_recv` (REQUEST only).

@@ -400,9 +400,9 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 | **C#** | ✅ FFI wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | `FigClient.Subscribe` + `FigSubscription.Next` |
 | **Go** | ✅ FFI wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | `Client.Subscribe` + `Subscription.Next` |
 | **Java** | ✅ FFI wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | JNI `figClientSubscribe` / `figClientSubNext` |
-| **TypeScript** | 🔶 Compile smoke | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Bun `version()` smoke; browsers/Node use [gateway](docs/GATEWAY.md) |
-| **OCaml** | 🔶 Compile smoke | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | `fig_version` / JWT smoke — not a live-sub SDK |
-| **Zig** | 🔶 Compile smoke | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | `@cImport` smoke — not a live-sub SDK |
+| **TypeScript** | ✅ FFI wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Bun `FigClient.subscribe` / `FigSubscription.next`; browsers/Node use [gateway](docs/GATEWAY.md) |
+| **OCaml** | ✅ FFI wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | C stubs `subscribe` / `sub_next` over `fig.h` |
+| **Zig** | ✅ FFI wrapper | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | `@cImport` `subscribe` / `Subscription.next` |
 
 **C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md).
 

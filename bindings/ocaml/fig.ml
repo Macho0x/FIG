@@ -1,51 +1,30 @@
-(* Thin ctypes wrapper over fig.h — link libfig_ffi first. *)
+(* Thin C-stub wrapper over fig.h — link libfig_ffi.a (no ctypes-foreign). *)
 
-open Ctypes
+type client
+type subscription
 
-let lib =
-  foreign "fig_version" (void @-> returning string)
+external version : unit -> string = "caml_fig_version"
 
-let fig_version () = lib ()
+external sbe_encode_new_order_single :
+  string -> string -> bool -> float -> float -> string
+  = "caml_fig_sbe_encode_new_order_single"
 
-let fig_buffer_free =
-  foreign "fig_buffer_free"
-    (struct FigBuffer [ data = ptr uint8_t; len = size_t ] @-> returning void)
+external jwt_encode : string -> int64 -> string -> string = "caml_fig_jwt_encode"
+external jwt_verify_bearer : string -> string -> unit = "caml_fig_jwt_verify_bearer"
 
-let fig_client_connect =
-  foreign "fig_client_connect"
-    (string @-> string @-> ptr (ptr void) @-> returning int32_t)
+external encode_subscribe_auth :
+  int -> int -> string -> string -> string -> string
+  = "caml_fig_frame_encode_subscribe_auth"
 
-let fig_client_close = foreign "fig_client_close" (ptr void @-> returning void)
+external connect : string -> string -> client = "caml_fig_client_connect"
+external close : client -> unit = "caml_fig_client_close"
+external ping : client -> unit = "caml_fig_client_ping"
+external request_and_recv : client -> string -> string array
+  = "caml_fig_client_request_and_recv"
 
-let fig_client_ping = foreign "fig_client_ping" (ptr void @-> returning int32_t)
+(* SUBSCRIBE snapshot plus a live handle. Do not use request_and_recv. *)
+external subscribe : client -> string -> string array * subscription
+  = "caml_fig_client_subscribe"
 
-let fig_payload_compress =
-  foreign "fig_payload_compress"
-    (ptr uint8_t @-> size_t @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
-    @-> returning int32_t)
-
-let fig_payload_decompress =
-  foreign "fig_payload_decompress"
-    (ptr uint8_t @-> size_t @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
-    @-> returning int32_t)
-
-let fig_frame_encode_subscribe_auth =
-  foreign "fig_frame_encode_subscribe_auth"
-    (uint16_t @-> uint32_t @-> string @-> string @-> string
-    @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
-    @-> returning int32_t)
-
-let fig_jwt_encode =
-  foreign "fig_jwt_encode"
-    (string @-> uint64_t @-> string
-    @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
-    @-> returning int32_t)
-
-let fig_jwt_verify_bearer =
-  foreign "fig_jwt_verify_bearer" (string @-> string @-> returning int32_t)
-
-let fig_sbe_encode_new_order_single =
-  foreign "fig_sbe_encode_new_order_single"
-    (string @-> string @-> uint8_t @-> float @-> float @-> int8_t @-> int8_t
-    @-> ptr (struct FigBuffer [ data = ptr uint8_t; len = size_t ])
-    @-> returning int32_t)
+external sub_next : subscription -> int -> string option = "caml_fig_client_sub_next"
+external sub_close : subscription -> unit = "caml_fig_client_sub_close"
