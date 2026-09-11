@@ -528,21 +528,23 @@ impl Frame {
         let extensions = if header_count > 0 {
             let mut offset = HEADER_SIZE;
             for _ in 0..header_count {
-                if data.len() < offset + 4 {
+                // Bound against the declared frame length, not the buffer size.
+                // A longer buffer (fuzz / coalesced reads) must not walk past `length`.
+                if length < offset + 4 {
                     return Err(FrameError::BufferTooShort {
                         expected: offset + 4,
-                        actual: data.len(),
+                        actual: length,
                     });
                 }
                 // Read tag (2 bytes) and length (2 bytes)
                 let tag_code = u16::from_be_bytes([data[offset], data[offset + 1]]);
                 let value_len = u16::from_be_bytes([data[offset + 2], data[offset + 3]]) as usize;
                 offset += 4;
-                if data.len() < offset + value_len {
+                if length < offset + value_len {
                     return Err(FrameError::InvalidExtensionLength {
                         tag: tag_code,
                         length: value_len as u16,
-                        available: data.len() - offset,
+                        available: length - offset,
                     });
                 }
                 offset += value_len;
@@ -554,7 +556,7 @@ impl Frame {
             Vec::new()
         };
 
-        // Payload starts after the extension block
+        // Payload starts after the extension block (ext_block_end <= length).
         let payload = data[ext_block_end..length].to_vec();
 
         Ok((
@@ -897,6 +899,31 @@ mod tests {
         let data = [0u8; 10]; // Less than HEADER_SIZE
         let result = Frame::decode(&data);
         assert!(matches!(result, Err(FrameError::BufferTooShort { .. })));
+    }
+
+    #[test]
+    fn test_decode_rejects_extensions_past_declared_length() {
+        // Declared length 17, header_count 1, but the buffer is longer so a naive
+        // walk of `data.len()` would parse a TLV past byte 17 and panic on payload.
+        let mut data = vec![0u8; 32];
+        data[0..4].copy_from_slice(&17u32.to_be_bytes());
+        data[4] = FrameType::Request.code();
+        data[12] = 1; // HeaderCount
+        data[13] = 1; // SchemaID
+                      // TLV at offset 16: tag + value_len=0 would end at 20 > 17
+        data[16] = 0x00;
+        data[17] = 0x17;
+        data[18] = 0x00;
+        data[19] = 0x00;
+        let result = Frame::decode(&data);
+        assert!(
+            matches!(
+                result,
+                Err(FrameError::BufferTooShort { .. })
+                    | Err(FrameError::InvalidExtensionLength { .. })
+            ),
+            "got {result:?}"
+        );
     }
 
     #[test]

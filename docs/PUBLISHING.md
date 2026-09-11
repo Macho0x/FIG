@@ -78,7 +78,7 @@ export FIG_FFI_LIB=$PWD/target/release/libfig_ffi.so   # .dylib on macOS
 bash bindings/java/smoke/run.sh          # needs JAVA_HOME
 bash bindings/typescript/smoke/run.sh    # needs bun
 bash bindings/zig/smoke/run.sh           # needs zig
-bash bindings/ocaml/smoke/run.sh         # needs ocamlfind + ctypes
+bash bindings/ocaml/smoke/run.sh         # needs ocamlopt
 ```
 
 TypeScript is **Bun** (`bun:ffi`). Python `FigPyClient.request()` is the

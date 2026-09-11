@@ -1,8 +1,5 @@
-(* fig_version round-trip — no live FIG server. *)
-open Ctypes
-open Foreign
-
-let fig_version = foreign "fig_version" (void @-> returning string)
+(* fig_version round-trip — no live FIG server, no ctypes-foreign. *)
+external fig_version : unit -> string = "caml_fig_version"
 
 let () =
   let v = fig_version () in
