@@ -8,10 +8,15 @@ if ! command -v ocamlopt >/dev/null 2>&1; then
   exit 1
 fi
 export LD_LIBRARY_PATH="$root/target/release:${LD_LIBRARY_PATH:-}"
-ocamlopt -ccopt "-I$root/crates/fig-ffi/include" \
-  -ccopt "-L$root/target/release" \
-  -cclib -lfig_ffi -cclib -lpthread -cclib -ldl \
-  -o /tmp/fig_ocaml_smoke \
-  bindings/ocaml/smoke/version_stub.c \
-  bindings/ocaml/smoke/version.ml
-/tmp/fig_ocaml_smoke
+out="$(mktemp -d)"
+trap 'rm -rf "$out"' EXIT
+cp bindings/ocaml/smoke/version.ml bindings/ocaml/smoke/version_stub.c "$out/"
+(
+  cd "$out"
+  ocamlopt -ccopt "-I$root/crates/fig-ffi/include" \
+    -ccopt "-L$root/target/release" \
+    -cclib -lfig_ffi -cclib -lpthread -cclib -ldl \
+    -o fig_ocaml_smoke \
+    version_stub.c version.ml
+  ./fig_ocaml_smoke
+)
