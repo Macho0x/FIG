@@ -36,6 +36,16 @@ cargo build -p fig-python
 
 Import: `from fig import FigPyClient` (see [fig-python](../crates/fig-python/)).
 
+```python
+from fig import FigPyClient
+
+c = FigPyClient()
+c.connect("127.0.0.1:8443")
+frames = c.request(".well-known/capabilities", "GET")  # REQUEST, waits for EOF
+```
+
+`subscribe()` still uses finish+EOF and will hang on live exchange-sim streams.
+
 ## Go / TypeScript / C# / Java / OCaml / Zig / C++
 
 1. Build `fig-ffi` (above).
@@ -57,3 +67,20 @@ cargo publish -p fig-client
 Requires crates.io credentials and version bumps in workspace `Cargo.toml`
 (`[workspace.package] version`). That crate version is independent of
 [SPEC.md](../SPEC.md) protocol `1.0.0` (bump SPEC only on a wire break).
+
+`fig_version()` (C ABI) returns `CARGO_PKG_VERSION`.
+
+## Binding smokes (CI)
+
+```bash
+cargo build -p fig-ffi --release
+export FIG_FFI_LIB=$PWD/target/release/libfig_ffi.so   # .dylib on macOS
+bash bindings/java/smoke/run.sh          # needs JAVA_HOME
+bash bindings/typescript/smoke/run.sh    # needs bun
+bash bindings/zig/smoke/run.sh           # needs zig
+bash bindings/ocaml/smoke/run.sh         # needs ocamlfind + ctypes
+```
+
+TypeScript is **Bun** (`bun:ffi`). Python `FigPyClient.request()` is the
+supported query path; `subscribe()` waits for stream EOF and hangs on live
+exchange-sim SUBSCRIBE.

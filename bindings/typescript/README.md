@@ -1,32 +1,35 @@
 # TypeScript / JavaScript bindings
 
-Server-side trading bots on **Node**, **Bun**, and **Deno** — native FIG over TREE,
-not WASM.
+Server-side bots on **Bun** via [`bun:ffi`](https://bun.sh/docs/api/ffi) over
+[`fig.h`](../../crates/fig-ffi/include/fig.h). Not WASM. Browsers should use
+[`fig-gateway`](../../crates/fig-gateways/) REST/WebSocket.
 
-## Usage
-
-Build the shared library, then import the thin FFI wrapper:
+## Quick check (same as CI)
 
 ```bash
-cargo build -p fig-ffi
-export FIG_FFI_LIB=$PWD/target/debug/libfig_ffi.so   # or .dylib / .dll
+cargo build -p fig-ffi --release
+export FIG_FFI_LIB=$PWD/target/release/libfig_ffi.so   # or .dylib / .dll
+bash bindings/typescript/smoke/run.sh
+# prints: fig-ts smoke OK <crate-version>
+```
+
+Or:
+
+```bash
 bun -e "import { version } from './bindings/typescript/fig.ts'; console.log(version())"
 ```
 
-See [`fig.ts`](fig.ts) for `FigClient` (connect, ping) over `bun:ffi`.
+See [`fig.ts`](fig.ts) for `version()`, `jwtEncode`, and `FigClient` (connect / request).
+`dlopen` uses Bun's `args` / `returns` (not Node `node:ffi`).
 
 ## Approach
 
-- Link [`fig-ffi`](../../crates/fig-ffi/) (`libfig_ffi` + `fig.h`) from a thin package.
-- **Bun:** `bun:ffi` (or N-API addon for production packaging).
-- **Deno:** FFI to `fig.h` where supported.
+- Link [`fig-ffi`](../../crates/fig-ffi/) (`libfig_ffi` + `fig.h`).
+- **Bun:** `bun:ffi`. A Node N-API addon is not in this repo.
 - **FSL:** `ftlc --lang typescript` for message types; wire runtime stays in Rust.
 
 ## Out of scope
 
-- **WASM** — not part of the TS SDK plan.
-- **In-browser native FIG** — use [`fig-gateway`](../../crates/fig-gateways/) REST/WebSocket instead.
-
-## Status
-
-🔶 `fig.ts` wrapper landed — connect (incl. 0-RTT token), request, subscribe, stream payload decode, compression. FSL types via `ftlc --lang typescript`. Tracks [TODO.md §16](../../TODO.md).
+- **WASM**
+- **In-browser native FIG** — use the gateway
+- **Node `node:ffi`** — that module does not exist; do not import it

@@ -29,6 +29,7 @@ on the wire. See [Authentication](#authentication) below.
 
 | I am… | Start here | You will… |
 |---|---|---|
+| **New to FIG** | [Docs map](docs/README.md) | Pick a guide; don't mix SUBSCRIBE and REQUEST I/O |
 | **Broker / venue** | [Gateway guide](docs/GATEWAY.md) · [Architecture](#architecture--migration) | Run a FIG backend + optional gateway; issue auth in *your* stack |
 | **Client / integrator** | [Tutorial](docs/TUTORIAL.md) · [Quick start by language](#quick-start-by-language) | Connect with `fig-cli` or a binding; use channel paths from [SPEC.md](SPEC.md) |
 | **Migrating from FIX/REST/WS** | [Try it](#try-it-in-60-seconds) (gateway row) | Point legacy clients at `:9876` / `:8080` / `:8090`; proxy with `--fig-backend` |
@@ -42,7 +43,7 @@ on the wire. See [Authentication](#authentication) below.
 | **Venues & brokers** | One native connection for order entry, live market data, and private account streams |
 | **Integration teams** | Replace FIX + REST + WebSocket glue with one client library and one auth model |
 | **Gateway operators** | Proxy legacy clients to a FIG backend with `fig-gateway` (`--fig-backend`) |
-| **Trading bot authors (TS)** | Native FIG on **Node, Bun, Deno** via N-API/FFI over `fig-ffi` — no WASM |
+| **Trading bot authors (TS)** | Native FIG on **Bun** via `bun:ffi` over `fig-ffi` — no WASM; browsers use the gateway |
 | **Schema / tooling authors** | FSL schemas compile to Rust, SBE, JSON Schema, and FIX mappings |
 
 ---
@@ -142,6 +143,8 @@ What the reference simulator and CLI exercise end-to-end (parity roadmap: [TODO.
 - Public market data subscribe (candles, ticker, agg trades, mark price, …)
 - Private account streams (balances, positions, margin) with wire auth
 - Historical query (GET + cursor) then resume live on the same connection
+- Instrument catalog and capabilities (`GET /.well-known/instruments`, `/.well-known/capabilities`)
+- Fill history on `accounts/{account}/fills`
 - FIX / REST / WebSocket gateway translation paths
 - PING/PONG, session resumption, channel sequencing
 
@@ -169,6 +172,10 @@ Native FIG on **one TREE connection** (TLS + multiplexed channels). If you know 
 | `STREAM_ITEM` | `FrameType::StreamItem` | server push (decode CBOR payload) |
 
 Recommended path: [`fig-client`](crates/fig-client/) (`FigSdkClient`) — same wire as below, less boilerplate. Full demo: [`fig-cli`](crates/fig-cli/src/lib.rs) (`run_demos`).
+
+**SUBSCRIBE vs REQUEST:** snapshot helpers (`subscribe_*`) do not wait for stream EOF.
+Use `subscribe_live` + `LiveSubscription::next_frame` for later `STREAM_ITEM`s.
+`send_and_read` is **REQUEST only** — using it on a live subscribe hangs.
 
 ```rust
 use fig_client::{dev_auth_token, FigSdkClient};
@@ -225,6 +232,8 @@ let order = NewOrderSingle {
     security_id: None,
     id_source: None,
     security_exchange: None,
+    post_only: None,
+    reduce_only: None,
 };
 // wire: REQUEST POST → STREAM_ITEM (ExecutionReport)
 let frames = client.post_order(account, &order, 1).await?;
@@ -236,22 +245,23 @@ let frames = client.post_order(account, &order, 1).await?;
 Similar to a user-data WebSocket or private FIX session — **`AUTH_TOKEN` required** on every channel.
 
 ```rust
-use fig_client::frames::subscribe_frame;
-
-let token = dev_auth_token(account);
-// wire: SUBSCRIBE (FrameType::Subscribe via subscribe_frame)
-let bal_sub = subscribe_frame(
-    5, 1,
-    &format!("accounts/{account}/balances"),
-    Some(&format!("accounts/{account}/balances")),
-    Some(&token),
-)?;
-let frames = client.send_and_read(bal_sub).await?;
-// → STREAM_ITEM: BalanceSnapshot (is_snapshot), then BalanceUpdate
+// wire: SUBSCRIBE → STREAM_ITEM (BalanceSnapshot, then BalanceUpdate)
+let (balances, _frames) = client.subscribe_balances(account, 5).await?;
+println!("USD={:?}", balances.balances.get("USD"));
 
 // wire: SUBSCRIBE → STREAM_ITEM (ExecutionReport)
 let (orders, _frames) = client.subscribe_executions(account, 6).await?;
 println!("open orders={}", orders.open_count());
+
+// Keep recv open for later STREAM_ITEMs (fills, position deltas):
+use fig_client::frames::subscribe_frame;
+let path = format!("accounts/{account}/positions");
+let token = dev_auth_token(account);
+let sub = subscribe_frame(7, 1, &path, Some(&path), Some(&token))?;
+let (_snapshot, mut live) = client.subscribe_live(sub).await?;
+while let Some(frame) = live.next_frame().await? {
+    println!("live {:?}", frame.frame_type);
+}
 ```
 
 ### 4. Historical query, then resume live (REST GET → WS subscribe)
@@ -260,7 +270,7 @@ Like `GET /candles?limit=100` then subscribing to the live feed on the **same co
 
 ```rust
 // wire: REQUEST GET → RESPONSE (CandleBarBatch)
-let batch = client.request_candles(
+let (batch, _) = client.request_candles(
     CandleBarRequest {
         symbol: "AAPL".into(),
         interval: "5m".into(),
@@ -274,7 +284,7 @@ let batch = client.request_candles(
 println!("history bars={}", batch.bars.len());
 
 // wire: SUBSCRIBE → STREAM_ITEM (live candles, same connection)
-let (live, _) = client.subscribe_candles("AAPL", "5m", 8).await?;
+let (candles, _) = client.subscribe_candles("AAPL", "5m", 8).await?;
 ```
 
 ### 5. Legacy migration (keep FIX / REST / WS clients)
@@ -370,11 +380,11 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 | Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
 |---|---|---|---|---|
 | **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — complete runtime |
-| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | Tier 1–4 — connect, request, subscribe + auth |
+| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | `request()` for GET/POST; `subscribe()` waits for EOF (hangs on live sim) |
 | **C++** | ✅ FFI + pure protocol | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ types + generated SBE | Tier 1–4 — `fig::Client` + JWT/SBE |
 | **C#** | ✅ Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | Tier 1–4 — `FigClient` + JWT/SBE |
 | **Go** | ✅ Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | Tier 1–4 — `Client` + JWT/SBE |
-| **TypeScript** | ✅ Thin wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Tier 1–4 — request/subscribe/stream decode + JWT |
+| **TypeScript** | ✅ Thin wrapper (Bun) | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | `bun:ffi` — `version()` smoke in CI; `FigClient` for connect/request |
 | **OCaml** | ✅ Thin wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | Tier 1–4 — ctypes + JWT/SBE FFI |
 | **Zig** | ✅ FFI + pure protocol | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | Tier 1–4 — `@cImport` + JWT/SBE |
 | **Java** | ✅ Thin wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | Tier 1–4 — JNI + JWT/SBE |
@@ -385,8 +395,11 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 
 ## Documentation
 
+Index with “if you want to…” paths: **[docs/README.md](docs/README.md)**.
+
 | Document | Description |
 |---|---|
+| [docs/README.md](docs/README.md) | What to read, in what order; SUBSCRIBE vs REQUEST |
 | [AGENTS.md](AGENTS.md) | Contributor guide — one standard, gateway alias rules |
 | [SPEC.md](SPEC.md) | Normative protocol specification |
 | [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started and CLI walkthrough |

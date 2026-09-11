@@ -2,11 +2,13 @@
 
 `@cImport` wrapper over [`fig.h`](../../crates/fig-ffi/include/fig.h).
 
+## Quick check (same as CI)
+
 ```bash
-cargo build -p fig-ffi
-zig build -Dfig-ffi=../../target/debug
+bash bindings/zig/smoke/run.sh
+# prints: fig-zig smoke OK <crate-version>
 ```
 
-Compile with include path to `crates/fig-ffi/include` and link `libfig_ffi`.
+CI uses Zig 0.14. Link `libfig_ffi` and include `crates/fig-ffi/include`.
 
 See [`fig.zig`](fig.zig) for connect, ping, compression, and subscribe-auth helpers.

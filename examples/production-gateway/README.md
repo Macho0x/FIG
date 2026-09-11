@@ -27,7 +27,20 @@ Restart=on-failure
 
 ## Library embed
 
-Use `fig_gateways::rest`, `fix_session`, `ws_catalog`, `backend::proxy_frame` (REST
-GET), and `backend::BackendSession` (live WS subscribe) from your own Tokio
-service. See [docs/GATEWAY.md](../../docs/GATEWAY.md) and
+REST GET is one-shot (`proxy_frame` — finish send, read until EOF). Live WS
+subscribe keeps a `BackendSession` open:
+
+```rust
+use fig_gateways::backend::{proxy_frame, BackendSession};
+
+// REST GET — finish send, read until EOF
+let responses = proxy_frame(backend_addr, ticker_req).await?;
+
+// WS client — one TREE connection; later STREAM_ITEMs on the same channel
+let session = BackendSession::connect(backend_addr).await?;
+session.send_frame(&subscribe).await?;
+let item = session.recv_frame(subscribe.channel_id).await?;
+```
+
+See [docs/GATEWAY.md](../../docs/GATEWAY.md) and
 [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md).

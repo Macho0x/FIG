@@ -200,10 +200,12 @@ See [QUERY.md](QUERY.md) for REST gateway mapping and pagination fields.
 
 | Payload | When to use |
 |---|---|
-| SBE | Production trading hot path (fixed schema) |
+| SBE | Production trading hot path (fixed schema, `application/fig+sbe`) |
 | CBOR | Self-describing, gateway translation, stream payloads |
-| Protobuf | Schema-evolving enterprise integrations |
-| JSON | REST gateway edge only |
+| JSON | REST / WebSocket gateway **edge only** — not native FIG frames |
+
+`ftlc --lang proto` can emit protobuf **types** for other stacks. Do not send
+`application/protobuf` on FIG frames ([SPEC.md](../SPEC.md) §3.3).
 
 ## Session resume and gap fill
 

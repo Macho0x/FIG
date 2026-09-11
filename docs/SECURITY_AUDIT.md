@@ -28,7 +28,7 @@ outside this checklist.
 - [x] Per-channel rate limiting (`ChannelRateLimiter`)
 - [x] Connection-level DoS guard (`DoSGuard`, `FloodDetector`)
 - [x] Load test with sustained frame flood (`fig-load` smoke)
-- [ ] Fuzz frame decoder (`cargo fuzz` in `crates/fig-core/fuzz` — see CONTRIBUTING)
+- [x] Fuzz frame decoder (`cargo fuzz run frame_decode` in CI — see CONTRIBUTING)
 
 ## Data
 

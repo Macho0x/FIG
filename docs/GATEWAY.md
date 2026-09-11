@@ -29,12 +29,12 @@ WebSocket / SSE         └── use library adapters in custom gateway
 # Terminal 1: FIG exchange simulator
 cargo run -p fig-exchange-sim
 
-# Terminal 2: Gateway (REST + FIX translation demo)
-cargo run -p fig-gateways --bin fig-gateway
+# Terminal 2: Gateway proxies REST GET + live WS to the simulator
+cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
-The exchange simulator listens on **`127.0.0.1:8443`** (UDP/TREE). Native FIG
-clients (e.g. `fig-cli`) connect directly to that address.
+Without `--fig-backend`, REST/FIX still translate frames in-process but do not
+hit a live book. Native FIG clients (`fig-cli`) connect to `:8443` directly.
 
 ## CLI options
 
@@ -67,6 +67,14 @@ curl -X POST http://127.0.0.1:8080/trading/orders \
   -d '{"cl_ord_id":"ORD-1","symbol":"AAPL","side":"Buy","order_qty":100,"price":150.25}'
 ```
 
+With `--fig-backend`, GET queries round-trip through native FIG:
+
+```bash
+curl 'http://127.0.0.1:8080/.well-known/capabilities'
+curl 'http://127.0.0.1:8080/.well-known/instruments'
+curl 'http://127.0.0.1:8080/marketdata/AAPL/ticker'
+```
+
 ## FIX Gateway
 
 - Logon (35=A) maps to STREAM_OPEN + AUTH extension.
@@ -79,6 +87,15 @@ state management (sequence numbers, heartbeats, gap fill).
 ## WebSocket & SSE
 
 - **WebSocket**: `fig-gateway` listens on `--ws-addr` (default `8090`). Legacy subscribe JSON is translated via `fig_gateways::ws_catalog`. With `--fig-backend`, each WS client keeps one TREE connection and receives follow-up `STREAM_ITEM`s (fills, book deltas) until the socket closes.
+
+```json
+{"method":"SUBSCRIBE","params":["aapl@ticker"]}
+```
+
+maps to native `SUBSCRIBE` on `marketdata/aapl/ticker`. Hyperliquid-shaped JSON
+(`{"method":"subscribe","subscription":{"type":"trades","coin":"AAPL"}}`) maps
+`coin` to an uppercase symbol on the same native catalog. Round-trip:
+`cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.
 - **SSE**: use `fig_gateways::sse` (`parse_sse_chunk`, `sse_to_fig_stream_item`) for REST streaming endpoints.
 
 ## Production Checklist

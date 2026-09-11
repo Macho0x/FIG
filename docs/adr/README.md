@@ -53,7 +53,8 @@ hot paths (order entry).
 ## Decision
 
 CBOR for self-describing gateway payloads; SBE generated from FSL for production
-trading messages. Protobuf supported for enterprise integrations.
+trading messages. Protobuf is optional **codegen** (`ftlc --lang proto`), not an
+on-wire FIG codec.
 
 ## Consequences
 

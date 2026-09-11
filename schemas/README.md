@@ -12,3 +12,8 @@ The trading schema is split into four logical files merged at codegen time
 
 All fragments share well-known schema id `0x01` (`trading.orders`). Generated
 Rust lives in `crates/fig-core/src/generated/`.
+
+```bash
+cargo xtask codegen          # regenerate Rust + binding SBE
+cargo xtask codegen --check  # CI drift check
+```

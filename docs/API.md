@@ -1,11 +1,13 @@
 # FIG API & Documentation Index
 
-Central reference for FIG crates, modules, and project documentation.
+Crate and module map. For a **user reading order** (SUBSCRIBE vs REQUEST,
+bindings caveats), start at [README.md](README.md) in this folder.
 
 ## Project documentation
 
 | Document | Description |
 |---|---|
+| [README.md](README.md) | Docs map — start here |
 | [TUTORIAL.md](TUTORIAL.md) | Step-by-step getting started |
 | [PROTOCOL.md](PROTOCOL.md) | Design rationale, channel directions, migration |
 | [STREAMING.md](STREAMING.md) | Live `SUBSCRIBE` paths and gateway WS mapping |
@@ -145,7 +147,7 @@ key-issuance API).
 | `funding` | `FundingState` | funding payments |
 | `ledger` | `LedgerState` | ledger updates |
 | `liquidations` | `LiquidationState` | user + public liquidations |
-| `client` | `FigSdkClient`, `LiveSubscription` | subscribe/request wrappers; held-open live recv |
+| `client` | `FigSdkClient`, `LiveSubscription` | `request_*` / `send_and_read` (EOF); `subscribe_*` / `subscribe_live` (held open) |
 
 ```bash
 cargo run -p fig-cli

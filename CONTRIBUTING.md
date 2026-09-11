@@ -36,7 +36,8 @@ fig-cli           — Native FIG demo client (seven validated flows)
 fig-bench         — Criterion microbenches + fig-latency tail harness
 ```
 
-See [docs/API.md](docs/API.md) for the full module index.
+See [docs/API.md](docs/API.md) for the module index and [docs/README.md](docs/README.md)
+for the user reading order (SUBSCRIBE vs REQUEST).
 
 ## Protocol Design Principles
 

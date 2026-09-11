@@ -91,4 +91,4 @@ Wire `tracing-subscriber` in your binary to export spans to OpenTelemetry.
 | `REDIS_URL` | Redis session store when `--session-store redis` |
 | `RUST_LOG` | Log level (`info`, `debug`) |
 
-See also [GATEWAY.md](GATEWAY.md), [TODO.md §18](../TODO.md#18-fig-10-release-criteria).
+See also [GATEWAY.md](GATEWAY.md), [docs/README.md](README.md), [TODO.md §18](../TODO.md#18-fig-10-release-criteria).

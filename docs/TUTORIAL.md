@@ -57,6 +57,26 @@ Private account paths require an `AUTH_TOKEN` extension on each frame (SPEC
 not a key-issuance API. Set `FIG_DEV_OPEN=1` on the server to skip auth during
 local development.
 
+Minimal SDK equivalent of the CLI (simulator must be running):
+
+```rust
+use fig_client::FigSdkClient;
+use fig_core::transport;
+use quinn::Endpoint;
+
+let mut ep = Endpoint::client("0.0.0.0:0".parse()?)?;
+ep.set_default_client_config(transport::client_config()?);
+let conn = ep.connect("127.0.0.1:8443".parse()?, "localhost")?.await?;
+let client = FigSdkClient::new(&conn);
+
+let caps = client.request_capabilities(1).await?;
+let (_ticker, _) = client.request_ticker("AAPL", 2).await?;
+println!("{} capability paths", caps.paths.len());
+```
+
+`request_*` waits for EOF (queries). `subscribe_*` reads the snapshot only.
+For later `STREAM_ITEM`s, use `subscribe_live` — see [STREAMING.md](STREAMING.md).
+
 ## 3. Run the legacy gateway (optional)
 
 Translate FIX, REST, and WebSocket into native FIG frames:
@@ -81,6 +101,15 @@ Example REST historical query (requires `--fig-backend`):
 
 ```bash
 curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
+curl 'http://127.0.0.1:8080/.well-known/instruments'
+```
+
+Example WebSocket subscribe (requires `--fig-backend` and a WS client):
+
+```bash
+# Binance-shaped alias → native `marketdata/AAPL/ticker`
+printf '{"method":"SUBSCRIBE","params":["aapl@ticker"]}\n' \
+  | websocat ws://127.0.0.1:8090
 ```
 
 Example REST order (translation demo without backend):
@@ -212,6 +241,7 @@ docker run --rm -p 8443:8443/udp fig-exchange-sim
 
 ## Next steps
 
+- [docs/README.md](README.md) — what to read next (SUBSCRIBE vs REQUEST)
 - Read [SPEC.md](../SPEC.md) for the full protocol specification (§9 stream catalog, §9.3 auth)
 - Read [PROTOCOL.md](PROTOCOL.md) for worked subscribe/query sequences
 - Read [STREAMING.md](STREAMING.md) and [QUERY.md](QUERY.md) for broker API parity
@@ -277,7 +307,7 @@ curl 'http://127.0.0.1:8080/.well-known/instruments'
 
 See [PROTOCOL.md](PROTOCOL.md) for frame-by-frame worked examples.
 
-## 8. Perps walkthrough (native FIG)
+## 11. Perps walkthrough (native FIG)
 
 This section uses **native FIG paths** — the same surface any crypto or equity venue
 implements. Gateway aliases (Binance `@markPrice`, Hyperliquid `activeAssetCtx`) map

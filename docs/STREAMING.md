@@ -75,6 +75,27 @@ Hold `LiveSubscription` (from `subscribe_live`) when you need frames after the
 initial snapshot. Batch apply via `FigSdkClient::apply_account_stream_frames` or
 `apply_all_stream_frames`.
 
+```rust
+use fig_client::{dev_auth_token, frames::subscribe_frame, FigSdkClient};
+
+let path = format!("accounts/{account}/positions");
+let token = dev_auth_token(account);
+let frame = subscribe_frame(1, 1, &path, Some(&path), Some(&token))?;
+let (snapshot, mut live) = client.subscribe_live(frame).await?;
+// `snapshot` is the initial PositionSnapshot / ack — stream stays open.
+while let Some(item) = live.next_frame().await? {
+    println!("live {:?}", item.frame_type);
+}
+```
+
+`subscribe_balances` / `subscribe_positions` return only the snapshot and drop
+the live handle. Use `subscribe_live` for follow-up fills and deltas.
+
+Do **not** call `send_and_read` on a `SUBSCRIBE` frame — that waits for EOF.
+
+Batch-apply helpers (`apply_account_stream_frames`, `apply_all_stream_frames`)
+merge CBOR payloads into `FundingState` / `LedgerState` / … after you have frames.
+
 ## Subscribe example (conceptual)
 
 1. Open channel with `ChannelMode::Session` and schema id `0x01`.

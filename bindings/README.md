@@ -53,7 +53,7 @@ cargo run -p xtask -- codegen --check
 `TradeTape`, `MarkPriceState`, `OrdersState`, `AggTradesState`, `FundingState`,
 `LedgerState`, `LiquidationState` in `fig-python`.
 
-## Compile smoke
+**Compile smoke** (CI also runs Java / TypeScript / Zig / OCaml):
 
 ```bash
 cargo build -p fig-ffi
@@ -63,6 +63,10 @@ cargo build -p fig-ffi --release
 bash bindings/cpp/smoke/run.sh
 export FIG_REPO_ROOT="$PWD"
 bash bindings/csharp/smoke/run.sh
+bash bindings/java/smoke/run.sh
+bash bindings/typescript/smoke/run.sh
+bash bindings/zig/smoke/run.sh
+bash bindings/ocaml/smoke/run.sh
 ```
 
 **SBE hex parity (FFI encode vs `v1.json`):**

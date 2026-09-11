@@ -81,6 +81,35 @@ curl 'http://127.0.0.1:8080/.well-known/instruments'
 
 Without `--fig-backend`, the gateway returns a translation demo (no live data).
 
+## Native SDK (same paths, no HTTP)
+
+```rust
+let caps = client.request_capabilities(1).await?;
+assert!(!caps.paths.is_empty());
+
+let catalog = client.request_instruments(2).await?;
+println!("{} instruments", catalog.instruments.len());
+
+let fills = client
+    .request_fills(
+        account,
+        FillHistoryRequest {
+            account: account.to_string(),
+            symbol: None,
+            start_time: None,
+            end_time: None,
+            limit: Some(50),
+            cursor: None,
+        },
+        3,
+    )
+    .await?;
+println!("{} fills", fills.fills.len());
+```
+
+`request_*` uses `send_and_read` (finish send, read until EOF). That is correct
+for GET/POST and **wrong** for live `SUBSCRIBE` — see [STREAMING.md](STREAMING.md).
+
 ## Pagination
 
 Batch responses include `has_more` and optional `next_cursor` on each batch type.

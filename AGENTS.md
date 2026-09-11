@@ -208,6 +208,7 @@ cargo run -p xtask -- check-gateway   # gateway parity
 
 ```
 AGENTS.md (this file)  — how to work in the repo
+docs/README.md         — user reading order (guides vs SPEC)
 SPEC.md                — normative wire format and paths
 docs/adr/              — recorded decisions and consequences
 CONTRIBUTING.md        — build, FSL workflow, coding standards
