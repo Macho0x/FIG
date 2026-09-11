@@ -10,15 +10,15 @@ Build the shared library, then import the thin FFI wrapper:
 ```bash
 cargo build -p fig-ffi
 export FIG_FFI_LIB=$PWD/target/debug/libfig_ffi.so   # or .dylib / .dll
-node --experimental-default-type=module -e "import { version } from './bindings/typescript/fig.ts'; console.log(version())"
+bun -e "import { version } from './bindings/typescript/fig.ts'; console.log(version())"
 ```
 
-See [`fig.ts`](fig.ts) for `FigClient` (connect, ping) over `node:ffi`.
+See [`fig.ts`](fig.ts) for `FigClient` (connect, ping) over `bun:ffi`.
 
 ## Approach
 
 - Link [`fig-ffi`](../../crates/fig-ffi/) (`libfig_ffi` + `fig.h`) from a thin package.
-- **Node / Bun:** `node:ffi` (or N-API addon for production packaging).
+- **Bun:** `bun:ffi` (or N-API addon for production packaging).
 - **Deno:** FFI to `fig.h` where supported.
 - **FSL:** `ftlc --lang typescript` for message types; wire runtime stays in Rust.
 

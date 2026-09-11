@@ -11,6 +11,10 @@ cargo-fuzz = true
 fig-core = { path = ".." }
 libfuzzer-sys = "0.4"
 
+# Isolate from the FIG workspace so `cargo fuzz` can build this crate.
+[workspace]
+members = ["."]
+
 [[bin]]
 name = "frame_decode"
 path = "fuzz_targets/frame_decode.rs"

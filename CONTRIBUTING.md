@@ -171,7 +171,7 @@ toolchain. Locally:
 
 ```bash
 cargo install cargo-fuzz
-cd crates/fig-core/fuzz
+cd crates/fig-core
 cargo fuzz run frame_decode -- -max_total_time=60
 ```
 

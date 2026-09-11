@@ -1,8 +1,8 @@
 /**
- * TypeScript bindings over fig.h — Node/Bun via `node:ffi` (native libfig_ffi).
+ * TypeScript bindings over fig.h — Bun via `bun:ffi` (native libfig_ffi).
  */
 
-import { dlopen, FFIType, ptr, type Pointer } from "node:ffi";
+import { dlopen, FFIType, ptr, type Pointer } from "bun:ffi";
 
 export type FigBuffer = {
   data: Pointer;
@@ -19,32 +19,32 @@ const libPath =
   new URL("../../../target/debug/libfig_ffi.so", import.meta.url).pathname;
 
 const fig = dlopen(libPath, {
-  fig_version: { parameters: [], result: FFIType.cstring },
-  fig_buffer_free: { parameters: [FFIType.pointer], result: FFIType.void },
-  fig_frame_list_free: { parameters: [FFIType.pointer], result: FFIType.void },
-  fig_string_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_version: { args: [], returns: FFIType.cstring },
+  fig_buffer_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_frame_list_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_string_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_client_connect: {
-    parameters: [FFIType.cstring, FFIType.cstring, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.cstring, FFIType.cstring, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_client_connect_0rtt: {
-    parameters: [
+    args: [
       FFIType.cstring,
       FFIType.cstring,
       FFIType.pointer,
       FFIType.u64,
       FFIType.pointer,
     ],
-    result: FFIType.i32,
+    returns: FFIType.i32,
   },
-  fig_client_close: { parameters: [FFIType.pointer], result: FFIType.void },
-  fig_client_ping: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_client_close: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_client_ping: { args: [FFIType.pointer], returns: FFIType.void },
   fig_client_request_and_recv: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_frame_encode_request_auth: {
-    parameters: [
+    args: [
       FFIType.u16,
       FFIType.u32,
       FFIType.u8,
@@ -56,10 +56,10 @@ const fig = dlopen(libPath, {
       FFIType.u64,
       FFIType.pointer,
     ],
-    result: FFIType.i32,
+    returns: FFIType.i32,
   },
   fig_frame_encode_subscribe_auth: {
-    parameters: [
+    args: [
       FFIType.u16,
       FFIType.u32,
       FFIType.cstring,
@@ -67,44 +67,44 @@ const fig = dlopen(libPath, {
       FFIType.cstring,
       FFIType.pointer,
     ],
-    result: FFIType.i32,
+    returns: FFIType.i32,
   },
   fig_payload_compress: {
-    parameters: [FFIType.pointer, FFIType.u64, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_payload_decompress: {
-    parameters: [FFIType.pointer, FFIType.u64, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_frame_is_stream_item: {
-    parameters: [FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
   fig_frame_payload: {
-    parameters: [
+    args: [
       FFIType.pointer,
       FFIType.u64,
       FFIType.pointer,
       FFIType.pointer,
       FFIType.pointer,
     ],
-    result: FFIType.i32,
+    returns: FFIType.i32,
   },
   fig_cbor_decode_execution_report_cl_ord_id: {
-    parameters: [FFIType.pointer, FFIType.u64, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_jwt_encode: {
-    parameters: [FFIType.cstring, FFIType.u64, FFIType.cstring, FFIType.pointer],
-    result: FFIType.i32,
+    args: [FFIType.cstring, FFIType.u64, FFIType.cstring, FFIType.pointer],
+    returns: FFIType.i32,
   },
   fig_jwt_verify_bearer: {
-    parameters: [FFIType.cstring, FFIType.cstring],
-    result: FFIType.i32,
+    args: [FFIType.cstring, FFIType.cstring],
+    returns: FFIType.i32,
   },
   fig_sbe_encode_new_order_single: {
-    parameters: [
+    args: [
       FFIType.cstring,
       FFIType.cstring,
       FFIType.u8,
@@ -114,42 +114,42 @@ const fig = dlopen(libPath, {
       FFIType.i8,
       FFIType.pointer,
     ],
-    result: FFIType.i32,
+    returns: FFIType.i32,
   },
-  fig_funding_new: { parameters: [FFIType.u64], result: FFIType.pointer },
-  fig_funding_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_funding_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_funding_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_funding_apply: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
-  fig_funding_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
-  fig_funding_latest_amount: { parameters: [FFIType.pointer], result: FFIType.f64 },
-  fig_agg_trades_new: { parameters: [FFIType.u64], result: FFIType.pointer },
-  fig_agg_trades_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_funding_len: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_funding_latest_amount: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_agg_trades_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_agg_trades_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_agg_trades_apply: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
-  fig_agg_trades_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
-  fig_agg_trades_latest_price: { parameters: [FFIType.pointer], result: FFIType.f64 },
-  fig_ledger_new: { parameters: [FFIType.u64], result: FFIType.pointer },
-  fig_ledger_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_agg_trades_len: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_agg_trades_latest_price: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_ledger_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_ledger_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_ledger_apply: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
-  fig_ledger_len: { parameters: [FFIType.pointer], result: FFIType.u64 },
-  fig_liquidation_new: { parameters: [FFIType.u64], result: FFIType.pointer },
-  fig_liquidation_free: { parameters: [FFIType.pointer], result: FFIType.void },
+  fig_ledger_len: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_liquidation_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_liquidation_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_liquidation_apply_user: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
   fig_liquidation_apply_public: {
-    parameters: [FFIType.pointer, FFIType.pointer, FFIType.u64],
-    result: FFIType.i32,
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
   },
-  fig_liquidation_user_count: { parameters: [FFIType.pointer], result: FFIType.u64 },
+  fig_liquidation_user_count: { args: [FFIType.pointer], returns: FFIType.u64 },
 });
 
 function copyBuffer(buf: FigBuffer): Buffer {

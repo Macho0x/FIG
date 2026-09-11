@@ -561,7 +561,7 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 | ✅ | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode + JWT + SBE generated |
 | ✅ | `fig-ocaml` (ctypes) | Low | `bindings/ocaml/fig.ml` over `fig.h` + JWT helpers |
 | ✅ | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` + JWT + SBE generated |
-| ✅ | TypeScript / Node (`node:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode, JWT, SBE generated |
+| ✅ | TypeScript / Bun (`bun:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode, JWT, SBE generated |
 | ✅ | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` + JWT helpers |
 | ✅ | Perps merge FFI handles (funding, ledger, liquidations, agg trades) | Medium | `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*`, `fig_agg_trades_*` |
 | ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` + `stream_state` tests |

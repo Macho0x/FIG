@@ -162,9 +162,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
       - name: Fuzz frame_decode
-        working-directory: crates/fig-core/fuzz
+        working-directory: crates/fig-core
         run: cargo fuzz run frame_decode -- -max_total_time=30

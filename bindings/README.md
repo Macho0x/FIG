@@ -11,7 +11,7 @@ Build `fig-ffi` first (`cargo build -p fig-ffi`) and link `libfig_ffi`.
 | `cpp/include/fig` | C++ | RAII `fig::Client` + JWT/SBE + generated `sbe_generated.hpp` |
 | `cpp/pure/fig_protocol.hpp` | C++ | Pure protocol library (frame/ext/channel, no Rust runtime) |
 | `csharp/Fig` | C# | P/Invoke `FigClient` + JWT/SBE + `SbeGenerated.cs` |
-| `typescript/fig.ts` | TypeScript | `node:ffi` — connect, request, subscribe, JWT, SBE |
+| `typescript/fig.ts` | TypeScript | `bun:ffi` — connect, request, subscribe, JWT, SBE |
 | `typescript/sbe_generated.ts` | TypeScript | FSL-generated SBE serializers |
 | `ocaml/fig.ml` | OCaml | ctypes over `fig.h` + JWT/SBE FFI |
 | `zig/fig.zig` | Zig | `@cImport` + JWT/SBE helpers |
