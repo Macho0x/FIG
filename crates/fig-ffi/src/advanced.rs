@@ -166,7 +166,7 @@ pub unsafe extern "C" fn fig_client_connect_0rtt(
         Some(std::slice::from_raw_parts(resumption_token, token_len))
     };
     let rt = match Runtime::new() {
-        Ok(r) => r,
+        Ok(r) => Arc::new(r),
         Err(_) => return -3,
     };
     let (conn, session) = match rt.block_on(async {

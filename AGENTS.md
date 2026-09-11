@@ -199,6 +199,7 @@ cargo run -p xtask -- check-gateway   # gateway parity
 | Add WS alias | `crates/fig-gateways/src/ws_catalog.rs` |
 | Reference broker handler | `crates/fig-exchange-sim/src/broker_api.rs` |
 | Client subscribe / request | `crates/fig-client/` |
+| Live subscribe (FFI / Python / Go / C++ / C# / Java) | `crates/fig-ffi/include/fig.h` (`fig_client_subscribe`), then `fig-python`, then `bindings/{go,cpp,csharp,java}` |
 | Conformance vectors | `tests/conformance/` |
 | Architecture decision | New ADR in `docs/adr/` |
 

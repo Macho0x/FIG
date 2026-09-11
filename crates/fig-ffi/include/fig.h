@@ -57,6 +57,11 @@ typedef struct FigOrderBookHandle FigOrderBookHandle;
 typedef struct FigOrdersHandle FigOrdersHandle;
 
 /**
+ * Opaque held-open SUBSCRIBE recv stream.
+ */
+typedef struct FigSubHandle FigSubHandle;
+
+/**
  * Opaque public trade tape for C bindings.
  */
 typedef struct FigTradeTapeHandle FigTradeTapeHandle;
@@ -255,7 +260,9 @@ int32_t fig_client_connect(const char *addr, const char *server_name, struct Fig
 void fig_client_close(struct FigClientHandle *handle);
 
 /**
- * Send encoded frame bytes; receive all response frames.
+ * Send encoded REQUEST frame bytes; receive all response frames (wait for EOF).
+ *
+ * Do not use for live `SUBSCRIBE` — call `fig_client_subscribe` instead.
  */
 int32_t fig_client_request_and_recv(struct FigClientHandle *handle,
                                     const uint8_t *frame_bytes,
@@ -266,6 +273,35 @@ int32_t fig_client_request_and_recv(struct FigClientHandle *handle,
  * Send PING on channel 0.
  */
 int32_t fig_client_ping(struct FigClientHandle *handle);
+
+/**
+ * SUBSCRIBE and read the snapshot without waiting for stream EOF.
+ *
+ * `snapshot_out` receives the initial frames. `sub_out` is a live handle for
+ * later `STREAM_ITEM`s via `fig_client_sub_next`. Concurrent
+ * `fig_client_request_and_recv` on the same client while `sub_next` is
+ * blocked is unsupported.
+ */
+int32_t fig_client_subscribe(struct FigClientHandle *handle,
+                             const uint8_t *frame_bytes,
+                             uintptr_t frame_len,
+                             struct FigFrameList *snapshot_out,
+                             struct FigSubHandle **sub_out);
+
+/**
+ * Read the next frame on a live subscription.
+ *
+ * Returns `0` with `frame_out` set, `1` on timeout, `2` on EOF, `<0` on error.
+ * `timeout_ms == 0` waits without a deadline.
+ */
+int32_t fig_client_sub_next(struct FigSubHandle *sub,
+                            uint32_t timeout_ms,
+                            struct FigBuffer *frame_out);
+
+/**
+ * Close a live subscription handle.
+ */
+void fig_client_sub_close(struct FigSubHandle *sub);
 
 /**
  * Encode HS256 JWT claims (`sub`, `exp`) into `out`. Returns 0 on success.

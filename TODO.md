@@ -58,6 +58,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | 🔶 | Tier 1 SDK: `FigSdkClient` as primary `request()` path | both | [§17.2](#172-cross-cutting-protocol-both-sides) |
 | ✅ | Tier 3 SDK: pub/sub merge wrappers complete | both | perps + account merge helpers in `fig-client` |
 | ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
+| ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
 | ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | JWT RS256/KMS reference + key rotation runbook | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
@@ -70,7 +71,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ⬜ | Co-lo / tail-latency evidence on realistic topology | both | [§19.1](#191-fig-project--protocol-release-maturity) |
 | ✅ | Per-language SBE hex parity CI | both | [§19.2](#192-fig-project--client-ecosystem) |
 | ✅ | SBE-default order path documentation + examples | both | [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md), `run_sbe_order_demo` |
-| 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | both | [§19.2](#192-fig-project--client-ecosystem) |
+| ✅ | Live subscribe on TREE via FFI (Java/C++/C#/Go) | both | [§19.2](#192-fig-project--client-ecosystem) — wrappers over `fig.h`; not per-language QUIC |
 
 ### 0.5 P3 — Crypto-perps track (pick one track at a time)
 
@@ -295,7 +296,7 @@ Open items: [§0.3](#03-p2--reference-client-and-sdk-polish) (P2) and
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | `fig-client` complete merge + request surface | Medium | Perps merge helpers + `FigSdkClient` demos; Tier 1 polish in §0.3 |
-| 🔶 | Native TREE clients at Tier 3–4 in Java/C++/C# | Medium | FFI smoke exists; see §0.4 |
+| ✅ | Live subscribe on TREE via FFI (Java/C++/C#/Go) | Medium | `fig_client_subscribe`; e2e in `fig-ffi` `client_integration` |
 
 ### 19.3 Venue-owned — business stack (both venue types)
 
@@ -553,16 +554,16 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; Tier 1–4: client, compression, fragmentation, 0-RTT, migration, stream decode; `jwt.rs` + `sbe.rs` (NewOrderSingle, CandleBar, SymbolTicker) |
-| ✅ | FFI API surface spec | High | Frame + CBOR + client + advanced features in `fig.h` |
-| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — codec, client (`connect`/`request`/`subscribe` + auth), binding conformance |
-| ✅ | `fig-csharp` (P/Invoke) | Medium | `bindings/csharp/Fig` — encode + `FigClient` + JWT + SBE generated |
-| ✅ | `fig-go` (cgo) | Medium | `bindings/go/fig` — encode + `Client` + JWT + SBE generated |
-| ✅ | `fig-cpp` (header + link staticlib) | Medium | RAII `fig::Client` + auth encode + JWT + SBE generated |
-| ✅ | `fig-ocaml` (ctypes) | Low | `bindings/ocaml/fig.ml` over `fig.h` + JWT helpers |
-| ✅ | `fig-zig` (`@cImport fig.h`) | Low | `bindings/zig/fig.zig` + JWT + SBE generated |
-| ✅ | TypeScript / Bun (`bun:ffi`) | Medium | `bindings/typescript/fig.ts` — connect, request, subscribe, stream decode, JWT, SBE generated |
-| ✅ | `fig-java` (JNI) | Low | `bindings/java/FigNative.java` + `native/fig_jni.c` + JWT helpers |
+| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; live subscribe (`fig_client_subscribe` / `sub_next`); compression, fragmentation, 0-RTT, migration, stream decode; JWT + SBE |
+| ✅ | FFI API surface spec | High | Frame + CBOR + client + live sub + advanced features in `fig.h` |
+| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — `request()` EOF; `subscribe()` snapshot; `subscribe_live()` / `FigPySubscription` |
+| ✅ | `fig-csharp` (P/Invoke) | Medium | `FigClient.Subscribe` / `FigSubscription.Next` + JWT + SBE |
+| ✅ | `fig-go` (cgo) | Medium | `Client.Subscribe` / `Subscription.Next` + JWT + SBE |
+| ✅ | `fig-cpp` (header + link staticlib) | Medium | `fig::Client::subscribe` / `Subscription::next` + JWT + SBE |
+| 🔶 | `fig-ocaml` (ctypes) | Low | Compile smoke over `fig.h` — not a live-sub SDK |
+| 🔶 | `fig-zig` (`@cImport fig.h`) | Low | Compile smoke — not a live-sub SDK |
+| 🔶 | TypeScript / Bun (`bun:ffi`) | Medium | `version()` smoke; browsers/Node use gateway |
+| ✅ | `fig-java` (JNI) | Low | `figClientSubscribe` / `figClientSubNext` + JWT/SBE |
 | ✅ | Perps merge FFI handles (funding, ledger, liquidations, agg trades) | Medium | `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*`, `fig_agg_trades_*` |
 | ✅ | Binding conformance tests | High | Python + `fig-ffi` run §16.1 vectors; `advanced` + `client_integration` + `stream_state` tests |
 
@@ -570,9 +571,9 @@ High-level client API (all bindings):
 
 ```text
 FigClient::connect(addr, tls_config)
-FigClient::open_channel(path, schema_id)
-FigClient::send_request(channel, payload, content_type)
-FigClient::recv_stream() → stream of frames
+FigClient::subscribe(frame) → snapshot + live handle
+FigClient::sub_next(timeout) → STREAM_ITEM
+FigClient::request_and_recv(frame) → RESPONSE (EOF)
 FigClient::ping() / close()
 ```
 
@@ -586,7 +587,7 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 |---|---|---|---|
 | ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | All FFI bindings + `fig-python` |
 | ✅ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + JWT encode/decode/verify in all bindings |
-| ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | SUBSCRIBE + auth + `fig_frame_payload` / CBOR stream decode helpers |
+| ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Live recv: `fig_client_subscribe` + Python `subscribe_live`; Go/C++/C#/Java wrappers |
 | ✅ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
 
 ---
@@ -633,7 +634,7 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 | TypeScript | interfaces + CBOR | N-API / Deno FFI → `fig-ffi` (Node, Bun, Deno) | No WASM; browser uses gateway |
 | OCaml | variant enums + CBOR | ctypes → `fig-ffi` | Quant/research |
 | Zig | struct layout + comptime | `@cImport fig.h` or pure Zig | Comptime-friendly codegen |
-| Java | add `--lang java` first | JNI → `fig-ffi` | SPEC lists; not in `ftlc` yet |
+| Java | `--lang java` | JNI → `fig-ffi` | `figClientSubscribe` / `figClientSubNext` |
 
 ---
 
@@ -671,11 +672,11 @@ FSL codegen (full) + PyO3/FFI client (Tier 2) + CBOR only + conformance tests
 
 | Priority | Items |
 |---|---|
-| **High** | ✅ §16.1 conformance vectors · §16.2 enum/nested/serializer + SBE codegen · §16.3 `fig-ffi` + all bindings · §16.4 Tier 1–4 SDK · §16.5 multi-codec exchange-sim |
-| **Medium** | ✅ C# / Go / C++ bindings · SBE per-language codegen · gateway proxy · TypeScript SDK · pure protocol libs (C++) |
-| **Low** | ✅ OCaml / Zig bindings · Tier 4 advanced features · Java target · pure Zig protocol lib · ⬜ TREE transport per language |
+| **High** | ✅ §16.1 conformance vectors · §16.2 enum/nested/serializer + SBE codegen · §16.3 `fig-ffi` live subscribe + Python · §16.4 Tier 1–3 on production langs · §16.5 multi-codec exchange-sim |
+| **Medium** | ✅ C# / Go / C++ / Java live-sub wrappers · SBE per-language codegen · gateway proxy · 🔶 TypeScript compile smoke · ✅ pure protocol libs (C++) |
+| **Low** | 🔶 OCaml / Zig compile smokes · ✅ Tier 4 advanced in `fig-ffi` · ✅ Java target · ✅ pure Zig protocol lib · ⬜ TREE transport per language |
 
-**§16 complete ✅** — optional follow-ups: [§0.7](#07-p4--long-horizon--optional) (TREE per language, §16.2 CBOR serializers).
+Live subscribe bar (Python + FFI, wrappers inherit): `subscribe_live` a positions stream, get a fill, do not hang — with a test. Per-language TREE and smoke-only langs as SDKs stay optional ([§0.7](#07-p4--long-horizon--optional)).
 
 ---
 

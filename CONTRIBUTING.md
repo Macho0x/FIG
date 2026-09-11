@@ -163,7 +163,10 @@ GitHub Actions runs on every push to `main`:
 | `cross-platform` | `cargo test --workspace --all-features` on Linux, macOS, Windows |
 | `fuzz` | nightly `cargo fuzz run frame_decode` (30s) |
 
-Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
+Push to `main` triggers `.github/workflows/release.yml` (next `vX.Y.Z` tag, binaries + changelog) unless the commit message starts with `[skip release]`.
+
+Live subscribe tests: `cargo test -p fig-ffi --test client_integration` and
+`PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python`.
 
 ## Fuzzing
 

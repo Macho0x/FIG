@@ -192,12 +192,12 @@ let client = FigSdkClient::new(&conn);
 let account = "DEMO-ACCT";
 ```
 
-### 1. Live market data (WebSocket-style subscribe)
+### 1. Live market data (public subscribe)
 
-Similar to Binance's `@kline_5m` or a FIX market-data subscription — server pushes `STREAM_ITEM`s.
+WebSocket-style subscribe (e.g. Binance `@kline_5m`) or a FIX market-data request — server pushes `STREAM_ITEM`s. No `AUTH_TOKEN`.
 
 ```rust
-// wire: SUBSCRIBE → STREAM_ITEM (CandleBarEvent)
+// wire: SUBSCRIBE → STREAM_ITEM (CandleBarEvent) — snapshot, then drop the live handle
 let (candles, _frames) = client.subscribe_candles("AAPL", "5m", 2).await?;
 if let Some(bar) = candles.current() {
     println!("close={}", bar.close.0);
@@ -207,14 +207,23 @@ if let Some(bar) = candles.current() {
 let (bbo, _frames) = client.subscribe_bbo("AAPL", 3).await?;
 println!("mid={:?}", bbo.implied_mid());
 
+// Hold the recv stream for later bars (do not use send_and_read):
+use fig_client::frames::subscribe_frame;
+let path = "marketdata/AAPL/candles/5m";
+let sub = subscribe_frame(2, 1, path, Some(path), None)?;
+let (_snapshot, mut live) = client.subscribe_live(sub).await?;
+while let Some(frame) = live.next_frame().await? {
+    println!("live {:?}", frame.frame_type);
+}
+
 // wire: REQUEST GET → RESPONSE (AllMidsBatch)
 let (mids, _batch) = client.request_all_mids(4).await?;
 println!("AAPL mid={:?}", mids.mid("AAPL"));
 ```
 
-### 2. Order entry (REST POST / FIX NewOrderSingle)
+### 2. Order entry
 
-Similar to `POST /accounts/{id}/orders` or FIX MsgType `D` — one-shot, execution reports in the response stream.
+`REQUEST` POST — same job as `POST /accounts/{id}/orders` or FIX MsgType `D`. One-shot; execution reports come back on that request stream.
 
 ```rust
 let order = NewOrderSingle {
@@ -240,9 +249,9 @@ let frames = client.post_order(account, &order, 1).await?;
 // Decode ExecutionReport from frames (or use OrdersState for live merge)
 ```
 
-### 3. Private account stream (authenticated WS / FIX drop copy)
+### 3. Private account stream (wire auth)
 
-Similar to a user-data WebSocket or private FIX session — **`AUTH_TOKEN` required** on every channel.
+Authenticated user-data WebSocket or private FIX drop copy — **`AUTH_TOKEN` required** on every channel.
 
 ```rust
 // wire: SUBSCRIBE → STREAM_ITEM (BalanceSnapshot, then BalanceUpdate)
@@ -264,9 +273,9 @@ while let Some(frame) = live.next_frame().await? {
 }
 ```
 
-### 4. Historical query, then resume live (REST GET → WS subscribe)
+### 4. Historical query, then resume live
 
-Like `GET /candles?limit=100` then subscribing to the live feed on the **same connection**.
+Like `GET /candles?limit=100` then a live WebSocket subscribe — both on the **same TREE connection**.
 
 ```rust
 // wire: REQUEST GET → RESPONSE (CandleBarBatch)
@@ -284,7 +293,13 @@ let (batch, _) = client.request_candles(
 println!("history bars={}", batch.bars.len());
 
 // wire: SUBSCRIBE → STREAM_ITEM (live candles, same connection)
-let (candles, _) = client.subscribe_candles("AAPL", "5m", 8).await?;
+use fig_client::frames::subscribe_frame;
+let path = "marketdata/AAPL/candles/5m";
+let sub = subscribe_frame(8, 1, path, Some(path), None)?;
+let (_snapshot, mut live) = client.subscribe_live(sub).await?;
+while let Some(frame) = live.next_frame().await? {
+    println!("live {:?}", frame.frame_type);
+}
 ```
 
 ### 5. Legacy migration (keep FIX / REST / WS clients)
@@ -379,15 +394,15 @@ Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) 
 
 | Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
 |---|---|---|---|---|
-| **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — complete runtime |
-| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | `request()` for GET/POST; `subscribe()` waits for EOF (hangs on live sim) |
-| **C++** | ✅ FFI + pure protocol | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ types + generated SBE | Tier 1–4 — `fig::Client` + JWT/SBE |
-| **C#** | ✅ Thin wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | Tier 1–4 — `FigClient` + JWT/SBE |
-| **Go** | ✅ Thin wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | Tier 1–4 — `Client` + JWT/SBE |
-| **TypeScript** | ✅ Thin wrapper (Bun) | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | `bun:ffi` — `version()` smoke in CI; `FigClient` for connect/request |
-| **OCaml** | ✅ Thin wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | Tier 1–4 — ctypes + JWT/SBE FFI |
-| **Zig** | ✅ FFI + pure protocol | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | Tier 1–4 — `@cImport` + JWT/SBE |
-| **Java** | ✅ Thin wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | Tier 1–4 — JNI + JWT/SBE |
+| **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — `subscribe_live` + `LiveSubscription` |
+| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | `request()` (EOF); `subscribe()` snapshot; `subscribe_live()` / `FigPySubscription.next()` |
+| **C++** | ✅ FFI wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ types + generated SBE | `fig::Client::subscribe` + `Subscription::next` over `fig.h` |
+| **C#** | ✅ FFI wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | `FigClient.Subscribe` + `FigSubscription.Next` |
+| **Go** | ✅ FFI wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | `Client.Subscribe` + `Subscription.Next` |
+| **Java** | ✅ FFI wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | JNI `figClientSubscribe` / `figClientSubNext` |
+| **TypeScript** | 🔶 Compile smoke | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Bun `version()` smoke; browsers/Node use [gateway](docs/GATEWAY.md) |
+| **OCaml** | 🔶 Compile smoke | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | `fig_version` / JWT smoke — not a live-sub SDK |
+| **Zig** | 🔶 Compile smoke | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | `@cImport` smoke — not a live-sub SDK |
 
 **C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md).
 

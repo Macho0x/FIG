@@ -94,8 +94,43 @@ func (c *Client) RequestAndRecv(frame []byte) ([][]byte, error) {
 		return nil, errors.New("fig_client_request_and_recv failed")
 	}
 	defer C.fig_frame_list_free(list)
+	return frameListToBytes(list), nil
+}
+
+// Subscription is a held-open SUBSCRIBE recv stream.
+type Subscription struct {
+	handle *C.struct_FigSubHandle
+}
+
+// Subscribe sends a SUBSCRIBE frame, returns the snapshot and a live handle.
+// Do not use RequestAndRecv for live SUBSCRIBE — it waits for stream EOF.
+func (c *Client) Subscribe(frame []byte) (*Subscription, [][]byte, error) {
+	if c == nil || c.handle == nil {
+		return nil, nil, errors.New("client closed")
+	}
+	if len(frame) == 0 {
+		return nil, nil, errors.New("empty frame")
+	}
+	var list C.struct_FigFrameList
+	var sub *C.struct_FigSubHandle
+	rc := C.fig_client_subscribe(
+		c.handle,
+		(*C.uint8_t)(unsafe.Pointer(&frame[0])),
+		C.uintptr_t(len(frame)),
+		&list,
+		&sub,
+	)
+	if rc != 0 {
+		return nil, nil, errors.New("fig_client_subscribe failed")
+	}
+	defer C.fig_frame_list_free(list)
+	snapshot := frameListToBytes(list)
+	return &Subscription{handle: sub}, snapshot, nil
+}
+
+func frameListToBytes(list C.struct_FigFrameList) [][]byte {
 	if list.frames == nil || list.count == 0 {
-		return nil, nil
+		return nil
 	}
 	slice := unsafe.Slice(list.frames, list.count)
 	out := make([][]byte, len(slice))
@@ -105,7 +140,40 @@ func (c *Client) RequestAndRecv(frame []byte) ([][]byte, error) {
 		}
 		out[i] = C.GoBytes(unsafe.Pointer(buf.data), C.int(buf.len))
 	}
-	return out, nil
+	return out
+}
+
+// Next reads the next live frame. timeoutMs 0 waits forever.
+// Returns (nil, nil) on EOF.
+func (s *Subscription) Next(timeoutMs uint32) ([]byte, error) {
+	if s == nil || s.handle == nil {
+		return nil, errors.New("subscription closed")
+	}
+	var buf C.struct_FigBuffer
+	rc := C.fig_client_sub_next(s.handle, C.uint32_t(timeoutMs), &buf)
+	if rc == 1 {
+		return nil, errors.New("timeout")
+	}
+	if rc == 2 {
+		return nil, nil
+	}
+	if rc != 0 {
+		return nil, errors.New("fig_client_sub_next failed")
+	}
+	out, err := intoGoBuffer(buf)
+	if err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// Close releases the live subscription.
+func (s *Subscription) Close() {
+	if s == nil || s.handle == nil {
+		return
+	}
+	C.fig_client_sub_close(s.handle)
+	s.handle = nil
 }
 
 // EncodeRequestFrame builds a native FIG REQUEST frame.

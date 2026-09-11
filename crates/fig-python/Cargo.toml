@@ -20,3 +20,4 @@ pyo3 = { version = "0.23", features = ["extension-module", "abi3-py38"] }
 
 [dev-dependencies]
 fig-conformance = { workspace = true }
+fig-exchange-sim = { path = "../fig-exchange-sim" }

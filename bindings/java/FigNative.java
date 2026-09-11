@@ -23,6 +23,12 @@ public final class FigNative {
 
     public static native int figClientPing(long handle);
 
+    public static native int figClientSubscribe(long handle, byte[] frame, Object[] snapshotOut, long[] subOut);
+
+    public static native int figClientSubNext(long sub, int timeoutMs, byte[][] frameOut);
+
+    public static native void figClientSubClose(long sub);
+
     public static native int figPayloadCompress(byte[] data, byte[][] out);
 
     public static native int figFrameEncodeSubscribeAuth(
@@ -75,5 +81,38 @@ public final class FigNative {
 
     public static void close(long handle) {
         figClientClose(handle);
+    }
+
+    public static long subscribe(long handle, byte[] frame, java.util.List<byte[]> snapshotOut) {
+        Object[] snap = new Object[1];
+        long[] sub = new long[1];
+        if (figClientSubscribe(handle, frame, snap, sub) != 0) {
+            throw new IllegalStateException("fig_client_subscribe failed");
+        }
+        if (snap[0] instanceof byte[][]) {
+            for (byte[] f : (byte[][]) snap[0]) {
+                snapshotOut.add(f);
+            }
+        }
+        return sub[0];
+    }
+
+    public static byte[] subNext(long sub, int timeoutMs) {
+        byte[][] out = new byte[1][];
+        int rc = figClientSubNext(sub, timeoutMs, out);
+        if (rc == 1) {
+            throw new IllegalStateException("fig_client_sub_next timeout");
+        }
+        if (rc == 2) {
+            return null;
+        }
+        if (rc != 0) {
+            throw new IllegalStateException("fig_client_sub_next failed");
+        }
+        return out[0];
+    }
+
+    public static void subClose(long sub) {
+        figClientSubClose(sub);
     }
 }

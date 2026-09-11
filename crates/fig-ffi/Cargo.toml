@@ -18,6 +18,7 @@ serde = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+fig-core = { workspace = true }
 fig-exchange-sim = { path = "../fig-exchange-sim" }
 tokio = { workspace = true }
 

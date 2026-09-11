@@ -75,6 +75,16 @@ for parity.
 4. `fig-ffi` + `fig-python` Tier 1–2
 5. §16.5 multi-codec exchange-sim + gateway backend proxy
 
+## Amendment (live subscribe)
+
+Live `SUBSCRIBE` is one C ABI, not a per-language TREE stack:
+
+- `fig_client_subscribe` / `fig_client_sub_next` / `fig_client_sub_close` in `fig.h`
+- Python (`fig-python`) is PyO3 over `fig-client::LiveSubscription`, not the C ABI
+- Production wrappers over `fig.h`: C++, Java, C#, Go
+- OCaml, Zig, and TypeScript stay compile smokes; browsers and Node use `fig-gateway`
+- Native QUIC per language remains deferred (§16.6)
+
 ## References
 
 - [ADR 0004 — FSL single source of truth](0004-fsl-single-source-of-truth.md)

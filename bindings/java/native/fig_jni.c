@@ -66,6 +66,75 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figClientPing(JNIEnv *env, jclass cls,
     return fig_client_ping((struct FigClientHandle *)(intptr_t)handle);
 }
 
+JNIEXPORT jint JNICALL Java_fig_FigNative_figClientSubscribe(
+    JNIEnv *env,
+    jclass cls,
+    jlong handle,
+    jbyteArray frame,
+    jobjectArray snapshot_out,
+    jlongArray sub_out) {
+    (void)cls;
+    if (frame == NULL || snapshot_out == NULL || sub_out == NULL) {
+        return -1;
+    }
+    jsize len = (*env)->GetArrayLength(env, frame);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, frame, NULL);
+    if (bytes == NULL) {
+        return -1;
+    }
+    struct FigFrameList list = {0};
+    struct FigSubHandle *sub = NULL;
+    int32_t rc = fig_client_subscribe(
+        (struct FigClientHandle *)(intptr_t)handle,
+        (const uint8_t *)bytes,
+        (uintptr_t)len,
+        &list,
+        &sub);
+    (*env)->ReleaseByteArrayElements(env, frame, bytes, JNI_ABORT);
+    if (rc != 0) {
+        return rc;
+    }
+    jclass byte_arr_cls = (*env)->FindClass(env, "[B");
+    jobjectArray frames = (*env)->NewObjectArray(env, (jsize)list.count, byte_arr_cls, NULL);
+    if (frames != NULL && list.frames != NULL) {
+        for (uintptr_t i = 0; i < list.count; i++) {
+            jbyteArray arr = (*env)->NewByteArray(env, (jsize)list.frames[i].len);
+            if (arr != NULL && list.frames[i].data != NULL) {
+                (*env)->SetByteArrayRegion(
+                    env, arr, 0, (jsize)list.frames[i].len, (const jbyte *)list.frames[i].data);
+            }
+            (*env)->SetObjectArrayElement(env, frames, (jsize)i, arr);
+        }
+    }
+    (*env)->SetObjectArrayElement(env, snapshot_out, 0, frames);
+    jlong ptr = (jlong)(intptr_t)sub;
+    (*env)->SetLongArrayRegion(env, sub_out, 0, 1, &ptr);
+    fig_frame_list_free(list);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figClientSubNext(
+    JNIEnv *env,
+    jclass cls,
+    jlong sub,
+    jint timeout_ms,
+    jobjectArray frame_out) {
+    (void)cls;
+    struct FigBuffer out = {0};
+    int32_t rc = fig_client_sub_next(
+        (struct FigSubHandle *)(intptr_t)sub, (uint32_t)timeout_ms, &out);
+    if (rc != 0) {
+        return rc;
+    }
+    return set_out_buffer(env, out, frame_out);
+}
+
+JNIEXPORT void JNICALL Java_fig_FigNative_figClientSubClose(JNIEnv *env, jclass cls, jlong sub) {
+    (void)env;
+    (void)cls;
+    fig_client_sub_close((struct FigSubHandle *)(intptr_t)sub);
+}
+
 JNIEXPORT jint JNICALL Java_fig_FigNative_figPayloadCompress(
     JNIEnv *env,
     jclass cls,

@@ -149,6 +149,18 @@ key-issuance API).
 | `liquidations` | `LiquidationState` | user + public liquidations |
 | `client` | `FigSdkClient`, `LiveSubscription` | `request_*` / `send_and_read` (EOF); `subscribe_*` / `subscribe_live` (held open) |
 
+## `fig-ffi` — C ABI
+
+Live subscribe: `fig_client_subscribe`, `fig_client_sub_next`, `fig_client_sub_close`
+(header: [`fig.h`](../crates/fig-ffi/include/fig.h)). REQUEST uses
+`fig_client_request_and_recv` (waits for EOF). Two-connection proof:
+`cargo test -p fig-ffi --test client_integration`.
+
+## `fig-python` — reference binding
+
+`FigPyClient.request()` is REQUEST. `subscribe()` returns a snapshot (no EOF wait).
+`subscribe_live()` returns `FigPySubscription` (`snapshot`, `next`, `close`).
+
 ```bash
 cargo run -p fig-cli
 cargo run -p fig-cli -- --server 127.0.0.1:8443

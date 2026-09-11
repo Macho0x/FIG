@@ -101,6 +101,23 @@ public static class FigNative
         out FigFrameList outList);
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_subscribe(
+        IntPtr handle,
+        byte[] frameBytes,
+        UIntPtr frameLen,
+        out FigFrameList snapshotOut,
+        out IntPtr subOut);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_sub_next(
+        IntPtr sub,
+        uint timeoutMs,
+        out FigBuffer frameOut);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_client_sub_close(IntPtr sub);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     public static extern int fig_jwt_encode(
         string sub,
         ulong exp,
@@ -313,11 +330,71 @@ public sealed class FigClient : IDisposable
         return FigNative.CopyFrameList(list);
     }
 
+    public FigSubscription Subscribe(byte[] frameBytes)
+    {
+        if (FigNative.fig_client_subscribe(
+                _handle,
+                frameBytes,
+                (UIntPtr)frameBytes.Length,
+                out var list,
+                out var sub) != 0)
+        {
+            throw new InvalidOperationException("fig_client_subscribe failed");
+        }
+        return new FigSubscription(sub, FigNative.CopyFrameList(list));
+    }
+
     public void Dispose()
     {
         if (_handle != IntPtr.Zero)
         {
             FigNative.fig_client_close(_handle);
+            _handle = IntPtr.Zero;
+        }
+    }
+}
+
+/// <summary>Held-open SUBSCRIBE recv stream.</summary>
+public sealed class FigSubscription : IDisposable
+{
+    private IntPtr _handle;
+
+    internal FigSubscription(IntPtr handle, byte[][] snapshot)
+    {
+        _handle = handle;
+        Snapshot = snapshot;
+    }
+
+    public byte[][] Snapshot { get; }
+
+    /// <summary>Next live frame. timeoutMs 0 waits forever. Null on EOF.</summary>
+    public byte[]? Next(uint timeoutMs = 0)
+    {
+        if (_handle == IntPtr.Zero)
+        {
+            throw new ObjectDisposedException(nameof(FigSubscription));
+        }
+        var rc = FigNative.fig_client_sub_next(_handle, timeoutMs, out var buf);
+        if (rc == 1)
+        {
+            throw new TimeoutException("fig_client_sub_next timeout");
+        }
+        if (rc == 2)
+        {
+            return null;
+        }
+        if (rc != 0)
+        {
+            throw new InvalidOperationException("fig_client_sub_next failed");
+        }
+        return FigNative.CopyBuffer(buf);
+    }
+
+    public void Dispose()
+    {
+        if (_handle != IntPtr.Zero)
+        {
+            FigNative.fig_client_sub_close(_handle);
             _handle = IntPtr.Zero;
         }
     }

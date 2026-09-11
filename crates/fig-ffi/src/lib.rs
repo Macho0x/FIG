@@ -19,7 +19,8 @@ pub use advanced::{
 pub use binding::run_binding_conformance;
 pub use client::{
     fig_client_close, fig_client_connect, fig_client_ping, fig_client_request_and_recv,
-    fig_frame_list_free, FigClientHandle, FigFrameList,
+    fig_client_sub_close, fig_client_sub_next, fig_client_subscribe, fig_frame_list_free,
+    FigClientHandle, FigFrameList, FigSubHandle,
 };
 pub use jwt::{fig_jwt_decode_sub, fig_jwt_encode, fig_jwt_verify_bearer};
 pub use sbe::{

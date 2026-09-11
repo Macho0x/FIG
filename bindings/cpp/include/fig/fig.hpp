@@ -12,6 +12,7 @@ extern "C" {
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fig {
@@ -36,6 +37,38 @@ private:
     }
 
     std::vector<uint8_t> data_;
+};
+
+class Subscription {
+public:
+    explicit Subscription(FigSubHandle* raw) : handle_(raw) {}
+
+    /// Next live frame. timeout_ms 0 waits forever. Empty Buffer on EOF.
+    Buffer next(uint32_t timeout_ms = 0) {
+        FigBuffer out{};
+        int32_t rc = fig_client_sub_next(handle_.get(), timeout_ms, &out);
+        if (rc == 1) {
+            throw std::runtime_error("fig_client_sub_next timeout");
+        }
+        if (rc == 2) {
+            return Buffer();
+        }
+        if (rc != 0) {
+            throw std::runtime_error("fig_client_sub_next failed");
+        }
+        return Buffer(out);
+    }
+
+private:
+    struct Deleter {
+        void operator()(FigSubHandle* h) const {
+            if (h != nullptr) {
+                fig_client_sub_close(h);
+            }
+        }
+    };
+
+    std::unique_ptr<FigSubHandle, Deleter> handle_;
 };
 
 class Client {
@@ -67,6 +100,23 @@ public:
         }
         fig_frame_list_free(list);
         return out;
+    }
+
+    /// SUBSCRIBE snapshot plus a live handle. Do not use request_and_recv for SUBSCRIBE.
+    std::pair<std::vector<Buffer>, Subscription> subscribe(const uint8_t* frame, std::size_t len) {
+        FigFrameList list{};
+        FigSubHandle* raw = nullptr;
+        if (fig_client_subscribe(handle_.get(), frame, len, &list, &raw) != 0) {
+            throw std::runtime_error("fig_client_subscribe failed");
+        }
+        std::vector<Buffer> snapshot;
+        if (list.frames != nullptr && list.count > 0) {
+            for (std::size_t i = 0; i < list.count; ++i) {
+                snapshot.emplace_back(list.frames[i]);
+            }
+        }
+        fig_frame_list_free(list);
+        return {std::move(snapshot), Subscription(raw)};
     }
 
 private:

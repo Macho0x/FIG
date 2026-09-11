@@ -6,7 +6,7 @@ Guides below are how-to: they must match the spec, not replace it.
 | If you want to… | Start here |
 |---|---|
 | Run something in 60 seconds | [README](../README.md#try-it-in-60-seconds) → [TUTORIAL.md](TUTORIAL.md) |
-| Place an order / subscribe / query from Rust | [TUTORIAL.md](TUTORIAL.md) · copy-paste in [README worked examples](../README.md#worked-examples) |
+| Place an order / subscribe / query from Rust | [TUTORIAL.md](TUTORIAL.md) · [1 live MD](../README.md#1-live-market-data-public-subscribe) · [2 orders](../README.md#2-order-entry) · [3 private](../README.md#3-private-account-stream-wire-auth) · [4 history then live](../README.md#4-historical-query-then-resume-live) |
 | Understand frames, channels, 0-RTT | [PROTOCOL.md](PROTOCOL.md) · [SPEC.md](../SPEC.md) |
 | Live `SUBSCRIBE` (held-open TREE stream) | [STREAMING.md](STREAMING.md) |
 | Historical `REQUEST` / REST GET | [QUERY.md](QUERY.md) |
@@ -33,8 +33,7 @@ uses `BackendSession` (held open).
 
 ## Binding caveats
 
-- **TypeScript** smoke uses **Bun** (`bun:ffi`). There is no Node `node:ffi` runtime.
-- **Python** `FigPyClient.request()` is the supported query path. `subscribe()` still
-  waits for stream EOF and will hang on live exchange-sim SUBSCRIBE until a
-  `LiveSubscription`-style helper lands.
+- **TypeScript** smoke uses **Bun** (`bun:ffi`). There is no Node `node:ffi` runtime. Browsers and Node talk to FIG through the [gateway](GATEWAY.md).
+- **Python** `FigPyClient.request()` is REQUEST (EOF). `subscribe()` returns the snapshot without waiting for EOF. `subscribe_live()` returns `FigPySubscription` (`next()` / `close()`).
+- **C ABI** live subscribe is `fig_client_subscribe` / `fig_client_sub_next` / `fig_client_sub_close`. `fig_client_request_and_recv` is REQUEST only.
 - **C / FFI** `fig_version()` returns the crate version (`CARGO_PKG_VERSION`).

@@ -42,9 +42,9 @@ from fig import FigPyClient
 c = FigPyClient()
 c.connect("127.0.0.1:8443")
 frames = c.request(".well-known/capabilities", "GET")  # REQUEST, waits for EOF
+sub = c.subscribe_live("marketdata/AAPL/candles/5m")     # snapshot + live handle
+nxt = sub.next(timeout_ms=5000)
 ```
-
-`subscribe()` still uses finish+EOF and will hang on live exchange-sim streams.
 
 ## Go / TypeScript / C# / Java / OCaml / Zig / C++
 
@@ -81,6 +81,5 @@ bash bindings/zig/smoke/run.sh           # needs zig
 bash bindings/ocaml/smoke/run.sh         # needs ocamlopt
 ```
 
-TypeScript is **Bun** (`bun:ffi`). Python `FigPyClient.request()` is the
-supported query path; `subscribe()` waits for stream EOF and hangs on live
-exchange-sim SUBSCRIBE.
+TypeScript is **Bun** (`bun:ffi`) compile smoke. Python `FigPyClient.request()` is
+REQUEST (EOF); `subscribe_live()` holds the stream. Browsers/Node use the gateway.

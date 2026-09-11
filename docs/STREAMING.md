@@ -93,6 +93,27 @@ the live handle. Use `subscribe_live` for follow-up fills and deltas.
 
 Do **not** call `send_and_read` on a `SUBSCRIBE` frame — that waits for EOF.
 
+FFI / Python (same wire, no per-language QUIC):
+
+```c
+FigFrameList snapshot;
+FigSubHandle *sub;
+fig_client_subscribe(client, frame, len, &snapshot, &sub);
+FigBuffer next;
+fig_client_sub_next(sub, 5000, &next); /* 0 = frame, 1 = timeout, 2 = EOF */
+fig_client_sub_close(sub);
+```
+
+```python
+sub = client.subscribe_live("accounts/DEMO/positions", auth_token="fig-dev-DEMO")
+for raw in sub.snapshot:
+    ...
+frame = sub.next(timeout_ms=5000)
+sub.close()
+```
+
+Batch-apply helpers (`apply_account_stream_frames`, `apply_all_stream_frames`)
+
 Batch-apply helpers (`apply_account_stream_frames`, `apply_all_stream_frames`)
 merge CBOR payloads into `FundingState` / `LedgerState` / … after you have frames.
 
