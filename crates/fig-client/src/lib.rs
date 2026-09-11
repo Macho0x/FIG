@@ -19,7 +19,7 @@ pub use account::AccountCache;
 pub use agg_trades::AggTradeState;
 pub use bbo::BboState;
 pub use candles::CandleState;
-pub use client::FigSdkClient;
+pub use client::{FigSdkClient, LiveSubscription};
 pub use funding::FundingState;
 pub use ledger::LedgerState;
 pub use liquidations::LiquidationState;

@@ -91,9 +91,11 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "requires REDIS_URL and running Redis"]
     fn round_trip_session() {
-        let url = std::env::var("REDIS_URL").expect("REDIS_URL");
+        let Ok(url) = std::env::var("REDIS_URL") else {
+            eprintln!("skipping Redis session round-trip (REDIS_URL not set)");
+            return;
+        };
         let store = RedisSessionStore::open(&url).unwrap();
         let session = Session::new();
         store.put(&session).unwrap();

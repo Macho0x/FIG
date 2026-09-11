@@ -76,7 +76,7 @@ cargo doc --workspace --no-deps --open
 | [`ws`](../crates/fig-gateways/src/ws.rs) | WebSocket RFC 6455 frame mapping |
 | [`ws_catalog`](../crates/fig-gateways/src/ws_catalog.rs) | Legacy WS topic → native FIG `SUBSCRIBE` (Binance/HL reference aliases) |
 | [`ws_listener`](../crates/fig-gateways/src/ws_listener.rs) | HTTP upgrade handler for `fig-gateway` WS listener |
-| [`backend`](../crates/fig-gateways/src/backend.rs) | Proxy frames to remote FIG backend over TREE |
+| [`backend`](../crates/fig-gateways/src/backend.rs) | `proxy_frame` (REQUEST/EOF), `BackendSession` (live SUBSCRIBE) |
 | [`sse`](../crates/fig-gateways/src/sse.rs) | Server-Sent Events ↔ STREAM_ITEM |
 
 ### Binaries
@@ -115,7 +115,7 @@ Supported `--lang` values: `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csha
 
 | Module | Purpose |
 |---|---|
-| [`server`](../crates/fig-exchange-sim/src/server.rs) | FIG server: orders, queries, subscribe fan-out |
+| [`server`](../crates/fig-exchange-sim/src/server.rs) | FIG server: `FigServer::accept_0rtt`, held-open subscribe fan-out |
 | [`broker_api`](../crates/fig-exchange-sim/src/broker_api.rs) | §17 query/subscribe routing and post-fill fan-out |
 | [`market_data`](../crates/fig-exchange-sim/src/market_data.rs) | Candles, trades, BBO, ticker aggregation |
 | [`account_state`](../crates/fig-exchange-sim/src/account_state.rs) | Balances, positions, funding, ledger |
@@ -145,7 +145,7 @@ key-issuance API).
 | `funding` | `FundingState` | funding payments |
 | `ledger` | `LedgerState` | ledger updates |
 | `liquidations` | `LiquidationState` | user + public liquidations |
-| `client` | `FigSdkClient` | subscribe/request wrappers |
+| `client` | `FigSdkClient`, `LiveSubscription` | subscribe/request wrappers; held-open live recv |
 
 ```bash
 cargo run -p fig-cli

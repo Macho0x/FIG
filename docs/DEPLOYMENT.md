@@ -11,6 +11,7 @@ and account portals.
   Native FIG bots   │  FIG backend (your venue or sim)     │
   (TREE :8443) ────►│  fig-exchange-sim / custom server    │
                     │  session store: memory | file | redis │
+                    │  live SUBSCRIBE: held-open TREE streams │
                     └──────────────┬──────────────────────┘
                                    │
          ┌─────────────────────────┼─────────────────────────┐
@@ -20,8 +21,8 @@ and account portals.
   WS :8090 ────► fig-gateway                                 │
          └───────────────────────────────────────────────────┘
 
-  Prometheus ──scrape──► fig-observability :9090
-                      or fig-gateway --metrics-addr
+  Prometheus ──scrape──► fig-gateway --metrics-addr :9091
+                      or fig-observability :9090 (this process only)
 ```
 
 ## Single node (development)
@@ -31,11 +32,18 @@ cargo run -p fig-exchange-sim
 cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
-Or use [docker-compose.yml](../docker-compose.yml):
+Or use [docker-compose.yml](../docker-compose.yml) (Redis session store, sim,
+gateway, and in-process observability exporter):
 
 ```bash
 docker compose up
 ```
+
+`FIG_DEV_OPEN=1` is set on the compose **demo** sim only — never in production.
+
+Live `SUBSCRIBE` holds the TREE stream open: snapshot/ack is written immediately,
+then later `STREAM_ITEM`s are pushed on that same subscriber connection. REQUEST
+streams still half-close after the response.
 
 ## Multi-node HA
 
@@ -62,9 +70,14 @@ docker compose up
 
 ## Observability
 
+`fig-observability` (`:9090`) exports **that binary's** in-process Prometheus
+text. It does not scrape other services. Scrape gateway metrics at
+`fig-gateway --metrics-addr` (compose maps `:9091`).
+
 ```bash
 cargo run -p fig-core --features observability-bin --bin fig-observability
 curl http://127.0.0.1:9090/metrics
+curl http://127.0.0.1:9091/metrics   # gateway, when --metrics-addr is set
 ```
 
 Wire `tracing-subscriber` in your binary to export spans to OpenTelemetry.

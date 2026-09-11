@@ -12,7 +12,7 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
-use fig_gateways::backend::{connect_backend, proxy_frame};
+use fig_gateways::backend::{connect_backend, proxy_frame, BackendSession};
 use fig_gateways::fix::{
     fig_to_fix_business_message_reject, fix_to_fig_cancel, fix_to_fig_cancel_replace,
     fix_to_fig_order, logon_to_stream_open, split_fix_messages, BusinessMessageReject,
@@ -257,43 +257,65 @@ async fn handle_ws_connection(
     accept_websocket(stream, raw).await?;
     fig_core::observability::Metrics::inc(&fig_core::observability::METRICS.gateway_translations);
 
+    let backend = if let Some(addr) = fig_backend {
+        Some(BackendSession::connect(addr).await?)
+    } else {
+        None
+    };
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Frame>();
+    let mut next_channel: u16 = 1;
+
     loop {
-        let ws = read_ws_text_or_binary(stream).await?;
-        match ws.opcode {
-            WsOpcode::Close => break,
-            WsOpcode::Ping => {
-                write_ws_pong(stream, &ws.payload).await?;
-                continue;
-            }
-            WsOpcode::Text | WsOpcode::Binary => {
-                let text = String::from_utf8(ws.payload)?;
-                let fig = legacy_ws_json_to_fig_subscribe(&text, 1)?;
-                if let Some(addr) = fig_backend {
-                    let responses = proxy_frame(addr, fig).await?;
-                    for resp in responses {
-                        if matches!(
-                            resp.frame_type,
-                            FrameType::StreamItem | FrameType::Response | FrameType::StreamClose
-                        ) {
-                            let json = fig_frame_to_legacy_ws_json(&resp)?;
-                            write_ws_json(stream, &json).await?;
-                        } else if resp.frame_type == FrameType::Control {
-                            let pong = fig_to_ws_frame(&resp)?;
-                            stream.write_all(&serialize_ws_frame(&pong)).await?;
+        tokio::select! {
+            ws = read_ws_text_or_binary(stream) => {
+                let ws = ws?;
+                match ws.opcode {
+                    WsOpcode::Close => break,
+                    WsOpcode::Ping => {
+                        write_ws_pong(stream, &ws.payload).await?;
+                    }
+                    WsOpcode::Text | WsOpcode::Binary => {
+                        let text = String::from_utf8(ws.payload)?;
+                        let fig = legacy_ws_json_to_fig_subscribe(&text, next_channel)?;
+                        next_channel = next_channel.saturating_add(1);
+                        if let Some(session) = &backend {
+                            session.send_frame(&fig).await?;
+                            let conn = session.connection();
+                            let ch = fig.channel_id;
+                            let tx = tx.clone();
+                            tokio::spawn(async move {
+                                while let Ok(frame) = conn.recv_frame(ch).await {
+                                    if tx.send(frame).is_err() {
+                                        break;
+                                    }
+                                }
+                            });
+                        } else {
+                            write_ws_json(
+                                stream,
+                                &format!(
+                                    "{{\"status\":\"translated\",\"frame_type\":\"{}\"}}",
+                                    fig.frame_type
+                                ),
+                            )
+                            .await?;
                         }
                     }
-                } else {
-                    write_ws_json(
-                        stream,
-                        &format!(
-                            "{{\"status\":\"translated\",\"frame_type\":\"{}\"}}",
-                            fig.frame_type
-                        ),
-                    )
-                    .await?;
+                    _ => {}
                 }
             }
-            _ => {}
+            Some(frame) = rx.recv() => {
+                if matches!(
+                    frame.frame_type,
+                    FrameType::StreamItem | FrameType::Response | FrameType::StreamClose
+                ) {
+                    let json = fig_frame_to_legacy_ws_json(&frame)?;
+                    write_ws_json(stream, &json).await?;
+                } else if frame.frame_type == FrameType::Control {
+                    let pong = fig_to_ws_frame(&frame)?;
+                    stream.write_all(&serialize_ws_frame(&pong)).await?;
+                }
+            }
         }
     }
     Ok(())

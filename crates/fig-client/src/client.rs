@@ -1,13 +1,17 @@
 //! High-level FIG client over a QUIC bidirectional stream per operation.
 
+use std::time::Duration;
+
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
 use fig_core::messages::{
     AccountSummary, AllMidsBatch, AllMidsRequest, BestBidOffer, CandleBarBatch, CandleBarRequest,
-    ExecutionReport, FillHistoryBatch, FillHistoryRequest, FundingHistoryBatch,
-    FundingHistoryRequest, FundingPayment, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate,
-    MarkPriceUpdate, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrderBookSnapshot,
-    PublicTradeEvent, SymbolTicker, UserLiquidation,
+    CapabilitiesResponse, ExecutionReport, FillHistoryBatch, FillHistoryRequest,
+    FundingHistoryBatch, FundingHistoryRequest, FundingPayment, InstrumentCatalogResponse,
+    LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, MarkPriceUpdate, MiniTicker,
+    NewOrderSingle, OpenOrdersSnapshot, OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch,
+    OrderHistoryRequest, PositionSnapshot, PublicTradeBatch, PublicTradeEvent, SymbolTicker,
+    TradeHistoryRequest, UserLiquidation,
 };
 use fig_core::messages::{AggregateTradeEvent, LiquidationTradeEvent};
 use quinn::Connection;
@@ -46,10 +50,66 @@ pub enum ClientError {
     Codec(String),
     #[error("no response")]
     NoResponse,
+    #[error("timeout")]
+    Timeout,
 }
 
 pub struct FigSdkClient<'a> {
     conn: &'a Connection,
+}
+
+/// Held TREE receive stream after SUBSCRIBE so later STREAM_ITEMs can be read.
+pub struct LiveSubscription {
+    recv: quinn::RecvStream,
+    decoder: FrameDecoder,
+}
+
+impl LiveSubscription {
+    /// Read snapshot/ack frames, then return once the server goes idle.
+    /// Also returns immediately if the server half-closes the stream.
+    pub async fn read_snapshot(&mut self) -> Result<Vec<Frame>, ClientError> {
+        let mut buf = vec![0u8; 8192];
+        let mut frames = Vec::new();
+        loop {
+            let idle = if frames.is_empty() {
+                Duration::from_secs(5)
+            } else {
+                Duration::from_millis(75)
+            };
+            match tokio::time::timeout(idle, self.recv.read(&mut buf)).await {
+                Ok(Ok(Some(n))) => {
+                    self.decoder.feed(&buf[..n]);
+                    while let Some(r) = self.decoder.decode_next() {
+                        frames.push(r?);
+                    }
+                }
+                Ok(Ok(None)) => break,
+                Ok(Err(e)) => return Err(e.into()),
+                Err(_) if !frames.is_empty() => break,
+                Err(_) => return Err(ClientError::Timeout),
+            }
+        }
+        Ok(frames)
+    }
+
+    /// Wait for the next live STREAM_ITEM (or any frame) on this subscription.
+    pub async fn next_frame(&mut self) -> Result<Option<Frame>, ClientError> {
+        if let Some(r) = self.decoder.decode_next() {
+            return Ok(Some(r?));
+        }
+        let mut buf = vec![0u8; 8192];
+        match self.recv.read(&mut buf).await? {
+            Some(n) => {
+                self.decoder.feed(&buf[..n]);
+                if let Some(r) = self.decoder.decode_next() {
+                    Ok(Some(r?))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 impl<'a> FigSdkClient<'a> {
@@ -75,6 +135,30 @@ impl<'a> FigSdkClient<'a> {
         Ok(frames)
     }
 
+    /// SUBSCRIBE and read the snapshot/ack without requiring the server to close.
+    pub async fn send_subscribe_and_read(&self, frame: Frame) -> Result<Vec<Frame>, ClientError> {
+        let (snapshot, _live) = self.subscribe_live(frame).await?;
+        Ok(snapshot)
+    }
+
+    /// SUBSCRIBE, read the snapshot, and keep the recv stream for live STREAM_ITEMs.
+    pub async fn subscribe_live(
+        &self,
+        frame: Frame,
+    ) -> Result<(Vec<Frame>, LiveSubscription), ClientError> {
+        let (mut send, recv) = self.conn.open_bi().await?;
+        send.write_all(&frame.encode()?)
+            .await
+            .map_err(ClientError::QuinnWrite)?;
+        send.finish()?;
+        let mut live = LiveSubscription {
+            recv,
+            decoder: FrameDecoder::new(),
+        };
+        let snapshot = live.read_snapshot().await?;
+        Ok((snapshot, live))
+    }
+
     pub async fn subscribe_order_book(
         &self,
         symbol: &str,
@@ -82,7 +166,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(OrderBookState, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/book");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = OrderBookState::default();
         for f in &frames {
             if let Ok(snap) = decode_cbor::<OrderBookSnapshot>(&f.payload) {
@@ -107,7 +191,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(CandleState, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/candles/{interval}");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = CandleState::default();
         for f in &frames {
             if let Ok(ev) = decode_cbor::<fig_core::messages::CandleBarEvent>(&f.payload) {
@@ -144,7 +228,7 @@ impl<'a> FigSdkClient<'a> {
         req: FillHistoryRequest,
         channel_id: u16,
     ) -> Result<FillHistoryBatch, ClientError> {
-        let path = format!("trading/accounts/{account}/fills");
+        let path = format!("accounts/{account}/fills");
         let token = dev_auth_token(account);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
         let frame = request_frame(
@@ -244,7 +328,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(BboState, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/bbo");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = BboState::default();
         for f in &frames {
             if let Ok(bbo) = decode_cbor::<BestBidOffer>(&f.payload) {
@@ -261,7 +345,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(TradeTape, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/trades");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut tape = TradeTape::default();
         for f in &frames {
             if let Ok(ev) = decode_cbor::<PublicTradeEvent>(&f.payload) {
@@ -278,7 +362,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(MarkPriceState, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/mark");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = MarkPriceState::default();
         for f in &frames {
             if let Ok(upd) = decode_cbor::<MarkPriceUpdate>(&f.payload) {
@@ -296,7 +380,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("trading/accounts/{account}/executions");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = OrdersState::default();
         state.account = account.to_string();
         for f in &frames {
@@ -317,7 +401,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/balances");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut cache = AccountCache::default();
         for f in &frames {
             if let Ok(snap) = decode_cbor::<fig_core::messages::BalanceSnapshot>(&f.payload) {
@@ -337,7 +421,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/margin");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut cache = AccountCache::default();
         for f in &frames {
             if let Ok(upd) = decode_cbor::<fig_core::messages::MarginUpdate>(&f.payload) {
@@ -417,7 +501,7 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(AggTradeState, Vec<Frame>), ClientError> {
         let path = format!("marketdata/{symbol}/aggtrades");
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = AggTradeState::default();
         for f in &frames {
             if let Ok(ev) = decode_cbor::<AggregateTradeEvent>(&f.payload) {
@@ -435,7 +519,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/funding");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = FundingState::default();
         for f in &frames {
             if let Ok(payment) = decode_cbor::<FundingPayment>(&f.payload) {
@@ -453,7 +537,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/ledger");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = LedgerState::default();
         for f in &frames {
             if let Ok(entry) = decode_cbor::<LedgerUpdate>(&f.payload) {
@@ -471,7 +555,7 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/liquidations");
         let token = dev_auth_token(account);
         let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self.send_subscribe_and_read(frame).await?;
         let mut state = LiquidationState::default();
         for f in &frames {
             if let Ok(liq) = decode_cbor::<UserLiquidation>(&f.payload) {
@@ -534,6 +618,161 @@ impl<'a> FigSdkClient<'a> {
                 let batch: LedgerHistoryBatch =
                     decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()))?;
                 return Ok((batch, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn subscribe_positions(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<(AccountCache, Vec<Frame>), ClientError> {
+        let path = format!("accounts/{account}/positions");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        let frames = self.send_subscribe_and_read(frame).await?;
+        let mut cache = AccountCache::default();
+        for f in &frames {
+            if let Ok(snap) = decode_cbor::<PositionSnapshot>(&f.payload) {
+                cache.apply_position_snapshot(&snap);
+            }
+        }
+        Ok((cache, frames))
+    }
+
+    pub async fn subscribe_ticker(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<(SymbolTicker, Vec<Frame>), ClientError> {
+        let path = format!("marketdata/{symbol}/ticker");
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), None)?;
+        let frames = self.send_subscribe_and_read(frame).await?;
+        for f in &frames {
+            if let Ok(t) = decode_cbor::<SymbolTicker>(&f.payload) {
+                return Ok((t, frames));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn subscribe_orderlists(
+        &self,
+        account: &str,
+        channel_id: u16,
+    ) -> Result<Vec<Frame>, ClientError> {
+        let path = format!("trading/accounts/{account}/orderlists");
+        let token = dev_auth_token(account);
+        let frame = subscribe_frame(channel_id, 1, &path, Some(&path), Some(&token))?;
+        self.send_subscribe_and_read(frame).await
+    }
+
+    pub async fn request_order_history(
+        &self,
+        account: &str,
+        req: OrderHistoryRequest,
+        channel_id: u16,
+    ) -> Result<OrderHistoryBatch, ClientError> {
+        let path = format!("trading/accounts/{account}/orders");
+        let token = dev_auth_token(account);
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(
+            channel_id,
+            1,
+            0x01,
+            &path,
+            "GET",
+            Some(payload),
+            Some(&token),
+        )?;
+        let frames = self.send_and_read(frame).await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_book(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<OrderBookSnapshot, ClientError> {
+        let path = format!("marketdata/{symbol}/book");
+        let req = OrderBookRequest {
+            symbol: symbol.to_string(),
+            depth: Some(20),
+            at_time: None,
+        };
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
+        let frames = self.send_and_read(frame).await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_trades(
+        &self,
+        req: TradeHistoryRequest,
+        channel_id: u16,
+    ) -> Result<PublicTradeBatch, ClientError> {
+        let path = format!("marketdata/{}/trades", req.symbol);
+        let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
+        let frames = self.send_and_read(frame).await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_capabilities(
+        &self,
+        channel_id: u16,
+    ) -> Result<CapabilitiesResponse, ClientError> {
+        let frame = request_frame(
+            channel_id,
+            1,
+            0x01,
+            ".well-known/capabilities",
+            "GET",
+            None,
+            None,
+        )?;
+        let frames = self.send_and_read(frame).await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_instruments(
+        &self,
+        channel_id: u16,
+    ) -> Result<InstrumentCatalogResponse, ClientError> {
+        let frame = request_frame(
+            channel_id,
+            1,
+            0x01,
+            ".well-known/instruments",
+            "GET",
+            None,
+            None,
+        )?;
+        let frames = self.send_and_read(frame).await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
             }
         }
         Err(ClientError::NoResponse)

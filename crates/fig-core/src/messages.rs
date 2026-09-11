@@ -36,6 +36,13 @@ pub mod channel_path {
     pub const TICKER: &str = "marketdata/{symbol}/ticker";
     pub const FUNDING: &str = "accounts/{account}/funding";
     pub const LEDGER: &str = "accounts/{account}/ledger";
+    pub const AGGTRADES: &str = "marketdata/{symbol}/aggtrades";
+    pub const MARK: &str = "marketdata/{symbol}/mark";
+    pub const LIQUIDATIONS: &str = "marketdata/liquidations";
+    pub const TICKER_ALL: &str = "marketdata/ticker/all";
+    pub const ORDERLISTS: &str = "trading/accounts/{account}/orderlists";
+    pub const CAPABILITIES: &str = ".well-known/capabilities";
+    pub const INSTRUMENTS: &str = ".well-known/instruments";
 }
 
 #[cfg(test)]

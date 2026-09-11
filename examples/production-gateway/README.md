@@ -27,6 +27,7 @@ Restart=on-failure
 
 ## Library embed
 
-Use `fig_gateways::rest`, `fix_session`, `ws_catalog`, and `backend::proxy_frame` from
-your own Tokio service. See [docs/GATEWAY.md](../../docs/GATEWAY.md) and
+Use `fig_gateways::rest`, `fix_session`, `ws_catalog`, `backend::proxy_frame` (REST
+GET), and `backend::BackendSession` (live WS subscribe) from your own Tokio
+service. See [docs/GATEWAY.md](../../docs/GATEWAY.md) and
 [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md).

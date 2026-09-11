@@ -19,8 +19,15 @@ streaming over a single multiplexed TREE transport. Key goals:
 
 1. TLS 1.3 handshake over TREE (ALPN `fig/1`).
 2. Optional 0-RTT session resumption with stored resumption token.
+   `FigServer::accept_0rtt` returns the first application frame if one arrived —
+   the reference broker dispatches it (do not drop it).
 3. Control channel (ID 0) for PING/PONG, SETTINGS, AUTH_REFRESH, SEQ_RESET.
 4. Application channels opened via STREAM_OPEN or implicit gateway mapping.
+
+`SUBSCRIBE` streams stay open after the snapshot. Later `STREAM_ITEM`s are sent
+to **that subscriber's** `FigConnection`. `REQUEST` streams half-close after
+the response (finish + EOF). Gateway REST GET uses the request path; live WS
+uses a held-open `BackendSession`.
 
 ## Channel Directions
 

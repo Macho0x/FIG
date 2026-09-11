@@ -103,7 +103,11 @@ fn map_http_path_to_channel_path(path: &str, query: &[(String, String)]) -> Rest
         return Ok(trimmed.to_string());
     }
 
-    if trimmed == ".well-known/capabilities" || trimmed == "capabilities" {
+    if trimmed == ".well-known/capabilities"
+        || trimmed == "capabilities"
+        || trimmed == ".well-known/instruments"
+        || trimmed == "instruments"
+    {
         return Ok(trimmed.to_string());
     }
 
@@ -417,6 +421,12 @@ mod tests {
     }
 
     #[test]
+    fn instruments_path_maps() {
+        let frame = get_frame("/.well-known/instruments");
+        assert_eq!(channel_path(&frame), ".well-known/instruments");
+    }
+
+    #[test]
     fn open_orders_path_maps_with_payload() {
         let frame = get_frame("/trading/accounts/DEMO/orders/open");
         assert_eq!(channel_path(&frame), "trading/accounts/DEMO/orders/open");
@@ -485,6 +495,7 @@ mod tests {
             "/trading/accounts/DEMO/orders",
             "/marketdata/BTC/book",
             "/.well-known/capabilities",
+            "/.well-known/instruments",
         ];
         for path in paths {
             get_frame(path);

@@ -281,6 +281,40 @@ pub async fn run_demos(conn: &Connection) -> Result<()> {
     log_frames("ledger", &ledger_frames);
     assert_query_response("ledger", &ledger_frames)?;
 
+    let caps = client.request_capabilities(12).await?;
+    if caps.paths.is_empty() {
+        bail!("capabilities: empty catalog");
+    }
+    info!("  Capabilities: {} paths", caps.paths.len());
+
+    let instruments = client.request_instruments(13).await?;
+    if instruments.instruments.is_empty() {
+        bail!("instruments: empty catalog");
+    }
+    info!("  Instruments: {} entries", instruments.instruments.len());
+
+    let fills = client
+        .request_fills(
+            ACCOUNT,
+            FillHistoryRequest {
+                account: ACCOUNT.to_string(),
+                symbol: None,
+                start_time: None,
+                end_time: None,
+                limit: Some(10),
+                cursor: None,
+            },
+            14,
+        )
+        .await?;
+    if fills.account != ACCOUNT {
+        bail!("fills: expected account {ACCOUNT}");
+    }
+    info!(
+        "  Fills: {} rows on accounts/{ACCOUNT}/fills",
+        fills.fills.len()
+    );
+
     info!("=== Demo 6: agg trades, mark price, margin ===");
     let (_agg, agg_frames) = client.subscribe_agg_trades("AAPL", 9).await?;
     log_frames("aggtrades", &agg_frames);

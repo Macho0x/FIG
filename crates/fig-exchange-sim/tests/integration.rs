@@ -10,6 +10,7 @@
 //! 7. Verifies the response
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use fig_core::channel::ChannelMode;
 use fig_core::codec;
@@ -40,6 +41,63 @@ async fn read_all_frames(recv: &mut quinn::RecvStream) -> anyhow::Result<Vec<Fra
     Ok(frames?)
 }
 
+/// Drain snapshot/ack frames without requiring the server to half-close.
+async fn read_until_idle(
+    recv: &mut quinn::RecvStream,
+    decoder: &mut FrameDecoder,
+) -> anyhow::Result<Vec<Frame>> {
+    let mut buf = vec![0u8; 4096];
+    let mut frames = Vec::new();
+    loop {
+        let idle = if frames.is_empty() {
+            Duration::from_secs(5)
+        } else {
+            Duration::from_millis(75)
+        };
+        match tokio::time::timeout(idle, recv.read(&mut buf)).await {
+            Ok(Ok(Some(n))) => {
+                decoder.feed(&buf[..n]);
+                while let Some(result) = decoder.decode_next() {
+                    frames.push(result?);
+                }
+            }
+            Ok(Ok(None)) => {
+                while let Some(result) = decoder.decode_next() {
+                    frames.push(result?);
+                }
+                break;
+            }
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) if !frames.is_empty() => break,
+            Err(_) => anyhow::bail!("subscribe snapshot timed out"),
+        }
+    }
+    Ok(frames)
+}
+
+async fn read_next_frame(
+    recv: &mut quinn::RecvStream,
+    decoder: &mut FrameDecoder,
+) -> anyhow::Result<Frame> {
+    if let Some(result) = decoder.decode_next() {
+        return Ok(result?);
+    }
+    let mut buf = vec![0u8; 4096];
+    loop {
+        match tokio::time::timeout(Duration::from_secs(5), recv.read(&mut buf)).await {
+            Ok(Ok(Some(n))) => {
+                decoder.feed(&buf[..n]);
+                if let Some(result) = decoder.decode_next() {
+                    return Ok(result?);
+                }
+            }
+            Ok(Ok(None)) => anyhow::bail!("subscribe stream closed"),
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => anyhow::bail!("timed out waiting for live STREAM_ITEM"),
+        }
+    }
+}
+
 /// Helper: setup a client connection to the given server address.
 async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<quinn::Connection> {
     let client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
@@ -52,12 +110,17 @@ async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<qui
 
 /// Helper: send a frame on a bidirectional stream and get the responses.
 async fn send_and_receive(conn: &quinn::Connection, frame: Frame) -> anyhow::Result<Vec<Frame>> {
+    let keep_open = frame.frame_type == FrameType::Subscribe;
     let (mut send, mut recv) = conn.open_bi().await?;
     let encoded = frame.encode()?;
     send.write_all(&encoded).await?;
     send.finish()?;
-    let responses = read_all_frames(&mut recv).await?;
-    Ok(responses)
+    if keep_open {
+        let mut decoder = FrameDecoder::new();
+        read_until_idle(&mut recv, &mut decoder).await
+    } else {
+        read_all_frames(&mut recv).await
+    }
 }
 
 /// Helper: send multiple frames on a single bidirectional stream and get all responses.
@@ -65,19 +128,24 @@ async fn send_multiple_and_receive(
     conn: &quinn::Connection,
     frames: Vec<Frame>,
 ) -> anyhow::Result<Vec<Frame>> {
+    let keep_open = frames.iter().any(|f| f.frame_type == FrameType::Subscribe);
     let (mut send, mut recv) = conn.open_bi().await?;
     for frame in &frames {
         let encoded = frame.encode()?;
         send.write_all(&encoded).await?;
     }
     send.finish()?;
-    let responses = read_all_frames(&mut recv).await?;
-    Ok(responses)
+    if keep_open {
+        let mut decoder = FrameDecoder::new();
+        read_until_idle(&mut recv, &mut decoder).await
+    } else {
+        read_all_frames(&mut recv).await
+    }
 }
 
 /// Shared server + client connection for integration tests.
 struct Harness {
-    _endpoint: Arc<quinn::Endpoint>,
+    _endpoint: Arc<FigServer>,
     conn: quinn::Connection,
 }
 
@@ -964,11 +1032,24 @@ async fn test_margin_subscribe_snapshot() {
 async fn test_position_delta_on_fill() {
     let _ = tracing_subscriber::fmt::try_init();
     let h = Harness::start().await.expect("harness");
+    let addr = h._endpoint.local_addr().unwrap();
+    let trader = connect_client(addr).await.expect("trader");
 
     let mut pos_frame =
         make_subscribe_frame(1, "accounts/TEST/positions", "accounts/TEST/positions");
     pos_frame = pos_frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
-    h.send(pos_frame).await.expect("positions sub");
+    let (mut send, mut recv) = h.conn.open_bi().await.expect("sub stream");
+    send.write_all(&pos_frame.encode().unwrap())
+        .await
+        .expect("write sub");
+    send.finish().expect("finish sub");
+    let mut decoder = FrameDecoder::new();
+    let snapshot = read_until_idle(&mut recv, &mut decoder)
+        .await
+        .expect("positions snapshot");
+    assert!(snapshot
+        .iter()
+        .any(|f| f.frame_type == FrameType::StreamItem));
 
     let sell = make_order(
         "PD-1",
@@ -978,18 +1059,27 @@ async fn test_position_delta_on_fill() {
         Some(100.0),
         5.0,
     );
-    h.send(make_order_frame(2, &sell).unwrap())
+    send_and_receive(&trader, make_order_frame(2, &sell).unwrap())
         .await
         .expect("resting");
     let buy = make_order("PD-2", Side::Buy, "AAPL", OrderType::Market, None, 5.0);
-    let fill_resp = h
-        .send(make_order_frame(2, &buy).unwrap())
+    let fill_resp = send_and_receive(&trader, make_order_frame(2, &buy).unwrap())
         .await
         .expect("fill");
-    assert!(fill_resp.iter().any(|f| {
-        f.frame_type == FrameType::StreamItem
-            && codec::decode_cbor::<PositionUpdate>(&f.payload).is_ok()
-    }));
+    assert!(
+        !fill_resp.iter().any(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<PositionUpdate>(&f.payload).is_ok()
+        }),
+        "position update must not appear only on the order stream"
+    );
+
+    let live = read_next_frame(&mut recv, &mut decoder)
+        .await
+        .expect("live position");
+    assert_eq!(live.frame_type, FrameType::StreamItem);
+    let update: PositionUpdate = codec::decode_cbor(&live.payload).expect("position decode");
+    assert_eq!(update.account, "TEST");
 }
 
 /// Order history pagination returns next_cursor for follow-up queries.
@@ -1164,21 +1254,34 @@ async fn test_order_list_status_subscribe() {
     );
     list_frame =
         list_frame.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
-    h.send(list_frame).await.expect("orderlists sub");
+    let (mut send, mut recv) = h.conn.open_bi().await.expect("sub stream");
+    send.write_all(&list_frame.encode().unwrap())
+        .await
+        .expect("write sub");
+    send.finish().expect("finish sub");
+    let mut decoder = FrameDecoder::new();
+    let _snapshot = read_until_idle(&mut recv, &mut decoder)
+        .await
+        .expect("orderlists snapshot");
 
     let order = make_order("OL-1", Side::Buy, "AAPL", OrderType::Limit, Some(42.0), 2.0);
-    let responses = h
+    let order_resp = h
         .send(make_order_frame(2, &order).unwrap())
         .await
         .expect("resting");
-    let status = responses.iter().find_map(|f| {
-        if f.frame_type != FrameType::StreamItem {
-            return None;
-        }
-        codec::decode_cbor::<OrderListStatus>(&f.payload).ok()
-    });
-    assert!(status.is_some());
-    assert_eq!(status.unwrap().list_id, "OL-1");
+    assert!(
+        !order_resp.iter().any(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<OrderListStatus>(&f.payload).is_ok()
+        }),
+        "order list status must not appear only on the order stream"
+    );
+
+    let live = read_next_frame(&mut recv, &mut decoder)
+        .await
+        .expect("live orderlist");
+    let status: OrderListStatus = codec::decode_cbor(&live.payload).expect("status decode");
+    assert_eq!(status.list_id, "OL-1");
 }
 
 /// SBE-encoded NewOrderSingle is accepted on the order entry path.
@@ -1310,4 +1413,209 @@ async fn test_e2e_driver_order_to_execution() {
         (report.exec_type == ExecType::Fill).then_some(report)
     });
     assert!(fill.is_some(), "expected Trade execution report");
+}
+
+#[tokio::test]
+async fn test_instruments_query() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let h = Harness::start().await.expect("harness");
+    let query = make_get_query_frame(1, ".well-known/instruments", None);
+    let responses = h.send(query).await.expect("instruments");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("response");
+    let catalog: InstrumentCatalogResponse = codec::decode_cbor(&resp.payload).expect("decode");
+    assert!(!catalog.instruments.is_empty());
+}
+
+#[tokio::test]
+async fn test_fills_canonical_path_and_legacy_rejected() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let h = Harness::start().await.expect("harness");
+    let sell = make_order(
+        "FILLPATH-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        1.0,
+    );
+    h.send(make_order_frame(1, &sell).unwrap())
+        .await
+        .expect("resting");
+    let buy = make_order(
+        "FILLPATH-2",
+        Side::Buy,
+        "AAPL",
+        OrderType::Market,
+        None,
+        1.0,
+    );
+    h.send(make_order_frame(1, &buy).unwrap())
+        .await
+        .expect("fill");
+
+    let ok = h
+        .send(make_get_query_frame(2, "accounts/TEST/fills", Some("TEST")))
+        .await
+        .expect("canonical fills");
+    let batch = ok
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .and_then(|f| codec::decode_cbor::<FillHistoryBatch>(&f.payload).ok())
+        .expect("FillHistoryBatch on accounts/{account}/fills");
+    assert!(!batch.fills.is_empty());
+
+    let legacy = h
+        .send(make_get_query_frame(
+            3,
+            "trading/accounts/TEST/fills",
+            Some("TEST"),
+        ))
+        .await
+        .expect("legacy fills");
+    assert!(
+        !legacy.iter().any(|f| {
+            f.frame_type == FrameType::Response
+                && codec::decode_cbor::<FillHistoryBatch>(&f.payload).is_ok()
+        }),
+        "trading/accounts/{{account}}/fills must not be the fills handler"
+    );
+}
+
+#[tokio::test]
+async fn test_live_book_delta_on_subscriber_stream() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let h = Harness::start().await.expect("harness");
+    let addr = h._endpoint.local_addr().unwrap();
+    let trader = connect_client(addr).await.expect("trader");
+
+    let sub = make_subscribe_frame(1, "marketdata.AAPL.quotes", "marketdata/AAPL/quotes");
+    let (mut send, mut recv) = h.conn.open_bi().await.expect("sub stream");
+    send.write_all(&sub.encode().unwrap()).await.expect("write");
+    send.finish().expect("finish");
+    let mut decoder = FrameDecoder::new();
+    let snapshot = read_until_idle(&mut recv, &mut decoder)
+        .await
+        .expect("book snapshot");
+    assert!(snapshot
+        .iter()
+        .any(|f| matches!(f.frame_type, FrameType::StreamItem | FrameType::Response)));
+
+    let sell = make_order(
+        "BOOKLIVE-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(101.0),
+        2.0,
+    );
+    let order_resp = send_and_receive(&trader, make_order_frame(2, &sell).unwrap())
+        .await
+        .expect("resting");
+    assert!(
+        !order_resp.iter().any(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<OrderBookDelta>(&f.payload).is_ok()
+        }),
+        "book delta must not appear only on the order stream"
+    );
+
+    let live = read_next_frame(&mut recv, &mut decoder)
+        .await
+        .expect("live book");
+    assert_eq!(live.frame_type, FrameType::StreamItem);
+    assert!(
+        codec::decode_cbor::<OrderBookDelta>(&live.payload).is_ok()
+            || codec::decode_cbor::<OrderBookSnapshot>(&live.payload).is_ok()
+            || codec::decode_cbor::<MarketDataSnapshot>(&live.payload).is_ok()
+    );
+}
+
+#[tokio::test]
+async fn test_live_balance_update_on_subscriber_stream() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let h = Harness::start().await.expect("harness");
+    let addr = h._endpoint.local_addr().unwrap();
+    let trader = connect_client(addr).await.expect("trader");
+
+    let mut sub = make_subscribe_frame(1, "accounts/TEST/balances", "accounts/TEST/balances");
+    sub = sub.with_extension(Extension::text(ExtensionTag::AuthToken, "fig-dev-TEST"));
+    let (mut send, mut recv) = h.conn.open_bi().await.expect("sub stream");
+    send.write_all(&sub.encode().unwrap()).await.expect("write");
+    send.finish().expect("finish");
+    let mut decoder = FrameDecoder::new();
+    let _snapshot = read_until_idle(&mut recv, &mut decoder)
+        .await
+        .expect("balance snapshot");
+
+    let sell = make_order(
+        "BALLIVE-1",
+        Side::Sell,
+        "AAPL",
+        OrderType::Limit,
+        Some(100.0),
+        3.0,
+    );
+    send_and_receive(&trader, make_order_frame(2, &sell).unwrap())
+        .await
+        .expect("resting");
+    let buy = make_order("BALLIVE-2", Side::Buy, "AAPL", OrderType::Market, None, 3.0);
+    let fill_resp = send_and_receive(&trader, make_order_frame(2, &buy).unwrap())
+        .await
+        .expect("fill");
+    assert!(
+        !fill_resp.iter().any(|f| {
+            f.frame_type == FrameType::StreamItem
+                && codec::decode_cbor::<BalanceUpdate>(&f.payload).is_ok()
+        }),
+        "balance update must not appear only on the order stream"
+    );
+
+    let live = read_next_frame(&mut recv, &mut decoder)
+        .await
+        .expect("live balance");
+    assert_eq!(live.frame_type, FrameType::StreamItem);
+    let update: BalanceUpdate = codec::decode_cbor(&live.payload).expect("balance decode");
+    assert_eq!(update.account, "TEST");
+}
+
+#[tokio::test]
+async fn test_0rtt_against_exchange_sim_handles_first_frame() {
+    let _ = tracing_subscriber::fmt::try_init();
+    let server = run_server("127.0.0.1:0").await.expect("sim");
+    let addr = server.local_addr().unwrap();
+
+    let session = Session::new();
+    let token = session.resumption_token().expect("token");
+    let original_id = session.session_id;
+
+    let client = FigClient::new(client_config().expect("cfg")).expect("client");
+    let (fig, restored) = client
+        .connect_0rtt(addr, "localhost", Some(&token))
+        .await
+        .expect("connect_0rtt");
+    if let Some(restored) = restored {
+        assert_eq!(restored.session_id, original_id);
+    }
+
+    let frame = make_get_query_frame(1, ".well-known/capabilities", None)
+        .with_extension(Extension::binary(ExtensionTag::RedirectToken, token));
+    let (mut send, mut recv) = fig.inner().open_bi().await.expect("open bi");
+    send.write_all(&frame.encode().unwrap())
+        .await
+        .expect("write first frame");
+    send.finish().expect("finish first frame");
+    let mut decoder = FrameDecoder::new();
+    let responses = read_until_idle(&mut recv, &mut decoder)
+        .await
+        .expect("first-frame responses");
+    let resp = responses
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("capabilities response");
+    assert_eq!(resp.frame_type, FrameType::Response);
+    let caps: CapabilitiesResponse = codec::decode_cbor(&resp.payload).expect("caps");
+    assert!(!caps.paths.is_empty());
 }

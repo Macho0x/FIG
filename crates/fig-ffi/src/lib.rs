@@ -90,11 +90,10 @@ fn optional_cstr(s: *const c_char) -> Result<Option<String>, i32> {
     }
 }
 
-/// Returns static version string.
+/// Returns the workspace crate version (`CARGO_PKG_VERSION`) as a C string.
 #[no_mangle]
 pub extern "C" fn fig_version() -> *const c_char {
-    static VERSION: &[u8] = b"0.1.0\0";
-    VERSION.as_ptr() as *const c_char
+    concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
 /// Encode a minimal REQUEST frame. Returns 0 on success.

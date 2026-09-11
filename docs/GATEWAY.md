@@ -5,8 +5,13 @@ How to run FIG alongside legacy FIX and REST infrastructure.
 ## Overview
 
 The `fig-gateway` binary is a **translation bridge** for migration testing. It
-accepts legacy FIX and REST connections, converts them to FIG frames, and can
-proxy GET queries to a remote FIG backend via `--fig-backend`.
+accepts legacy FIX, REST, and WebSocket connections, converts them to FIG frames,
+and proxies to a remote FIG backend when `--fig-backend` is set:
+
+- **REST GET** — one-shot `proxy_frame` (finish send, read until EOF)
+- **WebSocket SUBSCRIBE** — one `BackendSession` (`FigConnection`) per WS client;
+  subscribe without finishing send, then forward later `STREAM_ITEM`s until
+  `STREAM_CLOSE` or the socket closes
 
 Library adapters (`fig_gateways::fix`, `rest`, `ws`, `sse`) can be embedded in
 your own gateway service that forwards to a FIG server.
@@ -38,7 +43,7 @@ clients (e.g. `fig-cli`) connect directly to that address.
 | `--rest-addr` | `127.0.0.1:8080` | REST HTTP listener |
 | `--ws-addr` | `127.0.0.1:8090` | WebSocket HTTP upgrade listener |
 | `--fix-addr` | `127.0.0.1:9876` | FIX TCP listener |
-| `--fig-backend` | (none) | Proxy REST GET and WS SUBSCRIBE to native FIG backend |
+| `--fig-backend` | (none) | Proxy REST GET (`proxy_frame`) and live WS SUBSCRIBE (`BackendSession`) to native FIG |
 
 Example:
 
@@ -73,7 +78,7 @@ state management (sequence numbers, heartbeats, gap fill).
 
 ## WebSocket & SSE
 
-- **WebSocket**: `fig-gateway` listens on `--ws-addr` (default `8090`). Legacy subscribe JSON is translated via `fig_gateways::ws_catalog` and proxied when `--fig-backend` is set.
+- **WebSocket**: `fig-gateway` listens on `--ws-addr` (default `8090`). Legacy subscribe JSON is translated via `fig_gateways::ws_catalog`. With `--fig-backend`, each WS client keeps one TREE connection and receives follow-up `STREAM_ITEM`s (fills, book deltas) until the socket closes.
 - **SSE**: use `fig_gateways::sse` (`parse_sse_chunk`, `sse_to_fig_stream_item`) for REST streaming endpoints.
 
 ## Production Checklist
@@ -149,10 +154,13 @@ cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
 | `legacy_ws_binance_aliases_round_trip_through_backend` | Binance WS | `{"method":"SUBSCRIBE","params":["…@…"]}` |
 | `legacy_ws_hyperliquid_aliases_round_trip_through_backend` | Hyperliquid WS | `{"method":"subscribe","subscription":{…}}` |
 | `legacy_fix_order_aliases_round_trip_through_backend` | FIX 4.4 | `35=D` NewOrderSingle → native order `REQUEST` |
-| `legacy_rest_get_aliases_round_trip_through_backend` | Native REST | `GET /.well-known/capabilities`, `GET /accounts/{acct}` |
+| `legacy_rest_get_aliases_round_trip_through_backend` | Native REST | `GET /.well-known/capabilities`, `GET /accounts/{acct}`, `GET /.well-known/instruments` |
+| `legacy_ws_follow_up_event_after_fill` | Hyperliquid WS | Subscribe positions, fill on a second client, follow-up WS JSON |
 
-Each case maps to native FIG, proxies via `proxy_frame` to exchange-sim, and asserts
-`StreamItem` / `Response` (no `StreamError`). See [AGENTS.md](../AGENTS.md).
+WS subscribe snapshots use `proxy_subscribe_snapshot` / `BackendSession` (held-open
+TREE stream). REST GET and FIX orders still use `proxy_frame`. Each case maps to
+native FIG and asserts `StreamItem` / `Response` (no `StreamError`). See
+[AGENTS.md](../AGENTS.md).
 
 Performance clients (colo MMs) connect directly to the backend with SBE or CBOR —
 see [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md).

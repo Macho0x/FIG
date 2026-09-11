@@ -83,7 +83,7 @@ typedef struct FigFrameList {
 void fig_buffer_free(struct FigBuffer buf);
 
 /**
- * Returns static version string.
+ * Returns the workspace crate version (`CARGO_PKG_VERSION`) as a C string.
  */
 const char *fig_version(void);
 

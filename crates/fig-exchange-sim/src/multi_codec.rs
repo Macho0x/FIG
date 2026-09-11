@@ -1,4 +1,7 @@
-//! Exchange-sim multi-codec dispatch (CBOR / SBE / Protobuf via `fig-core::codec`).
+//! Exchange-sim multi-codec dispatch (CBOR / SBE via `fig-core::codec`).
+//!
+//! FIG frames on the wire are CBOR or SBE only. `ftlc --lang proto` remains an
+//! optional codegen target and is not a wire codec.
 
 use fig_core::codec;
 use fig_core::frame::Frame;

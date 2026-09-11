@@ -4,26 +4,26 @@
 //! tests can start and control the server programmatically.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
-use quinn::Endpoint;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
-use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
+use fig_core::frame::{ControlSubtype, Frame, FrameType};
 use fig_core::messages::*;
 use fig_core::session::{MemorySessionStore, Session, SessionStore};
-use fig_core::transport;
+use fig_core::transport::{self, FigConnection, FigServer};
 use fig_core::DurableSessionStore;
 
 use crate::account_state::{AccountHub, AccountSubscription};
 use crate::broker_session::{
-    handle_unsubscribe, parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
-    parse_order_history_path, parse_position_query_path, persist_subscription,
-    restore_session_subscriptions, session_id_from_frame,
+    handle_unsubscribe, parse_capabilities_path, parse_instruments_path, parse_open_orders_path,
+    parse_order_book_path, parse_order_history_path, parse_position_query_path,
+    persist_subscription, restore_session_subscriptions, session_id_from_frame,
 };
 use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_mark_query_path, MarketDataHub,
@@ -49,7 +49,7 @@ pub mod paths {
     pub const BALANCES: &str = "accounts/{account}/balances";
     pub const POSITIONS: &str = "accounts/{account}/positions";
     pub const MARGIN: &str = "accounts/{account}/margin";
-    pub const FILLS: &str = "trading/accounts/{account}/fills";
+    pub const FILLS: &str = "accounts/{account}/fills";
     pub const ACCOUNT: &str = "accounts/{account}";
 }
 
@@ -66,17 +66,14 @@ pub struct ExchangeState {
 /// Start the FIG exchange server on the given address.
 ///
 /// Spawns connection accept loop and connection handlers in the background.
-/// Returns a handle to the endpoint so callers can discover the bound address
-/// via `endpoint.local_addr()`.
-pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
-    // Initialize tracing if not already done
+/// Returns the bound server so callers can discover the address via
+/// `server.local_addr()`.
+pub async fn run_server(addr: &str) -> anyhow::Result<Arc<FigServer>> {
     tracing::info!("FIG Exchange Simulator starting...");
 
-    // Generate self-signed TLS certificate using fig-core transport
     let (cert, key) = transport::generate_self_signed_cert()
         .map_err(|e| anyhow::anyhow!("Failed to generate cert: {}", e))?;
 
-    // Configure TREE server using fig-core transport
     let server_config = if std::env::var("FIG_MTLS").ok().as_deref() == Some("1") {
         transport::server_config_mtls(cert, key)
             .map_err(|e| anyhow::anyhow!("Failed to create mTLS server config: {}", e))?
@@ -85,10 +82,13 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
             .map_err(|e| anyhow::anyhow!("Failed to create server config: {}", e))?
     };
 
-    // Bind to UDP socket
-    let addr: std::net::SocketAddr = addr.parse()?;
-    let endpoint = Arc::new(Endpoint::server(server_config, addr)?);
-    info!("FIG server listening on {}", endpoint.local_addr()?);
+    let bind_addr: std::net::SocketAddr = addr.parse()?;
+    let server = Arc::new(
+        FigServer::bind(bind_addr, server_config)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
+    );
+    info!("FIG server listening on {}", server.local_addr()?);
 
     let durable = DurableSessionStore::from_env().unwrap_or_else(|e| {
         warn!("session store from env failed ({e}); using file backend");
@@ -109,69 +109,119 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<Endpoint>> {
 
     info!("Waiting for connections...");
 
-    // Accept connections in the background
-    let ep = endpoint.clone();
+    let accept_server = server.clone();
     tokio::spawn(async move {
-        while let Some(incoming) = ep.accept().await {
-            let conn = match incoming.await {
-                Ok(c) => c,
+        loop {
+            match accept_server.accept_0rtt().await {
+                Ok((conn, session, first)) => {
+                    let state = state.clone();
+                    tokio::spawn(async move {
+                        let fig = Arc::new(conn);
+                        if let Err(e) = handle_connection(fig, state, session, first).await {
+                            error!("Connection error: {}", e);
+                        }
+                    });
+                }
                 Err(e) => {
-                    error!("Incoming connection error: {}", e);
-                    continue;
+                    warn!("Accept error: {}", e);
+                    break;
                 }
-            };
-            let remote = conn.remote_address();
-            info!("Connection from {}", remote);
-
-            let state = state.clone();
-            tokio::spawn(async move {
-                if let Err(e) = handle_connection(conn, state).await {
-                    error!("Connection error: {}", e);
-                }
-            });
+            }
         }
     });
 
-    Ok(endpoint)
+    Ok(server)
 }
 
-pub async fn handle_connection(conn: quinn::Connection, state: Arc<ExchangeState>) -> Result<()> {
-    // Create or restore a session for this connection.
-    // TODO: extract resumption token from TREE transport parameters
-    // when the transport layer supports token embedding.
-    let session = Session::new();
+pub async fn attach_push_conn(state: &ExchangeState, channel_id: u16, conn: Arc<FigConnection>) {
+    for sub in state.subscriptions.lock().await.iter_mut() {
+        if sub.channel_id == channel_id && sub.conn.is_none() {
+            sub.conn = Some(conn.clone());
+        }
+    }
+    for sub in state.account_subscriptions.lock().await.iter_mut() {
+        if sub.channel_id == channel_id && sub.conn.is_none() {
+            sub.conn = Some(conn.clone());
+        }
+    }
+}
+
+async fn drop_conn_subs(state: &ExchangeState, conn: &Arc<FigConnection>) {
+    state
+        .subscriptions
+        .lock()
+        .await
+        .retain(|s| !s.conn.as_ref().is_some_and(|c| Arc::ptr_eq(c, conn)));
+    state
+        .account_subscriptions
+        .lock()
+        .await
+        .retain(|s| !s.conn.as_ref().is_some_and(|c| Arc::ptr_eq(c, conn)));
+}
+
+pub async fn handle_connection(
+    fig_conn: Arc<FigConnection>,
+    state: Arc<ExchangeState>,
+    restored: Option<Session>,
+    first: Option<Frame>,
+) -> Result<()> {
+    let session = restored.unwrap_or_default();
     let session_id = session.session_id;
     info!("Session created: {}", session_id);
 
-    // Persist the session to the file store.
     if let Err(e) = state.file_sessions.put(&session) {
         warn!("Failed to persist session {}: {}", session_id, e);
     }
 
-    // Accept bidirectional streams
+    let mut pending = first;
     loop {
-        let (send, recv) = match conn.accept_bi().await {
-            Ok(streams) => streams,
-            Err(quinn::ConnectionError::ApplicationClosed(_)) => {
-                info!("Connection closed by peer");
-                break;
-            }
-            Err(e) => {
-                warn!("Stream error: {}", e);
-                break;
+        let (chid, frame) = if let Some(f) = pending.take() {
+            (f.channel_id, f)
+        } else {
+            match fig_conn.accept_frame().await {
+                Ok(pair) => pair,
+                Err(e) => {
+                    info!("Connection closed: {}", e);
+                    break;
+                }
             }
         };
 
-        let state = state.clone();
-        let session_id = session.session_id;
-        tokio::spawn(async move {
-            if let Err(e) = handle_stream(send, recv, state, session_id).await {
-                error!("Stream error: {}", e);
+        let keep_open = frame.frame_type == FrameType::Subscribe;
+        let mut batch = vec![frame];
+        if keep_open {
+            batch.extend(fig_conn.recv_buffered_frames(chid).await);
+            while let Ok(Ok(extra)) =
+                tokio::time::timeout(Duration::from_millis(25), fig_conn.recv_frame(chid)).await
+            {
+                batch.push(extra);
+                batch.extend(fig_conn.recv_buffered_frames(chid).await);
             }
-        });
+        } else {
+            batch.extend(fig_conn.recv_until_closed(chid).await);
+        }
+
+        for f in batch {
+            let ft = f.frame_type;
+            info!("Received: {}", f);
+            let responses = handle_frame(f, &state, session_id, Some(fig_conn.clone())).await;
+            for resp_frame in &responses {
+                if let Err(e) = fig_conn.send_frame(chid, resp_frame).await {
+                    warn!("send_frame: {}", e);
+                }
+            }
+            if ft == FrameType::Subscribe {
+                attach_push_conn(&state, chid, fig_conn.clone()).await;
+            }
+        }
+
+        if !keep_open {
+            let _ = fig_conn.close_channel_stream(chid).await;
+        }
     }
 
-    // Persist the session before disconnecting.
+    drop_conn_subs(&state, &fig_conn).await;
+
     info!("Connection ended, persisting session {}", session_id);
     let mut final_session = session;
     final_session.touch();
@@ -182,65 +232,17 @@ pub async fn handle_connection(conn: quinn::Connection, state: Arc<ExchangeState
     Ok(())
 }
 
-pub async fn handle_stream(
-    mut send: quinn::SendStream,
-    mut recv: quinn::RecvStream,
-    state: Arc<ExchangeState>,
-    session_id: uuid::Uuid,
-) -> Result<()> {
-    let mut decoder = FrameDecoder::new();
-
-    // Read frames from the stream
-    let mut buf = vec![0u8; 4096];
-    loop {
-        let n = match recv.read(&mut buf).await {
-            Ok(Some(n)) => n,
-            Ok(None) => {
-                info!("Stream closed by peer");
-                break;
-            }
-            Err(e) => {
-                warn!("Read error: {}", e);
-                break;
-            }
-        };
-
-        decoder.feed(&buf[..n]);
-
-        // Process all complete frames
-        while let Some(result) = decoder.decode_next() {
-            let frame = match result {
-                Ok(f) => f,
-                Err(e) => {
-                    error!("Frame decode error: {}", e);
-                    continue;
-                }
-            };
-
-            info!("Received: {}", frame);
-
-            let responses = handle_frame(frame, &state, session_id).await;
-            for resp_frame in responses {
-                let encoded = resp_frame.encode()?;
-                send.write_all(&encoded).await?;
-            }
-        }
-    }
-
-    send.finish()?;
-    Ok(())
-}
-
 pub async fn handle_frame(
     frame: Frame,
     state: &Arc<ExchangeState>,
     session_id: uuid::Uuid,
+    conn: Option<Arc<FigConnection>>,
 ) -> Vec<Frame> {
     match frame.frame_type {
         FrameType::Control => handle_control(frame),
         FrameType::Request => handle_request(frame, state).await,
-        FrameType::Subscribe => handle_subscribe(frame, state, session_id).await,
-        FrameType::Unsubscribe => handle_unsubscribe(frame, state).await,
+        FrameType::Subscribe => handle_subscribe(frame, state, session_id, conn).await,
+        FrameType::Unsubscribe => handle_unsubscribe(frame, state, conn).await,
         _ => {
             warn!("Unhandled frame type: {:?}", frame.frame_type);
             vec![make_error_frame(
@@ -298,6 +300,7 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
     let is_get = method.eq_ignore_ascii_case("GET");
     let is_query = is_get
         && (parse_capabilities_path(channel_path)
+            || parse_instruments_path(channel_path)
             || parse_order_book_path(channel_path).is_some()
             || parse_open_orders_path(channel_path).is_some()
             || parse_order_history_path(channel_path).is_some()
@@ -672,6 +675,7 @@ pub async fn handle_subscribe(
     frame: Frame,
     state: &Arc<ExchangeState>,
     session_id: uuid::Uuid,
+    conn: Option<Arc<FigConnection>>,
 ) -> Vec<Frame> {
     if let Some(code) = crate::path_policy::validate_interaction(&frame) {
         return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
@@ -709,7 +713,9 @@ pub async fn handle_subscribe(
                 .flatten()
                 .is_some_and(|s| !s.subscriptions.is_empty())
             {
-                frames.extend(restore_session_subscriptions(state, sid, frame.channel_id).await);
+                frames.extend(
+                    restore_session_subscriptions(state, sid, frame.channel_id, conn.clone()).await,
+                );
             }
         }
         if channel_path == ".well-known/resume" {
@@ -727,7 +733,9 @@ pub async fn handle_subscribe(
         || channel_path.ends_with("/funding")
         || channel_path.ends_with("/ledger")
     {
-        frames.extend(crate::broker_api::handle_account_subscribe(frame.clone(), state).await);
+        frames.extend(
+            crate::broker_api::handle_account_subscribe(frame.clone(), state, conn.clone()).await,
+        );
     } else if routing_key.contains("marketdata")
         || routing_key.contains("quotes")
         || routing_key.contains("candles")
@@ -738,7 +746,9 @@ pub async fn handle_subscribe(
         || routing_key.contains("mark")
         || channel_path.starts_with("marketdata/")
     {
-        frames.extend(crate::broker_api::handle_market_subscribe(frame.clone(), state).await);
+        frames.extend(
+            crate::broker_api::handle_market_subscribe(frame.clone(), state, conn.clone()).await,
+        );
     } else {
         frames.push(
             Frame::new(FrameType::Response, frame.channel_id)
@@ -788,22 +798,27 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
         return Vec::new();
     };
 
-    subs.into_iter()
-        .map(|sub| {
-            Frame::new(FrameType::StreamItem, sub.channel_id)
-                .with_schema_id(schema_id::TRADING_ORDERS)
-                .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
-                .with_extension(Extension::text(
-                    ExtensionTag::ChannelPath,
-                    "marketdata/book",
-                ))
-                .with_extension(Extension::text(
-                    ExtensionTag::ContentType,
-                    "application/cbor",
-                ))
-                .with_payload(payload.clone())
-        })
-        .collect()
+    let mut leftover = Vec::new();
+    for sub in subs {
+        let frame = Frame::new(FrameType::StreamItem, sub.channel_id)
+            .with_schema_id(schema_id::TRADING_ORDERS)
+            .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/book",
+            ))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/cbor",
+            ))
+            .with_payload(payload.clone());
+        if let Some(conn) = &sub.conn {
+            let _ = conn.send_frame(sub.channel_id, &frame).await;
+        } else {
+            leftover.push(frame);
+        }
+    }
+    leftover
 }
 
 /// Push order book depth snapshots to all subscribers when the book changes.

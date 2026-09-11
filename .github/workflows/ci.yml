@@ -13,6 +13,18 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -25,10 +37,24 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "9.0.x"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+      - name: Install OCaml smoke deps
+        run: sudo apt-get update && sudo apt-get install -y ocaml ocaml-findlib libctypes-ocaml-dev
       - name: Build
         run: cargo build --workspace --all-features
       - name: Run tests
         run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test --workspace --all-features
+      - name: Redis session round-trip
+        run: cargo test -p fig-core --features session-redis round_trip_session -- --nocapture
       - name: Conformance vectors
         run: cargo run -p fig-conformance --bin fig-conformance
       - name: Python binding conformance
@@ -37,7 +63,7 @@ jobs:
         run: cargo test -p fig-ffi binding_conformance
       - name: FFI stream merge handles
         run: cargo test -p fig-ffi --test stream_state
-      - name: Binding compile smoke (Go/C++/C#)
+      - name: Binding compile smoke (Go/C++/C#/Java/TS/Zig/OCaml)
         run: |
           cargo build -p fig-ffi
           export LD_LIBRARY_PATH="$PWD/target/debug:${LD_LIBRARY_PATH:-}"
@@ -46,6 +72,10 @@ jobs:
           bash bindings/cpp/smoke/run.sh
           export FIG_REPO_ROOT="$PWD"
           bash bindings/csharp/smoke/run.sh
+          bash bindings/java/smoke/run.sh
+          bash bindings/typescript/smoke/run.sh
+          bash bindings/zig/smoke/run.sh
+          bash bindings/ocaml/smoke/run.sh
       - name: Binding SBE hex parity
         run: |
           cargo build -p fig-ffi --release
@@ -126,3 +156,15 @@ jobs:
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
         run: cargo test --workspace --all-features --exclude fig-python
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz frame_decode
+        working-directory: crates/fig-core/fuzz
+        run: cargo fuzz run frame_decode -- -max_total_time=30

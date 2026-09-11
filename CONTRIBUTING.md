@@ -62,9 +62,8 @@ See [docs/API.md](docs/API.md) for the full module index.
 numbers, and gateway mappings. See
 [ADR 0004 — FSL as Single Source of Truth](docs/adr/0004-fsl-single-source-of-truth.md).
 
-Do **not** edit Rust enums or message structs in `fig-core/src/messages.rs`
-without updating the matching FSL schema in the same PR. Prefer editing FSL
-only and regenerating outputs.
+Do **not** hand-edit `fig-core/src/messages.rs`. FSL is the source of truth;
+regenerate with `cargo xtask codegen` (or `cargo xtask codegen --check` in CI).
 
 ### Adding or changing a message type
 
@@ -91,6 +90,12 @@ schema trading.orders v1.1.0 {   // minor = additive; major = breaking
 3. Validate and regenerate **all** targets you ship:
 
 ```bash
+cargo xtask codegen
+```
+
+Or compile one language at a time:
+
+```bash
 cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 
 for lang in rust sbe python cpp csharp go typescript ocaml zig proto sbe-xml json-schema fix-yaml; do
@@ -115,8 +120,8 @@ gateway rest {
 
 5. Update tests and conformance vectors if payloads or enums change.
 
-6. Until build-time codegen lands in `fig-core`, manually sync
-   `fig-core/src/messages.rs` with the FSL change (temporary — see ADR 0004).
+`fig-core/src/messages.rs` is generated — never hand-edit it. Run
+`cargo xtask codegen` after FSL changes.
 
 ### Enum and field rules
 
@@ -151,18 +156,22 @@ GitHub Actions runs on every push to `main`:
 
 | Job | What it runs |
 |---|---|
-| `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux) |
+| `build` | `cargo build/test/clippy/fmt --workspace --all-features` (Linux), Redis session round-trip, Java/TS/Zig/OCaml smoke |
 | `coverage` | `cargo llvm-cov` coverage report |
 | `benchmarks` | Smoke-run frame, transport, gateway, alloc, and tail-latency benches |
 | `cross-platform` | `cargo test --workspace --all-features` on Linux, macOS, Windows |
+| `fuzz` | nightly `cargo fuzz run frame_decode` (30s) |
 
 Tagged releases trigger `.github/workflows/release.yml` (binaries + changelog).
 
-## Fuzzing (optional)
+## Fuzzing
 
-Install `cargo-fuzz`, then from `crates/fig-core/fuzz`:
+CI runs `cargo fuzz run frame_decode -- -max_total_time=30` on the nightly
+toolchain. Locally:
 
 ```bash
+cargo install cargo-fuzz
+cd crates/fig-core/fuzz
 cargo fuzz run frame_decode -- -max_total_time=60
 ```
 

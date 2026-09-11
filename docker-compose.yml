@@ -1,11 +1,27 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   exchange-sim:
     build: .
     ports:
       - "8443:8443/udp"
     environment:
       RUST_LOG: info
+      # Demo compose only — never set FIG_DEV_OPEN in production.
       FIG_DEV_OPEN: "1"
+    command:
+      - fig-exchange-sim
+      - --addr
+      - 0.0.0.0:8443
+      - --session-store
+      - redis
+      - --redis-url
+      - redis://redis:6379
+    depends_on:
+      - redis
 
   gateway:
     build:
@@ -16,6 +32,7 @@ services:
       - "8090:8090"
       - "9876:9876"
       - "8081:8081"
+      - "9091:9091"
     command:
       - fig-gateway
       - --fig-backend
@@ -39,3 +56,5 @@ services:
       dockerfile: Dockerfile.observability
     ports:
       - "9090:9090"
+    # fig-observability serves THIS process's /metrics only. It does not scrape
+    # the gateway. Point Prometheus at gateway:9091 for fig-gateway metrics.

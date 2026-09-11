@@ -8,6 +8,7 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::*;
 use fig_core::session::{Session, SessionStore, SessionSubscription};
+use fig_core::transport::FigConnection;
 
 use crate::account_state::{parse_account_subscription, AccountSubscriptionKind};
 use crate::broker_api::{handle_account_subscribe, handle_market_subscribe};
@@ -17,70 +18,63 @@ use crate::server::{make_error_frame, schema_id, ExchangeState};
 pub const REQUEST_STREAM_THRESHOLD: usize = 50;
 pub const REQUEST_STREAM_CHUNK: usize = 25;
 
+fn cap(path: &str, pattern: CapabilityPathPattern, auth_required: bool) -> CapabilityPath {
+    CapabilityPath {
+        path: path.to_string(),
+        pattern,
+        auth_required,
+    }
+}
+
+/// SPEC §9.1 catalog. Dual-pattern paths (pub/sub + GET) emit both rows.
 pub fn capabilities_response() -> CapabilitiesResponse {
+    use CapabilityPathPattern::{PubSub, RequestResponse, RequestStream};
     CapabilitiesResponse {
         schema_ids: vec![0x01, 0x02, 0x03],
         paths: vec![
-            CapabilityPath {
-                path: "marketdata/{symbol}/candles/{interval}".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "marketdata/{symbol}/trades".to_string(),
-                pattern: CapabilityPathPattern::RequestResponse,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "trading/accounts/{account}/orders/open".to_string(),
-                pattern: CapabilityPathPattern::RequestResponse,
-                auth_required: true,
-            },
-            CapabilityPath {
-                path: "trading/accounts/{account}/orders".to_string(),
-                pattern: CapabilityPathPattern::RequestStream,
-                auth_required: true,
-            },
-            CapabilityPath {
-                path: "marketdata/{symbol}/aggtrades".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "marketdata/ticker/all".to_string(),
-                pattern: CapabilityPathPattern::RequestResponse,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "marketdata/{symbol}/mark".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "marketdata/liquidations".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: false,
-            },
-            CapabilityPath {
-                path: "accounts/{account}/margin".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: true,
-            },
-            CapabilityPath {
-                path: "accounts/{account}/liquidations".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: true,
-            },
-            CapabilityPath {
-                path: "trading/accounts/{account}/orderlists".to_string(),
-                pattern: CapabilityPathPattern::PubSub,
-                auth_required: true,
-            },
-            CapabilityPath {
-                path: ".well-known/capabilities".to_string(),
-                pattern: CapabilityPathPattern::RequestResponse,
-                auth_required: false,
-            },
+            cap("marketdata/{symbol}/book", PubSub, false),
+            cap("marketdata/{symbol}/book", RequestResponse, false),
+            cap("marketdata/{symbol}/quotes", PubSub, false),
+            cap("marketdata/{symbol}/quotes", RequestResponse, false),
+            cap("marketdata/{symbol}/bbo", PubSub, false),
+            cap("marketdata/{symbol}/trades", PubSub, false),
+            cap("marketdata/{symbol}/trades", RequestResponse, false),
+            cap("marketdata/{symbol}/aggtrades", PubSub, false),
+            cap("marketdata/{symbol}/aggtrades", RequestResponse, false),
+            cap("marketdata/{symbol}/candles/{interval}", PubSub, false),
+            cap(
+                "marketdata/{symbol}/candles/{interval}",
+                RequestResponse,
+                false,
+            ),
+            cap("marketdata/{symbol}/ticker", PubSub, false),
+            cap("marketdata/{symbol}/ticker", RequestResponse, false),
+            cap("marketdata/ticker/all", PubSub, false),
+            cap("marketdata/ticker/all", RequestResponse, false),
+            cap("marketdata/{symbol}/mark", PubSub, false),
+            cap("marketdata/{symbol}/mark", RequestResponse, false),
+            cap("marketdata/liquidations", PubSub, false),
+            cap("trading/accounts/{account}/executions", PubSub, true),
+            cap(
+                "trading/accounts/{account}/orders/open",
+                RequestResponse,
+                true,
+            ),
+            cap("trading/accounts/{account}/orders", RequestStream, true),
+            cap("accounts/{account}", RequestResponse, true),
+            cap("accounts/{account}/balances", PubSub, true),
+            cap("accounts/{account}/positions", PubSub, true),
+            cap("accounts/{account}/margin", PubSub, true),
+            cap("accounts/{account}/margin", RequestResponse, true),
+            cap("accounts/{account}/fills", RequestResponse, true),
+            cap("accounts/{account}/funding", PubSub, true),
+            cap("accounts/{account}/funding", RequestResponse, true),
+            cap("accounts/{account}/ledger", PubSub, true),
+            cap("accounts/{account}/ledger", RequestResponse, true),
+            cap("accounts/{account}/liquidations", PubSub, true),
+            cap("trading/accounts/{account}/orderlists", PubSub, true),
+            cap(".well-known/capabilities", RequestResponse, false),
+            cap(".well-known/instruments", RequestResponse, false),
         ],
         symbols: vec![
             "AAPL".to_string(),
@@ -182,6 +176,7 @@ pub async fn restore_session_subscriptions(
     state: &Arc<ExchangeState>,
     session_id: Uuid,
     channel_id: u16,
+    conn: Option<Arc<FigConnection>>,
 ) -> Vec<Frame> {
     let Some(session) = state.file_sessions.get(&session_id).ok().flatten() else {
         return Vec::new();
@@ -195,26 +190,38 @@ pub async fn restore_session_subscriptions(
             ))
             .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key));
         let mut part = if sub.kind.starts_with("acct:") {
-            handle_account_subscribe(frame.clone(), state).await
+            handle_account_subscribe(frame.clone(), state, conn.clone()).await
         } else {
-            handle_market_subscribe(frame.clone(), state).await
+            handle_market_subscribe(frame.clone(), state, conn.clone()).await
         };
         frames.append(&mut part);
     }
     frames
 }
 
-pub async fn handle_unsubscribe(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+pub async fn handle_unsubscribe(
+    frame: Frame,
+    state: &Arc<ExchangeState>,
+    conn: Option<Arc<FigConnection>>,
+) -> Vec<Frame> {
     let channel_path = extension_text(&frame, ExtensionTag::ChannelPath);
     let routing_key = extension_text(&frame, ExtensionTag::RoutingKey);
 
+    let same_conn = |sub_conn: &Option<Arc<FigConnection>>| match (&conn, sub_conn) {
+        (Some(want), Some(have)) => Arc::ptr_eq(want, have),
+        (None, _) => true,
+        (Some(_), None) => false,
+    };
+
     state.subscriptions.lock().await.retain(|s| {
         !(s.channel_id == frame.channel_id
-            && (channel_path.is_empty() || s.routing_key.contains(&channel_path)))
+            && (channel_path.is_empty() || s.routing_key.contains(&channel_path))
+            && same_conn(&s.conn))
     });
     state.account_subscriptions.lock().await.retain(|s| {
         !(s.channel_id == frame.channel_id
-            && (channel_path.is_empty() || s.routing_key.contains(&channel_path)))
+            && (channel_path.is_empty() || s.routing_key.contains(&channel_path))
+            && same_conn(&s.conn))
     });
 
     if let Some(session_id) = session_id_from_frame(&frame) {
@@ -426,6 +433,10 @@ pub fn parse_capabilities_path(path: &str) -> bool {
     path == ".well-known/capabilities" || path == "capabilities"
 }
 
+pub fn parse_instruments_path(path: &str) -> bool {
+    path == ".well-known/instruments" || path == "instruments"
+}
+
 pub fn parse_order_book_path(path: &str) -> Option<String> {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() >= 3 && parts[0] == "marketdata" {
@@ -444,4 +455,69 @@ pub fn parse_position_query_path(path: &str) -> Option<String> {
         return Some(parts[1].to_string());
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fig_core::messages::CapabilityPathPattern::{PubSub, RequestResponse, RequestStream};
+
+    #[test]
+    fn capabilities_match_spec_9_1() {
+        let caps = capabilities_response();
+        let expected: &[(&str, CapabilityPathPattern, bool)] = &[
+            ("marketdata/{symbol}/book", PubSub, false),
+            ("marketdata/{symbol}/book", RequestResponse, false),
+            ("marketdata/{symbol}/quotes", PubSub, false),
+            ("marketdata/{symbol}/quotes", RequestResponse, false),
+            ("marketdata/{symbol}/bbo", PubSub, false),
+            ("marketdata/{symbol}/trades", PubSub, false),
+            ("marketdata/{symbol}/trades", RequestResponse, false),
+            ("marketdata/{symbol}/aggtrades", PubSub, false),
+            ("marketdata/{symbol}/aggtrades", RequestResponse, false),
+            ("marketdata/{symbol}/candles/{interval}", PubSub, false),
+            (
+                "marketdata/{symbol}/candles/{interval}",
+                RequestResponse,
+                false,
+            ),
+            ("marketdata/{symbol}/ticker", PubSub, false),
+            ("marketdata/{symbol}/ticker", RequestResponse, false),
+            ("marketdata/ticker/all", PubSub, false),
+            ("marketdata/ticker/all", RequestResponse, false),
+            ("marketdata/{symbol}/mark", PubSub, false),
+            ("marketdata/{symbol}/mark", RequestResponse, false),
+            ("marketdata/liquidations", PubSub, false),
+            ("trading/accounts/{account}/executions", PubSub, true),
+            (
+                "trading/accounts/{account}/orders/open",
+                RequestResponse,
+                true,
+            ),
+            ("trading/accounts/{account}/orders", RequestStream, true),
+            ("accounts/{account}", RequestResponse, true),
+            ("accounts/{account}/balances", PubSub, true),
+            ("accounts/{account}/positions", PubSub, true),
+            ("accounts/{account}/margin", PubSub, true),
+            ("accounts/{account}/margin", RequestResponse, true),
+            ("accounts/{account}/fills", RequestResponse, true),
+            ("accounts/{account}/funding", PubSub, true),
+            ("accounts/{account}/funding", RequestResponse, true),
+            ("accounts/{account}/ledger", PubSub, true),
+            ("accounts/{account}/ledger", RequestResponse, true),
+            ("accounts/{account}/liquidations", PubSub, true),
+            ("trading/accounts/{account}/orderlists", PubSub, true),
+            (".well-known/capabilities", RequestResponse, false),
+            (".well-known/instruments", RequestResponse, false),
+        ];
+        assert_eq!(caps.paths.len(), expected.len());
+        for (path, pattern, auth) in expected {
+            assert!(
+                caps.paths
+                    .iter()
+                    .any(|p| p.path == *path && p.pattern == *pattern && p.auth_required == *auth),
+                "missing catalog row {path} {pattern:?} auth={auth}"
+            );
+        }
+    }
 }

@@ -46,9 +46,10 @@ cargo run -p fig-cli -- --help
 
 The client connects to `127.0.0.1:8443` (override with `--server` or
 `FIG_SERVER=host:port`) and runs **seven** demos: order entry, candle subscribe,
-balance subscribe, historical candle query, account/ticker/funding/ledger
-queries, agg-trades/mark/margin streams, and PING/PONG. Each step validates
-responses (no `STREAM_ERROR`, expected acks).
+balance subscribe, historical candle query, account/ticker/funding/ledger plus
+capabilities/instruments/fills queries, agg-trades/mark/margin streams, and
+PING/PONG. Subscribe helpers read the snapshot without waiting for stream EOF.
+Each step validates responses (no `STREAM_ERROR`, expected acks).
 
 Private account paths require an `AUTH_TOKEN` extension on each frame (SPEC
 §9.3). The reference simulator uses a **test harness token**
@@ -242,6 +243,7 @@ legacy aliases when running `fig-gateway --fig-backend`.
 | Funding | `accounts/{acct}/funding` | `FundingPayment` | HL `userFunding` |
 | Ledger | `accounts/{acct}/ledger` | `LedgerUpdate` | HL `ledgerUpdates` |
 | User liq | `accounts/{acct}/liquidations` | `UserLiquidation` | HL `liquidation` |
+| Order lists | `trading/accounts/{acct}/orderlists` | `OrderListStatus` | `@orderlists` |
 
 Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
 (production: JWT bearer or mTLS; simulator test harness: `fig-dev-{acct}`).
@@ -251,6 +253,7 @@ Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
 | Query | Native path | Request → response |
 |---|---|---|
 | Capabilities | `/.well-known/capabilities` | `CapabilitiesRequest` → `CapabilitiesResponse` |
+| Instruments | `/.well-known/instruments` | GET → `InstrumentCatalogResponse` |
 | Candles | `marketdata/{sym}/candles/{iv}` | `CandleBarRequest` → `CandleBarBatch` |
 | Trades | `marketdata/{sym}/trades` | `TradeHistoryRequest` → `PublicTradeBatch` |
 | Agg trades | `marketdata/{sym}/aggtrades` | `AggregateTradeRequest` → `AggregateTradeBatch` |
@@ -269,6 +272,7 @@ Example gateway REST query:
 ```bash
 curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
 curl 'http://127.0.0.1:8080/.well-known/capabilities'
+curl 'http://127.0.0.1:8080/.well-known/instruments'
 ```
 
 See [PROTOCOL.md](PROTOCOL.md) for frame-by-frame worked examples.
@@ -295,7 +299,9 @@ Native flows the CLI demos exercise via `FigSdkClient`:
 | Funding payments | `accounts/{acct}/funding` | `subscribe_funding` |
 | Ledger updates | `accounts/{acct}/ledger` | `subscribe_ledger` |
 | Post-only limit order | `trading/accounts/{acct}/orders` POST | `NewOrderSingle { post_only: Some(true), … }` |
-| Instrument catalog | `/.well-known/instruments` GET | `InstrumentCatalogRequest` |
+| Capabilities | `/.well-known/capabilities` GET | `request_capabilities` |
+| Instrument catalog | `/.well-known/instruments` GET | `request_instruments` |
+| Fill history | `accounts/{acct}/fills` GET | `request_fills` |
 
 Merge helpers (`FundingState`, `LedgerState`, `AggTradeState`, `LiquidationState`)
 accumulate `STREAM_ITEM` payloads — see [STREAMING.md](STREAMING.md).

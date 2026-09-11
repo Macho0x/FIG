@@ -12,10 +12,17 @@ Client                          Exchange
   │── STREAM_OPEN (channel N) ────►│
   │── SUBSCRIBE routing_key ──────►│  (+ ChannelPath extension)
   │◄── STREAM_ITEM (snapshot) ─────│  optional is_snapshot: true
-  │◄── STREAM_ITEM (updates) ──────│
-  │── UNSUBSCRIBE ────────────────►│  optional
+  │◄── STREAM_ITEM (updates) ──────│  same TREE stream, held open
+  │── UNSUBSCRIBE ────────────────►│  optional (new request stream)
   │── STREAM_CLOSE ───────────────►│
 ```
+
+The reference broker writes the snapshot/ack and **leaves the subscribe send
+stream open**. Later `STREAM_ITEM`s (fills, book deltas, balance updates) are
+`send_frame`d to **that subscriber's** `FigConnection`, not piggybacked on the
+trader's order stream. `FigSdkClient::subscribe_*` reads the snapshot without
+waiting for EOF; hold `LiveSubscription` to read follow-up frames. REQUEST
+streams still half-close after the response.
 
 ## Public market data paths
 
@@ -50,17 +57,23 @@ infrastructure — not part of the protocol.
 | Funding payments | `accounts/{account}/funding` | `FundingPayment` |
 | Ledger | `accounts/{account}/ledger` | `LedgerUpdate` |
 | User liquidations | `accounts/{account}/liquidations` | `UserLiquidation` (push on breach) |
+| Order lists | `trading/accounts/{account}/orderlists` | `OrderListStatus` |
 
 ### SDK merge helpers (`fig-client`)
 
 Use `FigSdkClient::subscribe_*` and merge states for live streams:
 
+- `OrderBookState` — `subscribe_order_book`
 - `AggTradeState` — `subscribe_agg_trades`
 - `FundingState` — `subscribe_funding`
 - `LedgerState` — `subscribe_ledger`
 - `LiquidationState` — `subscribe_liquidations`
+- `AccountCache` — `subscribe_positions` / `subscribe_balances`
+- `subscribe_ticker`, `subscribe_orderlists` — snapshot helpers
 
-Batch apply via `FigSdkClient::apply_account_stream_frames` or `apply_all_stream_frames`.
+Hold `LiveSubscription` (from `subscribe_live`) when you need frames after the
+initial snapshot. Batch apply via `FigSdkClient::apply_account_stream_frames` or
+`apply_all_stream_frames`.
 
 ## Subscribe example (conceptual)
 
@@ -80,6 +93,7 @@ Use `fig_gateways::ws_catalog`:
 - `legacy_ws_json_to_fig_subscribe` — Binance/Hyperliquid JSON → FIG `SUBSCRIBE`
 - `fig_stream_item_to_legacy_json` — FIG `STREAM_ITEM` → legacy JSON envelope
 - `binance_topic_to_subscribe` / `hyperliquid_subscribe_to_fig` — topic mapping
+- `backend::BackendSession` — persistent TREE connection for live WS follow-up frames
 
 Run with backend proxy:
 

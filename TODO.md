@@ -45,7 +45,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | Status | Item | Track | Detail |
 |---|---|---|---|
 | ✅ | `FigServer::accept_0rtt` reads resumption token from first app frame | both | `fig-core::transport::try_restore_session_from_first_frame` |
-| ⬜ | Fuzz `frame_decode` in required CI | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | Fuzz `frame_decode` in required CI | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | Shared `RedisReplayCache` for HA 0-RTT | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ✅ | 0-RTT replay on server accept path (criteria row) | both | `FigServer::accept_0rtt` + session restore — [§18.2](#182-security) |
 
@@ -111,7 +111,7 @@ TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chai
 | ⬜ | `AccountCache` in FFI/Python | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | Native TREE transport per language | both | [§16.6](#166-pure-protocol-libraries-track-b-option-2) |
 | ⬜ | Wire schema split `0x02` market / `0x03` account | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| ⬜ | Redis session round-trip in CI service container | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | Redis session round-trip in CI service container | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | crates.io / npm publish automation | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | External penetration test | both | [§18.2](#182-security) (optional for 1.0) |
 | ⬜ | Per-language generated SBE hex CI (optional criterion) | both | [§18.3](#183-client-sdk) |
@@ -147,7 +147,7 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 | ✅ | 0-RTT replay protection (client path) | Required | `fig_core::replay`, client `connect_0rtt`, unit tests |
 | 🔶 | 0-RTT replay protection (server accept path) | Post-1.0* | `FigServer::accept_0rtt` token read ✅; Redis HA replay cache deferred |
 | ✅ | Frame decoder fuzz target | Required | `crates/fig-core/fuzz/frame_decode`, [CONTRIBUTING.md](CONTRIBUTING.md) |
-| ⬜ | Frame decoder fuzz in required CI | Post-1.0* | §18.7 |
+| ✅ | Frame decoder fuzz in required CI | Post-1.0* | §18.7 |
 | ✅ | Load / flood smoke test | Required | `fig-load` bin, CI `FIG_LOAD_SECS=3` |
 | ✅ | mTLS + rate limits available | Required | `FIG_MTLS`, `ChannelRateLimiter`, `DoSGuard` |
 | ⬜ | External penetration test | Optional | Manual — [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) |
@@ -167,8 +167,8 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 
 | Status | Criterion | Blocker | Evidence |
 |---|---|---|---|
-| ✅ | `RedisSessionStore` (`session-redis` feature) | Required | `#[ignore]` test with `REDIS_URL`; CLI `--session-store redis` |
-| ⬜ | Redis session round-trip in CI service container | Post-1.0* | §18.7 |
+| ✅ | `RedisSessionStore` (`session-redis` feature) | Required | CI `REDIS_URL` service + `round_trip_session`; CLI `--session-store redis` |
+| ✅ | Redis session round-trip in CI service container | Post-1.0* | §18.7 |
 | ✅ | `docker-compose.yml` (sim + gateway + metrics) | Required | repo root |
 | ✅ | Gateway `--health-addr` / `--metrics-addr` | Required | `fig-gateway` flags |
 | ✅ | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Required | HA topology documented |
@@ -282,8 +282,8 @@ would treat FIG as production-grade wire infrastructure. Items marked 🏛 are
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Complete §18 sign-off + SPEC **1.0.0** stable | High | [§0.1](#01-p0--ship-fig-10) |
-| ⬜ | All post-1.0 items accepted or ticketed | High | [§0.1](#01-p0--ship-fig-10) |
+| ✅ | Complete §18 sign-off + SPEC **1.0.0** stable | High | [§0.1](#01-p0--ship-fig-10) |
+| ✅ | All post-1.0 items accepted or ticketed | High | [§0.1](#01-p0--ship-fig-10) |
 
 Remaining §19.1 items are in [§0.4](#04-p3--shared-adoption-both-tracks).
 
@@ -487,7 +487,8 @@ conformance tests against Rust reference vectors.
 
 **Track A — FSL codegen parity** (extend `ftlc` / `target_codegen.rs`):
 typed enums, nested types, type aliases, message metadata constants, per-language
-CBOR/SBE/Protobuf serializers. Do not rewrite `fig-core` nine times without shared
+CBOR/SBE serializers. `ftlc --lang proto` is an optional codegen target, not a
+wire codec. Do not rewrite `fig-core` nine times without shared
 conformance vectors.
 
 **Track B — Protocol runtime parity** (pick per language):
@@ -596,9 +597,9 @@ End-to-end parity requires server and gateway changes, not just client SDKs.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | Exchange-sim multi-codec dispatch | High | CBOR/SBE/Protobuf on orders, cancel, queries via `ContentType` |
+| ✅ | Exchange-sim multi-codec dispatch | High | CBOR/SBE on orders, cancel, queries via `ContentType` |
 | ✅ | SBE payload decode in exchange-sim | High | NewOrderSingle + CancelRequest + ExecutionReport responses |
-| ✅ | Protobuf payload decode in exchange-sim | Medium | Query bodies + order entry via JSON bridge |
+| ✅ | Protobuf payload decode in exchange-sim | Medium | Optional `ftlc --lang proto` codegen only — not on-the-wire |
 | ✅ | Multi-codec integration tests | High | `test_sbe_new_order_single` + `multi_codec` unit test |
 | ✅ | Wire `fig-gateway` to proxy to FIG backend | Medium | `--fig-backend` proxies REST GET + WS `SUBSCRIBE` to exchange-sim |
 | ✅ | Production gateway service template | Medium | `examples/production-gateway` + gateway `--health-addr` / `--metrics-addr` |
@@ -789,7 +790,7 @@ Use this as the completeness checklist: **if a row is ⬜, native FIG is incompl
 | Position snapshot | futures account | `clearinghouseState` / `subscribePosition` | `accounts/{account}/positions` | `PositionSnapshot` | ✅ snapshot on subscribe | ✅ Hyperliquid `clearinghouseState` |
 | Position delta | — | position WS updates | `accounts/{account}/positions` | `PositionUpdate` | ✅ fill fan-out | ✅ Hyperliquid passthrough |
 | Margin / account summary | account info REST | clearinghouse margin summary | `accounts/{account}/margin` | `MarginSummary` / `MarginUpdate` | ✅ GET + live stream | ✅ passthrough |
-| User fills stream | trade in `executionReport` | `userFills` | `trading/accounts/{account}/fills` | `UserFill` or reuse `ExecutionReport` | ✅ executions sub + `FillHistoryRequest` GET (reuse `ExecutionReport`) | ✅ Hyperliquid `userFills` → executions |
+| User fills stream | trade in `executionReport` | `userFills` | `accounts/{account}/fills` | `UserFill` or reuse `ExecutionReport` | ✅ executions sub + `FillHistoryRequest` GET (reuse `ExecutionReport`) | ✅ Hyperliquid `userFills` → executions |
 | Funding payments | — | `userFundings` | `accounts/{account}/funding` | `FundingPayment` | ✅ sub + history GET | ✅ WS catalog |
 | Ledger (deposit/withdraw/transfer) | — | `userNonFundingLedgerUpdates` | `accounts/{account}/ledger` | `LedgerUpdate` | ✅ sub + history GET + fee on fill | ✅ WS catalog |
 | Liquidation (user) | — | `liquidation` in `userEvents` | `accounts/{account}/liquidations` | `UserLiquidation` | ✅ on balance breach | ✅ Hyperliquid passthrough |
@@ -819,7 +820,7 @@ for that query is blocked.**
 | Account snapshot | `GET /api/v3/account` | clearinghouse state | `accounts/{account}` | `AccountSummaryRequest` → `AccountSummary` / `MarginSummary` | ✅ | ✅ `/api/v3/account` alias |
 | Open orders | `GET /api/v3/openOrders` | open orders REST | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` | ✅ | ✅ `/api/v3/openOrders` alias |
 | Order history | `GET /api/v3/allOrders` | — | `trading/accounts/{account}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` | ✅ | ✅ `/api/v3/allOrders` alias |
-| User trade / fill history | `GET /api/v3/myTrades` | user fills REST | `trading/accounts/{account}/fills` | `FillHistoryRequest` → `FillHistoryBatch` | ✅ | ✅ `/api/v3/myTrades` alias |
+| User trade / fill history | `GET /api/v3/myTrades` | user fills REST | `accounts/{account}/fills` | `FillHistoryRequest` → `FillHistoryBatch` | ✅ | ✅ `/api/v3/myTrades` alias |
 | Ledger / deposits / withdrawals | — | ledger REST | `accounts/{account}/ledger` | `LedgerHistoryRequest` → `LedgerHistoryBatch` | ✅ | ✅ native path + REST alias |
 | Funding history | `GET /fundingRate` (futures) | `userFundings` history | `accounts/{account}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` | ✅ | ✅ native path + REST alias |
 | Position snapshot | futures account | clearinghouse REST | `accounts/{account}/positions` | `PositionRequest` → `PositionSnapshot` | ✅ GET + subscribe snapshot | ✅ native path + REST alias |
@@ -1007,7 +1008,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | Query param ↔ CBOR request mapping | High | `rest_query.rs`: `?start=&end=&limit=` → request fields |
 | ✅ | WS topic catalog spec | High | `ws_catalog.rs`; Binance `@kline_*` / Hyperliquid topics |
 | ✅ | Inbound WS → FIG proxy | High | `legacy_ws_json_to_fig_subscribe` |
-| ✅ | Gateway `--fig-backend` for queries + streams | Medium | REST GET + WS `SUBSCRIBE` proxied via `proxy_frame` |
+| ✅ | Gateway `--fig-backend` for queries + streams | Medium | REST GET via `proxy_frame`; WS holds `BackendSession` for live `STREAM_ITEM`s |
 | ✅ | FIX market data (MD entries) | Low | `fig_bbo_to_fix_md_snapshot`, `fig_candle_bar_to_fix_md_snapshot`, `fig_order_book_to_fix_md_snapshot` |
 
 ---
@@ -1021,7 +1022,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | CBOR golden vectors per message | High | 28 vectors incl. snapshot/delta pairs + paginated history frame |
 | ✅ | SBE golden vectors per message | High | `sbe.candle_bar*`, `sbe.symbol_ticker`, `sbe.order_book_snapshot`, `sbe.balance_snapshot` |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
-| ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE/Protobuf via `ContentType`; `multi_codec.rs` + integration test |
+| ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE via `ContentType`; `multi_codec.rs` + integration test |
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
 | ✅ | E2E: private account subscribe suite | High | Auth + balance/margin/position/executions/orderlists |
 | ✅ | E2E: native historical REQUEST suite | High | Ticker/capabilities/open-orders/order-history/fill-history/pagination |

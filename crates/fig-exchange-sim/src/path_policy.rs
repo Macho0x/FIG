@@ -4,7 +4,7 @@ use fig_core::ext::ExtensionTag;
 use fig_core::frame::{Frame, FrameType};
 
 use crate::broker_session::{
-    parse_capabilities_path, parse_open_orders_path, parse_order_book_path,
+    parse_capabilities_path, parse_instruments_path, parse_open_orders_path, parse_order_book_path,
     parse_order_history_path,
 };
 use crate::market_data::{
@@ -32,6 +32,7 @@ fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {
 /// Paths that reject SUBSCRIBE (historical-only or capability discovery).
 fn is_subscribe_forbidden_path(path: &str) -> bool {
     parse_capabilities_path(path)
+        || parse_instruments_path(path)
         || parse_order_history_path(path).is_some()
         || path.ends_with("/fills")
         || (path.starts_with("accounts/") && path.matches('/').count() == 1)
@@ -40,6 +41,7 @@ fn is_subscribe_forbidden_path(path: &str) -> bool {
 /// Paths that support GET via Request (may also support SUBSCRIBE for live streams).
 fn is_get_query_path(path: &str) -> bool {
     parse_capabilities_path(path)
+        || parse_instruments_path(path)
         || parse_order_history_path(path).is_some()
         || parse_open_orders_path(path).is_some()
         || parse_candle_query_path(path).is_some()
@@ -174,6 +176,46 @@ mod tests {
         let frame = Frame::new(FrameType::Subscribe, 1).with_extension(Extension::text(
             ExtensionTag::ChannelPath,
             ".well-known/capabilities",
+        ));
+        assert_eq!(validate_interaction(&frame), Some("INVALID_SUBSCRIBE_PATH"));
+    }
+
+    #[test]
+    fn subscribe_rejects_instruments_path() {
+        let frame = Frame::new(FrameType::Subscribe, 1).with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            ".well-known/instruments",
+        ));
+        assert_eq!(validate_interaction(&frame), Some("INVALID_SUBSCRIBE_PATH"));
+    }
+
+    #[test]
+    fn get_allowed_on_instruments_path() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                ".well-known/instruments",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn get_allowed_on_fills_path() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "accounts/TEST/fills",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn subscribe_rejects_fills_path() {
+        let frame = Frame::new(FrameType::Subscribe, 1).with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "accounts/TEST/fills",
         ));
         assert_eq!(validate_interaction(&frame), Some("INVALID_SUBSCRIBE_PATH"));
     }

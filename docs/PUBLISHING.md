@@ -54,4 +54,6 @@ cargo publish -p fig-client
 # … publish dependents in dependency order
 ```
 
-Requires crates.io credentials and version bumps in workspace `Cargo.toml`.
+Requires crates.io credentials and version bumps in workspace `Cargo.toml`
+(`[workspace.package] version`). That crate version is independent of
+[SPEC.md](../SPEC.md) protocol `1.0.0` (bump SPEC only on a wire break).

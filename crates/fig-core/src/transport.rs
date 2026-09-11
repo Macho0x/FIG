@@ -30,21 +30,13 @@ use crate::migration::{
 use crate::observability::{span_session_create, span_session_resume};
 use crate::session::{MemorySessionStore, Session};
 
-/// Per-channel TREE stream state including a persistent frame decoder.
-struct ChannelStream {
-    send: quinn::SendStream,
+/// Receive half of a per-channel TREE stream (decoder + `RecvStream`).
+///
+/// Send and recv live in separate maps so `send_frame` and `recv_frame` can
+/// run concurrently on the same connection (live push + gateway WS).
+struct RecvHalf {
     recv: quinn::RecvStream,
     decoder: FrameDecoder,
-}
-
-impl ChannelStream {
-    fn new(send: quinn::SendStream, recv: quinn::RecvStream) -> Self {
-        Self {
-            send,
-            recv,
-            decoder: FrameDecoder::new(),
-        }
-    }
 }
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -321,10 +313,9 @@ impl rustls::server::danger::ClientCertVerifier for NoClientVerification {
 ///
 /// # Stream reuse
 ///
-/// Each channel gets one bidirectional TREE stream. The `streams` map
-/// stores `(SendStream, RecvStream)` keyed by channel ID. On first use
-/// of a channel (send or receive), a new bidirectional stream is opened
-/// and stored. Subsequent operations reuse the existing stream.
+/// Each channel gets one bidirectional TREE stream. Send and recv halves
+/// are stored in separate maps keyed by channel ID so live `STREAM_ITEM`
+/// writes do not block a concurrent read on another (or the same) channel.
 ///
 /// # Production notes
 ///
@@ -335,8 +326,18 @@ pub struct FigConnection {
     conn: Connection,
     channels: Arc<Mutex<ChannelManager>>,
     session_store: MemorySessionStore,
-    /// Persistent TREE bidirectional streams per channel.
-    streams: Mutex<HashMap<u16, ChannelStream>>,
+    send_streams: Mutex<HashMap<u16, quinn::SendStream>>,
+    recv_streams: Mutex<HashMap<u16, RecvHalf>>,
+}
+
+/// Outcome of peeking the first application frame for 0-RTT restore.
+///
+/// The frame is always returned when one arrives so the caller can dispatch
+/// it (subscribe/request) even when no resumption token is present.
+#[derive(Debug)]
+pub struct FirstFrameRestore {
+    pub session: Option<Session>,
+    pub frame: Option<Frame>,
 }
 
 impl FigConnection {
@@ -346,8 +347,23 @@ impl FigConnection {
             conn,
             channels: Arc::new(Mutex::new(ChannelManager::new(is_server))),
             session_store: MemorySessionStore::new(),
-            streams: Mutex::new(HashMap::new()),
+            send_streams: Mutex::new(HashMap::new()),
+            recv_streams: Mutex::new(HashMap::new()),
         }
+    }
+
+    async fn insert_bi(
+        &self,
+        channel_id: u16,
+        send: quinn::SendStream,
+        recv: quinn::RecvStream,
+        decoder: FrameDecoder,
+    ) {
+        self.send_streams.lock().await.insert(channel_id, send);
+        self.recv_streams
+            .lock()
+            .await
+            .insert(channel_id, RecvHalf { recv, decoder });
     }
 
     /// Reconstruct channel state from a restored session after 0-RTT resumption.
@@ -361,17 +377,19 @@ impl FigConnection {
             *mgr = new_mgr;
         }
 
-        // Reopen TREE streams for each channel in the session.
+        // Reopen TREE streams for each channel that does not already have one
+        // (the first application frame may already occupy that channel).
         for &channel_id in &session.channels {
+            if self.send_streams.lock().await.contains_key(&channel_id) {
+                continue;
+            }
             let (send, recv) = self
                 .conn
                 .open_bi()
                 .await
                 .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
-            self.streams
-                .lock()
-                .await
-                .insert(channel_id, ChannelStream::new(send, recv));
+            self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                .await;
         }
 
         tracing::info!(
@@ -403,7 +421,8 @@ impl FigConnection {
             let mut mgr = self.channels.lock().await;
             *mgr = reconstruct_channels(token, is_server);
         }
-        self.streams.lock().await.clear();
+        self.send_streams.lock().await.clear();
+        self.recv_streams.lock().await.clear();
 
         for &channel_id in &session.channels {
             let (send, recv) = self
@@ -411,10 +430,8 @@ impl FigConnection {
                 .open_bi()
                 .await
                 .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
-            self.streams
-                .lock()
-                .await
-                .insert(channel_id, ChannelStream::new(send, recv));
+            self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                .await;
         }
 
         tracing::info!(
@@ -439,10 +456,8 @@ impl FigConnection {
 
         match self.conn.open_bi().await {
             Ok((send, recv)) => {
-                self.streams
-                    .lock()
-                    .await
-                    .insert(channel_id, ChannelStream::new(send, recv));
+                self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                    .await;
                 Ok(channel_id)
             }
             Err(e) => {
@@ -471,10 +486,8 @@ impl FigConnection {
         // Open a TREE bidirectional stream for this channel.
         match self.conn.open_bi().await {
             Ok((send, recv)) => {
-                self.streams
-                    .lock()
-                    .await
-                    .insert(channel_id, ChannelStream::new(send, recv));
+                self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                    .await;
                 Ok(channel_id)
             }
             Err(e) => {
@@ -497,22 +510,26 @@ impl FigConnection {
     pub async fn send_frame(&self, channel_id: u16, frame: &Frame) -> Result<(), FrameError> {
         let data = frame.encode()?;
 
-        // Get or create the SendStream for this channel.
-        let mut streams = self.streams.lock().await;
-        if let std::collections::hash_map::Entry::Vacant(entry) = streams.entry(channel_id) {
+        if !self.send_streams.lock().await.contains_key(&channel_id) {
             let (send, recv) = self
                 .conn
                 .open_bi()
                 .await
                 .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
-            entry.insert(ChannelStream::new(send, recv));
+            self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                .await;
         }
-        let ch = streams.get_mut(&channel_id).unwrap();
-
-        match ch.send.write_all(&data).await {
+        let mut send = self
+            .send_streams
+            .lock()
+            .await
+            .remove(&channel_id)
+            .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing send stream")))?;
+        let write = send.write_all(&data).await;
+        self.send_streams.lock().await.insert(channel_id, send);
+        match write {
             Ok(()) => {}
             Err(quinn::WriteError::Stopped(error_code)) => {
-                // Stream stopped by peer — mark channel as errored.
                 let code: u64 = error_code.into();
                 return Err(FrameError::IoError(std::io::Error::new(
                     std::io::ErrorKind::ConnectionReset,
@@ -549,39 +566,48 @@ impl FigConnection {
     /// If no stream exists for this channel yet, accepts a new incoming
     /// bidirectional stream and maps it to the given channel.
     pub async fn recv_frame(&self, channel_id: u16) -> Result<Frame, FrameError> {
-        // Get or create the RecvStream for this channel.
-        let mut streams = self.streams.lock().await;
-        if let std::collections::hash_map::Entry::Vacant(entry) = streams.entry(channel_id) {
+        if !self.recv_streams.lock().await.contains_key(&channel_id) {
             let (send, recv) = self.conn.accept_bi().await.map_err(|e| {
                 FrameError::IoError(std::io::Error::new(
                     std::io::ErrorKind::ConnectionAborted,
                     e.to_string(),
                 ))
             })?;
-            entry.insert(ChannelStream::new(send, recv));
+            self.insert_bi(channel_id, send, recv, FrameDecoder::new())
+                .await;
         }
-        let ch = streams.get_mut(&channel_id).unwrap();
 
         let mut buf = vec![0u8; 65536];
-
         loop {
+            let mut ch = self
+                .recv_streams
+                .lock()
+                .await
+                .remove(&channel_id)
+                .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing recv stream")))?;
             if let Some(result) = ch.decoder.decode_next() {
+                self.recv_streams.lock().await.insert(channel_id, ch);
                 return result;
             }
             match ch.recv.read(&mut buf).await {
                 Ok(Some(n)) => {
                     ch.decoder.feed(&buf[..n]);
+                    self.recv_streams.lock().await.insert(channel_id, ch);
                 }
                 Ok(None) => {
-                    if let Some(result) = ch.decoder.decode_next() {
+                    let leftover = ch.decoder.decode_next();
+                    let buffered = ch.decoder.buffered_len();
+                    self.recv_streams.lock().await.insert(channel_id, ch);
+                    if let Some(result) = leftover {
                         return result;
                     }
                     return Err(FrameError::BufferTooShort {
                         expected: MIN_FRAME_SIZE,
-                        actual: ch.decoder.buffered_len(),
+                        actual: buffered,
                     });
                 }
                 Err(quinn::ReadError::Reset(error_code)) => {
+                    self.recv_streams.lock().await.insert(channel_id, ch);
                     let code: u64 = error_code.into();
                     return Err(FrameError::IoError(std::io::Error::new(
                         std::io::ErrorKind::ConnectionReset,
@@ -592,6 +618,7 @@ impl FigConnection {
                     )));
                 }
                 Err(e) => {
+                    self.recv_streams.lock().await.insert(channel_id, ch);
                     return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
                 }
             }
@@ -687,26 +714,26 @@ impl FigConnection {
         };
 
         let channel_id = frame.channel_id;
-
-        let mut ch = ChannelStream::new(send, recv);
-        ch.decoder = decoder;
-        self.streams.lock().await.insert(channel_id, ch);
+        self.insert_bi(channel_id, send, recv, decoder).await;
 
         Ok((channel_id, frame))
     }
 
     /// On 0-RTT reconnect, read the first application frame (if any) and restore session state.
-    pub async fn try_restore_session_from_first_frame(&self) -> Option<Session> {
+    pub async fn try_restore_session_from_first_frame(&self) -> FirstFrameRestore {
         let result = tokio::time::timeout(Duration::from_millis(250), self.accept_frame()).await;
         let Ok(Ok((_, frame))) = result else {
-            return None;
+            return FirstFrameRestore {
+                session: None,
+                frame: None,
+            };
         };
 
         let token = frame
             .extensions
             .iter()
             .find(|e| e.tag == ExtensionTag::RedirectToken)
-            .map(|e| e.value.as_bytes())
+            .map(|e| e.value.as_bytes().to_vec())
             .filter(|b| !b.is_empty())
             .or_else(|| {
                 if frame.payload.is_empty() {
@@ -714,17 +741,33 @@ impl FigConnection {
                 } else {
                     Some(frame.payload.clone())
                 }
-            })?;
+            });
 
-        crate::replay::validate_resumption_token(&token).ok()?;
-        Session::from_resumption_token(&token).ok()
+        let session = token.and_then(|token| {
+            crate::replay::validate_resumption_token(&token).ok()?;
+            Session::from_resumption_token(&token).ok()
+        });
+
+        FirstFrameRestore {
+            session,
+            frame: Some(frame),
+        }
+    }
+
+    /// Drain buffered frames then read until the peer half-closes this channel.
+    pub async fn recv_until_closed(&self, channel_id: u16) -> Vec<Frame> {
+        let mut out = self.recv_buffered_frames(channel_id).await;
+        while let Ok(frame) = self.recv_frame(channel_id).await {
+            out.push(frame);
+        }
+        out
     }
 
     /// Drain additional frames already buffered on a channel decoder.
     pub async fn recv_buffered_frames(&self, channel_id: u16) -> Vec<Frame> {
         let mut out = Vec::new();
-        let mut streams = self.streams.lock().await;
-        if let Some(ch) = streams.get_mut(&channel_id) {
+        let mut recvs = self.recv_streams.lock().await;
+        if let Some(ch) = recvs.get_mut(&channel_id) {
             while let Some(Ok(frame)) = ch.decoder.decode_next() {
                 out.push(frame);
             }
@@ -736,10 +779,10 @@ impl FigConnection {
     ///
     /// Finishes the send stream and cleans up the HashMap entry.
     pub async fn close_channel_stream(&self, channel_id: u16) -> Result<(), ChannelError> {
-        let mut streams = self.streams.lock().await;
-        if let Some(mut ch) = streams.remove(&channel_id) {
-            let _ = ch.send.finish();
+        if let Some(mut send) = self.send_streams.lock().await.remove(&channel_id) {
+            let _ = send.finish();
         }
+        self.recv_streams.lock().await.remove(&channel_id);
         Ok(())
     }
 
@@ -820,7 +863,9 @@ impl FigServer {
     ///
     /// Call [`validate_resumption_token`] on any resumption token bytes before
     /// restoring session state (SPEC §10.1).
-    pub async fn accept_0rtt(&self) -> Result<(FigConnection, Option<Session>), FigError> {
+    pub async fn accept_0rtt(
+        &self,
+    ) -> Result<(FigConnection, Option<Session>, Option<Frame>), FigError> {
         let incoming = self
             .endpoint
             .accept()
@@ -833,18 +878,19 @@ impl FigServer {
 
         let fig_conn = FigConnection::from_tree(conn, true);
 
-        let restored_session = fig_conn.try_restore_session_from_first_frame().await;
-        if let Some(ref session) = restored_session {
-            let span = span_session_resume(&session.session_id.to_string());
+        let FirstFrameRestore { session, frame } =
+            fig_conn.try_restore_session_from_first_frame().await;
+        if let Some(ref restored) = session {
+            let span = span_session_resume(&restored.session_id.to_string());
             let _guard = span.enter();
             tracing::info!(
-                session_id = %session.session_id,
+                session_id = %restored.session_id,
                 "session restored from 0-RTT resumption token"
             );
-            let _ = fig_conn.reconstruct_from_session(session).await;
+            let _ = fig_conn.reconstruct_from_session(restored).await;
         }
 
-        Ok((fig_conn, restored_session))
+        Ok((fig_conn, session, frame))
     }
 
     /// Return the local address the server is bound to.

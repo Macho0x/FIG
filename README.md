@@ -300,9 +300,9 @@ let ws_sub = legacy_ws_json_to_fig_subscribe(
 )?;
 
 // Forward translated frames to your native FIG backend (fig-gateway --fig-backend)
-// use fig_gateways::backend::{connect_backend, proxy_frame};
-// let backend = connect_backend("127.0.0.1:8443".parse()?).await?;
-// let responses = proxy_frame(&backend, ticker_req).await?;
+// REST GET: proxy_frame(addr, ticker_req).await?
+// WS SUBSCRIBE: BackendSession::connect(addr) then send_frame + recv_frame
+// use fig_gateways::backend::{proxy_frame, BackendSession};
 
 // wire: FIX 35=D → CBOR NewOrderSingle, then REQUEST POST at gateway
 // let fix = parse_fix_message(b"8=FIX.4.4\x0135=D\x0111=CLI-001\x01...")?;

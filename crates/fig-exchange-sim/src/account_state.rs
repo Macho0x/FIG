@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 
 use fig_core::messages::*;
+use fig_core::transport::FigConnection;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountSubscriptionKind {
@@ -17,12 +19,13 @@ pub enum AccountSubscriptionKind {
     OpenOrders,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AccountSubscription {
     pub channel_id: u16,
     pub routing_key: String,
     pub account: String,
     pub kind: AccountSubscriptionKind,
+    pub conn: Option<Arc<FigConnection>>,
 }
 
 #[derive(Debug, Clone)]

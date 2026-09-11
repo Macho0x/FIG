@@ -28,6 +28,7 @@ Order history (>50 rows in exchange-sim) uses this pattern today.
 | Query | Native `CHANNEL_PATH` | Request type | Response type |
 |---|---|---|---|
 | Capabilities / exchange info | `/.well-known/capabilities` | `CapabilitiesRequest` | `CapabilitiesResponse` |
+| Instrument catalog | `/.well-known/instruments` | (empty GET) | `InstrumentCatalogResponse` |
 | Historical candles | `marketdata/{symbol}/candles/{interval}` | `CandleBarRequest` | `CandleBarBatch` |
 | Public trade history | `marketdata/{symbol}/trades` | `TradeHistoryRequest` | `PublicTradeBatch` |
 | Aggregate trade history | `marketdata/{symbol}/aggtrades` | `AggregateTradeRequest` | `AggregateTradeBatch` |
@@ -61,8 +62,10 @@ Common optional fields on batch requests:
 
 - Native: `GET /marketdata/BTC/candles/5m?start=…&limit=100`
 - Binance alias: `GET /api/v3/klines?symbol=BTCUSDT&interval=5m&startTime=…`
+- Instruments: `GET /.well-known/instruments`
 - Open orders: `GET /trading/accounts/DEMO-ACCT/orders/open`
 - Order history: `GET /trading/accounts/DEMO-ACCT/orders?limit=100`
+- Fills: `GET /accounts/DEMO-ACCT/fills`
 
 All produce FIG `ChannelPath` and optional CBOR request bodies.
 
@@ -73,6 +76,7 @@ cargo run -p fig-exchange-sim &
 cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
 curl 'http://127.0.0.1:8080/.well-known/capabilities'
+curl 'http://127.0.0.1:8080/.well-known/instruments'
 ```
 
 Without `--fig-backend`, the gateway returns a translation demo (no live data).

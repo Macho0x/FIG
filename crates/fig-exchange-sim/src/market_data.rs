@@ -1,9 +1,11 @@
 //! Public market data: candles, trades, BBO, quote subscriptions.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fig_core::messages::*;
+use fig_core::transport::FigConnection;
 
 fn now_ns() -> i64 {
     SystemTime::now()
@@ -47,11 +49,12 @@ pub enum SubscriptionKind {
     Liquidations,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StreamSubscription {
     pub channel_id: u16,
     pub routing_key: String,
     pub kind: SubscriptionKind,
+    pub conn: Option<Arc<FigConnection>>,
 }
 
 #[derive(Default)]

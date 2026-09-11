@@ -9,11 +9,11 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{schema_id, AccountSummary, CapabilitiesResponse, ExecutionReport};
 use fig_exchange_sim::server::run_server;
-use fig_gateways::backend::proxy_frame;
+use fig_gateways::backend::{proxy_frame, proxy_subscribe_snapshot, BackendSession};
 use fig_gateways::fix::{fix_to_fig_order, parse_fix_message};
 use fig_gateways::rest::parse_http_request;
 use fig_gateways::rest_query::http_get_to_fig_request;
-use fig_gateways::ws_catalog::legacy_ws_json_to_fig_subscribe;
+use fig_gateways::ws_catalog::{fig_frame_to_legacy_ws_json, legacy_ws_json_to_fig_subscribe};
 use std::net::SocketAddr;
 
 /// One legacy WebSocket JSON shape → native FIG subscribe mapping.
@@ -340,7 +340,7 @@ async fn assert_ws_aliases_round_trip(addr: SocketAddr, cases: &[LegacyWsCase]) 
             frame = with_dev_auth(frame, account);
         }
 
-        let frames = proxy_frame(addr, frame)
+        let frames = proxy_subscribe_snapshot(addr, frame)
             .await
             .unwrap_or_else(|e| panic!("[{}] {} proxy: {e}", case.source, case.name));
 
@@ -461,6 +461,85 @@ async fn legacy_rest_get_aliases_round_trip_through_backend() {
         .expect("account response");
     let summary: AccountSummary = decode_cbor(&acct_resp.payload).expect("decode account");
     assert_eq!(summary.account, "DEMO-ACCT");
+
+    let inst_raw = b"GET /.well-known/instruments HTTP/1.1\r\n\r\n";
+    let inst_http = parse_http_request(inst_raw).expect("parse instruments http");
+    let inst_frame = http_get_to_fig_request(&inst_http).expect("map instruments");
+    let inst_frames = proxy_frame(addr, inst_frame)
+        .await
+        .expect("proxy instruments");
+    let inst_resp = inst_frames
+        .iter()
+        .find(|f| f.frame_type == FrameType::Response)
+        .expect("instruments response");
+    let catalog: fig_core::messages::InstrumentCatalogResponse =
+        decode_cbor(&inst_resp.payload).expect("decode instruments");
+    assert!(!catalog.instruments.is_empty());
+
+    drop(endpoint);
+}
+
+#[tokio::test]
+async fn legacy_ws_follow_up_event_after_fill() {
+    std::env::set_var("FIG_DEV_OPEN", "1");
+    let endpoint = run_server("127.0.0.1:0").await.expect("server");
+    let addr = endpoint.local_addr().unwrap();
+
+    let json =
+        r#"{"method":"subscribe","subscription":{"type":"subscribePosition","user":"DEMO-ACCT"}}"#;
+    let mut sub = legacy_ws_json_to_fig_subscribe(json, 1).expect("map position sub");
+    sub = with_dev_auth(sub, "DEMO-ACCT");
+
+    let session = BackendSession::connect(addr)
+        .await
+        .expect("backend session");
+    session.send_frame(&sub).await.expect("send subscribe");
+    let snapshot = tokio::time::timeout(std::time::Duration::from_secs(5), session.recv_frame(1))
+        .await
+        .expect("snapshot timeout")
+        .expect("snapshot");
+    let snapshot_json = fig_frame_to_legacy_ws_json(&snapshot).expect("snapshot json");
+    assert!(!snapshot_json.is_empty());
+
+    let sell = {
+        let mut order = fig_core::messages::NewOrderSingle {
+            cl_ord_id: "WSLIVE-1".into(),
+            side: fig_core::messages::Side::Sell,
+            order_qty: fig_core::messages::Quantity(1.0),
+            price: Some(fig_core::messages::Price(100.0)),
+            stop_price: None,
+            symbol: "AAPL".into(),
+            order_type: fig_core::messages::OrderType::Limit,
+            time_in_force: fig_core::messages::TimeInForce::Day,
+            expire_time: None,
+            account: Some("DEMO-ACCT".into()),
+            strategy_id: None,
+            security_id: None,
+            id_source: None,
+            security_exchange: None,
+            post_only: None,
+            reduce_only: None,
+        };
+        let mut frame = order_to_fig_request(&order);
+        frame = with_dev_auth(frame, "DEMO-ACCT");
+        proxy_frame(addr, frame).await.expect("resting");
+        order.cl_ord_id = "WSLIVE-2".into();
+        order.side = fig_core::messages::Side::Buy;
+        order.order_type = fig_core::messages::OrderType::Market;
+        order.price = None;
+        let mut frame = order_to_fig_request(&order);
+        frame = with_dev_auth(frame, "DEMO-ACCT");
+        proxy_frame(addr, frame).await.expect("fill");
+    };
+    let _ = sell;
+
+    let live = tokio::time::timeout(std::time::Duration::from_secs(5), session.recv_frame(1))
+        .await
+        .expect("live timeout")
+        .expect("live frame");
+    assert_eq!(live.frame_type, FrameType::StreamItem);
+    let live_json = fig_frame_to_legacy_ws_json(&live).expect("live json");
+    assert!(!live_json.is_empty());
 
     drop(endpoint);
 }
