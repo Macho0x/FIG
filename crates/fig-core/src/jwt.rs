@@ -81,10 +81,22 @@ pub fn encode_jwt(claims: &FigJwtClaims, secret: &str) -> Result<String, JwtErro
 pub fn decode_jwt(token: &str, secret: &str) -> Result<FigJwtClaims, JwtError> {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
+    use subtle::ConstantTimeEq;
 
     let parts: Vec<&str> = token.split('.').collect();
     if parts.len() != 3 {
         return Err(JwtError::InvalidFormat);
+    }
+
+    // Enforce the algorithm from the header: only HS256 is accepted. This
+    // prevents `alg` confusion (e.g. `none` or an asymmetric algorithm) from
+    // ever being honored by a future code path.
+    let header_bytes = base64_url_decode(parts[0]).map_err(|_| JwtError::InvalidFormat)?;
+    let header: serde_json::Value =
+        serde_json::from_slice(&header_bytes).map_err(|_| JwtError::InvalidFormat)?;
+    match header.get("alg").and_then(|v| v.as_str()) {
+        Some("HS256") => {}
+        _ => return Err(JwtError::InvalidFormat),
     }
 
     let signing_input = format!("{}.{}", parts[0], parts[1]);
@@ -92,9 +104,10 @@ pub fn decode_jwt(token: &str, secret: &str) -> Result<FigJwtClaims, JwtError> {
     let mut mac =
         HmacSha256::new_from_slice(secret.as_bytes()).map_err(|_| JwtError::InvalidFormat)?;
     mac.update(signing_input.as_bytes());
-    let expected = base64_url_encode(&mac.finalize().into_bytes());
+    let expected = mac.finalize().into_bytes();
 
-    if parts[2] != expected {
+    let provided = base64_url_decode(parts[2]).map_err(|_| JwtError::SignatureMismatch)?;
+    if provided.len() != expected.len() || !bool::from(provided.ct_eq(&expected)) {
         return Err(JwtError::SignatureMismatch);
     }
 

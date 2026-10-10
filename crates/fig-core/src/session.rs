@@ -149,12 +149,14 @@ impl Session {
         self.touch();
     }
 
-    /// Create a resumption token for 0-RTT reconnection.
+    /// Serialize this session's resumable state to an **unsigned** CBOR payload.
     ///
-    /// The token contains the session ID, auth token, and channel state,
-    /// encoded as CBOR. This allows re-establishing a session without
-    /// a full handshake.
-    pub fn resumption_token(&self) -> Result<Vec<u8>, SessionError> {
+    /// **Security:** this payload carries no authenticity proof. It is safe
+    /// only for *client-local* bookkeeping (a client rehydrating its own
+    /// session). Servers MUST NOT restore state from an unsigned payload —
+    /// use [`crate::session_token::SessionSigner::issue`] /
+    /// [`crate::session_token::SessionSigner::verify`] instead (SPEC §10.1).
+    pub(crate) fn to_token_payload(&self) -> Result<Vec<u8>, SessionError> {
         let data = ResumptionTokenData {
             session_id: self.session_id,
             auth_token: self.auth_token.clone(),
@@ -168,12 +170,13 @@ impl Session {
             .map_err(|e| SessionError::SerializationError(e.to_string()))
     }
 
-    /// Restore a session from a resumption token.
+    /// Restore a session from an **unsigned** CBOR payload.
     ///
-    /// The token must have been created by [`Session::resumption_token`].
-    pub fn from_resumption_token(token: &[u8]) -> Result<Session, SessionError> {
+    /// The payload must have been produced by [`Session::to_token_payload`].
+    /// Client-local use only — see the security note on `to_token_payload`.
+    pub(crate) fn from_token_payload(payload: &[u8]) -> Result<Session, SessionError> {
         let data: ResumptionTokenData =
-            crate::codec::decode_cbor(token).map_err(|_| SessionError::InvalidResumptionToken)?;
+            crate::codec::decode_cbor(payload).map_err(|_| SessionError::InvalidResumptionToken)?;
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -190,6 +193,24 @@ impl Session {
             created_at: data.created_at,
             last_active_at: now,
         })
+    }
+
+    /// Create an **unsigned** resumption token from this session.
+    ///
+    /// This is a client-side convenience for rehydrating a client's own
+    /// session state across an in-process reconnect. It is **not**
+    /// authenticated and MUST NOT be trusted by a server; servers must use
+    /// [`FigServer::issue_resumption_token`](crate::transport::FigServer::issue_resumption_token)
+    /// and verify with [`crate::session_token::SessionSigner`] (SPEC §10.1).
+    pub fn resumption_token(&self) -> Result<Vec<u8>, SessionError> {
+        self.to_token_payload()
+    }
+
+    /// Restore a session from an **unsigned**, client-local resumption token.
+    ///
+    /// See [`Session::resumption_token`] for the security caveat.
+    pub fn from_resumption_token(token: &[u8]) -> Result<Session, SessionError> {
+        Self::from_token_payload(token)
     }
 
     /// Check if this session can be resumed (has active channels).

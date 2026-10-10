@@ -16,7 +16,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.3"
+version = "1.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Macho0x/fig"
@@ -52,6 +52,9 @@ zstd = "0.13"
 hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
+subtle = "2"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
 # Internal crates
 fig-core = { path = "crates/fig-core" }
 fig-conformance = { path = "crates/fig-conformance" }

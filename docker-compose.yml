@@ -33,6 +33,10 @@ services:
       - "9876:9876"
       - "8081:8081"
       - "9091:9091"
+    environment:
+      # Demo compose only. The sim uses a self-signed certificate; real
+      # deployments set FIG_TLS_CA to the venue CA instead.
+      FIG_TLS_INSECURE: "1"
     command:
       - fig-gateway
       - --fig-backend

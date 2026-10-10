@@ -9,8 +9,8 @@ use fig_core::transport::{FigClient, FigConnection};
 
 /// Connect to a FIG backend (exchange-sim or production broker).
 pub async fn connect_backend(addr: SocketAddr) -> anyhow::Result<FigConnection> {
-    let config =
-        fig_core::transport::client_config().map_err(|e| anyhow::anyhow!("client config: {e}"))?;
+    let config = fig_core::transport::client_config_from_env()
+        .map_err(|e| anyhow::anyhow!("client config: {e}"))?;
     let client = FigClient::new(config)?;
     client.connect(addr, "localhost").await.map_err(Into::into)
 }

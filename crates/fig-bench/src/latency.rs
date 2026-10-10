@@ -10,17 +10,21 @@ use fig_core::frame::Frame;
 use fig_core::messages::{NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce};
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use fig_core::transport::{
-    client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
+    client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigServer,
 };
 use hdrhistogram::Histogram;
 use tokio::runtime::Runtime;
 
 /// Resolve iteration count from `FIG_LATENCY_ITERS` or the per-test default.
 pub fn latency_iters(default: u64) -> u64 {
-    std::env::var("FIG_LATENCY_ITERS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .filter(|&n| n > 0)
+    resolve_latency_iters(default, std::env::var("FIG_LATENCY_ITERS").ok().as_deref())
+}
+
+/// Pure resolution logic (no environment access), so it can be unit-tested
+/// without racing other tests that mutate the process environment.
+pub(crate) fn resolve_latency_iters(default: u64, raw: Option<&str>) -> u64 {
+    raw.and_then(|s| s.parse().ok())
+        .filter(|&n: &u64| n > 0)
         .unwrap_or(default)
 }
 
@@ -149,7 +153,7 @@ fn setup_ping_pong_server(rt: &Runtime) -> (std::net::SocketAddr, tokio::task::J
 }
 
 fn connect_client(rt: &Runtime, addr: std::net::SocketAddr) -> fig_core::transport::FigConnection {
-    let client_cfg = client_config().expect("client config");
+    let client_cfg = client_config_insecure().expect("client config");
     rt.block_on(async {
         let client = FigClient::new(client_cfg).expect("client");
         client.connect(addr, "localhost").await.expect("connect")

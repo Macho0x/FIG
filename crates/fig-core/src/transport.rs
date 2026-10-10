@@ -6,9 +6,15 @@
 //!
 //! # Security note
 //!
-//! The client configuration provided by [`client_config`] skips TLS
-//! certificate verification. This is intended **for development only**.
-//! Production deployments must use proper certificate chains and mTLS.
+//! The default client configuration [`client_config`] verifies the server
+//! certificate against the built-in WebPKI roots (or a private CA supplied via
+//! [`client_config_from_ca_pem`] / the `FIG_TLS_CA` environment variable).
+//! [`client_config_insecure`] disables verification and is **for development
+//! and tests only**.
+//!
+//! Session resumption tokens are authenticated with HMAC-SHA256 by
+//! [`crate::session_token::SessionSigner`]; servers reject any unsigned or
+//! forged token (SPEC §10.1).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -21,14 +27,17 @@ use quinn::{ClientConfig, Connection, Endpoint, ServerConfig};
 use tokio::sync::Mutex;
 
 use crate::channel::{ChannelDirection, ChannelManager, ChannelMode};
-use crate::error::{ChannelError, FigError, FrameError};
+use crate::dos::{DoSGuard, DEFAULT_CHANNEL_MSG_PER_SEC};
+use crate::error::{ChannelError, FigError, FrameError, SessionError};
 use crate::ext::ExtensionTag;
 use crate::frame::{Frame, FrameDecoder, MIN_FRAME_SIZE};
 use crate::migration::{
     apply_migration, prepare_migration, reconstruct_channels, validate_migration, MigrationToken,
 };
 use crate::observability::{span_session_create, span_session_resume};
-use crate::session::{MemorySessionStore, Session};
+use crate::rate_limit::ChannelRateLimiter;
+use crate::session::{MemorySessionStore, Session, SessionStore};
+use crate::session_token::SessionSigner;
 
 /// Receive half of a per-channel TREE stream (decoder + `RecvStream`).
 ///
@@ -56,7 +65,7 @@ pub fn generate_self_signed_cert() -> Result<
         rustls::pki_types::CertificateDer<'static>,
         rustls::pki_types::PrivateKeyDer<'static>,
     ),
-    Box<dyn std::error::Error>,
+    Box<dyn std::error::Error + Send + Sync>,
 > {
     let subject_alt_names = vec!["localhost".to_string()];
 
@@ -80,11 +89,15 @@ pub fn generate_self_signed_cert() -> Result<
 pub fn server_config(
     cert: rustls::pki_types::CertificateDer<'static>,
     key: rustls::pki_types::PrivateKeyDer<'static>,
-) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+) -> Result<ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(vec![cert], key)?;
 
+    // QUIC requires `max_early_data_size` to be 0 (no 0-RTT) or `u32::MAX`.
+    // Enable TREE 0-RTT; replay is rejected at the authenticated
+    // session-token layer (SPEC §10.1).
+    server_crypto.max_early_data_size = u32::MAX;
     server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
     let server_config = TreeServerConfig::try_from(server_crypto)?;
@@ -99,17 +112,61 @@ pub fn server_config(
 
 /// Create a TREE server configuration requiring mTLS client certificates.
 ///
-/// **Development mode:** accepts any client certificate without CA validation.
-/// Production deployments MUST use [`server_config_mtls_with_ca`] with a
-/// proper client CA root store.
-pub fn server_config_mtls(
+/// Client certificates are verified against `client_ca` (one or more PEM/DER
+/// CA certificates). This is the production mTLS entry point: clients whose
+/// chain does not validate against the supplied CAs are rejected during the
+/// handshake.
+///
+/// For a development-only variant that accepts any client certificate, see
+/// [`server_config_mtls_insecure`].
+pub fn server_config_mtls_with_ca(
     cert: rustls::pki_types::CertificateDer<'static>,
     key: rustls::pki_types::PrivateKeyDer<'static>,
-) -> Result<ServerConfig, Box<dyn std::error::Error>> {
+    client_ca: Vec<rustls::pki_types::CertificateDer<'static>>,
+) -> Result<ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let mut roots = rustls::RootCertStore::empty();
+    for ca in client_ca {
+        roots.add(ca)?;
+    }
+    if roots.is_empty() {
+        return Err("mTLS requires at least one client CA certificate".into());
+    }
+
+    let verifier = rustls::server::WebPkiClientVerifier::builder(Arc::new(roots))
+        .build()
+        .map_err(|e| format!("failed to build client certificate verifier: {e}"))?;
+
+    let mut server_crypto = rustls::ServerConfig::builder()
+        .with_client_cert_verifier(verifier)
+        .with_single_cert(vec![cert], key)?;
+
+    server_crypto.max_early_data_size = u32::MAX;
+    server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
+
+    let server_config = TreeServerConfig::try_from(server_crypto)?;
+    let mut transport = quinn::TransportConfig::default();
+    transport.max_concurrent_bidi_streams(65535u32.into());
+
+    let mut config = ServerConfig::with_crypto(Arc::new(server_config));
+    config.transport_config(Arc::new(transport));
+
+    Ok(config)
+}
+
+/// Create a TREE server configuration requiring mTLS but **accepting any
+/// client certificate**.
+///
+/// **Do not use in production** — this provides the appearance of mTLS
+/// without client authentication. For development and tests only.
+pub fn server_config_mtls_insecure(
+    cert: rustls::pki_types::CertificateDer<'static>,
+    key: rustls::pki_types::PrivateKeyDer<'static>,
+) -> Result<ServerConfig, Box<dyn std::error::Error + Send + Sync>> {
     let mut server_crypto = rustls::ServerConfig::builder()
         .with_client_cert_verifier(Arc::new(NoClientVerification))
         .with_single_cert(vec![cert], key)?;
 
+    server_crypto.max_early_data_size = u32::MAX;
     server_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
     let server_config = TreeServerConfig::try_from(server_crypto)?;
@@ -166,30 +223,157 @@ impl RotatingServerCerts {
             .map_err(|e| FigError::ConnectionFailed(e.to_string()))
     }
 
-    /// Build a fresh mTLS server config from the current certificate.
-    pub fn server_config_mtls(&self) -> Result<ServerConfig, FigError> {
+    /// Build a fresh mTLS server config (insecure verifier) from the current certificate.
+    pub fn server_config_mtls_insecure(&self) -> Result<ServerConfig, FigError> {
         let guard = self
             .certs
             .lock()
             .map_err(|_| FigError::ConnectionFailed("cert lock poisoned".into()))?;
-        server_config_mtls(guard.0.clone(), guard.1.clone_key())
+        server_config_mtls_insecure(guard.0.clone(), guard.1.clone_key())
             .map_err(|e| FigError::ConnectionFailed(e.to_string()))
+    }
+
+    /// Build a fresh mTLS server config verifying client certs against `client_ca`.
+    pub fn server_config_mtls_with_ca(
+        &self,
+        client_ca: Vec<rustls::pki_types::CertificateDer<'static>>,
+    ) -> Result<ServerConfig, FigError> {
+        let guard = self
+            .certs
+            .lock()
+            .map_err(|_| FigError::ConnectionFailed("cert lock poisoned".into()))?;
+        server_config_mtls_with_ca(guard.0.clone(), guard.1.clone_key(), client_ca)
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))
+    }
+}
+
+/// Create a TREE client configuration that verifies the server certificate
+/// against the built-in WebPKI root store.
+///
+/// This is the **secure default**: the TLS handshake fails if the server
+/// presents a certificate that does not chain to a trusted public CA and
+/// match `server_name`.
+///
+/// For private PKIs (including self-signed development certificates), use
+/// [`client_config_with_roots`] or [`client_config_from_ca_pem`]. For a
+/// development-only configuration that skips verification entirely, see
+/// [`client_config_insecure`].
+///
+/// Sets ALPN to `"fig/1"` and enables TREE 0-RTT.
+pub fn client_config() -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let roots = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    client_config_with_roots(roots)
+}
+
+/// Create a TREE client configuration that verifies the server certificate
+/// against an explicit root store.
+///
+/// Sets ALPN to `"fig/1"` and enables TREE 0-RTT.
+pub fn client_config_with_roots(
+    roots: rustls::RootCertStore,
+) -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let verifier = rustls::client::WebPkiServerVerifier::builder(Arc::new(roots))
+        .build()
+        .map_err(|e| format!("failed to build server certificate verifier: {e}"))?;
+    build_client_config(verifier)
+}
+
+/// Load all certificates from a PEM file.
+///
+/// Used for client CA bundles (mTLS) and for building root stores.
+pub fn load_certs_pem(
+    path: impl AsRef<std::path::Path>,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, Box<dyn std::error::Error + Send + Sync>>
+{
+    let file = std::fs::File::open(path.as_ref())?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut certs = Vec::new();
+    for cert in rustls_pemfile::certs(&mut reader) {
+        certs.push(cert?);
+    }
+    if certs.is_empty() {
+        return Err(format!("no certificates found in {}", path.as_ref().display()).into());
+    }
+    Ok(certs)
+}
+
+/// Create a TREE client configuration that trusts the CA certificate(s) in a
+/// PEM file (or any PEM file with a `CERTIFICATE` block).
+///
+/// Useful for private PKIs and for pinning a deployment's own CA.
+pub fn client_config_from_ca_pem(
+    path: impl AsRef<std::path::Path>,
+) -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in load_certs_pem(&path)? {
+        roots.add(cert)?;
+    }
+    client_config_with_roots(roots)
+}
+
+/// Create a TREE client configuration honoring the `FIG_TLS_CA` and
+/// `FIG_TLS_INSECURE` environment variables, falling back to the built-in
+/// WebPKI roots.
+///
+/// - `FIG_TLS_CA=<path>` — verify the server against the CA bundle in that PEM
+///   file (private PKI / pinned CA). This is the intended production entry
+///   point for venues with their own PKI.
+/// - `FIG_TLS_INSECURE=1` — **development only**: skip certificate
+///   verification entirely. A loud warning is logged.
+/// - neither set — verify against the built-in public WebPKI roots.
+pub fn client_config_from_env() -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
+    if std::env::var("FIG_TLS_INSECURE").ok().as_deref() == Some("1") {
+        tracing::warn!(
+            "FIG_TLS_INSECURE=1: TLS server certificate verification is DISABLED. \
+             Never use this in production."
+        );
+        return client_config_insecure();
+    }
+    match std::env::var("FIG_TLS_CA") {
+        Ok(path) if !path.trim().is_empty() => client_config_from_ca_pem(path.trim()),
+        _ => client_config(),
     }
 }
 
 /// Create a TREE client configuration that **skips certificate verification**.
 ///
-/// **Warning:** This accepts any server certificate without validation.
-/// Intended for development and testing only. Production deployments
-/// MUST replace this with proper certificate verification.
+/// **Warning:** this accepts any server certificate without validation, making
+/// the connection trivially MITM-able. Intended for development and tests
+/// only. Production deployments MUST use [`client_config`],
+/// [`client_config_with_roots`], or [`client_config_from_ca_pem`].
 ///
-/// Sets ALPN to `"fig/1"`.
-pub fn client_config() -> Result<ClientConfig, Box<dyn std::error::Error>> {
+/// Sets ALPN to `"fig/1"` and enables TREE 0-RTT.
+pub fn client_config_insecure() -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
     let mut client_crypto = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoServerVerification))
         .with_no_client_auth();
 
+    client_crypto.enable_early_data = true;
+    client_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
+
+    let client_config = TreeClientConfig::try_from(client_crypto)?;
+    let mut transport = quinn::TransportConfig::default();
+    transport.max_concurrent_bidi_streams(65535u32.into());
+
+    let mut config = ClientConfig::new(Arc::new(client_config));
+    config.transport_config(Arc::new(transport));
+
+    Ok(config)
+}
+
+/// Assemble a client config around a certificate verifier, enabling ALPN and
+/// TREE 0-RTT.
+fn build_client_config(
+    verifier: Arc<dyn rustls::client::danger::ServerCertVerifier>,
+) -> Result<ClientConfig, Box<dyn std::error::Error + Send + Sync>> {
+    let mut client_crypto = rustls::ClientConfig::builder()
+        .dangerous()
+        .with_custom_certificate_verifier(verifier)
+        .with_no_client_auth();
+
+    // Required for `quinn::Connecting::into_0rtt` to send early data.
+    client_crypto.enable_early_data = true;
     client_crypto.alpn_protocols = vec![ALPN_FIG.to_vec()];
 
     let client_config = TreeClientConfig::try_from(client_crypto)?;
@@ -328,6 +512,12 @@ pub struct FigConnection {
     session_store: MemorySessionStore,
     send_streams: Mutex<HashMap<u16, quinn::SendStream>>,
     recv_streams: Mutex<HashMap<u16, RecvHalf>>,
+    /// Connection-level resource guard (channel count, frame size, msg rate).
+    dos: Arc<DoSGuard>,
+    /// Per-channel message rate limiter.
+    channel_limits: Arc<ChannelRateLimiter>,
+    /// Last server-issued resumption token observed on the wire.
+    resumption_token: Mutex<Option<Vec<u8>>>,
 }
 
 /// Outcome of peeking the first application frame for 0-RTT restore.
@@ -349,7 +539,69 @@ impl FigConnection {
             session_store: MemorySessionStore::new(),
             send_streams: Mutex::new(HashMap::new()),
             recv_streams: Mutex::new(HashMap::new()),
+            dos: Arc::new(DoSGuard::with_defaults()),
+            channel_limits: Arc::new(ChannelRateLimiter::new(DEFAULT_CHANNEL_MSG_PER_SEC)),
+            resumption_token: Mutex::new(None),
         }
+    }
+
+    /// Replace the connection's DoS guard and per-channel rate limiter.
+    pub fn with_limits(
+        mut self,
+        dos: Arc<DoSGuard>,
+        channel_limits: Arc<ChannelRateLimiter>,
+    ) -> Self {
+        self.dos = dos;
+        self.channel_limits = channel_limits;
+        self
+    }
+
+    /// Access the connection's DoS guard.
+    pub fn dos_guard(&self) -> &Arc<DoSGuard> {
+        &self.dos
+    }
+
+    /// Validate an inbound frame against the connection's resource limits.
+    fn admit_frame(&self, frame: &Frame) -> Result<(), FrameError> {
+        self.dos.check_frame_size(frame.encoded_size())?;
+        if !self.dos.allow_message() {
+            return Err(FrameError::IoError(std::io::Error::other(
+                "connection message rate exceeded",
+            )));
+        }
+        if !self.channel_limits.allow(frame.channel_id) {
+            return Err(FrameError::IoError(std::io::Error::other(
+                "channel message rate exceeded",
+            )));
+        }
+        Ok(())
+    }
+
+    /// Record a server-issued resumption token if this frame carries one.
+    async fn observe_resumption_token(&self, frame: &Frame) {
+        if let Some(token) = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::RedirectToken)
+            .map(|e| e.value.as_bytes().to_vec())
+            .filter(|t| !t.is_empty())
+        {
+            *self.resumption_token.lock().await = Some(token);
+        }
+    }
+
+    /// The last server-issued resumption token seen on this connection.
+    ///
+    /// Clients echo this opaque token on reconnect (see
+    /// [`FigClient::connect_0rtt`]); servers mint it via
+    /// [`FigServer::issue_resumption_token`].
+    pub async fn resumption_token(&self) -> Option<Vec<u8>> {
+        self.resumption_token.lock().await.clone()
+    }
+
+    /// Store a server-issued resumption token for later reconnect.
+    pub async fn set_resumption_token(&self, token: Vec<u8>) {
+        *self.resumption_token.lock().await = Some(token);
     }
 
     async fn insert_bi(
@@ -449,9 +701,17 @@ impl FigConnection {
         direction: ChannelDirection,
         schema_id: Option<u8>,
     ) -> Result<u16, ChannelError> {
+        // Reserve a channel slot against the connection limit.
+        self.dos.allow_open_channel()?;
         let channel_id = {
             let mut mgr = self.channels.lock().await;
-            mgr.open_unidirectional_channel(mode, direction, schema_id)?
+            match mgr.open_unidirectional_channel(mode, direction, schema_id) {
+                Ok(id) => id,
+                Err(e) => {
+                    self.dos.channel_closed();
+                    return Err(e);
+                }
+            }
         };
 
         match self.conn.open_bi().await {
@@ -463,6 +723,7 @@ impl FigConnection {
             Err(e) => {
                 let mut mgr = self.channels.lock().await;
                 let _ = mgr.force_close_channel(channel_id);
+                self.dos.channel_closed();
                 Err(ChannelError::StreamError(channel_id, e.to_string()))
             }
         }
@@ -478,9 +739,17 @@ impl FigConnection {
         mode: ChannelMode,
         schema_id: Option<u8>,
     ) -> Result<u16, ChannelError> {
+        // Reserve a channel slot against the connection limit.
+        self.dos.allow_open_channel()?;
         let channel_id = {
             let mut mgr = self.channels.lock().await;
-            mgr.open_channel(mode, schema_id)?
+            match mgr.open_channel(mode, schema_id) {
+                Ok(id) => id,
+                Err(e) => {
+                    self.dos.channel_closed();
+                    return Err(e);
+                }
+            }
         };
 
         // Open a TREE bidirectional stream for this channel.
@@ -494,6 +763,7 @@ impl FigConnection {
                 // Roll back the channel on failure
                 let mut mgr = self.channels.lock().await;
                 let _ = mgr.force_close_channel(channel_id);
+                self.dos.channel_closed();
                 Err(ChannelError::StreamError(channel_id, e.to_string()))
             }
         }
@@ -587,7 +857,10 @@ impl FigConnection {
                 .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing recv stream")))?;
             if let Some(result) = ch.decoder.decode_next() {
                 self.recv_streams.lock().await.insert(channel_id, ch);
-                return result;
+                let frame = result?;
+                self.admit_frame(&frame)?;
+                self.observe_resumption_token(&frame).await;
+                return Ok(frame);
             }
             match ch.recv.read(&mut buf).await {
                 Ok(Some(n)) => {
@@ -599,7 +872,10 @@ impl FigConnection {
                     let buffered = ch.decoder.buffered_len();
                     self.recv_streams.lock().await.insert(channel_id, ch);
                     if let Some(result) = leftover {
-                        return result;
+                        let frame = result?;
+                        self.admit_frame(&frame)?;
+                        self.observe_resumption_token(&frame).await;
+                        return Ok(frame);
                     }
                     return Err(FrameError::BufferTooShort {
                         expected: MIN_FRAME_SIZE,
@@ -714,13 +990,35 @@ impl FigConnection {
         };
 
         let channel_id = frame.channel_id;
+
+        // Enforce resource limits before admitting a new channel or frame.
+        if channel_id != crate::frame::CONTROL_CHANNEL
+            && !self.send_streams.lock().await.contains_key(&channel_id)
+        {
+            self.dos.allow_open_channel().map_err(|e| {
+                FrameError::IoError(std::io::Error::other(format!(
+                    "channel limit exceeded: {e}"
+                )))
+            })?;
+        }
+        self.admit_frame(&frame)?;
+        self.observe_resumption_token(&frame).await;
+
         self.insert_bi(channel_id, send, recv, decoder).await;
 
         Ok((channel_id, frame))
     }
 
     /// On 0-RTT reconnect, read the first application frame (if any) and restore session state.
-    pub async fn try_restore_session_from_first_frame(&self) -> FirstFrameRestore {
+    ///
+    /// The resumption token is accepted **only** if it is a valid
+    /// server-signed token verified by `signer` (SPEC §10.1). Unsigned,
+    /// tampered, or forged tokens restore nothing — the connection proceeds
+    /// as a fresh session.
+    pub async fn try_restore_session_from_first_frame(
+        &self,
+        signer: &SessionSigner,
+    ) -> FirstFrameRestore {
         let result = tokio::time::timeout(Duration::from_millis(250), self.accept_frame()).await;
         let Ok(Ok((_, frame))) = result else {
             return FirstFrameRestore {
@@ -744,8 +1042,9 @@ impl FigConnection {
             });
 
         let session = token.and_then(|token| {
+            // Reject replays within the window, then authenticate the token.
             crate::replay::validate_resumption_token(&token).ok()?;
-            Session::from_resumption_token(&token).ok()
+            signer.verify(&token).ok()
         });
 
         FirstFrameRestore {
@@ -783,13 +1082,20 @@ impl FigConnection {
             let _ = send.finish();
         }
         self.recv_streams.lock().await.remove(&channel_id);
+        self.dos.channel_closed();
         Ok(())
     }
 
     /// Close a channel gracefully.
     pub async fn close_channel(&self, channel_id: u16) -> Result<(), ChannelError> {
-        let mut mgr = self.channels.lock().await;
-        mgr.close_channel(channel_id)
+        let result = {
+            let mut mgr = self.channels.lock().await;
+            mgr.close_channel(channel_id)
+        };
+        if result.is_ok() {
+            self.dos.channel_closed();
+        }
+        result
     }
 
     /// Permanently close and remove a channel (used after stream reset).
@@ -828,6 +1134,7 @@ impl FigConnection {
 pub struct FigServer {
     endpoint: Endpoint,
     session_store: MemorySessionStore,
+    signer: Arc<SessionSigner>,
 }
 
 impl FigServer {
@@ -838,7 +1145,41 @@ impl FigServer {
         Ok(Self {
             endpoint,
             session_store: MemorySessionStore::new(),
+            signer: Arc::new(SessionSigner::from_env()),
         })
+    }
+
+    /// Bind with an explicit resumption-token signer.
+    ///
+    /// Use this to share one signing key across HA nodes (see
+    /// [`SessionSigner`] and `FIG_RESUMPTION_KEY`).
+    pub async fn bind_with_signer(
+        addr: SocketAddr,
+        server_config: ServerConfig,
+        signer: Arc<SessionSigner>,
+    ) -> Result<Self, FigError> {
+        let endpoint = Endpoint::server(server_config, addr)
+            .map_err(|e| FigError::ConnectionFailed(e.to_string()))?;
+        Ok(Self {
+            endpoint,
+            session_store: MemorySessionStore::new(),
+            signer,
+        })
+    }
+
+    /// The signer used to authenticate resumption tokens.
+    pub fn signer(&self) -> &Arc<SessionSigner> {
+        &self.signer
+    }
+
+    /// Issue a signed resumption token for `session`.
+    ///
+    /// The token is opaque to clients; a venue hands it to the client (e.g. on
+    /// a control channel) and the client echoes it on reconnect. Only tokens
+    /// signed by a signer holding the same key are accepted by
+    /// [`FigServer::accept_0rtt`].
+    pub fn issue_resumption_token(&self, session: &Session) -> Result<Vec<u8>, SessionError> {
+        self.signer.issue(session)
     }
 
     /// Accept a normal (full handshake) FIG connection.
@@ -856,13 +1197,16 @@ impl FigServer {
 
     /// Accept a 0-RTT connection and validate a resumption token.
     ///
-    /// If the client presents a valid 0-RTT token, the session is restored
-    /// from the session store and the connection proceeds with 0-RTT data.
+    /// A session is restored only if the client presents a token that
+    /// [`SessionSigner::verify`] accepts (i.e. one this server, or a node
+    /// sharing the same key, issued). Unsigned, tampered, replayed, or forged
+    /// tokens restore nothing — the connection proceeds as a fresh session.
     /// If 0-RTT is rejected by the transport layer, falls back to a full
     /// handshake.
     ///
-    /// Call [`validate_resumption_token`] on any resumption token bytes before
-    /// restoring session state (SPEC §10.1).
+    /// Restored state prefers the server's authoritative session store when it
+    /// holds the session, falling back to the (authenticated) token payload
+    /// (SPEC §10.1).
     pub async fn accept_0rtt(
         &self,
     ) -> Result<(FigConnection, Option<Session>, Option<Frame>), FigError> {
@@ -878,14 +1222,24 @@ impl FigServer {
 
         let fig_conn = FigConnection::from_tree(conn, true);
 
-        let FirstFrameRestore { session, frame } =
-            fig_conn.try_restore_session_from_first_frame().await;
-        if let Some(ref restored) = session {
+        let FirstFrameRestore { session, frame } = fig_conn
+            .try_restore_session_from_first_frame(&self.signer)
+            .await;
+
+        // Prefer authoritative server-side state over the token payload.
+        let session = session.map(
+            |restored| match self.session_store.get(&restored.session_id) {
+                Ok(Some(stored)) => stored,
+                _ => restored,
+            },
+        );
+
+        if let Some(restored) = &session {
             let span = span_session_resume(&restored.session_id.to_string());
             let _guard = span.enter();
             tracing::info!(
                 session_id = %restored.session_id,
-                "session restored from 0-RTT resumption token"
+                "session restored from authenticated 0-RTT resumption token"
             );
             let _ = fig_conn.reconstruct_from_session(restored).await;
         }
@@ -1056,7 +1410,7 @@ mod tests {
 
     #[test]
     fn test_client_config_creation() {
-        let _config = client_config().expect("client config creation should succeed");
+        let _config = client_config_insecure().expect("client config creation should succeed");
         // Config created successfully with dev-mode cert verification skipped.
     }
 
@@ -1081,7 +1435,8 @@ mod tests {
     #[test]
     fn test_server_config_mtls_creation() {
         let (cert, key) = generate_self_signed_cert().unwrap();
-        let _config = server_config_mtls(cert, key).expect("mTLS server config should succeed");
+        let _config =
+            server_config_mtls_insecure(cert, key).expect("mTLS server config should succeed");
     }
 
     #[test]
@@ -1092,14 +1447,14 @@ mod tests {
 
         let (cert2, key2) = generate_self_signed_cert().unwrap();
         rotating.reload(cert2, key2).unwrap();
-        let _cfg2 = rotating.server_config_mtls().unwrap();
+        let _cfg2 = rotating.server_config_mtls_insecure().unwrap();
     }
 
     #[tokio::test]
     async fn test_tree_ping_pong_round_trip() {
         let (cert, key) = generate_self_signed_cert().unwrap();
         let server_cfg = server_config(cert, key).unwrap();
-        let client_cfg = client_config().unwrap();
+        let client_cfg = client_config_insecure().unwrap();
 
         let server = FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg)
             .await
@@ -1125,5 +1480,141 @@ mod tests {
         );
         conn.send_frame(ch, &Frame::pong()).await.unwrap();
         client_handle.await.unwrap();
+    }
+
+    /// A server must restore a session only from a token it issued (HMAC
+    /// verified). An unsigned/forged token must restore nothing.
+    #[tokio::test]
+    async fn test_accept_0rtt_rejects_forged_token_accepts_signed() {
+        let _ = tracing_subscriber::fmt::try_init();
+
+        let (cert, key) = generate_self_signed_cert().unwrap();
+        let server_cfg = server_config(cert, key).unwrap();
+        let signer = Arc::new(
+            SessionSigner::from_key_bytes(b"unit-test-signing-key-32-bytes!!".to_vec()).unwrap(),
+        );
+
+        let server = Arc::new(
+            FigServer::bind_with_signer("127.0.0.1:0".parse().unwrap(), server_cfg, signer.clone())
+                .await
+                .unwrap(),
+        );
+        let addr = server.local_addr().unwrap();
+
+        let mut session = Session::new();
+        session.add_channel(5);
+        let signed = signer.issue(&session).unwrap();
+        // Client-forged, unsigned CBOR with the same session contents.
+        let forged = session.resumption_token().unwrap();
+        assert_ne!(signed, forged);
+
+        let accept_server = server.clone();
+        let handle = tokio::spawn(async move {
+            let (_, first, first_frame) = accept_server.accept_0rtt().await.unwrap();
+            let (_, second, second_frame) = accept_server.accept_0rtt().await.unwrap();
+            (first, second, first_frame.is_some(), second_frame.is_some())
+        });
+
+        // Connection 1: forged (unsigned) token.
+        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        endpoint.set_default_client_config(client_config_insecure().unwrap());
+        let conn = endpoint.connect(addr, "localhost").unwrap().await.unwrap();
+        let fig = FigConnection::from_tree(conn, false);
+        let frame = Frame::new(crate::frame::FrameType::Request, 5).with_extension(
+            crate::ext::Extension::binary(ExtensionTag::RedirectToken, forged),
+        );
+        fig.send_frame(5, &frame).await.unwrap();
+        // Give the server a moment to read the first frame before reconnecting.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        // Connection 2: server-issued signed token.
+        let mut endpoint2 = Endpoint::client("0.0.0.0:0".parse().unwrap()).unwrap();
+        endpoint2.set_default_client_config(client_config_insecure().unwrap());
+        let conn2 = endpoint2.connect(addr, "localhost").unwrap().await.unwrap();
+        let fig2 = FigConnection::from_tree(conn2, false);
+        let frame2 = Frame::new(crate::frame::FrameType::Request, 5).with_extension(
+            crate::ext::Extension::binary(ExtensionTag::RedirectToken, signed),
+        );
+        fig2.send_frame(5, &frame2).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        let (first, second, got_first_frame, got_second_frame) = handle.await.unwrap();
+        assert!(
+            got_first_frame && got_second_frame,
+            "both frames must arrive"
+        );
+        assert!(
+            first.is_none(),
+            "forged unsigned token must not restore a session"
+        );
+        let restored = second.expect("server-issued token must restore a session");
+        assert_eq!(restored.session_id, session.session_id);
+        assert_eq!(restored.channels, vec![5]);
+    }
+
+    /// The default client config must refuse a server certificate that does not
+    /// chain to a trusted root (this is what makes the connection non-MITM-able).
+    #[tokio::test]
+    async fn test_default_client_rejects_untrusted_server_certificate() {
+        // Negative: WebPKI roots must not validate a self-signed certificate.
+        let (cert, key) = generate_self_signed_cert().unwrap();
+        let server_cfg = server_config(cert, key).unwrap();
+        let server = Arc::new(
+            FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg)
+                .await
+                .unwrap(),
+        );
+        let addr = server.local_addr().unwrap();
+
+        let accept_server = server.clone();
+        let h = tokio::spawn(async move {
+            let _ = tokio::time::timeout(Duration::from_secs(5), accept_server.accept()).await;
+        });
+
+        let client = FigClient::new(client_config().unwrap()).unwrap();
+        assert!(
+            client.connect(addr, "localhost").await.is_err(),
+            "default client config must not trust a self-signed server certificate"
+        );
+        let _ = h.await;
+
+        // Positive control: the explicitly-insecure dev config connects.
+        let (cert2, key2) = generate_self_signed_cert().unwrap();
+        let server2 = Arc::new(
+            FigServer::bind(
+                "127.0.0.1:0".parse().unwrap(),
+                server_config(cert2, key2).unwrap(),
+            )
+            .await
+            .unwrap(),
+        );
+        let addr2 = server2.local_addr().unwrap();
+
+        let accept_server2 = server2.clone();
+        let h2 = tokio::spawn(async move { accept_server2.accept().await });
+
+        let insecure = FigClient::new(client_config_insecure().unwrap()).unwrap();
+        assert!(
+            insecure.connect(addr2, "localhost").await.is_ok(),
+            "insecure dev config should accept a self-signed certificate"
+        );
+        let _ = h2.await;
+    }
+
+    #[test]
+    fn test_mtls_with_ca_requires_a_ca() {
+        let (cert, key) = generate_self_signed_cert().unwrap();
+
+        // No CA bundle → refuse to build (would be an mTLS config that verifies nothing).
+        assert!(
+            server_config_mtls_with_ca(cert.clone(), key.clone_key(), vec![]).is_err(),
+            "mTLS without a client CA must be rejected"
+        );
+
+        // With a CA bundle the config builds using the WebPKI client verifier.
+        assert!(
+            server_config_mtls_with_ca(cert.clone(), key, vec![cert]).is_ok(),
+            "mTLS with a client CA should build"
+        );
     }
 }

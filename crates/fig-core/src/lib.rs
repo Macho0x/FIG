@@ -101,6 +101,7 @@ pub mod sbe;
 pub mod session;
 #[cfg(feature = "session-redis")]
 pub mod session_redis;
+pub mod session_token;
 pub mod tcp;
 pub mod trace;
 pub mod transport;

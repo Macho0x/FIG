@@ -48,6 +48,13 @@ pub const CONTROL_CHANNEL: u16 = 0;
 /// Maximum number of channels per connection.
 pub const MAX_CHANNELS: u16 = u16::MAX;
 
+/// Maximum accepted frame size (bytes), including header, extensions, payload.
+///
+/// Bounds pre-authentication buffering: a length prefix larger than this is
+/// rejected instead of buffered. Applications may lower this via
+/// [`FrameDecoder::with_max_size`] / [`crate::dos::DoSGuard`].
+pub const MAX_FRAME_SIZE: usize = 1024 * 1024;
+
 // ─── Frame Type ──────────────────────────────────────────────────
 
 /// Frame type codes.
@@ -403,7 +410,7 @@ impl Frame {
         let ext_len = if self.extensions.is_empty() {
             0
         } else {
-            ext::encode_extensions(&self.extensions).len()
+            ext::encoded_extensions_len(&self.extensions)
         };
         HEADER_SIZE + ext_len + self.payload.len()
     }
@@ -415,7 +422,7 @@ impl Frame {
 
         // Encode extensions
         let ext_bytes = if !self.extensions.is_empty() {
-            ext::encode_extensions(&self.extensions)
+            ext::encode_extensions(&self.extensions)?
         } else {
             Vec::new()
         };
@@ -483,6 +490,12 @@ impl Frame {
         let length = cursor.read_u32::<BigEndian>()? as usize;
         if length < HEADER_SIZE {
             return Err(FrameError::InvalidHeader(length));
+        }
+        if length > MAX_FRAME_SIZE {
+            return Err(FrameError::FrameTooLarge {
+                length,
+                max: MAX_FRAME_SIZE,
+            });
         }
         if data.len() < length {
             return Err(FrameError::BufferTooShort {
@@ -614,18 +627,40 @@ impl std::fmt::Display for Frame {
 pub struct FrameDecoder {
     /// Internal buffer for accumulating partial reads.
     buffer: Vec<u8>,
+    /// Maximum frame size accepted from the peer.
+    max_frame_size: usize,
 }
 
 impl FrameDecoder {
     /// Create a new decoder with an empty buffer.
     pub fn new() -> Self {
-        Self { buffer: Vec::new() }
+        Self {
+            buffer: Vec::new(),
+            max_frame_size: MAX_FRAME_SIZE,
+        }
+    }
+
+    /// Create a decoder that rejects frames larger than `max_frame_size` bytes.
+    ///
+    /// This bounds how much a peer can make the decoder buffer before a
+    /// complete frame arrives.
+    pub fn with_max_size(max_frame_size: usize) -> Self {
+        Self {
+            buffer: Vec::new(),
+            max_frame_size,
+        }
+    }
+
+    /// The maximum frame size this decoder accepts.
+    pub fn max_frame_size(&self) -> usize {
+        self.max_frame_size
     }
 
     /// Create a decoder with a pre-allocated buffer capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             buffer: Vec::with_capacity(capacity),
+            max_frame_size: MAX_FRAME_SIZE,
         }
     }
 
@@ -663,6 +698,16 @@ impl FrameDecoder {
             // Remove the invalid frame from the buffer
             self.buffer.drain(..4.min(self.buffer.len()));
             return Some(err);
+        }
+
+        // Reject frames larger than the configured maximum before buffering
+        // the rest of the (attacker-controlled) payload.
+        if length > self.max_frame_size {
+            self.buffer.clear();
+            return Some(Err(FrameError::FrameTooLarge {
+                length,
+                max: self.max_frame_size,
+            }));
         }
 
         // Check if we have the complete frame
@@ -990,6 +1035,36 @@ mod tests {
         assert_eq!(result.channel_id, 5);
         assert_eq!(result.stream_seq, 99);
         assert_eq!(result.payload, b"response data");
+    }
+
+    #[test]
+    fn test_frame_decoder_rejects_oversize_length() {
+        // A length prefix far larger than the configured maximum must be
+        // rejected instead of buffering gigabytes.
+        let mut decoder = FrameDecoder::with_max_size(1024);
+        // Declared length ~4 GiB, plus a few body bytes.
+        decoder.feed(&[0xFF, 0xFF, 0xFF, 0xF0, 0x00, 0x01, 0x00, 0x05]);
+        match decoder.decode_next() {
+            Some(Err(FrameError::FrameTooLarge { length, max })) => {
+                assert_eq!(length, 0xFFFF_FFF0);
+                assert_eq!(max, 1024);
+            }
+            other => panic!("expected FrameTooLarge, got {other:?}"),
+        }
+        // The decoder drops the poisoned buffer and stays usable.
+        assert!(decoder.decode_next().is_none());
+        assert_eq!(decoder.buffered_len(), 0);
+    }
+
+    #[test]
+    fn test_frame_decode_rejects_oversize_length() {
+        // `Frame::decode` applies the same hard cap.
+        let mut data = vec![0u8; 16];
+        data[..4].copy_from_slice(&(u32::MAX).to_be_bytes());
+        assert!(matches!(
+            Frame::decode(&data),
+            Err(FrameError::FrameTooLarge { .. })
+        ));
     }
 
     #[test]

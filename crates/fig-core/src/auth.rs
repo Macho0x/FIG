@@ -67,11 +67,19 @@ impl AuthResult {
 
 /// Verify a token against the expected value using constant-time comparison.
 ///
+/// Both sides are hashed to a fixed-width SHA-256 digest and compared with a
+/// constant-time equality check, so neither the token length nor the position
+/// of the first differing byte leaks through timing.
+///
 /// For production deployments, compare against a hash lookup or JWT signature
 /// from your venue's identity system — FIG does not define credential issuance.
 pub fn verify_token(token: &str, expected: &str) -> bool {
-    // Constant-time comparison to prevent timing attacks
-    token.len() == expected.len() && token.bytes().zip(expected.bytes()).all(|(a, b)| a == b)
+    use sha2::{Digest, Sha256};
+    use subtle::ConstantTimeEq;
+
+    let token_digest = Sha256::digest(token.as_bytes());
+    let expected_digest = Sha256::digest(expected.as_bytes());
+    token_digest.ct_eq(&expected_digest).into()
 }
 
 /// Generate a simple bearer token (for development/testing only).

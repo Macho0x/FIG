@@ -9,11 +9,16 @@ pub mod matching_latency;
 
 #[cfg(test)]
 mod tests {
-    use super::latency::latency_iters;
+    use super::latency::resolve_latency_iters;
 
     #[test]
-    fn latency_iters_default() {
-        std::env::remove_var("FIG_LATENCY_ITERS");
-        assert_eq!(latency_iters(10_000), 10_000);
+    fn latency_iters_resolution_is_default_when_unset() {
+        // Pure function: no process-environment access, so this cannot race
+        // other tests that set FIG_LATENCY_ITERS.
+        assert_eq!(resolve_latency_iters(10_000, None), 10_000);
+        assert_eq!(resolve_latency_iters(10_000, Some("")), 10_000);
+        assert_eq!(resolve_latency_iters(10_000, Some("0")), 10_000);
+        assert_eq!(resolve_latency_iters(10_000, Some("not-a-number")), 10_000);
+        assert_eq!(resolve_latency_iters(10_000, Some("250")), 250);
     }
 }

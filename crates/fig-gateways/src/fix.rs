@@ -226,57 +226,50 @@ pub fn format_fix_utc_timestamp(nanos: i64) -> String {
     )
 }
 
-/// Parse FIX UTCTimestamp (tags 60, 432) into nanoseconds since Unix epoch.
-pub fn parse_fix_utc_timestamp(value: &str) -> FixResult<i64> {
-    if value.len() < 17 {
-        return Err(FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        });
+/// Parse a fixed-width run of ASCII decimal digits without ever indexing a
+/// `&str` on a non-char-boundary (or out of range).
+///
+/// Returns `None` if the byte range is out of bounds or contains any byte
+/// that is not an ASCII digit. Operates purely on bytes, so it is immune to
+/// the `byte index N is not a char boundary` panic that string slicing on
+/// client-controlled, potentially multibyte UTF-8 input can trigger.
+fn parse_ascii_u64_field(bytes: &[u8], start: usize, end: usize) -> Option<u64> {
+    let slice = bytes.get(start..end)?;
+    if !slice.iter().all(u8::is_ascii_digit) {
+        return None;
     }
-    let year: i32 = value[0..4]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let month: u32 = value[4..6]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let day: u32 = value[6..8]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let hour: u32 = value[9..11]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let minute: u32 = value[12..14]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let second: u32 = value[15..17]
-        .parse()
-        .map_err(|_| FixError::InvalidTagValueData {
-            tag: 60,
-            value: value.to_string(),
-        })?;
-    let millis: u32 = if value.len() >= 21 && value.as_bytes().get(17) == Some(&b'.') {
-        value[18..21]
-            .parse()
-            .map_err(|_| FixError::InvalidTagValueData {
-                tag: 60,
-                value: value.to_string(),
-            })?
+    // Every byte is an ASCII digit, so UTF-8 decoding and parsing always succeed.
+    std::str::from_utf8(slice).ok()?.parse().ok()
+}
+
+/// Parse FIX UTCTimestamp (tags 60, 432) into nanoseconds since Unix epoch.
+///
+/// The value must be ASCII and at least 17 bytes (`YYYYMMDD-HH:MM:SS`).
+/// Any malformed input returns [`FixError::InvalidTagValueData`] rather than
+/// panicking, so untrusted field values from an unauthenticated FIX client
+/// cannot crash the connection task.
+pub fn parse_fix_utc_timestamp(value: &str) -> FixResult<i64> {
+    let bytes = value.as_bytes();
+    let invalid = || FixError::InvalidTagValueData {
+        tag: 60,
+        value: value.to_string(),
+    };
+
+    // Require ASCII: a multibyte character straddling a slice boundary would
+    // otherwise panic the string indexing below. (The length check alone is
+    // not sufficient for that reason.)
+    if bytes.len() < 17 || !bytes.is_ascii() {
+        return Err(invalid());
+    }
+
+    let year = parse_ascii_u64_field(bytes, 0, 4).ok_or_else(invalid)? as i32;
+    let month = parse_ascii_u64_field(bytes, 4, 6).ok_or_else(invalid)? as u32;
+    let day = parse_ascii_u64_field(bytes, 6, 8).ok_or_else(invalid)? as u32;
+    let hour = parse_ascii_u64_field(bytes, 9, 11).ok_or_else(invalid)? as u32;
+    let minute = parse_ascii_u64_field(bytes, 12, 14).ok_or_else(invalid)? as u32;
+    let second = parse_ascii_u64_field(bytes, 15, 17).ok_or_else(invalid)? as u32;
+    let millis = if bytes.get(17) == Some(&b'.') {
+        parse_ascii_u64_field(bytes, 18, 21).ok_or_else(invalid)? as u32
     } else {
         0
     };
@@ -1486,6 +1479,21 @@ mod tests {
         let formatted = format_fix_utc_timestamp(nanos);
         let parsed = parse_fix_utc_timestamp(&formatted).unwrap();
         assert!((parsed - nanos).abs() < 1_000_000_000);
+    }
+
+    #[test]
+    fn test_fix_utc_timestamp_multibyte_does_not_panic() {
+        // A multibyte char straddling the `[0..4]`/`[4..6]` slice boundary must
+        // be rejected with an error, not panic the connection task.
+        assert!(parse_fix_utc_timestamp("20240é0101-00:00:00").is_err());
+        // Multibyte chars at other slice boundaries (tag 432/60 are client-controlled).
+        assert!(parse_fix_utc_timestamp("2024010é-00:00:00").is_err());
+        assert!(parse_fix_utc_timestamp("20240101-00:00:0é").is_err());
+        // Multibyte in the optional millisecond field.
+        assert!(parse_fix_utc_timestamp("20240101-00:00:00.é01").is_err());
+        // Too short, and empty.
+        assert!(parse_fix_utc_timestamp("").is_err());
+        assert!(parse_fix_utc_timestamp("20240101").is_err());
     }
 
     // ── FIG → FIX ExecutionReport ────────────────────────────

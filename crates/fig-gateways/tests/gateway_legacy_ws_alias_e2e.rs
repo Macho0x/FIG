@@ -367,6 +367,7 @@ async fn assert_ws_aliases_round_trip(addr: SocketAddr, cases: &[LegacyWsCase]) 
 #[tokio::test]
 async fn legacy_ws_binance_aliases_round_trip_through_backend() {
     std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
     assert_ws_aliases_round_trip(addr, &binance_ws_fixtures()).await;
@@ -376,6 +377,7 @@ async fn legacy_ws_binance_aliases_round_trip_through_backend() {
 #[tokio::test]
 async fn legacy_ws_hyperliquid_aliases_round_trip_through_backend() {
     std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
     assert_ws_aliases_round_trip(addr, &hyperliquid_ws_fixtures()).await;
@@ -385,6 +387,7 @@ async fn legacy_ws_hyperliquid_aliases_round_trip_through_backend() {
 #[tokio::test]
 async fn legacy_fix_order_aliases_round_trip_through_backend() {
     std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
 
@@ -434,6 +437,7 @@ async fn legacy_fix_order_aliases_round_trip_through_backend() {
 #[tokio::test]
 async fn legacy_rest_get_aliases_round_trip_through_backend() {
     std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
 
@@ -482,6 +486,7 @@ async fn legacy_rest_get_aliases_round_trip_through_backend() {
 #[tokio::test]
 async fn legacy_ws_follow_up_event_after_fill() {
     std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
 

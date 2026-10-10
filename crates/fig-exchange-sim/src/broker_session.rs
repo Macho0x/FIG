@@ -111,6 +111,11 @@ pub fn instrument_catalog_response() -> InstrumentCatalogResponse {
     }
 }
 
+/// Read a `SESSION_ID` extension from a frame.
+///
+/// **Security:** this value is client-supplied and unauthenticated. Never use
+/// it to select a session to restore or to attribute state — use the
+/// connection's authenticated session id instead (see SPEC §10.1).
 pub fn session_id_from_frame(frame: &Frame) -> Option<Uuid> {
     frame
         .extensions

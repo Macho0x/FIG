@@ -345,19 +345,42 @@ impl Extension {
 /// - Tag: 2 bytes (big-endian u16)
 /// - Length: 2 bytes (big-endian u16)
 /// - Value: `Length` bytes
-pub fn encode_extensions(extensions: &[Extension]) -> Vec<u8> {
-    let mut buf = Vec::new();
+///
+/// Returns an error if any single extension value exceeds `u16::MAX` bytes:
+/// the TLV length field is 16 bits, so silently truncating the length would
+/// emit a frame whose declared bounds do not match its contents and would
+/// desynchronise the peer's TLV walk.
+pub fn encode_extensions(extensions: &[Extension]) -> FrameResult<Vec<u8>> {
+    let mut buf = Vec::with_capacity(encoded_extensions_len(extensions));
     for ext in extensions {
         // Tag (2 bytes, big-endian)
         buf.extend_from_slice(&ext.tag.code().to_be_bytes());
         // Value as bytes
         let value_bytes = ext.value.as_bytes();
+        if value_bytes.len() > u16::MAX as usize {
+            return Err(FrameError::InvalidExtension(format!(
+                "extension tag 0x{:04x} value is {} bytes; maximum is {}",
+                ext.tag.code(),
+                value_bytes.len(),
+                u16::MAX
+            )));
+        }
         // Length (2 bytes, big-endian)
         buf.extend_from_slice(&(value_bytes.len() as u16).to_be_bytes());
         // Value
         buf.extend_from_slice(&value_bytes);
     }
-    buf
+    Ok(buf)
+}
+
+/// Encoded size (tag + length + value) of a list of extensions.
+///
+/// Saturating — intended for size estimation, not for allocation.
+pub fn encoded_extensions_len(extensions: &[Extension]) -> usize {
+    extensions
+        .iter()
+        .map(|ext| 4usize.saturating_add(ext.value.as_bytes().len()))
+        .fold(0usize, |acc, n| acc.saturating_add(n))
 }
 
 /// Decode TLV extensions from binary data.
@@ -427,14 +450,15 @@ fn interpret_extension_value(tag_code: u16, bytes: &[u8]) -> ExtensionValue {
         }
         // I64 tags (timestamps)
         0x0008 => ExtensionValue::I64(i64::from_be_bytes(bytes.try_into().unwrap_or([0; 8]))),
-        // 128-bit tags (UUIDs, correlation IDs, trace IDs)
-        0x0005 | 0x0007 | 0x0012 | 0x0013 | 0x0019 => {
+        // 128-bit tags (fixed-width UUIDs / correlation IDs)
+        0x0005 | 0x0007 | 0x0013 => {
             let mut arr = [0u8; 16];
             let len = bytes.len().min(16);
             arr[..len].copy_from_slice(&bytes[..len]);
             ExtensionValue::U128(arr)
         }
-        // Binary tags (auth tokens, etc.) or unknown
+        // Binary tags with variable length (IDEMPOTENCY_KEY 0x0012,
+        // REDIRECT_TOKEN 0x0019 per SPEC §6.1) or unknown tags.
         _ => ExtensionValue::Binary(bytes.to_vec()),
     }
 }
@@ -492,6 +516,37 @@ mod tests {
     }
 
     #[test]
+    fn test_variable_length_binary_extensions_survive_round_trip() {
+        // REDIRECT_TOKEN and IDEMPOTENCY_KEY are variable-length binary per
+        // SPEC §6.1 — they must not be truncated to 16 bytes.
+        let token = vec![0xABu8; 96];
+        let idem = vec![0xCDu8; 40];
+        let extensions = vec![
+            Extension::binary(ExtensionTag::RedirectToken, token.clone()),
+            Extension::binary(ExtensionTag::IdempotencyKey, idem.clone()),
+        ];
+
+        let encoded = encode_extensions(&extensions).unwrap();
+        let decoded = decode_extensions(&encoded, 2).unwrap();
+
+        assert_eq!(decoded[0].value.as_bytes(), token.as_slice());
+        assert_eq!(decoded[1].value.as_bytes(), idem.as_slice());
+    }
+
+    #[test]
+    fn test_oversize_extension_value_is_rejected() {
+        // A value larger than the 16-bit TLV length field must not be encoded
+        // with a truncated length.
+        let ext = Extension::binary(ExtensionTag::AuthToken, vec![0u8; u16::MAX as usize + 1]);
+        assert!(encode_extensions(&[ext]).is_err());
+
+        // Exactly the maximum is allowed.
+        let ok = Extension::binary(ExtensionTag::AuthToken, vec![0u8; u16::MAX as usize]);
+        let encoded = encode_extensions(&[ok]).expect("max-size value encodes");
+        assert_eq!(encoded.len(), 4 + u16::MAX as usize);
+    }
+
+    #[test]
     fn test_encode_decode_extensions_round_trip() {
         let extensions = vec![
             Extension::text(ExtensionTag::RequestUri, "/accounts/123/orders"),
@@ -501,7 +556,7 @@ mod tests {
             Extension::binary(ExtensionTag::SessionId, vec![0xAA; 16]),
         ];
 
-        let encoded = encode_extensions(&extensions);
+        let encoded = encode_extensions(&extensions).unwrap();
         let decoded = decode_extensions(&encoded, 5).unwrap();
 
         assert_eq!(decoded.len(), 5);

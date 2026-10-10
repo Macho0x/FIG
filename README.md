@@ -80,13 +80,18 @@ Industry ballparks for generic JSON/FIX stacks appear in [BENCHMARKS.md](docs/BE
 ```bash
 git clone https://github.com/Macho0x/fig.git && cd fig
 cargo run -p fig-exchange-sim          # terminal 1 — server on 127.0.0.1:8443
-cargo run -p fig-cli                   # terminal 2 — seven demos, one connection
+FIG_TLS_INSECURE=1 cargo run -p fig-cli # terminal 2 — seven demos, one connection
 ```
+
+The simulator generates a **self-signed** certificate, and FIG clients verify TLS by
+default. `FIG_TLS_INSECURE=1` is a development-only bypass; against a real deployment
+point clients at your CA instead: `FIG_TLS_CA=/path/to/ca.pem`. See
+[Transport security](#transport-security).
 
 **Migration day 1** — legacy gateway in front of the same backend (REST `:8080`, WS `:8090`, FIX `:9876`):
 
 ```bash
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+FIG_TLS_INSECURE=1 cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md). You do **not** need to move all clients to native FIG at once.
@@ -120,7 +125,28 @@ Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | **Public market data** | No token — subscribe on `marketdata/...` paths |
 | **Private paths** | `AUTH_TOKEN` extension on every frame; principal must match `{account}` in `ChannelPath` ([SPEC §9.3](SPEC.md)) |
 | **Your venue** | Issues, rotates, and revokes credentials (JWT/OAuth patterns in spec) — FIG only **verifies** |
-| **Local dev** | Simulator accepts test token `fig-dev-{account}`; set `FIG_DEV_OPEN=1` on the server to skip auth |
+| **Local dev** | Simulator accepts test token `fig-dev-{account}`; set `FIG_DEV_OPEN=1` on the server to skip auth (ignored when `FIG_PRODUCTION=1`) |
+
+### Transport security
+
+FIG runs over TREE (QUIC + TLS 1.3). The defaults are **secure**, and every
+insecure option is explicit and named:
+
+| Concern | Default | Production setting |
+|---|---|---|
+| Server certificate verification | Clients verify against the built-in WebPKI roots (`client_config`) | `FIG_TLS_CA=/path/to/ca.pem`, or `client_config_from_ca_pem` |
+| Server-to-server identity | none | mTLS: `FIG_MTLS=1` + `FIG_MTLS_CA=/path/to/client-ca.pem` |
+| Resumption tokens (0-RTT) | HMAC-SHA256 signed and verified by the **server** | `FIG_RESUMPTION_KEY` (shared, hex or passphrase) across HA nodes |
+| `0-RTT` early data | enabled; replayed tokens rejected inside the replay window | — |
+| Dev bypass | off | never set `FIG_TLS_INSECURE`, `FIG_DEV_OPEN` in production; set `FIG_PRODUCTION=1` to refuse the auth bypass |
+
+- **`client_config_insecure()`** and **`server_config_mtls_insecure()`** exist for
+  tests/dev only and say so in their names.
+- A server restores a session **only** from a resumption token it signed
+  (`FigServer::issue_resumption_token`); unauthenticated or forged tokens are
+  rejected — see [SPEC §10.1](SPEC.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- Frame size, per-connection channel count, and message rates are bounded by
+  `DoSGuard` / `ChannelRateLimiter` on every connection.
 
 ---
 
@@ -128,10 +154,17 @@ Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 | Component | Role |
 |---|---|
-| [`fig-core`](crates/fig-core/), [SPEC](SPEC.md), [conformance](tests/conformance/) | Protocol implementation — CI-tested (~360 workspace tests) |
+| [`fig-core`](crates/fig-core/), [SPEC](SPEC.md), [conformance](tests/conformance/) | Protocol implementation — CI-tested (490+ workspace tests) |
 | [`fig-exchange-sim`](crates/fig-exchange-sim/) | **Reference** venue for learning — not a production exchange |
 | [`fig-gateway`](crates/fig-gateways/) | **Migration bridge** — run standalone or embed adapters |
 | Auth / API keys / matching | **Your** venue stack — outside the protocol |
+
+**Production status.** `fig-core`, `fig-ffi`/`fig-python`, and the gateways are
+written for production use: TLS verification is on by default, resumption tokens
+are authenticated, untrusted input is bounds-checked (frames, SBE, FIX, extensions),
+and connection resource limits are enforced. `fig-exchange-sim` is a **reference**
+venue (in-memory matching, dev tokens) — replace it with your own backend before
+serving real traffic, and never ship `FIG_TLS_INSECURE=1` / `FIG_DEV_OPEN=1`.
 
 ---
 

@@ -573,6 +573,19 @@ reject duplicate resumption tokens within a configurable replay window
 (default **30 seconds**). The reference `fig_core::replay::MemoryReplayCache`
 keys on a hash of the resumption token bytes.
 
+A resumption token carries session identity (`SESSION_ID`, channels,
+subscriptions). Servers MUST NOT restore session state from an
+unauthenticated token. Implementations MUST authenticate the token — the
+reference stack signs it with HMAC-SHA256 over a server-held key
+(`fig_core::session_token::SessionSigner`) and verifies it before use,
+rejecting any token that is unsigned, tampered with, or signed by an unknown
+key. A server SHOULD additionally prefer its own authoritative session store
+over the token payload when both are available.
+
+Restored sessions MUST be re-authorized: subscriptions and private paths are
+re-checked against `AUTH_TOKEN` on use; a resumption token never substitutes
+for a credential check.
+
 Venues SHOULD treat idempotent read paths as 0-RTT-safe and defer
 non-idempotent order submission until the handshake completes (1-RTT) unless
 a venue-specific anti-replay policy allows otherwise.

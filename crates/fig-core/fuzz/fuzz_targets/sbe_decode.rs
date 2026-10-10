@@ -1,0 +1,135 @@
+#![no_main]
+
+//! Fuzz SBE decode entry points with arbitrary (hostile/truncated) buffers.
+//!
+//! Every generated decoder must return `Err` rather than panicking or
+//! over-allocating when fed malformed input.
+
+use fig_core::generated::sbe_wire::*;
+use libfuzzer_sys::fuzz_target;
+
+fn try_all(data: &[u8]) {
+            let _ = AccountSummaryBodyDecoder::decode(data);
+            let _ = AccountSummaryDecoder::decode(data);
+            let _ = AggregateTradeBatchBodyDecoder::decode(data);
+            let _ = AggregateTradeBatchDecoder::decode(data);
+            let _ = AggregateTradeDecoder::decode(data);
+            let _ = AggregateTradeEventBodyDecoder::decode(data);
+            let _ = AggregateTradeEventDecoder::decode(data);
+            let _ = AggregateTradeRequestBodyDecoder::decode(data);
+            let _ = AggregateTradeRequestDecoder::decode(data);
+            let _ = AllMidsBatchBodyDecoder::decode(data);
+            let _ = AllMidsBatchDecoder::decode(data);
+            let _ = AllMidsRequestBodyDecoder::decode(data);
+            let _ = AllMidsRequestDecoder::decode(data);
+            let _ = BalanceEntryDecoder::decode(data);
+            let _ = BalanceSnapshotBodyDecoder::decode(data);
+            let _ = BalanceSnapshotDecoder::decode(data);
+            let _ = BalanceUpdateBodyDecoder::decode(data);
+            let _ = BalanceUpdateDecoder::decode(data);
+            let _ = BestBidOfferBodyDecoder::decode(data);
+            let _ = BestBidOfferDecoder::decode(data);
+            let _ = CancelRejectBodyDecoder::decode(data);
+            let _ = CancelRejectDecoder::decode(data);
+            let _ = CancelReplaceRequestBodyDecoder::decode(data);
+            let _ = CancelReplaceRequestDecoder::decode(data);
+            let _ = CancelRequestBodyDecoder::decode(data);
+            let _ = CancelRequestDecoder::decode(data);
+            let _ = CandleBarBatchBodyDecoder::decode(data);
+            let _ = CandleBarBatchDecoder::decode(data);
+            let _ = CandleBarDecoder::decode(data);
+            let _ = CandleBarEventBodyDecoder::decode(data);
+            let _ = CandleBarEventDecoder::decode(data);
+            let _ = CandleBarRequestBodyDecoder::decode(data);
+            let _ = CandleBarRequestDecoder::decode(data);
+            let _ = CapabilitiesRequestBodyDecoder::decode(data);
+            let _ = CapabilitiesRequestDecoder::decode(data);
+            let _ = CapabilitiesResponseBodyDecoder::decode(data);
+            let _ = CapabilitiesResponseDecoder::decode(data);
+            let _ = CapabilityPathDecoder::decode(data);
+            let _ = ExecutionReportBodyDecoder::decode(data);
+            let _ = ExecutionReportDecoder::decode(data);
+            let _ = FillHistoryBatchBodyDecoder::decode(data);
+            let _ = FillHistoryBatchDecoder::decode(data);
+            let _ = FillHistoryRequestBodyDecoder::decode(data);
+            let _ = FillHistoryRequestDecoder::decode(data);
+            let _ = FundingHistoryBatchBodyDecoder::decode(data);
+            let _ = FundingHistoryBatchDecoder::decode(data);
+            let _ = FundingHistoryRequestBodyDecoder::decode(data);
+            let _ = FundingHistoryRequestDecoder::decode(data);
+            let _ = FundingPaymentBodyDecoder::decode(data);
+            let _ = FundingPaymentDecoder::decode(data);
+            let _ = InstrumentCatalogRequestBodyDecoder::decode(data);
+            let _ = InstrumentCatalogRequestDecoder::decode(data);
+            let _ = InstrumentCatalogResponseBodyDecoder::decode(data);
+            let _ = InstrumentCatalogResponseDecoder::decode(data);
+            let _ = InstrumentMetadataDecoder::decode(data);
+            let _ = LedgerHistoryBatchBodyDecoder::decode(data);
+            let _ = LedgerHistoryBatchDecoder::decode(data);
+            let _ = LedgerHistoryRequestBodyDecoder::decode(data);
+            let _ = LedgerHistoryRequestDecoder::decode(data);
+            let _ = LedgerUpdateBodyDecoder::decode(data);
+            let _ = LedgerUpdateDecoder::decode(data);
+            let _ = LiquidationTradeDecoder::decode(data);
+            let _ = LiquidationTradeEventBodyDecoder::decode(data);
+            let _ = LiquidationTradeEventDecoder::decode(data);
+            let _ = MarginSummaryBodyDecoder::decode(data);
+            let _ = MarginSummaryDecoder::decode(data);
+            let _ = MarginUpdateBodyDecoder::decode(data);
+            let _ = MarginUpdateDecoder::decode(data);
+            let _ = MarketDataIncrementalRefreshBodyDecoder::decode(data);
+            let _ = MarketDataIncrementalRefreshDecoder::decode(data);
+            let _ = MarketDataSnapshotBodyDecoder::decode(data);
+            let _ = MarketDataSnapshotDecoder::decode(data);
+            let _ = MarketDataUpdateDecoder::decode(data);
+            let _ = MarkPriceRequestBodyDecoder::decode(data);
+            let _ = MarkPriceRequestDecoder::decode(data);
+            let _ = MarkPriceUpdateBodyDecoder::decode(data);
+            let _ = MarkPriceUpdateDecoder::decode(data);
+            let _ = MiniTickerBodyDecoder::decode(data);
+            let _ = MiniTickerDecoder::decode(data);
+            let _ = NewOrderSingleBodyDecoder::decode(data);
+            let _ = NewOrderSingleDecoder::decode(data);
+            let _ = OpenOrdersRequestBodyDecoder::decode(data);
+            let _ = OpenOrdersRequestDecoder::decode(data);
+            let _ = OpenOrdersSnapshotBodyDecoder::decode(data);
+            let _ = OpenOrdersSnapshotDecoder::decode(data);
+            let _ = OrderBookDeltaBodyDecoder::decode(data);
+            let _ = OrderBookDeltaDecoder::decode(data);
+            let _ = OrderBookRequestBodyDecoder::decode(data);
+            let _ = OrderBookRequestDecoder::decode(data);
+            let _ = OrderBookSnapshotBodyDecoder::decode(data);
+            let _ = OrderBookSnapshotDecoder::decode(data);
+            let _ = OrderHistoryBatchBodyDecoder::decode(data);
+            let _ = OrderHistoryBatchDecoder::decode(data);
+            let _ = OrderHistoryRequestBodyDecoder::decode(data);
+            let _ = OrderHistoryRequestDecoder::decode(data);
+            let _ = OrderListStatusBodyDecoder::decode(data);
+            let _ = OrderListStatusDecoder::decode(data);
+            let _ = PageInfoDecoder::decode(data);
+            let _ = PositionEntryDecoder::decode(data);
+            let _ = PositionRequestBodyDecoder::decode(data);
+            let _ = PositionRequestDecoder::decode(data);
+            let _ = PositionSnapshotBodyDecoder::decode(data);
+            let _ = PositionSnapshotDecoder::decode(data);
+            let _ = PositionUpdateBodyDecoder::decode(data);
+            let _ = PositionUpdateDecoder::decode(data);
+            let _ = PriceLevelDecoder::decode(data);
+            let _ = PublicTradeBatchBodyDecoder::decode(data);
+            let _ = PublicTradeBatchDecoder::decode(data);
+            let _ = PublicTradeDecoder::decode(data);
+            let _ = PublicTradeEventBodyDecoder::decode(data);
+            let _ = PublicTradeEventDecoder::decode(data);
+            let _ = SymbolTickerBodyDecoder::decode(data);
+            let _ = SymbolTickerDecoder::decode(data);
+            let _ = TickerRequestBodyDecoder::decode(data);
+            let _ = TickerRequestDecoder::decode(data);
+            let _ = TradeHistoryRequestBodyDecoder::decode(data);
+            let _ = TradeHistoryRequestDecoder::decode(data);
+            let _ = UserLiquidationBodyDecoder::decode(data);
+            let _ = UserLiquidationDecoder::decode(data);
+}
+
+fuzz_target!(|data: &[u8]| {
+    try_all(data);
+});

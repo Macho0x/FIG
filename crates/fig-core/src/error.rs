@@ -45,6 +45,9 @@ pub enum FrameError {
     #[error("non-zero reserved field in header: 0x{0:04x}")]
     NonZeroReserved(u16),
 
+    #[error("frame too large: declared {length} bytes exceeds maximum {max}")]
+    FrameTooLarge { length: usize, max: usize },
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }

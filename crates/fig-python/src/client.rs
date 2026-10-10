@@ -12,7 +12,7 @@ use tokio::sync::Mutex;
 
 use fig_client::{FigSdkClient, LiveSubscription};
 use fig_core::frame::Frame;
-use fig_core::transport::{client_config, FigClient, FigConnection};
+use fig_core::transport::{client_config_from_env, FigClient, FigConnection};
 
 use crate::codec;
 
@@ -38,7 +38,7 @@ impl FigPyClient {
         let server_name = server_name.unwrap_or("localhost").to_string();
         let addr: SocketAddr = addr.parse().map_err(|e| format!("invalid address: {e}"))?;
         self.rt.block_on(async {
-            let client = FigClient::new(client_config().map_err(|e| e.to_string())?)
+            let client = FigClient::new(client_config_from_env().map_err(|e| e.to_string())?)
                 .map_err(|e| e.to_string())?;
             let conn = client
                 .connect(addr, &server_name)

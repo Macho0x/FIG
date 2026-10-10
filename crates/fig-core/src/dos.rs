@@ -11,11 +11,17 @@ use crate::error::{ChannelError, FrameError};
 use crate::frame::MIN_FRAME_SIZE;
 use crate::rate_limit::RateLimiter;
 
-/// Default maximum channels per connection.
-pub const DEFAULT_MAX_CHANNELS: u32 = 1024;
+/// Default maximum channels per connection (matches the TREE stream limit).
+pub const DEFAULT_MAX_CHANNELS: u32 = 65_535;
 
 /// Default maximum frame payload size (1 MiB).
 pub const DEFAULT_MAX_FRAME_BYTES: usize = 1024 * 1024;
+
+/// Default per-connection message rate (messages/second).
+pub const DEFAULT_MAX_MESSAGES_PER_SEC: u64 = 100_000;
+
+/// Default per-channel message rate (messages/second).
+pub const DEFAULT_CHANNEL_MSG_PER_SEC: u64 = 10_000;
 
 /// Connection-level DoS guard.
 #[derive(Debug)]
@@ -37,7 +43,11 @@ impl DoSGuard {
     }
 
     pub fn with_defaults() -> Self {
-        Self::new(DEFAULT_MAX_CHANNELS, DEFAULT_MAX_FRAME_BYTES, 10_000)
+        Self::new(
+            DEFAULT_MAX_CHANNELS,
+            DEFAULT_MAX_FRAME_BYTES,
+            DEFAULT_MAX_MESSAGES_PER_SEC,
+        )
     }
 
     /// Check whether a new channel may be opened.
@@ -52,7 +62,12 @@ impl DoSGuard {
 
     /// Record channel close.
     pub fn channel_closed(&self) {
-        self.open_channels.fetch_sub(1, Ordering::SeqCst);
+        // Saturate at zero so a double-close cannot underflow the counter.
+        let _ = self
+            .open_channels
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                Some(current.saturating_sub(1))
+            });
     }
 
     /// Validate incoming/outgoing frame size.

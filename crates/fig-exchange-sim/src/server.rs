@@ -16,6 +16,7 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{ControlSubtype, Frame, FrameType};
 use fig_core::messages::*;
 use fig_core::session::{MemorySessionStore, Session, SessionStore};
+use fig_core::session_token::SessionSigner;
 use fig_core::transport::{self, FigConnection, FigServer};
 use fig_core::DurableSessionStore;
 
@@ -23,7 +24,7 @@ use crate::account_state::{AccountHub, AccountSubscription};
 use crate::broker_session::{
     handle_unsubscribe, parse_capabilities_path, parse_instruments_path, parse_open_orders_path,
     parse_order_book_path, parse_order_history_path, parse_position_query_path,
-    persist_subscription, restore_session_subscriptions, session_id_from_frame,
+    persist_subscription, restore_session_subscriptions,
 };
 use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_mark_query_path, MarketDataHub,
@@ -75,8 +76,23 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<FigServer>> {
         .map_err(|e| anyhow::anyhow!("Failed to generate cert: {}", e))?;
 
     let server_config = if std::env::var("FIG_MTLS").ok().as_deref() == Some("1") {
-        transport::server_config_mtls(cert, key)
-            .map_err(|e| anyhow::anyhow!("Failed to create mTLS server config: {}", e))?
+        match std::env::var("FIG_MTLS_CA") {
+            Ok(ca_path) if !ca_path.trim().is_empty() => {
+                let ca = transport::load_certs_pem(ca_path.trim())
+                    .map_err(|e| anyhow::anyhow!("failed to load FIG_MTLS_CA: {e}"))?;
+                transport::server_config_mtls_with_ca(cert, key, ca).map_err(|e| {
+                    anyhow::anyhow!("Failed to create mTLS server config with CA: {}", e)
+                })?
+            }
+            _ => {
+                tracing::warn!(
+                    "FIG_MTLS=1 without FIG_MTLS_CA: accepting ANY client certificate \
+                     (development only). Set FIG_MTLS_CA to a CA bundle to verify clients."
+                );
+                transport::server_config_mtls_insecure(cert, key)
+                    .map_err(|e| anyhow::anyhow!("Failed to create mTLS server config: {}", e))?
+            }
+        }
     } else {
         transport::server_config(cert, key)
             .map_err(|e| anyhow::anyhow!("Failed to create server config: {}", e))?
@@ -110,14 +126,17 @@ pub async fn run_server(addr: &str) -> anyhow::Result<Arc<FigServer>> {
     info!("Waiting for connections...");
 
     let accept_server = server.clone();
+    let accept_signer = server.signer().clone();
     tokio::spawn(async move {
         loop {
             match accept_server.accept_0rtt().await {
                 Ok((conn, session, first)) => {
                     let state = state.clone();
+                    let signer = accept_signer.clone();
                     tokio::spawn(async move {
                         let fig = Arc::new(conn);
-                        if let Err(e) = handle_connection(fig, state, session, first).await {
+                        if let Err(e) = handle_connection(fig, state, session, first, signer).await
+                        {
                             error!("Connection error: {}", e);
                         }
                     });
@@ -164,6 +183,7 @@ pub async fn handle_connection(
     state: Arc<ExchangeState>,
     restored: Option<Session>,
     first: Option<Frame>,
+    signer: Arc<SessionSigner>,
 ) -> Result<()> {
     let session = restored.unwrap_or_default();
     let session_id = session.session_id;
@@ -172,6 +192,12 @@ pub async fn handle_connection(
     if let Err(e) = state.file_sessions.put(&session) {
         warn!("Failed to persist session {}: {}", session_id, e);
     }
+
+    // Server-issued, authenticated resumption token. Delivered to the client
+    // as a `RedirectToken` extension on the first outbound frame so it can be
+    // echoed on reconnect (SPEC §10.1).
+    let resumption_token = signer.issue(&session).ok();
+    let mut token_delivered = false;
 
     let mut pending = first;
     loop {
@@ -206,7 +232,17 @@ pub async fn handle_connection(
             info!("Received: {}", f);
             let responses = handle_frame(f, &state, session_id, Some(fig_conn.clone())).await;
             for resp_frame in &responses {
-                if let Err(e) = fig_conn.send_frame(chid, resp_frame).await {
+                let mut out = resp_frame.clone();
+                if !token_delivered {
+                    if let Some(token) = &resumption_token {
+                        out = out.with_extension(Extension::binary(
+                            ExtensionTag::RedirectToken,
+                            token.clone(),
+                        ));
+                        token_delivered = true;
+                    }
+                }
+                if let Err(e) = fig_conn.send_frame(chid, &out).await {
                     warn!("send_frame: {}", e);
                 }
             }
@@ -705,18 +741,20 @@ pub async fn handle_subscribe(
 
     let mut frames = Vec::new();
     if is_resume {
-        if let Some(sid) = session_id_from_frame(&frame).or(Some(session_id)) {
-            if state
-                .file_sessions
-                .get(&sid)
-                .ok()
-                .flatten()
-                .is_some_and(|s| !s.subscriptions.is_empty())
-            {
-                frames.extend(
-                    restore_session_subscriptions(state, sid, frame.channel_id, conn.clone()).await,
-                );
-            }
+        // Only the connection's own session (authenticated via the signed
+        // resumption token or created this connection) may be resumed. A
+        // client-supplied SessionId extension is never trusted.
+        if state
+            .file_sessions
+            .get(&session_id)
+            .ok()
+            .flatten()
+            .is_some_and(|s| !s.subscriptions.is_empty())
+        {
+            frames.extend(
+                restore_session_subscriptions(state, session_id, frame.channel_id, conn.clone())
+                    .await,
+            );
         }
         if channel_path == ".well-known/resume" {
             return frames;
@@ -757,9 +795,8 @@ pub async fn handle_subscribe(
         );
     }
 
-    if let Some(sid) = session_id_from_frame(&frame).or(Some(session_id)) {
-        persist_subscription(state, sid, &frame);
-    }
+    // Persist against the connection's authenticated session only.
+    persist_subscription(state, session_id, &frame);
     frames
 }
 

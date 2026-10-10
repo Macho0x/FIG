@@ -15,6 +15,37 @@ pub fn expected_dev_token(account: &str) -> String {
     format!("fig-dev-{account}")
 }
 
+/// Whether the development auth bypass is active.
+///
+/// `FIG_DEV_OPEN=1` disables private-path authorization entirely. To prevent
+/// this from silently protecting a production deployment, the bypass is
+/// **ignored** (and an error logged) when `FIG_PRODUCTION=1` is set.
+pub fn dev_open() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static WARNED: AtomicBool = AtomicBool::new(false);
+
+    // Read the environment on every call: tests (and the process itself) may
+    // toggle FIG_DEV_OPEN at runtime.
+    if std::env::var("FIG_DEV_OPEN").ok().as_deref() != Some("1") {
+        return false;
+    }
+    if std::env::var("FIG_PRODUCTION").ok().as_deref() == Some("1") {
+        if !WARNED.swap(true, Ordering::Relaxed) {
+            tracing::error!(
+                "FIG_DEV_OPEN=1 ignored because FIG_PRODUCTION=1 is set: the development \
+                 auth bypass is disabled in production mode."
+            );
+        }
+        return false;
+    }
+    if !WARNED.swap(true, Ordering::Relaxed) {
+        tracing::warn!(
+            "FIG_DEV_OPEN=1: private-path authorization is DISABLED. Never use this in production."
+        );
+    }
+    true
+}
+
 pub fn auth_token_from_frame(frame: &Frame) -> Option<String> {
     frame
         .extensions
@@ -45,7 +76,7 @@ pub fn is_private_path(path: &str) -> bool {
 
 /// Returns an error frame if auth fails; `None` if access is allowed.
 pub fn authorize_private(frame: &Frame, account: &str) -> Option<Frame> {
-    if std::env::var("FIG_DEV_OPEN").ok().as_deref() == Some("1") {
+    if dev_open() {
         return None;
     }
     let Some(token) = auth_token_from_frame(frame) else {

@@ -9,7 +9,7 @@ use std::time::Duration;
 use fig_client::{FigSdkClient, LiveSubscription};
 use fig_core::frame::Frame;
 use fig_core::session::Session;
-use fig_core::transport::{client_config, FigClient, FigConnection};
+use fig_core::transport::{client_config_from_env, FigClient, FigConnection};
 use tokio::runtime::Runtime;
 
 use crate::{into_buffer, FigBuffer};
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn fig_client_connect(
         Err(_) => return -3,
     };
     let conn = match rt.block_on(async {
-        let cfg = client_config().map_err(|e| e.to_string())?;
+        let cfg = client_config_from_env().map_err(|e| e.to_string())?;
         let client = FigClient::new(cfg).map_err(|e| e.to_string())?;
         client.connect(addr, &name).await.map_err(|e| e.to_string())
     }) {

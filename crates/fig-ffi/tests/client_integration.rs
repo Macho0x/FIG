@@ -81,6 +81,8 @@ fn order_frame(
 
 #[test]
 fn ffi_client_ping_and_capabilities() {
+    std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let server_rt = Runtime::new().expect("server runtime");
     let endpoint = server_rt
         .block_on(run_server("127.0.0.1:0"))
@@ -132,6 +134,8 @@ fn ffi_client_ping_and_capabilities() {
 
 #[test]
 fn ffi_subscribe_live_positions_on_fill() {
+    std::env::set_var("FIG_DEV_OPEN", "1");
+    std::env::set_var("FIG_TLS_INSECURE", "1");
     let server_rt = Runtime::new().expect("server runtime");
     let endpoint = server_rt
         .block_on(run_server("127.0.0.1:0"))

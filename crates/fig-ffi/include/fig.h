@@ -228,6 +228,10 @@ int32_t fig_client_connect_0rtt(const char *addr,
 
 /**
  * Export resumption token for an active session (if present).
+ *
+ * Prefers the server-issued, authenticated token observed on the connection
+ * (echo it verbatim on reconnect). Falls back to the client-local session
+ * payload when no server token has been received.
  */
 int32_t fig_client_export_resumption_token(struct FigClientHandle *handle, struct FigBuffer *out);
 

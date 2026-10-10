@@ -2,12 +2,12 @@
 
 use fig_client::FigSdkClient;
 use fig_core::messages::{FillHistoryRequest, OrderHistoryRequest, TradeHistoryRequest};
-use fig_core::transport::client_config;
+use fig_core::transport::client_config_insecure;
 use fig_exchange_sim::server::run_server;
 
 async fn connect_raw(addr: std::net::SocketAddr) -> (quinn::Endpoint, quinn::Connection) {
     let mut ep = quinn::Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
-    ep.set_default_client_config(client_config().unwrap());
+    ep.set_default_client_config(client_config_insecure().unwrap());
     let conn = ep.connect(addr, "localhost").unwrap().await.unwrap();
     (ep, conn)
 }

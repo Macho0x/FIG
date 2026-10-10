@@ -65,6 +65,8 @@ pub fn generate_sbe(schema: &Schema) -> String {
         &imported_message_enums,
     ));
 
+    out.push_str(&generate_sbe_bounds_helpers());
+
     // Collect inline struct types
     let mut inline_struct_types: Vec<(String, Vec<Field>)> = Vec::new();
     let mut seen_structs = std::collections::HashSet::new();
@@ -240,6 +242,81 @@ fn generate_sbe_imports(
     }
     imports.sort();
     format!("use crate::messages::{{{}}};\n\n", imports.join(", "))
+}
+
+/// Bounds-checked cursor helpers emitted once into the generated SBE module.
+///
+/// Decoders never index the input buffer directly: every read goes through
+/// these helpers, which validate the requested range against the buffer length
+/// and fail with `Err(String)` instead of panicking on hostile or truncated
+/// input.
+fn generate_sbe_bounds_helpers() -> String {
+    let mut out = String::new();
+    out.push_str("// --- Bounds-checked SBE decode helpers ---\n");
+    out.push_str("#[inline]\n");
+    out.push_str(
+        "fn sbe_take<'a>(buf: &'a [u8], pos: &mut usize, n: usize) -> Result<&'a [u8], String> {\n",
+    );
+    out.push_str("    let start = *pos;\n");
+    out.push_str("    let end = start\n");
+    out.push_str("        .checked_add(n)\n");
+    out.push_str("        .ok_or_else(|| format!(\"sbe: offset overflow at {}\", start))?;\n");
+    out.push_str("    if end > buf.len() {\n");
+    out.push_str("        return Err(format!(\n");
+    out.push_str("            \"sbe: buffer too short: need {} bytes at offset {}, have {}\",\n");
+    out.push_str("            n,\n");
+    out.push_str("            start,\n");
+    out.push_str("            buf.len()\n");
+    out.push_str("        ));\n");
+    out.push_str("    }\n");
+    out.push_str("    *pos = end;\n");
+    out.push_str("    Ok(&buf[start..end])\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_u8(buf: &[u8], pos: &mut usize) -> Result<u8, String> {\n");
+    out.push_str("    Ok(sbe_take(buf, pos, 1)?[0])\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_u16(buf: &[u8], pos: &mut usize) -> Result<u16, String> {\n");
+    out.push_str("    let b = sbe_take(buf, pos, 2)?;\n");
+    out.push_str("    Ok(u16::from_be_bytes([b[0], b[1]]))\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_u32(buf: &[u8], pos: &mut usize) -> Result<u32, String> {\n");
+    out.push_str("    let b = sbe_take(buf, pos, 4)?;\n");
+    out.push_str("    Ok(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_u64(buf: &[u8], pos: &mut usize) -> Result<u64, String> {\n");
+    out.push_str("    let b = sbe_take(buf, pos, 8)?;\n");
+    out.push_str("    Ok(u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_i64(buf: &[u8], pos: &mut usize) -> Result<i64, String> {\n");
+    out.push_str("    let b = sbe_take(buf, pos, 8)?;\n");
+    out.push_str("    Ok(i64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_f64(buf: &[u8], pos: &mut usize) -> Result<f64, String> {\n");
+    out.push_str("    let b = sbe_take(buf, pos, 8)?;\n");
+    out.push_str("    Ok(f64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))\n");
+    out.push_str("}\n\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_str(buf: &[u8], pos: &mut usize) -> Result<String, String> {\n");
+    out.push_str("    let len = sbe_u16(buf, pos)? as usize;\n");
+    out.push_str("    let bytes = sbe_take(buf, pos, len)?;\n");
+    out.push_str("    match std::str::from_utf8(bytes) {\n");
+    out.push_str("        Ok(s) => Ok(s.to_string()),\n");
+    out.push_str("        Err(e) => Err(format!(\"invalid UTF-8: {}\", e)),\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+    out.push_str("/// Clamp a wire-supplied element count to the bytes actually remaining so\n");
+    out.push_str("/// that a hostile count cannot force an unbounded allocation.\n");
+    out.push_str("#[inline]\n");
+    out.push_str("fn sbe_capacity(count: usize, remaining: usize) -> usize {\n");
+    out.push_str("    count.min(remaining)\n");
+    out.push_str("}\n\n");
+    out
 }
 
 fn collect_all_named_types(ft: &FieldType, out: &mut std::collections::BTreeSet<String>) {
@@ -708,36 +785,35 @@ pub(crate) fn generate_decode_field(
                 wire_enum
             };
             let varname = field_name.clone();
-            out.push_str(&format!("        let {varname}_raw = buf[pos];\n"));
-            out.push_str("        pos += 1;\n");
+            out.push_str(&format!(
+                "        let {varname}_raw = sbe_u8(buf, &mut pos)?;\n"
+            ));
             if optional {
-                out.push_str(&format!("        let {varname} = if buf[pos] == 1 {{\n"));
-                out.push_str("            pos += 1;\n");
                 out.push_str(&format!(
-                    "            Some({type_name}::from_value({varname}_raw).ok_or_else(|| format!(\"invalid {type_name} value: {{}}\", {varname}_raw))?)\n"
+                    "        let {varname} = if sbe_u8(buf, &mut pos)? == 1 {{\n"
                 ));
+                out.push_str(&format!("            Some({type_name}::from_value({varname}_raw).ok_or_else(|| format!(\"invalid {type_name} value: {{}}\", {varname}_raw))?)\n"));
                 out.push_str("        } else {\n");
-                out.push_str("            pos += 1;\n");
                 out.push_str("            None\n");
                 out.push_str("        };\n");
             } else {
                 out.push_str(&format!(
                     "        let {varname} = {type_name}::from_value({varname}_raw)\n"
                 ));
-                out.push_str(&format!(
-                    "            .ok_or_else(|| format!(\"invalid {type_name} value: {{}}\", {varname}_raw))?;\n"
-                ));
+                out.push_str(&format!("            .ok_or_else(|| format!(\"invalid {type_name} value: {{}}\", {varname}_raw))?;\n"));
             }
         }
         FieldType::Named(n) if is_struct_type(n, struct_names) => {
+            out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
             out.push_str(&format!(
-                "        let ({field_name}, {field_name}_n) = {n}Decoder::decode(&buf[pos..])?;\n"
+                "        let ({field_name}, {field_name}_n) = {n}Decoder::decode(rest)?;\n"
             ));
             out.push_str(&format!("        pos += {field_name}_n;\n"));
         }
         FieldType::Named(n) if is_message_type(n, message_names) => {
+            out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
             out.push_str(&format!(
-                "        let ({field_name}, {field_name}_n) = {n}BodyDecoder::decode(&buf[pos..])?;\n"
+                "        let ({field_name}, {field_name}_n) = {n}BodyDecoder::decode(rest)?;\n"
             ));
             out.push_str(&format!("        pos += {field_name}_n;\n"));
         }
@@ -756,35 +832,20 @@ pub(crate) fn generate_decode_field(
                 "str" => {
                     if !optional {
                         out.push_str(&format!(
-                            "        let {}_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;\n",
+                            "        let {} = sbe_str(buf, &mut pos)?;\n",
                             field_name
                         ));
-                        out.push_str("        pos += 2;\n");
-                        out.push_str(&format!(
-                            "        let {}_bytes = &buf[pos..pos+{}_len];\n",
-                            field_name, field_name
-                        ));
-                        out.push_str(&format!("        pos += {}_len;\n", field_name));
-                        out.push_str(&format!(
-                            "        let {} = std::str::from_utf8({}_bytes)\n",
-                            field_name, field_name
-                        ));
-                        out.push_str("            .map_err(|e| format!(\"invalid UTF-8: {}\", e))?.to_string();\n");
                     }
                 }
                 "f64" => {
                     out.push_str(&format!(
-                        "        let {}_raw = f64::from_be_bytes([\n",
+                        "        let {}_raw = sbe_f64(buf, &mut pos)?;\n",
                         field_name
                     ));
-                    for i in 0..8 {
-                        out.push_str(&format!("            buf[pos+{}],\n", i));
-                    }
-                    out.push_str("        ]);\n");
-                    out.push_str("        pos += 8;\n");
                     if optional {
-                        out.push_str(&format!("        let {field_name} = if buf[pos] == 1 {{\n"));
-                        out.push_str("            pos += 1;\n");
+                        out.push_str(&format!(
+                            "        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n"
+                        ));
                         match &field.field_type {
                             FieldType::Named(n) if n == "Price" => {
                                 out.push_str(&format!(
@@ -801,7 +862,6 @@ pub(crate) fn generate_decode_field(
                             }
                         }
                         out.push_str("        } else {\n");
-                        out.push_str("            pos += 1;\n");
                         out.push_str("            None\n");
                         out.push_str("        };\n");
                     } else {
@@ -816,46 +876,33 @@ pub(crate) fn generate_decode_field(
                 }
                 "i64" => {
                     out.push_str(&format!(
-                        "        let {}_raw = i64::from_be_bytes([\n",
+                        "        let {}_raw = sbe_i64(buf, &mut pos)?;\n",
                         field_name
                     ));
-                    for i in 0..8 {
-                        out.push_str(&format!("            buf[pos+{}],\n", i));
-                    }
-                    out.push_str("        ]);\n");
-                    out.push_str("        pos += 8;\n");
                     if optional {
-                        out.push_str(&format!(
-                            "        let {field_name} = if buf[pos] == 1 {{\n            pos += 1;\n            Some({field_name}_raw)\n        }} else {{\n            pos += 1;\n            None\n        }};\n"
-                        ));
+                        out.push_str(&format!("        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n            Some({field_name}_raw)\n        }} else {{\n            None\n        }};\n"));
                     } else {
                         out.push_str(&format!("        let {field_name} = {field_name}_raw;\n"));
                     }
                 }
                 "u32" => {
                     out.push_str(&format!(
-                        "        let {}_raw = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]);\n",
+                        "        let {}_raw = sbe_u32(buf, &mut pos)?;\n",
                         field_name
                     ));
-                    out.push_str("        pos += 4;\n");
                     if optional {
-                        out.push_str(&format!(
-                            "        let {field_name} = if buf[pos] == 1 {{\n            pos += 1;\n            Some({field_name}_raw)\n        }} else {{\n            pos += 1;\n            None\n        }};\n"
-                        ));
+                        out.push_str(&format!("        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n            Some({field_name}_raw)\n        }} else {{\n            None\n        }};\n"));
                     } else {
                         out.push_str(&format!("        let {field_name} = {field_name}_raw;\n"));
                     }
                 }
                 "u64" => {
                     out.push_str(&format!(
-                        "        let {}_raw = u64::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3], buf[pos+4], buf[pos+5], buf[pos+6], buf[pos+7]]);\n",
+                        "        let {}_raw = sbe_u64(buf, &mut pos)?;\n",
                         field_name
                     ));
-                    out.push_str("        pos += 8;\n");
                     if optional {
-                        out.push_str(&format!(
-                            "        let {field_name} = if buf[pos] == 1 {{\n            pos += 1;\n            Some({field_name}_raw)\n        }} else {{\n            pos += 1;\n            None\n        }};\n"
-                        ));
+                        out.push_str(&format!("        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n            Some({field_name}_raw)\n        }} else {{\n            None\n        }};\n"));
                     } else {
                         out.push_str(&format!("        let {field_name} = {field_name}_raw;\n"));
                     }
@@ -863,27 +910,25 @@ pub(crate) fn generate_decode_field(
                 "u8" => {
                     if optional {
                         out.push_str(&format!(
-                            "        let {field_name}_val = buf[pos];\n        pos += 1;\n"
+                            "        let {field_name}_val = sbe_u8(buf, &mut pos)?;\n"
                         ));
-                        out.push_str(&format!(
-                            "        let {field_name} = if buf[pos] == 1 {{\n            pos += 1;\n            Some({field_name}_val != 0)\n        }} else {{\n            pos += 1;\n            None\n        }};\n"
-                        ));
+                        out.push_str(&format!("        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n            Some({field_name}_val != 0)\n        }} else {{\n            None\n        }};\n"));
                     } else if matches!(&field.field_type, FieldType::InlineBase(BaseType::Bool, _))
                     {
                         out.push_str(&format!(
-                            "        let {field_name} = buf[pos] != 0;\n        pos += 1;\n"
+                            "        let {field_name} = sbe_u8(buf, &mut pos)? != 0;\n"
                         ));
                     } else {
-                        out.push_str(&format!("        let {field_name} = buf[pos];\n"));
-                        out.push_str("        pos += 1;\n");
+                        out.push_str(&format!(
+                            "        let {field_name} = sbe_u8(buf, &mut pos)?;\n"
+                        ));
                     }
                 }
                 _ => {
                     out.push_str(&format!(
-                        "        let {} = buf[pos]; // TODO: decode {}\n",
+                        "        let {} = sbe_u8(buf, &mut pos)?; // TODO: decode {}\n",
                         field_name, bt
                     ));
-                    out.push_str("        pos += 1;\n");
                 }
             }
         }
@@ -891,44 +936,41 @@ pub(crate) fn generate_decode_field(
             // Repeating group: read count, then N items
             let inner_type = sbe_field_type_name(inner);
             out.push_str(&format!(
-                "        let {}_count = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;\n",
+                "        let {}_count = sbe_u32(buf, &mut pos)? as usize;\n",
                 field_name
             ));
-            out.push_str("        pos += 4;\n");
             out.push_str(&format!(
-                "        let mut {} = Vec::with_capacity({}_count);\n",
+                "        let mut {} = Vec::with_capacity(sbe_capacity({}_count, buf.len().saturating_sub(pos)));\n",
                 field_name, field_name
             ));
 
             if let FieldType::Named(n) = inner.as_ref() {
                 if is_struct_type(n, struct_names) {
                     out.push_str(&format!("        for _ in 0..{field_name}_count {{\n"));
-                    out.push_str("            let item_len = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;\n");
-                    out.push_str("            pos += 4;\n");
+                    out.push_str("            let item_len = sbe_u32(buf, &mut pos)? as usize;\n");
+                    out.push_str(
+                        "            let item_bytes = sbe_take(buf, &mut pos, item_len)?;\n",
+                    );
                     out.push_str(&format!(
-                        "            let (item, n) = {n}Decoder::decode(&buf[pos..pos+item_len])?;\n"
+                        "            let (item, n) = {n}Decoder::decode(item_bytes)?;\n"
                     ));
                     out.push_str("            if n != item_len {\n");
-                    out.push_str(&format!(
-                        "                return Err(format!(\"{n} length mismatch: expected {{item_len}}, got {{n}}\"));\n"
-                    ));
+                    out.push_str(&format!("                return Err(format!(\"{n} length mismatch: expected {{item_len}}, got {{n}}\"));\n"));
                     out.push_str("            }\n");
-                    out.push_str("            pos += item_len;\n");
                     out.push_str(&format!("            {field_name}.push(item);\n"));
                     out.push_str("        }\n");
                 } else if is_message_type(n, message_names) {
                     out.push_str(&format!("        for _ in 0..{field_name}_count {{\n"));
-                    out.push_str("            let item_len = u32::from_be_bytes([buf[pos], buf[pos+1], buf[pos+2], buf[pos+3]]) as usize;\n");
-                    out.push_str("            pos += 4;\n");
+                    out.push_str("            let item_len = sbe_u32(buf, &mut pos)? as usize;\n");
+                    out.push_str(
+                        "            let item_bytes = sbe_take(buf, &mut pos, item_len)?;\n",
+                    );
                     out.push_str(&format!(
-                        "            let (item, n) = {n}BodyDecoder::decode(&buf[pos..pos+item_len])?;\n"
+                        "            let (item, n) = {n}BodyDecoder::decode(item_bytes)?;\n"
                     ));
                     out.push_str("            if n != item_len {\n");
-                    out.push_str(&format!(
-                        "                return Err(format!(\"{n} length mismatch: expected {{item_len}}, got {{n}}\"));\n"
-                    ));
+                    out.push_str(&format!("                return Err(format!(\"{n} length mismatch: expected {{item_len}}, got {{n}}\"));\n"));
                     out.push_str("            }\n");
-                    out.push_str("            pos += item_len;\n");
                     out.push_str(&format!("            {field_name}.push(item);\n"));
                     out.push_str("        }\n");
                 } else {
@@ -937,8 +979,9 @@ pub(crate) fn generate_decode_field(
             } else if let FieldType::InlineStruct(_) = inner.as_ref() {
                 let inline_name = format!("{context}{}", pascal_case(field_name));
                 out.push_str(&format!("        for _ in 0..{field_name}_count {{\n"));
+                out.push_str("            let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
                 out.push_str(&format!(
-                    "            let (item, item_n) = {inline_name}Decoder::decode(&buf[pos..])?;\n"
+                    "            let (item, item_n) = {inline_name}Decoder::decode(rest)?;\n"
                 ));
                 out.push_str("            pos += item_n;\n");
                 out.push_str(&format!("            {field_name}.push(item);\n"));
@@ -949,8 +992,9 @@ pub(crate) fn generate_decode_field(
         }
         FieldType::InlineStruct(_) => {
             let struct_name = format!("{context}{}", pascal_case(field_name));
+            out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
             out.push_str(&format!(
-                "        let ({field_name}, {field_name}_n) = {struct_name}Decoder::decode(&buf[pos..])?;\n"
+                "        let ({field_name}, {field_name}_n) = {struct_name}Decoder::decode(rest)?;\n"
             ));
             out.push_str(&format!("        pos += {field_name}_n;\n"));
         }
@@ -969,27 +1013,11 @@ pub(crate) fn generate_decode_field(
             if bt == "str" {
                 // Read presence flag and optional string
                 out.push_str(&format!(
-                    "        let {} = if buf[pos] == 1 {{\n",
+                    "        let {} = if sbe_u8(buf, &mut pos)? == 1 {{\n",
                     field_name
                 ));
-                out.push_str("            pos += 1;\n");
-                out.push_str(&format!(
-                    "            let {}_len = u16::from_be_bytes([buf[pos], buf[pos+1]]) as usize;\n",
-                    field_name
-                ));
-                out.push_str("            pos += 2;\n");
-                out.push_str(&format!(
-                    "            let {}_bytes = &buf[pos..pos+{}_len];\n",
-                    field_name, field_name
-                ));
-                out.push_str(&format!("            pos += {}_len;\n", field_name));
-                out.push_str(&format!(
-                    "            Some(std::str::from_utf8({}_bytes)\n",
-                    field_name
-                ));
-                out.push_str("                .map_err(|e| format!(\"invalid UTF-8: {}\", e))?.to_string())\n");
+                out.push_str("            Some(sbe_str(buf, &mut pos)?)\n");
                 out.push_str("        } else {\n");
-                out.push_str("            pos += 1;\n");
                 out.push_str("            None\n");
                 out.push_str("        };\n");
             }
@@ -1072,9 +1100,7 @@ pub(crate) fn generate_encode_field(
             match bt.as_str() {
                 "str" => {
                     if optional {
-                        out.push_str(&format!(
-                            "        {buf_var}.push(if {ref_name}.is_some() {{ 1 }} else {{ 0 }});\n"
-                        ));
+                        out.push_str(&format!("        {buf_var}.push(if {ref_name}.is_some() {{ 1 }} else {{ 0 }});\n"));
                         out.push_str(&format!("        if let Some(ref s) = {ref_name} {{\n"));
                         out.push_str("            let b = s.as_bytes();\n");
                         out.push_str(&format!(
@@ -1100,9 +1126,7 @@ pub(crate) fn generate_encode_field(
                         out.push_str(&format!(
                             "        {buf_var}.extend_from_slice(&{expr}.to_be_bytes());\n"
                         ));
-                        out.push_str(&format!(
-                            "        {buf_var}.push(if {ref_name}.is_some() {{ 1 }} else {{ 0 }});\n"
-                        ));
+                        out.push_str(&format!("        {buf_var}.push(if {ref_name}.is_some() {{ 1 }} else {{ 0 }});\n"));
                     } else {
                         out.push_str(&format!(
                             "        {buf_var}.extend_from_slice(&{expr}.to_be_bytes());\n"

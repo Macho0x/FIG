@@ -3,6 +3,10 @@
 **/*.rs.bk
 Cargo.lock
 
+# Fuzz build artifacts / generated corpora
+**/fuzz/target/
+**/fuzz/corpus/
+
 # IDE
 .idea/
 .vscode/

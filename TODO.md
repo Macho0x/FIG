@@ -45,9 +45,14 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | Status | Item | Track | Detail |
 |---|---|---|---|
 | ✅ | `FigServer::accept_0rtt` reads resumption token from first app frame | both | `fig-core::transport::try_restore_session_from_first_frame` |
+| ✅ | Resumption tokens server-signed (HMAC-SHA256) and verified before restore | both | `fig_core::session_token::SessionSigner`, `FIG_RESUMPTION_KEY` — [§18.2](#182-security) |
+| ✅ | TLS server-certificate verification on by default for all clients | both | `client_config` (WebPKI), `FIG_TLS_CA`, `client_config_from_ca_pem` |
+| ✅ | mTLS verifies client certificates against a CA | both | `server_config_mtls_with_ca`, `FIG_MTLS_CA` |
+| ✅ | SBE decoders bounds-checked; list allocations capped | both | `crates/fig-fsl/src/sbe_codegen.rs`; fuzz target `sbe_decode` |
+| ✅ | Frame size cap + `DoSGuard`/`ChannelRateLimiter` wired into the receive path | both | `frame::MAX_FRAME_SIZE`, `FigConnection` |
 | ✅ | Fuzz `frame_decode` in required CI | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | Shared `RedisReplayCache` for HA 0-RTT | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| ✅ | 0-RTT replay on server accept path (criteria row) | both | `FigServer::accept_0rtt` + session restore — [§18.2](#182-security) |
+| ✅ | 0-RTT replay on server accept path (criteria row) | both | `FigServer::accept_0rtt` + signed-token verification — [§18.2](#182-security) |
 
 ### 0.3 P2 — Reference client and SDK polish
 
@@ -60,7 +65,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
 | ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| ⬜ | JWT RS256/KMS reference + key rotation runbook | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| 🔶 | JWT RS256/KMS reference + key rotation runbook | both | HS256 verifier is constant-time and enforces `alg`; RS256/KMS remains venue-owned |
 | 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
 
 ### 0.4 P3 — Shared adoption (both tracks)
@@ -146,12 +151,14 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 | Status | Criterion | Blocker | Evidence |
 |---|---|---|---|
 | ✅ | 0-RTT replay protection (client path) | Required | `fig_core::replay`, client `connect_0rtt`, unit tests |
-| 🔶 | 0-RTT replay protection (server accept path) | Post-1.0* | `FigServer::accept_0rtt` token read ✅; Redis HA replay cache deferred |
-| ✅ | Frame decoder fuzz target | Required | `crates/fig-core/fuzz/frame_decode`, [CONTRIBUTING.md](CONTRIBUTING.md) |
-| ✅ | Frame decoder fuzz in required CI | Post-1.0* | §18.7 |
+| ✅ | Resumption tokens authenticated before restore (server accept path) | Required | `SessionSigner::verify` in `accept_0rtt`; forged-token regression test |
+| ✅ | TLS server-certificate verification by default | Required | `client_config` (WebPKI) / `FIG_TLS_CA` |
+| ✅ | Frame decoder fuzz target | Required | `crates/fig-core/fuzz/frame_decode` + `sbe_decode` |
+| ✅ | Frame decoder + SBE fuzz in required CI | Required | §18.7 |
 | ✅ | Load / flood smoke test | Required | `fig-load` bin, CI `FIG_LOAD_SECS=3` |
-| ✅ | mTLS + rate limits available | Required | `FIG_MTLS`, `ChannelRateLimiter`, `DoSGuard` |
+| ✅ | mTLS (CA-verified) + rate limits enforced | Required | `FIG_MTLS_CA`, `ChannelRateLimiter`, `DoSGuard` |
 | ⬜ | External penetration test | Optional | Manual — [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) |
+| ⬜ | Shared Redis replay cache for HA | Post-1.1 | Per-node `MemoryReplayCache`; tokens are signed so replay is bounded per node |
 
 \*Post-1.0 items do not block 1.0 if accepted or ticketed in §18.7.
 
@@ -250,12 +257,13 @@ FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
 
 | Area | Checklist item | Status | Notes for reviewer |
 |---|---|---|---|
-| Transport | TLS 1.3, mTLS, cert rotation | ✅ | Verify prod deploy uses `FIG_MTLS=1` |
-| Auth | Constant-time compare, JWT, path policy | ✅ | RS256/KMS is venue responsibility |
-| DoS | Rate limiter, flood guard, load smoke | ✅ | `fig-load` in CI |
-| 0-RTT | Replay cache | 🔶 | Server accept path ✅; shared Redis HA deferred — §18.7 |
-| Fuzz | Frame decoder | 🔶 | Target exists; not required CI |
-| External | Pen test | ⬜ | Optional for 1.0 |
+| Transport | TLS 1.3, cert verification by default, mTLS w/ client CA, cert rotation | ✅ | Verify prod deploy uses `FIG_MTLS_CA` and `FIG_TLS_CA` |
+| Auth | Constant-time compare, JWT (`alg` enforced), path policy | ✅ | RS256/KMS is venue responsibility |
+| DoS | Rate limiter, flood guard, load smoke — all wired into the receive path | ✅ | `fig-load` in CI |
+| 0-RTT | Server-signed tokens verified before restore; replay window | ✅ | Shared Redis HA cache still tracked (§18.7) |
+| Fuzz | Frame + SBE decoders | ✅ | Both targets required in CI |
+| Input | Bounds checks: frames, SBE, FIX, extension TLV | ✅ | Regression tests per area |
+| External | Pen test | ⬜ | Optional for the stack release |
 
 ### 18.11 Sign-off
 

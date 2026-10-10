@@ -63,10 +63,26 @@ streams still half-close after the response.
 | Control | How |
 |---|---|
 | TLS 1.3 | Mandatory on TREE (ALPN `fig/1`) |
-| mTLS | `FIG_MTLS=1` on sim; production PKI via `server_config_mtls` |
-| Auth | Venue-issued `AUTH_TOKEN` on private paths ([SPEC §9.3](../SPEC.md)) |
-| Rate limits | `ChannelRateLimiter`, `DoSGuard` in `fig-core` |
-| Dev bypass | `FIG_DEV_OPEN=1` — **never** in production |
+| Server certificate verification (clients) | On by default against the built-in WebPKI roots. Private PKI: `FIG_TLS_CA=/path/to/ca.pem` (or `client_config_from_ca_pem`). `client_config_insecure()` is for tests/dev only |
+| mTLS | `FIG_MTLS=1` **and** `FIG_MTLS_CA=/path/to/client-ca.pem` to verify client certificates. `FIG_MTLS=1` without `FIG_MTLS_CA` accepts any client certificate (logged warning, development only) |
+| Auth | Venue-issued `AUTH_TOKEN` on private paths ([SPEC §9.3](../SPEC.md)); token comparison is constant-time |
+| Resumption tokens (0-RTT) | Server-signed HMAC-SHA256; set `FIG_RESUMPTION_KEY` to the **same** value on every node that must accept the same tokens. Servers reject unsigned/forged tokens ([SPEC §10.1](../SPEC.md)) |
+| DoS limits | `DoSGuard` (max channels, frame size, message rate) + per-channel `ChannelRateLimiter`, enforced on every connection |
+| Frame size | 1 MiB hard cap in `FrameDecoder` (`MAX_FRAME_SIZE`); oversize length prefixes are rejected before buffering |
+| Dev bypass | `FIG_TLS_INSECURE=1`, `FIG_DEV_OPEN=1` — **never** in production. Set `FIG_PRODUCTION=1` so a stray `FIG_DEV_OPEN` is refused rather than silently disabling auth |
+
+### Required production environment
+
+```bash
+FIG_PRODUCTION=1                     # refuse dev-only bypasses
+FIG_MTLS=1 FIG_MTLS_CA=/etc/fig/client-ca.pem
+FIG_RESUMPTION_KEY=$(openssl rand -hex 32)   # shared across HA nodes
+FIG_TLS_CA=/etc/fig/venue-ca.pem     # on every FIG client
+```
+
+Rotate `FIG_RESUMPTION_KEY` on the same schedule as TLS material: rotating it
+invalidates outstanding resumption tokens (clients transparently fall back to a
+full handshake), so a rolling restart is safe.
 
 ## Observability
 
@@ -86,8 +102,13 @@ Wire `tracing-subscriber` in your binary to export spans to OpenTelemetry.
 
 | Variable | Purpose |
 |---|---|
+| `FIG_PRODUCTION` | `1` — refuse dev-only bypasses (`FIG_DEV_OPEN`) |
 | `FIG_DEV_OPEN` | Skip auth on sim (dev only) |
+| `FIG_TLS_CA` | Client: verify the server against this CA bundle (private PKI) |
+| `FIG_TLS_INSECURE` | Client: `1` disables TLS verification (dev only) |
 | `FIG_MTLS` | Enable mTLS on exchange-sim |
+| `FIG_MTLS_CA` | Server: client CA bundle to verify mTLS client certificates |
+| `FIG_RESUMPTION_KEY` | Shared HMAC key for session resumption tokens (HA) |
 | `REDIS_URL` | Redis session store when `--session-store redis` |
 | `RUST_LOG` | Log level (`info`, `debug`) |
 

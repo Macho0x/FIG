@@ -21,6 +21,83 @@ use crate::messages::{
     TradeTimestamp, UserLiquidation,
 };
 
+// --- Bounds-checked SBE decode helpers ---
+#[inline]
+fn sbe_take<'a>(buf: &'a [u8], pos: &mut usize, n: usize) -> Result<&'a [u8], String> {
+    let start = *pos;
+    let end = start
+        .checked_add(n)
+        .ok_or_else(|| format!("sbe: offset overflow at {}", start))?;
+    if end > buf.len() {
+        return Err(format!(
+            "sbe: buffer too short: need {} bytes at offset {}, have {}",
+            n,
+            start,
+            buf.len()
+        ));
+    }
+    *pos = end;
+    Ok(&buf[start..end])
+}
+
+#[inline]
+fn sbe_u8(buf: &[u8], pos: &mut usize) -> Result<u8, String> {
+    Ok(sbe_take(buf, pos, 1)?[0])
+}
+
+#[inline]
+fn sbe_u16(buf: &[u8], pos: &mut usize) -> Result<u16, String> {
+    let b = sbe_take(buf, pos, 2)?;
+    Ok(u16::from_be_bytes([b[0], b[1]]))
+}
+
+#[inline]
+fn sbe_u32(buf: &[u8], pos: &mut usize) -> Result<u32, String> {
+    let b = sbe_take(buf, pos, 4)?;
+    Ok(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+}
+
+#[inline]
+fn sbe_u64(buf: &[u8], pos: &mut usize) -> Result<u64, String> {
+    let b = sbe_take(buf, pos, 8)?;
+    Ok(u64::from_be_bytes([
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+    ]))
+}
+
+#[inline]
+fn sbe_i64(buf: &[u8], pos: &mut usize) -> Result<i64, String> {
+    let b = sbe_take(buf, pos, 8)?;
+    Ok(i64::from_be_bytes([
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+    ]))
+}
+
+#[inline]
+fn sbe_f64(buf: &[u8], pos: &mut usize) -> Result<f64, String> {
+    let b = sbe_take(buf, pos, 8)?;
+    Ok(f64::from_be_bytes([
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+    ]))
+}
+
+#[inline]
+fn sbe_str(buf: &[u8], pos: &mut usize) -> Result<String, String> {
+    let len = sbe_u16(buf, pos)? as usize;
+    let bytes = sbe_take(buf, pos, len)?;
+    match std::str::from_utf8(bytes) {
+        Ok(s) => Ok(s.to_string()),
+        Err(e) => Err(format!("invalid UTF-8: {}", e)),
+    }
+}
+
+/// Clamp a wire-supplied element count to the bytes actually remaining so
+/// that a hostile count cannot force an unbounded allocation.
+#[inline]
+fn sbe_capacity(count: usize, remaining: usize) -> usize {
+    count.min(remaining)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NewOrderSingleSide {
     Buy = 1,
@@ -328,73 +405,18 @@ impl AggregateTradeDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AggregateTrade, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let agg_trade_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let agg_trade_id_bytes = &buf[pos..pos + agg_trade_id_len];
-        pos += agg_trade_id_len;
-        let agg_trade_id = std::str::from_utf8(agg_trade_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let agg_trade_id = sbe_str(buf, &mut pos)?;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let side_raw = buf[pos];
-        pos += 1;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let first_trade_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let first_trade_id_bytes = &buf[pos..pos + first_trade_id_len];
-        pos += first_trade_id_len;
-        let first_trade_id = std::str::from_utf8(first_trade_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let last_trade_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let last_trade_id_bytes = &buf[pos..pos + last_trade_id_len];
-        pos += last_trade_id_len;
-        let last_trade_id = std::str::from_utf8(last_trade_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let first_trade_id = sbe_str(buf, &mut pos)?;
+        let last_trade_id = sbe_str(buf, &mut pos)?;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok((
@@ -435,52 +457,15 @@ impl LiquidationTradeDecoder {
     pub fn decode(buf: &[u8]) -> Result<(LiquidationTrade, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok((
@@ -515,38 +500,14 @@ impl PriceLevelDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PriceLevel, usize), String> {
         let mut pos: usize = 0;
 
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let order_count_raw =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let order_count = if buf[pos] == 1 {
-            pos += 1;
+        let order_count_raw = sbe_u32(buf, &mut pos)?;
+        let order_count = if sbe_u8(buf, &mut pos)? == 1 {
             Some(order_count_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -580,37 +541,15 @@ impl MarketDataUpdateDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarketDataUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let side_raw = buf[pos];
-        pos += 1;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let action_raw = buf[pos];
-        pos += 1;
+        let action_raw = sbe_u8(buf, &mut pos)?;
         let action = MarketDataAction::from_value(action_raw)
             .ok_or_else(|| format!("invalid MarketDataAction value: {}", action_raw))?;
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
 
         Ok((
@@ -656,113 +595,27 @@ impl CandleBarDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CandleBar, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let interval_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let interval_bytes = &buf[pos..pos + interval_len];
-        pos += interval_len;
-        let interval = std::str::from_utf8(interval_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let open_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let interval = sbe_str(buf, &mut pos)?;
+        let open_raw = sbe_f64(buf, &mut pos)?;
         let open = Price(open_raw);
-        let high_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let high_raw = sbe_f64(buf, &mut pos)?;
         let high = Price(high_raw);
-        let low_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let low_raw = sbe_f64(buf, &mut pos)?;
         let low = Price(low_raw);
-        let close_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let close_raw = sbe_f64(buf, &mut pos)?;
         let close = Price(close_raw);
-        let volume_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let volume_raw = sbe_f64(buf, &mut pos)?;
         let volume = Quantity(volume_raw);
-        let bar_start_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let bar_start_raw = sbe_i64(buf, &mut pos)?;
         let bar_start = bar_start_raw;
-        let bar_end_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let bar_end_raw = sbe_i64(buf, &mut pos)?;
         let bar_end = bar_end_raw;
-        let is_final = buf[pos] != 0;
-        pos += 1;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_final = sbe_u8(buf, &mut pos)? != 0;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -810,59 +663,16 @@ impl PublicTradeDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PublicTrade, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let trade_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let trade_id_bytes = &buf[pos..pos + trade_id_len];
-        pos += trade_id_len;
-        let trade_id = std::str::from_utf8(trade_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let trade_id = sbe_str(buf, &mut pos)?;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let side_raw = buf[pos];
-        pos += 1;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok((
@@ -919,91 +729,29 @@ impl InstrumentMetadataDecoder {
     pub fn decode(buf: &[u8]) -> Result<(InstrumentMetadata, usize), String> {
         let mut pos: usize = 0;
 
-        let instrument_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let instrument_id_bytes = &buf[pos..pos + instrument_id_len];
-        pos += instrument_id_len;
-        let instrument_id = std::str::from_utf8(instrument_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let product_kind_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let product_kind_bytes = &buf[pos..pos + product_kind_len];
-        pos += product_kind_len;
-        let product_kind = std::str::from_utf8(product_kind_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let margin_asset = if buf[pos] == 1 {
-            pos += 1;
-            let margin_asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let margin_asset_bytes = &buf[pos..pos + margin_asset_len];
-            pos += margin_asset_len;
-            Some(
-                std::str::from_utf8(margin_asset_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let instrument_id = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let product_kind = sbe_str(buf, &mut pos)?;
+        let margin_asset = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let display_name = if buf[pos] == 1 {
-            pos += 1;
-            let display_name_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let display_name_bytes = &buf[pos..pos + display_name_len];
-            pos += display_name_len;
-            Some(
-                std::str::from_utf8(display_name_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let display_name = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let tick_size_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let tick_size = if buf[pos] == 1 {
-            pos += 1;
+        let tick_size_raw = sbe_f64(buf, &mut pos)?;
+        let tick_size = if sbe_u8(buf, &mut pos)? == 1 {
             Some(tick_size_raw)
         } else {
-            pos += 1;
             None
         };
-        let lot_size_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let lot_size = if buf[pos] == 1 {
-            pos += 1;
+        let lot_size_raw = sbe_f64(buf, &mut pos)?;
+        let lot_size = if sbe_u8(buf, &mut pos)? == 1 {
             Some(lot_size_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -1043,48 +791,12 @@ impl BalanceEntryDecoder {
     pub fn decode(buf: &[u8]) -> Result<(BalanceEntry, usize), String> {
         let mut pos: usize = 0;
 
-        let asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let asset_bytes = &buf[pos..pos + asset_len];
-        pos += asset_len;
-        let asset = std::str::from_utf8(asset_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let total_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let asset = sbe_str(buf, &mut pos)?;
+        let total_raw = sbe_f64(buf, &mut pos)?;
         let total = total_raw;
-        let available_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let available_raw = sbe_f64(buf, &mut pos)?;
         let available = available_raw;
-        let hold_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let hold_raw = sbe_f64(buf, &mut pos)?;
         let hold = hold_raw;
 
         Ok((
@@ -1120,48 +832,12 @@ impl PositionEntryDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PositionEntry, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let entry_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let entry_price_raw = sbe_f64(buf, &mut pos)?;
         let entry_price = Price(entry_price_raw);
-        let unrealized_pnl_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
         let unrealized_pnl = unrealized_pnl_raw;
 
         Ok((
@@ -1198,21 +874,10 @@ impl PageInfoDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PageInfo, usize), String> {
         let mut pos: usize = 0;
 
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -1246,19 +911,11 @@ impl CapabilityPathDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CapabilityPath, usize), String> {
         let mut pos: usize = 0;
 
-        let path_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let path_bytes = &buf[pos..pos + path_len];
-        pos += path_len;
-        let path = std::str::from_utf8(path_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let pattern_raw = buf[pos];
-        pos += 1;
+        let path = sbe_str(buf, &mut pos)?;
+        let pattern_raw = sbe_u8(buf, &mut pos)?;
         let pattern = CapabilityPathPattern::from_value(pattern_raw)
             .ok_or_else(|| format!("invalid CapabilityPathPattern value: {}", pattern_raw))?;
-        let auth_required = buf[pos] != 0;
-        pos += 1;
+        let auth_required = sbe_u8(buf, &mut pos)? != 0;
 
         Ok((
             CapabilityPath {
@@ -1350,186 +1007,76 @@ impl NewOrderSingleBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(NewOrderSingle, usize), String> {
         let mut pos: usize = 0;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
         let order_qty = Quantity(order_qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let price = if buf[pos] == 1 {
-            pos += 1;
+        let price_raw = sbe_f64(buf, &mut pos)?;
+        let price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(price_raw))
         } else {
-            pos += 1;
             None
         };
-        let stop_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let stop_price = if buf[pos] == 1 {
-            pos += 1;
+        let stop_price_raw = sbe_f64(buf, &mut pos)?;
+        let stop_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(stop_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let order_type_raw = buf[pos];
-        pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let order_type_raw = sbe_u8(buf, &mut pos)?;
         let order_type = OrderType::from_value(order_type_raw)
             .ok_or_else(|| format!("invalid OrderType value: {}", order_type_raw))?;
-        let time_in_force_raw = buf[pos];
-        pos += 1;
+        let time_in_force_raw = sbe_u8(buf, &mut pos)?;
         let time_in_force = TimeInForce::from_value(time_in_force_raw)
             .ok_or_else(|| format!("invalid TimeInForce value: {}", time_in_force_raw))?;
-        let expire_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let expire_time = if buf[pos] == 1 {
-            pos += 1;
+        let expire_time_raw = sbe_i64(buf, &mut pos)?;
+        let expire_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(expire_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let account = if buf[pos] == 1 {
-            pos += 1;
-            let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let account_bytes = &buf[pos..pos + account_len];
-            pos += account_len;
-            Some(
-                std::str::from_utf8(account_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let strategy_id = if buf[pos] == 1 {
-            pos += 1;
-            let strategy_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let strategy_id_bytes = &buf[pos..pos + strategy_id_len];
-            pos += strategy_id_len;
-            Some(
-                std::str::from_utf8(strategy_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let strategy_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let security_id = if buf[pos] == 1 {
-            pos += 1;
-            let security_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let security_id_bytes = &buf[pos..pos + security_id_len];
-            pos += security_id_len;
-            Some(
-                std::str::from_utf8(security_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let security_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let id_source_raw = buf[pos];
-        pos += 1;
-        let id_source = if buf[pos] == 1 {
-            pos += 1;
+        let id_source_raw = sbe_u8(buf, &mut pos)?;
+        let id_source = if sbe_u8(buf, &mut pos)? == 1 {
             Some(
                 SecurityIdSource::from_value(id_source_raw)
                     .ok_or_else(|| format!("invalid SecurityIdSource value: {}", id_source_raw))?,
             )
         } else {
-            pos += 1;
             None
         };
-        let security_exchange = if buf[pos] == 1 {
-            pos += 1;
-            let security_exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let security_exchange_bytes = &buf[pos..pos + security_exchange_len];
-            pos += security_exchange_len;
-            Some(
-                std::str::from_utf8(security_exchange_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let security_exchange = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let post_only_val = buf[pos];
-        pos += 1;
-        let post_only = if buf[pos] == 1 {
-            pos += 1;
+        let post_only_val = sbe_u8(buf, &mut pos)?;
+        let post_only = if sbe_u8(buf, &mut pos)? == 1 {
             Some(post_only_val != 0)
         } else {
-            pos += 1;
             None
         };
-        let reduce_only_val = buf[pos];
-        pos += 1;
-        let reduce_only = if buf[pos] == 1 {
-            pos += 1;
+        let reduce_only_val = sbe_u8(buf, &mut pos)?;
+        let reduce_only = if sbe_u8(buf, &mut pos)? == 1 {
             Some(reduce_only_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -1591,47 +1138,16 @@ impl CancelRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CancelRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let order_qty = if buf[pos] == 1 {
-            pos += 1;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
+        let order_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(order_qty_raw))
         } else {
-            pos += 1;
             None
         };
 
@@ -1683,59 +1199,18 @@ impl CancelReplaceRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CancelReplaceRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
         let order_qty = Quantity(order_qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let price = if buf[pos] == 1 {
-            pos += 1;
+        let price_raw = sbe_f64(buf, &mut pos)?;
+        let price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(price_raw))
         } else {
-            pos += 1;
             None
         };
 
@@ -1805,129 +1280,38 @@ impl ExecutionReportBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(ExecutionReport, usize), String> {
         let mut pos: usize = 0;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let order_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let order_id_bytes = &buf[pos..pos + order_id_len];
-        pos += order_id_len;
-        let order_id = std::str::from_utf8(order_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exec_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exec_id_bytes = &buf[pos..pos + exec_id_len];
-        pos += exec_id_len;
-        let exec_id = std::str::from_utf8(exec_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exec_type_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let order_id = sbe_str(buf, &mut pos)?;
+        let exec_id = sbe_str(buf, &mut pos)?;
+        let exec_type_raw = sbe_u8(buf, &mut pos)?;
         let exec_type = ExecType::from_value(exec_type_raw)
             .ok_or_else(|| format!("invalid ExecType value: {}", exec_type_raw))?;
-        let ord_status_raw = buf[pos];
-        pos += 1;
+        let ord_status_raw = sbe_u8(buf, &mut pos)?;
         let ord_status = OrdStatus::from_value(ord_status_raw)
             .ok_or_else(|| format!("invalid OrdStatus value: {}", ord_status_raw))?;
-        let side_raw = buf[pos];
-        pos += 1;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = Side::from_value(side_raw)
             .ok_or_else(|| format!("invalid Side value: {}", side_raw))?;
-        let last_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let last_qty = if buf[pos] == 1 {
-            pos += 1;
+        let last_qty_raw = sbe_f64(buf, &mut pos)?;
+        let last_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(last_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let last_price = if buf[pos] == 1 {
-            pos += 1;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
+        let last_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(last_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let leaves_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let leaves_qty_raw = sbe_f64(buf, &mut pos)?;
         let leaves_qty = Quantity(leaves_qty_raw);
-        let cum_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let cum_qty_raw = sbe_f64(buf, &mut pos)?;
         let cum_qty = Quantity(cum_qty_raw);
-        let avg_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let avg_price_raw = sbe_f64(buf, &mut pos)?;
         let avg_price = Price(avg_price_raw);
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let transact_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let transact_time_raw = sbe_i64(buf, &mut pos)?;
         let transact_time = transact_time_raw;
 
         Ok((
@@ -1976,31 +1360,12 @@ impl CancelRejectBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CancelReject, usize), String> {
         let mut pos: usize = 0;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let reject_reason_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let reject_reason_raw = sbe_u8(buf, &mut pos)?;
         let reject_reason = CancelRejectReason::from_value(reject_reason_raw)
             .ok_or_else(|| format!("invalid CancelRejectReason value: {}", reject_reason_raw))?;
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok((
             CancelReject {
@@ -2054,91 +1419,46 @@ impl MarketDataSnapshotBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarketDataSnapshot, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exchange_bytes = &buf[pos..pos + exchange_len];
-        pos += exchange_len;
-        let exchange = std::str::from_utf8(exchange_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bids = Vec::with_capacity(bids_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let exchange = sbe_str(buf, &mut pos)?;
+        let bids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
         for _ in 0..bids_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bids.push(item);
         }
-        let asks_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut asks = Vec::with_capacity(asks_count);
+        let asks_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
         for _ in 0..asks_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             asks.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -2185,58 +1505,27 @@ impl MarketDataIncrementalRefreshBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarketDataIncrementalRefresh, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let updates_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut updates = Vec::with_capacity(updates_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let updates_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut updates =
+            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
         for _ in 0..updates_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MarketDataUpdateDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             updates.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -2274,38 +1563,17 @@ impl OrderBookRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderBookRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let depth_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let depth = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let depth_raw = sbe_u32(buf, &mut pos)?;
+        let depth = if sbe_u8(buf, &mut pos)? == 1 {
             Some(depth_raw)
         } else {
-            pos += 1;
             None
         };
-        let at_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let at_time = if buf[pos] == 1 {
-            pos += 1;
+        let at_time_raw = sbe_i64(buf, &mut pos)?;
+        let at_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(at_time_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -2360,91 +1628,46 @@ impl OrderBookSnapshotBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderBookSnapshot, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exchange_bytes = &buf[pos..pos + exchange_len];
-        pos += exchange_len;
-        let exchange = std::str::from_utf8(exchange_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bids = Vec::with_capacity(bids_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let exchange = sbe_str(buf, &mut pos)?;
+        let bids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
         for _ in 0..bids_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bids.push(item);
         }
-        let asks_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut asks = Vec::with_capacity(asks_count);
+        let asks_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
         for _ in 0..asks_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             asks.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -2491,58 +1714,27 @@ impl OrderBookDeltaBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderBookDelta, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let updates_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut updates = Vec::with_capacity(updates_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let updates_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut updates =
+            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
         for _ in 0..updates_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MarketDataUpdateDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             updates.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -2574,7 +1766,10 @@ impl AggregateTradeEventBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AggregateTradeEvent, usize), String> {
         let mut pos: usize = 0;
 
-        let (trade, trade_n) = AggregateTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = AggregateTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok((AggregateTradeEvent { trade }, pos))
@@ -2611,71 +1806,28 @@ impl AggregateTradeRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AggregateTradeRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -2724,45 +1876,25 @@ impl AggregateTradeBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AggregateTradeBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let trades_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut trades = Vec::with_capacity(trades_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let trades_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut trades =
+            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
         for _ in 0..trades_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = AggregateTradeDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = AggregateTradeDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "AggregateTrade length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             trades.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -2801,56 +1933,17 @@ impl MiniTickerBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MiniTicker, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
         let last_price = Price(last_price_raw);
-        let volume_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let volume_raw = sbe_f64(buf, &mut pos)?;
         let volume = Quantity(volume_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -2907,21 +2000,18 @@ impl AllMidsBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AllMidsBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let tickers_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut tickers = Vec::with_capacity(tickers_count);
+        let tickers_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut tickers =
+            Vec::with_capacity(sbe_capacity(tickers_count, buf.len().saturating_sub(pos)));
         for _ in 0..tickers_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MiniTickerBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MiniTickerBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MiniTicker length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             tickers.push(item);
         }
 
@@ -2962,80 +2052,27 @@ impl MarkPriceUpdateBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarkPriceUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let mark_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let mark_price_raw = sbe_f64(buf, &mut pos)?;
         let mark_price = Price(mark_price_raw);
-        let index_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let index_price = if buf[pos] == 1 {
-            pos += 1;
+        let index_price_raw = sbe_f64(buf, &mut pos)?;
+        let index_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(index_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let funding_rate_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let funding_rate = if buf[pos] == 1 {
-            pos += 1;
+        let funding_rate_raw = sbe_f64(buf, &mut pos)?;
+        let funding_rate = if sbe_u8(buf, &mut pos)? == 1 {
             Some(funding_rate_raw)
         } else {
-            pos += 1;
             None
         };
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -3071,13 +2108,7 @@ impl MarkPriceRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarkPriceRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok((MarkPriceRequest { symbol }, pos))
     }
@@ -3099,7 +2130,10 @@ impl LiquidationTradeEventBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(LiquidationTradeEvent, usize), String> {
         let mut pos: usize = 0;
 
-        let (trade, trade_n) = LiquidationTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = LiquidationTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok((LiquidationTradeEvent { trade }, pos))
@@ -3122,7 +2156,10 @@ impl CandleBarEventBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CandleBarEvent, usize), String> {
         let mut pos: usize = 0;
 
-        let (bar, bar_n) = CandleBarDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (bar, bar_n) = CandleBarDecoder::decode(rest)?;
         pos += bar_n;
 
         Ok((CandleBarEvent { bar }, pos))
@@ -3162,78 +2199,29 @@ impl CandleBarRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CandleBarRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let interval_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let interval_bytes = &buf[pos..pos + interval_len];
-        pos += interval_len;
-        let interval = std::str::from_utf8(interval_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let interval = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -3286,52 +2274,25 @@ impl CandleBarBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CandleBarBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let interval_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let interval_bytes = &buf[pos..pos + interval_len];
-        pos += interval_len;
-        let interval = std::str::from_utf8(interval_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bars_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bars = Vec::with_capacity(bars_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let interval = sbe_str(buf, &mut pos)?;
+        let bars_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bars = Vec::with_capacity(sbe_capacity(bars_count, buf.len().saturating_sub(pos)));
         for _ in 0..bars_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = CandleBarDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = CandleBarDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "CandleBar length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bars.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -3364,7 +2325,10 @@ impl PublicTradeEventBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PublicTradeEvent, usize), String> {
         let mut pos: usize = 0;
 
-        let (trade, trade_n) = PublicTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = PublicTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok((PublicTradeEvent { trade }, pos))
@@ -3401,71 +2365,28 @@ impl TradeHistoryRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(TradeHistoryRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -3514,45 +2435,25 @@ impl PublicTradeBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PublicTradeBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let trades_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut trades = Vec::with_capacity(trades_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let trades_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut trades =
+            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
         for _ in 0..trades_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PublicTradeDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PublicTradeDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PublicTrade length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             trades.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -3625,104 +2526,37 @@ impl BestBidOfferBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(BestBidOffer, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bid_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let bid_price = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let bid_price_raw = sbe_f64(buf, &mut pos)?;
+        let bid_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(bid_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let bid_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let bid_qty = if buf[pos] == 1 {
-            pos += 1;
+        let bid_qty_raw = sbe_f64(buf, &mut pos)?;
+        let bid_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(bid_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let ask_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let ask_price = if buf[pos] == 1 {
-            pos += 1;
+        let ask_price_raw = sbe_f64(buf, &mut pos)?;
+        let ask_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(ask_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let ask_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let ask_qty = if buf[pos] == 1 {
-            pos += 1;
+        let ask_qty_raw = sbe_f64(buf, &mut pos)?;
+        let ask_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(ask_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -3769,116 +2603,27 @@ impl SymbolTickerBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(SymbolTicker, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
         let last_price = Price(last_price_raw);
-        let price_change_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_change_raw = sbe_f64(buf, &mut pos)?;
         let price_change = price_change_raw;
-        let price_change_pct_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_change_pct_raw = sbe_f64(buf, &mut pos)?;
         let price_change_pct = price_change_pct_raw;
-        let volume_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let volume_raw = sbe_f64(buf, &mut pos)?;
         let volume = Quantity(volume_raw);
-        let high_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let high_raw = sbe_f64(buf, &mut pos)?;
         let high = Price(high_raw);
-        let low_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let low_raw = sbe_f64(buf, &mut pos)?;
         let low = Price(low_raw);
-        let open_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let open_raw = sbe_f64(buf, &mut pos)?;
         let open = Price(open_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -3918,13 +2663,7 @@ impl TickerRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(TickerRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok((TickerRequest { symbol }, pos))
     }
@@ -3970,21 +2709,20 @@ impl InstrumentCatalogResponseBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(InstrumentCatalogResponse, usize), String> {
         let mut pos: usize = 0;
 
-        let instruments_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut instruments = Vec::with_capacity(instruments_count);
+        let instruments_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut instruments = Vec::with_capacity(sbe_capacity(
+            instruments_count,
+            buf.len().saturating_sub(pos),
+        ));
         for _ in 0..instruments_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = InstrumentMetadataDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = InstrumentMetadataDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "InstrumentMetadata length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             instruments.push(item);
         }
 
@@ -4015,44 +2753,12 @@ impl AccountSummaryBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AccountSummary, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balance_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let balance_raw = sbe_f64(buf, &mut pos)?;
         let balance = balance_raw;
-        let buying_power_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let buying_power_raw = sbe_f64(buf, &mut pos)?;
         let buying_power = buying_power_raw;
-        let currency_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let currency_bytes = &buf[pos..pos + currency_len];
-        pos += currency_len;
-        let currency = std::str::from_utf8(currency_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let currency = sbe_str(buf, &mut pos)?;
 
         Ok((
             AccountSummary {
@@ -4092,80 +2798,18 @@ impl MarginSummaryBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarginSummary, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balance_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let balance_raw = sbe_f64(buf, &mut pos)?;
         let balance = balance_raw;
-        let buying_power_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let buying_power_raw = sbe_f64(buf, &mut pos)?;
         let buying_power = buying_power_raw;
-        let equity_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let equity_raw = sbe_f64(buf, &mut pos)?;
         let equity = equity_raw;
-        let margin_used_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let margin_used_raw = sbe_f64(buf, &mut pos)?;
         let margin_used = margin_used_raw;
-        let available_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let available_raw = sbe_f64(buf, &mut pos)?;
         let available = available_raw;
-        let currency_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let currency_bytes = &buf[pos..pos + currency_len];
-        pos += currency_len;
-        let currency = std::str::from_utf8(currency_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let currency = sbe_str(buf, &mut pos)?;
 
         Ok((
             MarginSummary {
@@ -4209,37 +2853,25 @@ impl BalanceSnapshotBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(BalanceSnapshot, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balances_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut balances = Vec::with_capacity(balances_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let balances_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut balances =
+            Vec::with_capacity(sbe_capacity(balances_count, buf.len().saturating_sub(pos)));
         for _ in 0..balances_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = BalanceEntryDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BalanceEntryDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "BalanceEntry length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             balances.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -4279,58 +2911,15 @@ impl BalanceUpdateBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(BalanceUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let asset_bytes = &buf[pos..pos + asset_len];
-        pos += asset_len;
-        let asset = std::str::from_utf8(asset_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let delta_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let asset = sbe_str(buf, &mut pos)?;
+        let delta_raw = sbe_f64(buf, &mut pos)?;
         let delta = delta_raw;
-        let total_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let total_raw = sbe_f64(buf, &mut pos)?;
         let total = total_raw;
-        let available_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let available_raw = sbe_f64(buf, &mut pos)?;
         let available = available_raw;
-        let reason_raw = buf[pos];
-        pos += 1;
+        let reason_raw = sbe_u8(buf, &mut pos)?;
         let reason = BalanceUpdateReason::from_value(reason_raw)
             .ok_or_else(|| format!("invalid BalanceUpdateReason value: {}", reason_raw))?;
 
@@ -4375,37 +2964,25 @@ impl PositionSnapshotBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PositionSnapshot, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let positions_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut positions = Vec::with_capacity(positions_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let positions_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut positions =
+            Vec::with_capacity(sbe_capacity(positions_count, buf.len().saturating_sub(pos)));
         for _ in 0..positions_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PositionEntryDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PositionEntryDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PositionEntry length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             positions.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -4444,55 +3021,13 @@ impl PositionUpdateBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PositionUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let entry_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let entry_price_raw = sbe_f64(buf, &mut pos)?;
         let entry_price = Price(entry_price_raw);
-        let unrealized_pnl_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
         let unrealized_pnl = unrealized_pnl_raw;
 
         Ok((
@@ -4529,22 +3064,16 @@ impl MarginUpdateBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(MarginUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let (summary, summary_n) = MarginSummaryBodyDecoder::decode(&buf[pos..])?;
+        let account = sbe_str(buf, &mut pos)?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (summary, summary_n) = MarginSummaryBodyDecoder::decode(rest)?;
         pos += summary_n;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -4583,55 +3112,13 @@ impl UserLiquidationBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(UserLiquidation, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok((
@@ -4675,37 +3162,14 @@ impl OrderListStatusBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderListStatus, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let list_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let list_id_bytes = &buf[pos..pos + list_id_len];
-        pos += list_id_len;
-        let list_id = std::str::from_utf8(list_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let status_raw = buf[pos];
-        pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let list_id = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
         let status = OrderListStatusStatus::from_value(status_raw)
             .ok_or_else(|| format!("invalid OrderListStatusStatus value: {}", status_raw))?;
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -4757,86 +3221,33 @@ impl FillHistoryRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(FillHistoryRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -4886,45 +3297,25 @@ impl FillHistoryBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(FillHistoryBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let fills_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut fills = Vec::with_capacity(fills_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let fills_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut fills =
+            Vec::with_capacity(sbe_capacity(fills_count, buf.len().saturating_sub(pos)));
         for _ in 0..fills_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             fills.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -4967,63 +3358,17 @@ impl FundingPaymentBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(FundingPayment, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let amount_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let amount_raw = sbe_f64(buf, &mut pos)?;
         let amount = amount_raw;
-        let rate_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let rate_raw = sbe_f64(buf, &mut pos)?;
         let rate = rate_raw;
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok((
@@ -5069,71 +3414,28 @@ impl FundingHistoryRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(FundingHistoryRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5182,45 +3484,25 @@ impl FundingHistoryBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(FundingHistoryBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let payments_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut payments = Vec::with_capacity(payments_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let payments_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut payments =
+            Vec::with_capacity(sbe_capacity(payments_count, buf.len().saturating_sub(pos)));
         for _ in 0..payments_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = FundingPaymentBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = FundingPaymentBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "FundingPayment length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             payments.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5266,61 +3548,18 @@ impl LedgerUpdateBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(LedgerUpdate, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let asset_bytes = &buf[pos..pos + asset_len];
-        pos += asset_len;
-        let asset = std::str::from_utf8(asset_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let delta_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let asset = sbe_str(buf, &mut pos)?;
+        let delta_raw = sbe_f64(buf, &mut pos)?;
         let delta = delta_raw;
-        let kind_raw = buf[pos];
-        pos += 1;
+        let kind_raw = sbe_u8(buf, &mut pos)?;
         let kind = LedgerUpdateKind::from_value(kind_raw)
             .ok_or_else(|| format!("invalid LedgerUpdateKind value: {}", kind_raw))?;
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let reference_id = if buf[pos] == 1 {
-            pos += 1;
-            let reference_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let reference_id_bytes = &buf[pos..pos + reference_id_len];
-            pos += reference_id_len;
-            Some(
-                std::str::from_utf8(reference_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let reference_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5368,71 +3607,28 @@ impl LedgerHistoryRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(LedgerHistoryRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5481,45 +3677,25 @@ impl LedgerHistoryBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(LedgerHistoryBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let entries_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut entries = Vec::with_capacity(entries_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let entries_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut entries =
+            Vec::with_capacity(sbe_capacity(entries_count, buf.len().saturating_sub(pos)));
         for _ in 0..entries_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = LedgerUpdateBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = LedgerUpdateBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "LedgerUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             entries.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5559,26 +3735,10 @@ impl OpenOrdersRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OpenOrdersRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5613,37 +3773,25 @@ impl OpenOrdersSnapshotBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OpenOrdersSnapshot, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orders_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut orders = Vec::with_capacity(orders_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let orders_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut orders =
+            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
         for _ in 0..orders_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             orders.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -5694,86 +3842,33 @@ impl OrderHistoryRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderHistoryRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5823,45 +3918,25 @@ impl OrderHistoryBatchBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(OrderHistoryBatch, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orders_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut orders = Vec::with_capacity(orders_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let orders_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut orders =
+            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
         for _ in 0..orders_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             orders.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -5929,37 +4004,33 @@ impl CapabilitiesResponseBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CapabilitiesResponse, usize), String> {
         let mut pos: usize = 0;
 
-        let schema_ids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut schema_ids = Vec::with_capacity(schema_ids_count);
+        let schema_ids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut schema_ids = Vec::with_capacity(sbe_capacity(
+            schema_ids_count,
+            buf.len().saturating_sub(pos),
+        ));
         // TODO: decode list<u8>
-        let paths_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut paths = Vec::with_capacity(paths_count);
+        let paths_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut paths =
+            Vec::with_capacity(sbe_capacity(paths_count, buf.len().saturating_sub(pos)));
         for _ in 0..paths_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = CapabilityPathDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = CapabilityPathDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "CapabilityPath length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             paths.push(item);
         }
-        let symbols_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut symbols = Vec::with_capacity(symbols_count);
+        let symbols_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut symbols =
+            Vec::with_capacity(sbe_capacity(symbols_count, buf.len().saturating_sub(pos)));
         // TODO: decode list<Symbol>
-        let intervals_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut intervals = Vec::with_capacity(intervals_count);
+        let intervals_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut intervals =
+            Vec::with_capacity(sbe_capacity(intervals_count, buf.len().saturating_sub(pos)));
         // TODO: decode list<CandleInterval>
 
         Ok((
@@ -5992,13 +4063,7 @@ impl PositionRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(PositionRequest, usize), String> {
         let mut pos: usize = 0;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let account = sbe_str(buf, &mut pos)?;
 
         Ok((PositionRequest { account }, pos))
     }
@@ -6136,78 +4201,29 @@ impl NewOrderSingleDecoder {
 
         let mut pos: usize = 8;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = NewOrderSingleSide::from_value(side_raw)
             .ok_or_else(|| format!("invalid NewOrderSingleSide value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
         let order_qty = Quantity(order_qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let price = if buf[pos] == 1 {
-            pos += 1;
+        let price_raw = sbe_f64(buf, &mut pos)?;
+        let price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(price_raw))
         } else {
-            pos += 1;
             None
         };
-        let stop_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let stop_price = if buf[pos] == 1 {
-            pos += 1;
+        let stop_price_raw = sbe_f64(buf, &mut pos)?;
+        let stop_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(stop_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let order_type_raw = buf[pos];
-        pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let order_type_raw = sbe_u8(buf, &mut pos)?;
         let order_type = NewOrderSingleOrderType::from_value(order_type_raw)
             .ok_or_else(|| format!("invalid NewOrderSingleOrderType value: {}", order_type_raw))?;
-        let time_in_force_raw = buf[pos];
-        pos += 1;
+        let time_in_force_raw = sbe_u8(buf, &mut pos)?;
         let time_in_force =
             NewOrderSingleTimeInForce::from_value(time_in_force_raw).ok_or_else(|| {
                 format!(
@@ -6215,113 +4231,52 @@ impl NewOrderSingleDecoder {
                     time_in_force_raw
                 )
             })?;
-        let expire_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let expire_time = if buf[pos] == 1 {
-            pos += 1;
+        let expire_time_raw = sbe_i64(buf, &mut pos)?;
+        let expire_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(expire_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let account = if buf[pos] == 1 {
-            pos += 1;
-            let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let account_bytes = &buf[pos..pos + account_len];
-            pos += account_len;
-            Some(
-                std::str::from_utf8(account_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let strategy_id = if buf[pos] == 1 {
-            pos += 1;
-            let strategy_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let strategy_id_bytes = &buf[pos..pos + strategy_id_len];
-            pos += strategy_id_len;
-            Some(
-                std::str::from_utf8(strategy_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let strategy_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let security_id = if buf[pos] == 1 {
-            pos += 1;
-            let security_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let security_id_bytes = &buf[pos..pos + security_id_len];
-            pos += security_id_len;
-            Some(
-                std::str::from_utf8(security_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let security_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let id_source_raw = buf[pos];
-        pos += 1;
-        let id_source = if buf[pos] == 1 {
-            pos += 1;
+        let id_source_raw = sbe_u8(buf, &mut pos)?;
+        let id_source = if sbe_u8(buf, &mut pos)? == 1 {
             Some(
                 NewOrderSingleIdSource::from_value(id_source_raw).ok_or_else(|| {
                     format!("invalid NewOrderSingleIdSource value: {}", id_source_raw)
                 })?,
             )
         } else {
-            pos += 1;
             None
         };
-        let security_exchange = if buf[pos] == 1 {
-            pos += 1;
-            let security_exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let security_exchange_bytes = &buf[pos..pos + security_exchange_len];
-            pos += security_exchange_len;
-            Some(
-                std::str::from_utf8(security_exchange_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let security_exchange = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let post_only_val = buf[pos];
-        pos += 1;
-        let post_only = if buf[pos] == 1 {
-            pos += 1;
+        let post_only_val = sbe_u8(buf, &mut pos)?;
+        let post_only = if sbe_u8(buf, &mut pos)? == 1 {
             Some(post_only_val != 0)
         } else {
-            pos += 1;
             None
         };
-        let reduce_only_val = buf[pos];
-        pos += 1;
-        let reduce_only = if buf[pos] == 1 {
-            pos += 1;
+        let reduce_only_val = sbe_u8(buf, &mut pos)?;
+        let reduce_only = if sbe_u8(buf, &mut pos)? == 1 {
             Some(reduce_only_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -6416,47 +4371,16 @@ impl CancelRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = CancelRequestSide::from_value(side_raw)
             .ok_or_else(|| format!("invalid CancelRequestSide value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let order_qty = if buf[pos] == 1 {
-            pos += 1;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
+        let order_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(order_qty_raw))
         } else {
-            pos += 1;
             None
         };
 
@@ -6543,59 +4467,18 @@ impl CancelReplaceRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let side_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = CancelReplaceRequestSide::from_value(side_raw)
             .ok_or_else(|| format!("invalid CancelReplaceRequestSide value: {}", side_raw))?;
-        let order_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let order_qty_raw = sbe_f64(buf, &mut pos)?;
         let order_qty = Quantity(order_qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let price = if buf[pos] == 1 {
-            pos += 1;
+        let price_raw = sbe_f64(buf, &mut pos)?;
+        let price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(price_raw))
         } else {
-            pos += 1;
             None
         };
 
@@ -6713,129 +4596,38 @@ impl ExecutionReportDecoder {
 
         let mut pos: usize = 8;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let order_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let order_id_bytes = &buf[pos..pos + order_id_len];
-        pos += order_id_len;
-        let order_id = std::str::from_utf8(order_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exec_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exec_id_bytes = &buf[pos..pos + exec_id_len];
-        pos += exec_id_len;
-        let exec_id = std::str::from_utf8(exec_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exec_type_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let order_id = sbe_str(buf, &mut pos)?;
+        let exec_id = sbe_str(buf, &mut pos)?;
+        let exec_type_raw = sbe_u8(buf, &mut pos)?;
         let exec_type = ExecutionReportExecType::from_value(exec_type_raw)
             .ok_or_else(|| format!("invalid ExecutionReportExecType value: {}", exec_type_raw))?;
-        let ord_status_raw = buf[pos];
-        pos += 1;
+        let ord_status_raw = sbe_u8(buf, &mut pos)?;
         let ord_status = ExecutionReportOrdStatus::from_value(ord_status_raw)
             .ok_or_else(|| format!("invalid ExecutionReportOrdStatus value: {}", ord_status_raw))?;
-        let side_raw = buf[pos];
-        pos += 1;
+        let side_raw = sbe_u8(buf, &mut pos)?;
         let side = ExecutionReportSide::from_value(side_raw)
             .ok_or_else(|| format!("invalid ExecutionReportSide value: {}", side_raw))?;
-        let last_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let last_qty = if buf[pos] == 1 {
-            pos += 1;
+        let last_qty_raw = sbe_f64(buf, &mut pos)?;
+        let last_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(last_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let last_price = if buf[pos] == 1 {
-            pos += 1;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
+        let last_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(last_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let leaves_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let leaves_qty_raw = sbe_f64(buf, &mut pos)?;
         let leaves_qty = Quantity(leaves_qty_raw);
-        let cum_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let cum_qty_raw = sbe_f64(buf, &mut pos)?;
         let cum_qty = Quantity(cum_qty_raw);
-        let avg_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let avg_price_raw = sbe_f64(buf, &mut pos)?;
         let avg_price = Price(avg_price_raw);
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let transact_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let transact_time_raw = sbe_i64(buf, &mut pos)?;
         let transact_time = transact_time_raw;
 
         Ok(Self {
@@ -6922,22 +4714,9 @@ impl CancelRejectDecoder {
 
         let mut pos: usize = 8;
 
-        let cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let cl_ord_id_bytes = &buf[pos..pos + cl_ord_id_len];
-        pos += cl_ord_id_len;
-        let cl_ord_id = std::str::from_utf8(cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orig_cl_ord_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let orig_cl_ord_id_bytes = &buf[pos..pos + orig_cl_ord_id_len];
-        pos += orig_cl_ord_id_len;
-        let orig_cl_ord_id = std::str::from_utf8(orig_cl_ord_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let reject_reason_raw = buf[pos];
-        pos += 1;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
+        let reject_reason_raw = sbe_u8(buf, &mut pos)?;
         let reject_reason =
             CancelRejectRejectReason::from_value(reject_reason_raw).ok_or_else(|| {
                 format!(
@@ -6945,13 +4724,7 @@ impl CancelRejectDecoder {
                     reject_reason_raw
                 )
             })?;
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok(Self {
             cl_ord_id,
@@ -7049,91 +4822,46 @@ impl MarketDataSnapshotDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exchange_bytes = &buf[pos..pos + exchange_len];
-        pos += exchange_len;
-        let exchange = std::str::from_utf8(exchange_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bids = Vec::with_capacity(bids_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let exchange = sbe_str(buf, &mut pos)?;
+        let bids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
         for _ in 0..bids_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bids.push(item);
         }
-        let asks_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut asks = Vec::with_capacity(asks_count);
+        let asks_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
         for _ in 0..asks_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             asks.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -7218,58 +4946,27 @@ impl MarketDataIncrementalRefreshDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let updates_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut updates = Vec::with_capacity(updates_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let updates_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut updates =
+            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
         for _ in 0..updates_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MarketDataUpdateDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             updates.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -7339,38 +5036,17 @@ impl OrderBookRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let depth_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let depth = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let depth_raw = sbe_u32(buf, &mut pos)?;
+        let depth = if sbe_u8(buf, &mut pos)? == 1 {
             Some(depth_raw)
         } else {
-            pos += 1;
             None
         };
-        let at_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let at_time = if buf[pos] == 1 {
-            pos += 1;
+        let at_time_raw = sbe_i64(buf, &mut pos)?;
+        let at_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(at_time_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -7469,91 +5145,46 @@ impl OrderBookSnapshotDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let exchange_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let exchange_bytes = &buf[pos..pos + exchange_len];
-        pos += exchange_len;
-        let exchange = std::str::from_utf8(exchange_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bids = Vec::with_capacity(bids_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let exchange = sbe_str(buf, &mut pos)?;
+        let bids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
         for _ in 0..bids_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bids.push(item);
         }
-        let asks_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut asks = Vec::with_capacity(asks_count);
+        let asks_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
         for _ in 0..asks_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PriceLevelDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PriceLevel length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             asks.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -7638,58 +5269,27 @@ impl OrderBookDeltaDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let updates_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut updates = Vec::with_capacity(updates_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let updates_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut updates =
+            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
         for _ in 0..updates_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MarketDataUpdateDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             updates.push(item);
         }
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let sequence_raw = u64::from_be_bytes([
-            buf[pos],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let sequence = if buf[pos] == 1 {
-            pos += 1;
+        let sequence_raw = sbe_u64(buf, &mut pos)?;
+        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
             Some(sequence_raw)
         } else {
-            pos += 1;
             None
         };
 
@@ -7751,7 +5351,10 @@ impl AggregateTradeEventDecoder {
 
         let mut pos: usize = 8;
 
-        let (trade, trade_n) = AggregateTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = AggregateTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok(Self { trade })
@@ -7831,71 +5434,28 @@ impl AggregateTradeRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -7982,45 +5542,25 @@ impl AggregateTradeBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let trades_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut trades = Vec::with_capacity(trades_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let trades_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut trades =
+            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
         for _ in 0..trades_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = AggregateTradeDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = AggregateTradeDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "AggregateTrade length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             trades.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -8099,56 +5639,17 @@ impl MiniTickerDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
         let last_price = Price(last_price_raw);
-        let volume_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let volume_raw = sbe_f64(buf, &mut pos)?;
         let volume = Quantity(volume_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -8267,21 +5768,18 @@ impl AllMidsBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let tickers_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut tickers = Vec::with_capacity(tickers_count);
+        let tickers_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut tickers =
+            Vec::with_capacity(sbe_capacity(tickers_count, buf.len().saturating_sub(pos)));
         for _ in 0..tickers_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = MiniTickerBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = MiniTickerBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "MiniTicker length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             tickers.push(item);
         }
 
@@ -8366,80 +5864,27 @@ impl MarkPriceUpdateDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let mark_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let mark_price_raw = sbe_f64(buf, &mut pos)?;
         let mark_price = Price(mark_price_raw);
-        let index_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let index_price = if buf[pos] == 1 {
-            pos += 1;
+        let index_price_raw = sbe_f64(buf, &mut pos)?;
+        let index_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(index_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let funding_rate_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let funding_rate = if buf[pos] == 1 {
-            pos += 1;
+        let funding_rate_raw = sbe_f64(buf, &mut pos)?;
+        let funding_rate = if sbe_u8(buf, &mut pos)? == 1 {
             Some(funding_rate_raw)
         } else {
-            pos += 1;
             None
         };
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -8505,13 +5950,7 @@ impl MarkPriceRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok(Self { symbol })
     }
@@ -8566,7 +6005,10 @@ impl LiquidationTradeEventDecoder {
 
         let mut pos: usize = 8;
 
-        let (trade, trade_n) = LiquidationTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = LiquidationTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok(Self { trade })
@@ -8622,7 +6064,10 @@ impl CandleBarEventDecoder {
 
         let mut pos: usize = 8;
 
-        let (bar, bar_n) = CandleBarDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (bar, bar_n) = CandleBarDecoder::decode(rest)?;
         pos += bar_n;
 
         Ok(Self { bar })
@@ -8707,78 +6152,29 @@ impl CandleBarRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let interval_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let interval_bytes = &buf[pos..pos + interval_len];
-        pos += interval_len;
-        let interval = std::str::from_utf8(interval_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let interval = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -8871,52 +6267,25 @@ impl CandleBarBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let interval_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let interval_bytes = &buf[pos..pos + interval_len];
-        pos += interval_len;
-        let interval = std::str::from_utf8(interval_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bars_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut bars = Vec::with_capacity(bars_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let interval = sbe_str(buf, &mut pos)?;
+        let bars_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut bars = Vec::with_capacity(sbe_capacity(bars_count, buf.len().saturating_sub(pos)));
         for _ in 0..bars_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = CandleBarDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = CandleBarDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "CandleBar length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             bars.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -8979,7 +6348,10 @@ impl PublicTradeEventDecoder {
 
         let mut pos: usize = 8;
 
-        let (trade, trade_n) = PublicTradeDecoder::decode(&buf[pos..])?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (trade, trade_n) = PublicTradeDecoder::decode(rest)?;
         pos += trade_n;
 
         Ok(Self { trade })
@@ -9059,71 +6431,28 @@ impl TradeHistoryRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -9210,45 +6539,25 @@ impl PublicTradeBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let trades_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut trades = Vec::with_capacity(trades_count);
+        let symbol = sbe_str(buf, &mut pos)?;
+        let trades_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut trades =
+            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
         for _ in 0..trades_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PublicTradeDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PublicTradeDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PublicTrade length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             trades.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -9337,104 +6646,37 @@ impl BestBidOfferDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let bid_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let bid_price = if buf[pos] == 1 {
-            pos += 1;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let bid_price_raw = sbe_f64(buf, &mut pos)?;
+        let bid_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(bid_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let bid_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let bid_qty = if buf[pos] == 1 {
-            pos += 1;
+        let bid_qty_raw = sbe_f64(buf, &mut pos)?;
+        let bid_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(bid_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let ask_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let ask_price = if buf[pos] == 1 {
-            pos += 1;
+        let ask_price_raw = sbe_f64(buf, &mut pos)?;
+        let ask_price = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Price(ask_price_raw))
         } else {
-            pos += 1;
             None
         };
-        let ask_qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let ask_qty = if buf[pos] == 1 {
-            pos += 1;
+        let ask_qty_raw = sbe_f64(buf, &mut pos)?;
+        let ask_qty = if sbe_u8(buf, &mut pos)? == 1 {
             Some(Quantity(ask_qty_raw))
         } else {
-            pos += 1;
             None
         };
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -9531,116 +6773,27 @@ impl SymbolTickerDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let last_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let last_price_raw = sbe_f64(buf, &mut pos)?;
         let last_price = Price(last_price_raw);
-        let price_change_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_change_raw = sbe_f64(buf, &mut pos)?;
         let price_change = price_change_raw;
-        let price_change_pct_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_change_pct_raw = sbe_f64(buf, &mut pos)?;
         let price_change_pct = price_change_pct_raw;
-        let volume_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let volume_raw = sbe_f64(buf, &mut pos)?;
         let volume = Quantity(volume_raw);
-        let high_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let high_raw = sbe_f64(buf, &mut pos)?;
         let high = Price(high_raw);
-        let low_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let low_raw = sbe_f64(buf, &mut pos)?;
         let low = Price(low_raw);
-        let open_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let open_raw = sbe_f64(buf, &mut pos)?;
         let open = Price(open_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -9710,13 +6863,7 @@ impl TickerRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let symbol = sbe_str(buf, &mut pos)?;
 
         Ok(Self { symbol })
     }
@@ -9827,21 +6974,20 @@ impl InstrumentCatalogResponseDecoder {
 
         let mut pos: usize = 8;
 
-        let instruments_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut instruments = Vec::with_capacity(instruments_count);
+        let instruments_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut instruments = Vec::with_capacity(sbe_capacity(
+            instruments_count,
+            buf.len().saturating_sub(pos),
+        ));
         for _ in 0..instruments_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = InstrumentMetadataDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = InstrumentMetadataDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "InstrumentMetadata length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             instruments.push(item);
         }
 
@@ -9908,44 +7054,12 @@ impl AccountSummaryDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balance_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let balance_raw = sbe_f64(buf, &mut pos)?;
         let balance = balance_raw;
-        let buying_power_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let buying_power_raw = sbe_f64(buf, &mut pos)?;
         let buying_power = buying_power_raw;
-        let currency_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let currency_bytes = &buf[pos..pos + currency_len];
-        pos += currency_len;
-        let currency = std::str::from_utf8(currency_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let currency = sbe_str(buf, &mut pos)?;
 
         Ok(Self {
             account,
@@ -10029,80 +7143,18 @@ impl MarginSummaryDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balance_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let balance_raw = sbe_f64(buf, &mut pos)?;
         let balance = balance_raw;
-        let buying_power_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let buying_power_raw = sbe_f64(buf, &mut pos)?;
         let buying_power = buying_power_raw;
-        let equity_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let equity_raw = sbe_f64(buf, &mut pos)?;
         let equity = equity_raw;
-        let margin_used_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let margin_used_raw = sbe_f64(buf, &mut pos)?;
         let margin_used = margin_used_raw;
-        let available_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let available_raw = sbe_f64(buf, &mut pos)?;
         let available = available_raw;
-        let currency_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let currency_bytes = &buf[pos..pos + currency_len];
-        pos += currency_len;
-        let currency = std::str::from_utf8(currency_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let currency = sbe_str(buf, &mut pos)?;
 
         Ok(Self {
             account,
@@ -10182,37 +7234,25 @@ impl BalanceSnapshotDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let balances_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut balances = Vec::with_capacity(balances_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let balances_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut balances =
+            Vec::with_capacity(sbe_capacity(balances_count, buf.len().saturating_sub(pos)));
         for _ in 0..balances_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = BalanceEntryDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BalanceEntryDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "BalanceEntry length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             balances.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -10294,58 +7334,15 @@ impl BalanceUpdateDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let asset_bytes = &buf[pos..pos + asset_len];
-        pos += asset_len;
-        let asset = std::str::from_utf8(asset_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let delta_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let asset = sbe_str(buf, &mut pos)?;
+        let delta_raw = sbe_f64(buf, &mut pos)?;
         let delta = delta_raw;
-        let total_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let total_raw = sbe_f64(buf, &mut pos)?;
         let total = total_raw;
-        let available_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let available_raw = sbe_f64(buf, &mut pos)?;
         let available = available_raw;
-        let reason_raw = buf[pos];
-        pos += 1;
+        let reason_raw = sbe_u8(buf, &mut pos)?;
         let reason = BalanceUpdateReason::from_value(reason_raw)
             .ok_or_else(|| format!("invalid BalanceUpdateReason value: {}", reason_raw))?;
 
@@ -10426,37 +7423,25 @@ impl PositionSnapshotDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let positions_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut positions = Vec::with_capacity(positions_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let positions_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut positions =
+            Vec::with_capacity(sbe_capacity(positions_count, buf.len().saturating_sub(pos)));
         for _ in 0..positions_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = PositionEntryDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = PositionEntryDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "PositionEntry length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             positions.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -10535,55 +7520,13 @@ impl PositionUpdateDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let entry_price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let entry_price_raw = sbe_f64(buf, &mut pos)?;
         let entry_price = Price(entry_price_raw);
-        let unrealized_pnl_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
         let unrealized_pnl = unrealized_pnl_raw;
 
         Ok(Self {
@@ -10652,22 +7595,16 @@ impl MarginUpdateDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let (summary, summary_n) = MarginSummaryBodyDecoder::decode(&buf[pos..])?;
+        let account = sbe_str(buf, &mut pos)?;
+        let rest = buf
+            .get(pos..)
+            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+        let (summary, summary_n) = MarginSummaryBodyDecoder::decode(rest)?;
         pos += summary_n;
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -10746,55 +7683,13 @@ impl UserLiquidationDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let symbol_bytes = &buf[pos..pos + symbol_len];
-        pos += symbol_len;
-        let symbol = std::str::from_utf8(symbol_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let qty_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = sbe_str(buf, &mut pos)?;
+        let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
-        let price_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let price_raw = sbe_f64(buf, &mut pos)?;
         let price = Price(price_raw);
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok(Self {
@@ -10876,37 +7771,14 @@ impl OrderListStatusDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let list_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let list_id_bytes = &buf[pos..pos + list_id_len];
-        pos += list_id_len;
-        let list_id = std::str::from_utf8(list_id_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let status_raw = buf[pos];
-        pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let list_id = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
         let status = OrderListStatusStatus::from_value(status_raw)
             .ok_or_else(|| format!("invalid OrderListStatusStatus value: {}", status_raw))?;
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11000,86 +7872,33 @@ impl FillHistoryRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11167,45 +7986,25 @@ impl FillHistoryBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let fills_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut fills = Vec::with_capacity(fills_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let fills_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut fills =
+            Vec::with_capacity(sbe_capacity(fills_count, buf.len().saturating_sub(pos)));
         for _ in 0..fills_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             fills.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11288,63 +8087,17 @@ impl FundingPaymentDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let amount_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let amount_raw = sbe_f64(buf, &mut pos)?;
         let amount = amount_raw;
-        let rate_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let rate_raw = sbe_f64(buf, &mut pos)?;
         let rate = rate_raw;
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
         Ok(Self {
@@ -11430,71 +8183,28 @@ impl FundingHistoryRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11581,45 +8291,25 @@ impl FundingHistoryBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let payments_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut payments = Vec::with_capacity(payments_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let payments_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut payments =
+            Vec::with_capacity(sbe_capacity(payments_count, buf.len().saturating_sub(pos)));
         for _ in 0..payments_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = FundingPaymentBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = FundingPaymentBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "FundingPayment length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             payments.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11707,61 +8397,18 @@ impl LedgerUpdateDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let asset_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let asset_bytes = &buf[pos..pos + asset_len];
-        pos += asset_len;
-        let asset = std::str::from_utf8(asset_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let delta_raw = f64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let account = sbe_str(buf, &mut pos)?;
+        let asset = sbe_str(buf, &mut pos)?;
+        let delta_raw = sbe_f64(buf, &mut pos)?;
         let delta = delta_raw;
-        let kind_raw = buf[pos];
-        pos += 1;
+        let kind_raw = sbe_u8(buf, &mut pos)?;
         let kind = LedgerUpdateKind::from_value(kind_raw)
             .ok_or_else(|| format!("invalid LedgerUpdateKind value: {}", kind_raw))?;
-        let timestamp_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
-        let reference_id = if buf[pos] == 1 {
-            pos += 1;
-            let reference_id_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let reference_id_bytes = &buf[pos..pos + reference_id_len];
-            pos += reference_id_len;
-            Some(
-                std::str::from_utf8(reference_id_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let reference_id = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -11849,71 +8496,28 @@ impl LedgerHistoryRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let account = sbe_str(buf, &mut pos)?;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -12000,45 +8604,25 @@ impl LedgerHistoryBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let entries_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut entries = Vec::with_capacity(entries_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let entries_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut entries =
+            Vec::with_capacity(sbe_capacity(entries_count, buf.len().saturating_sub(pos)));
         for _ in 0..entries_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = LedgerUpdateBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = LedgerUpdateBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "LedgerUpdate length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             entries.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -12109,26 +8693,10 @@ impl OpenOrdersRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -12202,37 +8770,25 @@ impl OpenOrdersSnapshotDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orders_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut orders = Vec::with_capacity(orders_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let orders_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut orders =
+            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
         for _ in 0..orders_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             orders.push(item);
         }
-        let is_snapshot_val = buf[pos];
-        pos += 1;
-        let is_snapshot = if buf[pos] == 1 {
-            pos += 1;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
             Some(is_snapshot_val != 0)
         } else {
-            pos += 1;
             None
         };
 
@@ -12325,86 +8881,33 @@ impl OrderHistoryRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let symbol = if buf[pos] == 1 {
-            pos += 1;
-            let symbol_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let symbol_bytes = &buf[pos..pos + symbol_len];
-            pos += symbol_len;
-            Some(
-                std::str::from_utf8(symbol_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
-        let start_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let start_time = if buf[pos] == 1 {
-            pos += 1;
+        let start_time_raw = sbe_i64(buf, &mut pos)?;
+        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(start_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let end_time_raw = i64::from_be_bytes([
-            buf[pos + 0],
-            buf[pos + 1],
-            buf[pos + 2],
-            buf[pos + 3],
-            buf[pos + 4],
-            buf[pos + 5],
-            buf[pos + 6],
-            buf[pos + 7],
-        ]);
-        pos += 8;
-        let end_time = if buf[pos] == 1 {
-            pos += 1;
+        let end_time_raw = sbe_i64(buf, &mut pos)?;
+        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
             Some(end_time_raw)
         } else {
-            pos += 1;
             None
         };
-        let limit_raw = u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]);
-        pos += 4;
-        let limit = if buf[pos] == 1 {
-            pos += 1;
+        let limit_raw = sbe_u32(buf, &mut pos)?;
+        let limit = if sbe_u8(buf, &mut pos)? == 1 {
             Some(limit_raw)
         } else {
-            pos += 1;
             None
         };
-        let cursor = if buf[pos] == 1 {
-            pos += 1;
-            let cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let cursor_bytes = &buf[pos..pos + cursor_len];
-            pos += cursor_len;
-            Some(
-                std::str::from_utf8(cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -12492,45 +8995,25 @@ impl OrderHistoryBatchDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
-        let orders_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut orders = Vec::with_capacity(orders_count);
+        let account = sbe_str(buf, &mut pos)?;
+        let orders_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut orders =
+            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
         for _ in 0..orders_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = ExecutionReportBodyDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "ExecutionReport length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             orders.push(item);
         }
-        let has_more = buf[pos] != 0;
-        pos += 1;
-        let next_cursor = if buf[pos] == 1 {
-            pos += 1;
-            let next_cursor_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-            pos += 2;
-            let next_cursor_bytes = &buf[pos..pos + next_cursor_len];
-            pos += next_cursor_len;
-            Some(
-                std::str::from_utf8(next_cursor_bytes)
-                    .map_err(|e| format!("invalid UTF-8: {}", e))?
-                    .to_string(),
-            )
+        let has_more = sbe_u8(buf, &mut pos)? != 0;
+        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
         } else {
-            pos += 1;
             None
         };
 
@@ -12668,37 +9151,33 @@ impl CapabilitiesResponseDecoder {
 
         let mut pos: usize = 8;
 
-        let schema_ids_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut schema_ids = Vec::with_capacity(schema_ids_count);
+        let schema_ids_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut schema_ids = Vec::with_capacity(sbe_capacity(
+            schema_ids_count,
+            buf.len().saturating_sub(pos),
+        ));
         // TODO: decode list<u8>
-        let paths_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut paths = Vec::with_capacity(paths_count);
+        let paths_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut paths =
+            Vec::with_capacity(sbe_capacity(paths_count, buf.len().saturating_sub(pos)));
         for _ in 0..paths_count {
-            let item_len =
-                u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-            pos += 4;
-            let (item, n) = CapabilityPathDecoder::decode(&buf[pos..pos + item_len])?;
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = CapabilityPathDecoder::decode(item_bytes)?;
             if n != item_len {
                 return Err(format!(
                     "CapabilityPath length mismatch: expected {item_len}, got {n}"
                 ));
             }
-            pos += item_len;
             paths.push(item);
         }
-        let symbols_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut symbols = Vec::with_capacity(symbols_count);
+        let symbols_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut symbols =
+            Vec::with_capacity(sbe_capacity(symbols_count, buf.len().saturating_sub(pos)));
         // TODO: decode list<Symbol>
-        let intervals_count =
-            u32::from_be_bytes([buf[pos], buf[pos + 1], buf[pos + 2], buf[pos + 3]]) as usize;
-        pos += 4;
-        let mut intervals = Vec::with_capacity(intervals_count);
+        let intervals_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut intervals =
+            Vec::with_capacity(sbe_capacity(intervals_count, buf.len().saturating_sub(pos)));
         // TODO: decode list<CandleInterval>
 
         Ok(Self {
@@ -12761,13 +9240,7 @@ impl PositionRequestDecoder {
 
         let mut pos: usize = 8;
 
-        let account_len = u16::from_be_bytes([buf[pos], buf[pos + 1]]) as usize;
-        pos += 2;
-        let account_bytes = &buf[pos..pos + account_len];
-        pos += account_len;
-        let account = std::str::from_utf8(account_bytes)
-            .map_err(|e| format!("invalid UTF-8: {}", e))?
-            .to_string();
+        let account = sbe_str(buf, &mut pos)?;
 
         Ok(Self { account })
     }

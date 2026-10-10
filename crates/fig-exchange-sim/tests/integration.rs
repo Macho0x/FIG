@@ -19,7 +19,7 @@ use fig_core::frame::{ControlSubtype, Frame, FrameDecoder, FrameType};
 use fig_core::messages::*;
 use fig_core::session::Session;
 use fig_core::transport::{
-    client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
+    client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigServer,
 };
 
 use fig_exchange_sim::server::run_server;
@@ -101,7 +101,8 @@ async fn read_next_frame(
 /// Helper: setup a client connection to the given server address.
 async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<quinn::Connection> {
     let client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
-    let client_cfg = client_config().map_err(|e| anyhow::anyhow!("client_config: {}", e))?;
+    let client_cfg =
+        client_config_insecure().map_err(|e| anyhow::anyhow!("client_config: {}", e))?;
     let conn = client_ep
         .connect_with(client_cfg, server_addr, "localhost")?
         .await?;
@@ -543,7 +544,8 @@ async fn test_0rtt_round_trip() {
     let original_session_id = session.session_id;
 
     // --- Client connects with 0-RTT ---
-    let client = FigClient::new(client_config().expect("client config")).expect("client create");
+    let client =
+        FigClient::new(client_config_insecure().expect("client config")).expect("client create");
 
     let (fig_conn, restored_session) = client
         .connect_0rtt(server_addr, "localhost", Some(&token))
@@ -578,7 +580,7 @@ async fn test_stream_reset_detection() {
     // Generate a TLS certificate
     let (cert, key) = generate_self_signed_cert().expect("cert generation");
     let server_cfg = server_config(cert.clone(), key).expect("server config");
-    let client_cfg = client_config().expect("client config");
+    let client_cfg = client_config_insecure().expect("client config");
 
     // Start server, wrap in Arc to share between spawn and main task
     let server = Arc::new(
@@ -1591,7 +1593,7 @@ async fn test_0rtt_against_exchange_sim_handles_first_frame() {
     let token = session.resumption_token().expect("token");
     let original_id = session.session_id;
 
-    let client = FigClient::new(client_config().expect("cfg")).expect("client");
+    let client = FigClient::new(client_config_insecure().expect("cfg")).expect("client");
     let (fig, restored) = client
         .connect_0rtt(addr, "localhost", Some(&token))
         .await

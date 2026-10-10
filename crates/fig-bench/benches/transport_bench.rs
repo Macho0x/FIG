@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingM
 use fig_bench::criterion_config::criterion_slow;
 use fig_core::frame::Frame;
 use fig_core::transport::{
-    client_config, generate_self_signed_cert, server_config, FigClient, FigServer,
+    client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigServer,
 };
 use tokio::runtime::Runtime;
 
@@ -15,7 +15,7 @@ fn tree_ping_pong_cold_start(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let (cert, key) = generate_self_signed_cert().unwrap();
     let server_cfg = server_config(cert, key).unwrap();
-    let client_cfg = client_config().unwrap();
+    let client_cfg = client_config_insecure().unwrap();
 
     let mut group = c.benchmark_group("transport");
     group.sampling_mode(SamplingMode::Flat);
@@ -54,7 +54,7 @@ fn tree_ping_pong_steady_state(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let (cert, key) = generate_self_signed_cert().unwrap();
     let server_cfg = server_config(cert, key).unwrap();
-    let client_cfg = client_config().unwrap();
+    let client_cfg = client_config_insecure().unwrap();
 
     let server = rt
         .block_on(FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg))
@@ -115,7 +115,7 @@ fn tree_ping_pong_throughput(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
     let (cert, key) = generate_self_signed_cert().unwrap();
     let server_cfg = server_config(cert, key).unwrap();
-    let client_cfg = client_config().unwrap();
+    let client_cfg = client_config_insecure().unwrap();
 
     let server = rt
         .block_on(FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg))

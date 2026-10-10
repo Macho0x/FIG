@@ -22,7 +22,7 @@ pub fn auth_ext(account: &str) -> Extension {
 }
 
 pub async fn connect(server_addr: SocketAddr) -> Result<(Endpoint, Connection)> {
-    let client_config = transport::client_config().map_err(|e| anyhow::anyhow!("{e}"))?;
+    let client_config = transport::client_config_from_env().map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
     endpoint.set_default_client_config(client_config);
     let conn = endpoint

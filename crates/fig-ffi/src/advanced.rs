@@ -11,7 +11,7 @@ use fig_core::fragment::{reassemble_fragments, split_frame};
 use fig_core::frame::Frame;
 use fig_core::migration::MigrationToken;
 use fig_core::session::Session;
-use fig_core::transport::{client_config, FigClient};
+use fig_core::transport::{client_config_from_env, FigClient};
 use tokio::runtime::Runtime;
 
 use crate::client::{FigClientHandle, FigFrameList};
@@ -170,7 +170,7 @@ pub unsafe extern "C" fn fig_client_connect_0rtt(
         Err(_) => return -3,
     };
     let (conn, session) = match rt.block_on(async {
-        let cfg = client_config().map_err(|e| e.to_string())?;
+        let cfg = client_config_from_env().map_err(|e| e.to_string())?;
         let client = FigClient::new(cfg).map_err(|e| e.to_string())?;
         client
             .connect_0rtt(addr, &name, token)
@@ -189,6 +189,10 @@ pub unsafe extern "C" fn fig_client_connect_0rtt(
 }
 
 /// Export resumption token for an active session (if present).
+///
+/// Prefers the server-issued, authenticated token observed on the connection
+/// (echo it verbatim on reconnect). Falls back to the client-local session
+/// payload when no server token has been received.
 #[no_mangle]
 pub unsafe extern "C" fn fig_client_export_resumption_token(
     handle: *mut FigClientHandle,
@@ -198,6 +202,21 @@ pub unsafe extern "C" fn fig_client_export_resumption_token(
         return -1;
     }
     let handle = &*handle;
+
+    // Prefer the server-issued token seen on the wire.
+    let conn = {
+        let guard = handle.conn.lock().unwrap_or_else(|e| e.into_inner());
+        guard.clone()
+    };
+    if let Some(conn) = conn {
+        let rt = handle.rt.clone();
+        let observed = rt.block_on(async { conn.resumption_token().await });
+        if let Some(token) = observed {
+            *out = into_buffer(token);
+            return 0;
+        }
+    }
+
     let session = {
         let guard = handle.session.lock().unwrap();
         guard.clone()
