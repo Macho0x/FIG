@@ -415,7 +415,7 @@ pub const AggregateTrade = struct {
         try writeString(buf, value.agg_trade_id);
         try writeF64BE(buf, value.price);
         try writeF64BE(buf, value.qty);
-        try buf.append(AggregateTradeSideHelpers.ToValue(value.side));
+        try buf.append(AggregateTradeSideToValue(value.side));
         try writeString(buf, value.first_trade_id);
         try writeString(buf, value.last_trade_id);
         try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
@@ -427,7 +427,7 @@ pub const AggregateTrade = struct {
         const agg_trade_id = try readString(buf, &pos, allocator);
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
-        const side = try AggregateTradeSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try AggregateTradeSideFromValue(readU8(buf, &pos));
         const first_trade_id = try readString(buf, &pos, allocator);
         const last_trade_id = try readString(buf, &pos, allocator);
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
@@ -454,7 +454,7 @@ pub const LiquidationTrade = struct {
     pub fn encode(allocator: std.mem.Allocator, value: LiquidationTrade, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
         try writeString(buf, value.symbol);
-        try buf.append(LiquidationTradeSideHelpers.ToValue(value.side));
+        try buf.append(LiquidationTradeSideToValue(value.side));
         try writeF64BE(buf, value.price);
         try writeF64BE(buf, value.qty);
         try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
@@ -463,7 +463,7 @@ pub const LiquidationTrade = struct {
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LiquidationTrade {
         var value: LiquidationTrade = undefined;
         const symbol = try readString(buf, &pos, allocator);
-        const side = try LiquidationTradeSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try LiquidationTradeSideFromValue(readU8(buf, &pos));
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
@@ -514,8 +514,8 @@ pub const MarketDataUpdate = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: MarketDataUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try buf.append(MarketDataUpdateSideHelpers.ToValue(value.side));
-        try buf.append(MarketDataUpdateActionHelpers.ToValue(value.action));
+        try buf.append(MarketDataUpdateSideToValue(value.side));
+        try buf.append(MarketDataUpdateActionToValue(value.action));
         try writeF64BE(buf, value.price);
         try writeF64BE(buf, value.qty);
     }
@@ -523,8 +523,8 @@ pub const MarketDataUpdate = struct {
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataUpdate {
         _ = allocator;
         var value: MarketDataUpdate = undefined;
-        const side = try MarketDataUpdateSideHelpers.FromValue(readU8(buf, &pos));
-        const action = try MarketDataUpdateActionHelpers.FromValue(readU8(buf, &pos));
+        const side = try MarketDataUpdateSideFromValue(readU8(buf, &pos));
+        const action = try MarketDataUpdateActionFromValue(readU8(buf, &pos));
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
         value.side = side;
@@ -610,7 +610,7 @@ pub const PublicTrade = struct {
         try writeString(buf, value.trade_id);
         try writeF64BE(buf, value.price);
         try writeF64BE(buf, value.qty);
-        try buf.append(PublicTradeSideHelpers.ToValue(value.side));
+        try buf.append(PublicTradeSideToValue(value.side));
         try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 
@@ -620,7 +620,7 @@ pub const PublicTrade = struct {
         const trade_id = try readString(buf, &pos, allocator);
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
-        const side = try PublicTradeSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try PublicTradeSideFromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         value.symbol = symbol;
         value.trade_id = trade_id;
@@ -785,14 +785,14 @@ pub const CapabilityPath = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CapabilityPath, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
         try writeString(buf, value.path);
-        try buf.append(CapabilityPathPatternHelpers.ToValue(value.pattern));
+        try buf.append(CapabilityPathPatternToValue(value.pattern));
         try buf.append(@intCast(value.auth_required));
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CapabilityPath {
         var value: CapabilityPath = undefined;
         const path = try readString(buf, &pos, allocator);
-        const pattern = try CapabilityPathPatternHelpers.FromValue(readU8(buf, &pos));
+        const pattern = try CapabilityPathPatternFromValue(readU8(buf, &pos));
         const auth_required = readU8(buf, &pos);
         value.path = path;
         value.pattern = pattern;
@@ -826,21 +826,21 @@ pub const NewOrderSingleBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: NewOrderSingle, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
         try writeString(buf, value.cl_ord_id);
-        try buf.append(NewOrderSingleSideHelpers.ToValue(value.side));
+        try buf.append(NewOrderSingleSideToValue(value.side));
         try writeF64BE(buf, value.order_qty);
         try writeF64BE(buf, value.price orelse 0);
         try buf.append(if (value.price != null) 1 else 0);
         try writeF64BE(buf, value.stop_price orelse 0);
         try buf.append(if (value.stop_price != null) 1 else 0);
         try writeString(buf, value.symbol);
-        try buf.append(NewOrderSingleOrderTypeHelpers.ToValue(value.order_type));
-        try buf.append(NewOrderSingleTimeInForceHelpers.ToValue(value.time_in_force));
+        try buf.append(NewOrderSingleOrderTypeToValue(value.order_type));
+        try buf.append(NewOrderSingleTimeInForceToValue(value.time_in_force));
         try writeU64BE(buf, @as(u64, @bitCast(value.expire_time orelse 0)));
         try buf.append(if (value.expire_time != null) 1 else 0);
         if (value.account) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         if (value.strategy_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         if (value.security_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        try buf.append(if (value.id_source) |e| NewOrderSingleIdSourceHelpers.ToValue(e) else 0);
+        try buf.append(if (value.id_source) |e| NewOrderSingleIdSourceToValue(e) else 0);
         try buf.append(if (value.id_source != null) 1 else 0);
         if (value.security_exchange) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         try buf.append(@intCast(value.post_only orelse 0));
@@ -859,7 +859,7 @@ pub const NewOrderSingleBodyDecoder = struct {
         var security_id: ?[]u8 = null;
         var security_exchange: ?[]u8 = null;
         const cl_ord_id = try readString(buf, &pos, allocator);
-        const side = try NewOrderSingleSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try NewOrderSingleSideFromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -868,8 +868,8 @@ pub const NewOrderSingleBodyDecoder = struct {
         var stop_price: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; stop_price = stop_price_v; } else { pos += 1; }
         const symbol = try readString(buf, &pos, allocator);
-        const order_type = try NewOrderSingleOrderTypeHelpers.FromValue(readU8(buf, &pos));
-        const time_in_force = try NewOrderSingleTimeInForceHelpers.FromValue(readU8(buf, &pos));
+        const order_type = try NewOrderSingleOrderTypeFromValue(readU8(buf, &pos));
+        const time_in_force = try NewOrderSingleTimeInForceFromValue(readU8(buf, &pos));
         const expire_time_v = @as(i64, @bitCast(readU64BE(buf, &pos)));
         var expire_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; expire_time = expire_time_v; } else { pos += 1; }
@@ -895,7 +895,7 @@ pub const NewOrderSingleBodyDecoder = struct {
         var id_source: ?NewOrderSingleIdSource = null;
         if (buf[pos] == 1) {
             pos += 1;
-            id_source = try NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
+            id_source = try NewOrderSingleIdSourceFromValue(id_source_raw);
         } else {
             pos += 1;
         }
@@ -942,21 +942,21 @@ pub const NewOrderSingleEncoder = struct {
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 38);
         try writeString(buf, cl_ord_id);
-        try buf.append(NewOrderSingleSideHelpers.ToValue(side));
+        try buf.append(NewOrderSingleSideToValue(side));
         try writeF64BE(buf, order_qty);
         try writeF64BE(buf, price orelse 0);
         try buf.append(if (price != null) 1 else 0);
         try writeF64BE(buf, stop_price orelse 0);
         try buf.append(if (stop_price != null) 1 else 0);
         try writeString(buf, symbol);
-        try buf.append(NewOrderSingleOrderTypeHelpers.ToValue(order_type));
-        try buf.append(NewOrderSingleTimeInForceHelpers.ToValue(time_in_force));
+        try buf.append(NewOrderSingleOrderTypeToValue(order_type));
+        try buf.append(NewOrderSingleTimeInForceToValue(time_in_force));
         try writeU64BE(buf, @as(u64, @bitCast(expire_time orelse 0)));
         try buf.append(if (expire_time != null) 1 else 0);
         if (account) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         if (strategy_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         if (security_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        try buf.append(if (id_source) |e| NewOrderSingleIdSourceHelpers.ToValue(e) else 0);
+        try buf.append(if (id_source) |e| NewOrderSingleIdSourceToValue(e) else 0);
         try buf.append(if (id_source != null) 1 else 0);
         if (security_exchange) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         try buf.append(@intCast(post_only orelse 0));
@@ -984,7 +984,7 @@ pub const NewOrderSingleDecoder = struct {
         var security_id: ?[]u8 = null;
         var security_exchange: ?[]u8 = null;
         const cl_ord_id = try readString(buf, &pos, allocator);
-        const side = try NewOrderSingleSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try NewOrderSingleSideFromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -993,8 +993,8 @@ pub const NewOrderSingleDecoder = struct {
         var stop_price: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; stop_price = stop_price_v; } else { pos += 1; }
         const symbol = try readString(buf, &pos, allocator);
-        const order_type = try NewOrderSingleOrderTypeHelpers.FromValue(readU8(buf, &pos));
-        const time_in_force = try NewOrderSingleTimeInForceHelpers.FromValue(readU8(buf, &pos));
+        const order_type = try NewOrderSingleOrderTypeFromValue(readU8(buf, &pos));
+        const time_in_force = try NewOrderSingleTimeInForceFromValue(readU8(buf, &pos));
         const expire_time_v = @as(i64, @bitCast(readU64BE(buf, &pos)));
         var expire_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; expire_time = expire_time_v; } else { pos += 1; }
@@ -1020,7 +1020,7 @@ pub const NewOrderSingleDecoder = struct {
         var id_source: ?NewOrderSingleIdSource = null;
         if (buf[pos] == 1) {
             pos += 1;
-            id_source = try NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
+            id_source = try NewOrderSingleIdSourceFromValue(id_source_raw);
         } else {
             pos += 1;
         }
@@ -1072,7 +1072,7 @@ pub const CancelRequestBodyEncoder = struct {
         try writeString(buf, value.cl_ord_id);
         try writeString(buf, value.orig_cl_ord_id);
         try writeString(buf, value.symbol);
-        try buf.append(CancelRequestSideHelpers.ToValue(value.side));
+        try buf.append(CancelRequestSideToValue(value.side));
         try writeF64BE(buf, value.order_qty orelse 0);
         try buf.append(if (value.order_qty != null) 1 else 0);
     }
@@ -1085,7 +1085,7 @@ pub const CancelRequestBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelRequestSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try CancelRequestSideFromValue(readU8(buf, &pos));
         const order_qty_v = readF64BE(buf, &pos);
         var order_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; order_qty = order_qty_v; } else { pos += 1; }
@@ -1111,7 +1111,7 @@ pub const CancelRequestEncoder = struct {
         try writeString(buf, cl_ord_id);
         try writeString(buf, orig_cl_ord_id);
         try writeString(buf, symbol);
-        try buf.append(CancelRequestSideHelpers.ToValue(side));
+        try buf.append(CancelRequestSideToValue(side));
         try writeF64BE(buf, order_qty orelse 0);
         try buf.append(if (order_qty != null) 1 else 0);
         return buf.toOwnedSlice();
@@ -1133,7 +1133,7 @@ pub const CancelRequestDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelRequestSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try CancelRequestSideFromValue(readU8(buf, &pos));
         const order_qty_v = readF64BE(buf, &pos);
         var order_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; order_qty = order_qty_v; } else { pos += 1; }
@@ -1163,7 +1163,7 @@ pub const CancelReplaceRequestBodyEncoder = struct {
         try writeString(buf, value.cl_ord_id);
         try writeString(buf, value.orig_cl_ord_id);
         try writeString(buf, value.symbol);
-        try buf.append(CancelReplaceRequestSideHelpers.ToValue(value.side));
+        try buf.append(CancelReplaceRequestSideToValue(value.side));
         try writeF64BE(buf, value.order_qty);
         try writeF64BE(buf, value.price orelse 0);
         try buf.append(if (value.price != null) 1 else 0);
@@ -1177,7 +1177,7 @@ pub const CancelReplaceRequestBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelReplaceRequestSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try CancelReplaceRequestSideFromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -1205,7 +1205,7 @@ pub const CancelReplaceRequestEncoder = struct {
         try writeString(buf, cl_ord_id);
         try writeString(buf, orig_cl_ord_id);
         try writeString(buf, symbol);
-        try buf.append(CancelReplaceRequestSideHelpers.ToValue(side));
+        try buf.append(CancelReplaceRequestSideToValue(side));
         try writeF64BE(buf, order_qty);
         try writeF64BE(buf, price orelse 0);
         try buf.append(if (price != null) 1 else 0);
@@ -1228,7 +1228,7 @@ pub const CancelReplaceRequestDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelReplaceRequestSideHelpers.FromValue(readU8(buf, &pos));
+        const side = try CancelReplaceRequestSideFromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -1267,9 +1267,9 @@ pub const ExecutionReportBodyEncoder = struct {
         try writeString(buf, value.cl_ord_id);
         try writeString(buf, value.order_id);
         try writeString(buf, value.exec_id);
-        try buf.append(ExecutionReportExecTypeHelpers.ToValue(value.exec_type));
-        try buf.append(ExecutionReportOrdStatusHelpers.ToValue(value.ord_status));
-        try buf.append(ExecutionReportSideHelpers.ToValue(value.side));
+        try buf.append(ExecutionReportExecTypeToValue(value.exec_type));
+        try buf.append(ExecutionReportOrdStatusToValue(value.ord_status));
+        try buf.append(ExecutionReportSideToValue(value.side));
         try writeF64BE(buf, value.last_qty orelse 0);
         try buf.append(if (value.last_qty != null) 1 else 0);
         try writeF64BE(buf, value.last_price orelse 0);
@@ -1289,9 +1289,9 @@ pub const ExecutionReportBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const order_id = try readString(buf, &pos, allocator);
         const exec_id = try readString(buf, &pos, allocator);
-        const exec_type = try ExecutionReportExecTypeHelpers.FromValue(readU8(buf, &pos));
-        const ord_status = try ExecutionReportOrdStatusHelpers.FromValue(readU8(buf, &pos));
-        const side = try ExecutionReportSideHelpers.FromValue(readU8(buf, &pos));
+        const exec_type = try ExecutionReportExecTypeFromValue(readU8(buf, &pos));
+        const ord_status = try ExecutionReportOrdStatusFromValue(readU8(buf, &pos));
+        const side = try ExecutionReportSideFromValue(readU8(buf, &pos));
         const last_qty_v = readF64BE(buf, &pos);
         var last_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; last_qty = last_qty_v; } else { pos += 1; }
@@ -1333,9 +1333,9 @@ pub const ExecutionReportEncoder = struct {
         try writeString(buf, cl_ord_id);
         try writeString(buf, order_id);
         try writeString(buf, exec_id);
-        try buf.append(ExecutionReportExecTypeHelpers.ToValue(exec_type));
-        try buf.append(ExecutionReportOrdStatusHelpers.ToValue(ord_status));
-        try buf.append(ExecutionReportSideHelpers.ToValue(side));
+        try buf.append(ExecutionReportExecTypeToValue(exec_type));
+        try buf.append(ExecutionReportOrdStatusToValue(ord_status));
+        try buf.append(ExecutionReportSideToValue(side));
         try writeF64BE(buf, last_qty orelse 0);
         try buf.append(if (last_qty != null) 1 else 0);
         try writeF64BE(buf, last_price orelse 0);
@@ -1364,9 +1364,9 @@ pub const ExecutionReportDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const order_id = try readString(buf, &pos, allocator);
         const exec_id = try readString(buf, &pos, allocator);
-        const exec_type = try ExecutionReportExecTypeHelpers.FromValue(readU8(buf, &pos));
-        const ord_status = try ExecutionReportOrdStatusHelpers.FromValue(readU8(buf, &pos));
-        const side = try ExecutionReportSideHelpers.FromValue(readU8(buf, &pos));
+        const exec_type = try ExecutionReportExecTypeFromValue(readU8(buf, &pos));
+        const ord_status = try ExecutionReportOrdStatusFromValue(readU8(buf, &pos));
+        const side = try ExecutionReportSideFromValue(readU8(buf, &pos));
         const last_qty_v = readF64BE(buf, &pos);
         var last_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; last_qty = last_qty_v; } else { pos += 1; }
@@ -1409,7 +1409,7 @@ pub const CancelRejectBodyEncoder = struct {
         _ = allocator;
         try writeString(buf, value.cl_ord_id);
         try writeString(buf, value.orig_cl_ord_id);
-        try buf.append(CancelRejectRejectReasonHelpers.ToValue(value.reject_reason));
+        try buf.append(CancelRejectRejectReasonToValue(value.reject_reason));
         try writeString(buf, value.symbol);
     }
 };
@@ -1420,7 +1420,7 @@ pub const CancelRejectBodyDecoder = struct {
         var value: CancelReject = undefined;
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
-        const reject_reason = try CancelRejectRejectReasonHelpers.FromValue(readU8(buf, &pos));
+        const reject_reason = try CancelRejectRejectReasonFromValue(readU8(buf, &pos));
         const symbol = try readString(buf, &pos, allocator);
         value.cl_ord_id = cl_ord_id;
         value.orig_cl_ord_id = orig_cl_ord_id;
@@ -1442,7 +1442,7 @@ pub const CancelRejectEncoder = struct {
         try writeU16BE(buf, 1);
         try writeString(buf, cl_ord_id);
         try writeString(buf, orig_cl_ord_id);
-        try buf.append(CancelRejectRejectReasonHelpers.ToValue(reject_reason));
+        try buf.append(CancelRejectRejectReasonToValue(reject_reason));
         try writeString(buf, symbol);
         return buf.toOwnedSlice();
     }
@@ -1462,7 +1462,7 @@ pub const CancelRejectDecoder = struct {
         var value: CancelReject = undefined;
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
-        const reject_reason = try CancelRejectRejectReasonHelpers.FromValue(readU8(buf, &pos));
+        const reject_reason = try CancelRejectRejectReasonFromValue(readU8(buf, &pos));
         const symbol = try readString(buf, &pos, allocator);
         value.cl_ord_id = cl_ord_id;
         value.orig_cl_ord_id = orig_cl_ord_id;
@@ -4213,7 +4213,7 @@ pub const BalanceUpdateBodyEncoder = struct {
         try writeF64BE(buf, value.delta);
         try writeF64BE(buf, value.total);
         try writeF64BE(buf, value.available);
-        try buf.append(BalanceUpdateReasonHelpers.ToValue(value.reason));
+        try buf.append(BalanceUpdateReasonToValue(value.reason));
     }
 };
 
@@ -4226,7 +4226,7 @@ pub const BalanceUpdateBodyDecoder = struct {
         const delta = readF64BE(buf, &pos);
         const total = readF64BE(buf, &pos);
         const available = readF64BE(buf, &pos);
-        const reason = try BalanceUpdateReasonHelpers.FromValue(readU8(buf, &pos));
+        const reason = try BalanceUpdateReasonFromValue(readU8(buf, &pos));
         value.account = account;
         value.asset = asset;
         value.delta = delta;
@@ -4252,7 +4252,7 @@ pub const BalanceUpdateEncoder = struct {
         try writeF64BE(buf, delta);
         try writeF64BE(buf, total);
         try writeF64BE(buf, available);
-        try buf.append(BalanceUpdateReasonHelpers.ToValue(reason));
+        try buf.append(BalanceUpdateReasonToValue(reason));
         return buf.toOwnedSlice();
     }
 };
@@ -4274,7 +4274,7 @@ pub const BalanceUpdateDecoder = struct {
         const delta = readF64BE(buf, &pos);
         const total = readF64BE(buf, &pos);
         const available = readF64BE(buf, &pos);
-        const reason = try BalanceUpdateReasonHelpers.FromValue(readU8(buf, &pos));
+        const reason = try BalanceUpdateReasonFromValue(readU8(buf, &pos));
         value.account = account;
         value.asset = asset;
         value.delta = delta;
@@ -4649,7 +4649,7 @@ pub const OrderListStatusBodyEncoder = struct {
         _ = allocator;
         try writeString(buf, value.account);
         try writeString(buf, value.list_id);
-        try buf.append(OrderListStatusStatusHelpers.ToValue(value.status));
+        try buf.append(OrderListStatusStatusToValue(value.status));
         if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
@@ -4661,7 +4661,7 @@ pub const OrderListStatusBodyDecoder = struct {
         var symbol: ?[]u8 = null;
         const account = try readString(buf, &pos, allocator);
         const list_id = try readString(buf, &pos, allocator);
-        const status = try OrderListStatusStatusHelpers.FromValue(readU8(buf, &pos));
+        const status = try OrderListStatusStatusFromValue(readU8(buf, &pos));
         if (buf[pos] == 1) {
             pos += 1;
             symbol = try readString(buf, &pos, allocator);
@@ -4688,7 +4688,7 @@ pub const OrderListStatusEncoder = struct {
         try writeU16BE(buf, 1);
         try writeString(buf, account);
         try writeString(buf, list_id);
-        try buf.append(OrderListStatusStatusHelpers.ToValue(status));
+        try buf.append(OrderListStatusStatusToValue(status));
         if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
@@ -4709,7 +4709,7 @@ pub const OrderListStatusDecoder = struct {
         var symbol: ?[]u8 = null;
         const account = try readString(buf, &pos, allocator);
         const list_id = try readString(buf, &pos, allocator);
-        const status = try OrderListStatusStatusHelpers.FromValue(readU8(buf, &pos));
+        const status = try OrderListStatusStatusFromValue(readU8(buf, &pos));
         if (buf[pos] == 1) {
             pos += 1;
             symbol = try readString(buf, &pos, allocator);
@@ -5324,7 +5324,7 @@ pub const LedgerUpdateBodyEncoder = struct {
         try writeString(buf, value.account);
         try writeString(buf, value.asset);
         try writeF64BE(buf, value.delta);
-        try buf.append(LedgerUpdateKindHelpers.ToValue(value.kind));
+        try buf.append(LedgerUpdateKindToValue(value.kind));
         try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
         if (value.reference_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
@@ -5338,7 +5338,7 @@ pub const LedgerUpdateBodyDecoder = struct {
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
-        const kind = try LedgerUpdateKindHelpers.FromValue(readU8(buf, &pos));
+        const kind = try LedgerUpdateKindFromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         if (buf[pos] == 1) {
             pos += 1;
@@ -5369,7 +5369,7 @@ pub const LedgerUpdateEncoder = struct {
         try writeString(buf, account);
         try writeString(buf, asset);
         try writeF64BE(buf, delta);
-        try buf.append(LedgerUpdateKindHelpers.ToValue(kind));
+        try buf.append(LedgerUpdateKindToValue(kind));
         try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         if (reference_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
@@ -5392,7 +5392,7 @@ pub const LedgerUpdateDecoder = struct {
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
-        const kind = try LedgerUpdateKindHelpers.FromValue(readU8(buf, &pos));
+        const kind = try LedgerUpdateKindFromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         if (buf[pos] == 1) {
             pos += 1;

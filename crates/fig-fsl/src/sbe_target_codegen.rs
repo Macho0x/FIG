@@ -1026,7 +1026,6 @@ fn field_scalar_kind(ft: &FieldType) -> Option<ScalarKind> {
     ScalarKind::from_wire_token(&token)
 }
 
-
 /// Buffer parameter declaration, always named `buf`.
 fn buf_param(lang: SbeTargetLang) -> &'static str {
     match lang {
@@ -1207,14 +1206,14 @@ fn target_encode_field(
                 out.push_str(&format!("\t{etmp}_v := uint8(0)\n\tif {pname} != nil {{\n\t\t{etmp}_v = byte({pname}.ToValue())\n\t}}\n\t{buf} = append({buf}, {etmp}_v)\n\tif {pname} != nil {{\n\t\t{buf} = append({buf}, 1)\n\t}} else {{\n\t\t{buf} = append({buf}, 0)\n\t}}\n"));
             },
                 (SbeTargetLang::Go, false) => out.push_str(&format!("\t{buf} = append({buf}, byte({pname}.ToValue()))\n")),
-                (SbeTargetLang::Cpp, true) => out.push_str(&format!("        buf.push_back({pname}.has_value() ? {enum_name}Helpers.ToValue(*{pname}) : 0);\n        buf.push_back({pname}.has_value() ? 1 : 0);\n")),
-                (SbeTargetLang::Cpp, false) => out.push_str(&format!("        buf.push_back({enum_name}Helpers.ToValue({pname}));\n")),
+                (SbeTargetLang::Cpp, true) => out.push_str(&format!("        buf.push_back({pname}.has_value() ? {enum_name}ToValue(*{pname}) : 0);\n        buf.push_back({pname}.has_value() ? 1 : 0);\n")),
+                (SbeTargetLang::Cpp, false) => out.push_str(&format!("        buf.push_back({enum_name}ToValue({pname}));\n")),
                 (SbeTargetLang::Csharp, true) => out.push_str(&format!("            buf.Add({pname}.HasValue ? {enum_name}Helpers.ToValue({pname}.Value) : (byte)0);\n            buf.Add((byte)({pname}.HasValue ? 1 : 0));\n")),
                 (SbeTargetLang::Csharp, false) => out.push_str(&format!("            buf.Add({enum_name}Helpers.ToValue({pname}));\n")),
-                (SbeTargetLang::TypeScript, true) => out.push_str(&format!("  buf.push({pname} != null ? {enum_name}Helpers.ToValue({pname}) : 0);\n  buf.push({pname} != null ? 1 : 0);\n")),
-                (SbeTargetLang::TypeScript, false) => out.push_str(&format!("  buf.push({enum_name}Helpers.ToValue({pname}));\n")),
-                (SbeTargetLang::Zig, true) => out.push_str(&format!("        try {buf}.append(if ({pname}) |e| {enum_name}Helpers.ToValue(e) else 0);\n        try {buf}.append(if ({pname} != null) 1 else 0);\n")),
-                (SbeTargetLang::Zig, false) => out.push_str(&format!("        try {buf}.append({enum_name}Helpers.ToValue({pname}));\n")),
+                (SbeTargetLang::TypeScript, true) => out.push_str(&format!("  buf.push({pname} != null ? {enum_name}ToValue({pname}) : 0);\n  buf.push({pname} != null ? 1 : 0);\n")),
+                (SbeTargetLang::TypeScript, false) => out.push_str(&format!("  buf.push({enum_name}ToValue({pname}));\n")),
+                (SbeTargetLang::Zig, true) => out.push_str(&format!("        try {buf}.append(if ({pname}) |e| {enum_name}ToValue(e) else 0);\n        try {buf}.append(if ({pname} != null) 1 else 0);\n")),
+                (SbeTargetLang::Zig, false) => out.push_str(&format!("        try {buf}.append({enum_name}ToValue({pname}));\n")),
             }
         }
         FieldType::List(inner) => {
@@ -1458,16 +1457,16 @@ fn target_decode_field(
             let enum_name = format!("{parent}{}", pascal_case(&field.name));
             match (lang, optional) {
                 (SbeTargetLang::Go, true) => {
-                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\tvar {var} *{enum_name}\n\tif buf[pos] == 1 {{\n\t\tpos++\n\t\te, {var}_err := {enum_name}Helpers.FromValue({var}_raw)\n\t\tif {var}_err != nil {{\n\t\t\treturn {parent}{{}}, pos, {var}_err\n\t\t}}\n\t\t{var} = &e\n\t}} else {{\n\t\tpos++\n\t\t{var} = nil\n\t}}\n"));
+                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\tvar {var} *{enum_name}\n\tif buf[pos] == 1 {{\n\t\tpos++\n\t\te, {var}_err := {enum_name}FromValue({var}_raw)\n\t\tif {var}_err != nil {{\n\t\t\treturn {parent}{{}}, pos, {var}_err\n\t\t}}\n\t\t{var} = &e\n\t}} else {{\n\t\tpos++\n\t\t{var} = nil\n\t}}\n"));
                 }
                 (SbeTargetLang::Go, false) => {
-                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\t{var}, {var}_err := {enum_name}Helpers.FromValue({var}_raw)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n"));
+                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\t{var}, {var}_err := {enum_name}FromValue({var}_raw)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n"));
                 }
                 (SbeTargetLang::Cpp, true) => {
-                    out.push_str(&format!("        auto {var}_raw = take_u8(buf, pos);\n        std::optional<{enum_name}> {var};\n        if (buf[pos++] == 1) {{\n            auto v = {enum_name}Helpers.FromValue({var}_raw);\n            if (!v) throw std::runtime_error(\"invalid {enum_name}\");\n            {var} = *v;\n        }}\n"));
+                    out.push_str(&format!("        auto {var}_raw = take_u8(buf, pos);\n        std::optional<{enum_name}> {var};\n        if (buf[pos++] == 1) {{\n            auto v = {enum_name}FromValue({var}_raw);\n            if (!v) throw std::runtime_error(\"invalid {enum_name}\");\n            {var} = *v;\n        }}\n"));
                 }
                 (SbeTargetLang::Cpp, false) => {
-                    out.push_str(&format!("        auto {var}_v = {enum_name}Helpers.FromValue(take_u8(buf, pos));\n        if (!{var}_v) throw std::runtime_error(\"invalid {enum_name}\");\n        {enum_name} {var} = *{var}_v;\n"));
+                    out.push_str(&format!("        auto {var}_v = {enum_name}FromValue(take_u8(buf, pos));\n        if (!{var}_v) throw std::runtime_error(\"invalid {enum_name}\");\n        {enum_name} {var} = *{var}_v;\n"));
                 }
                 (SbeTargetLang::Csharp, true) => {
                     out.push_str(&format!("            var {var}Raw = Wire.TakeU8(buf, ref pos);\n            {enum_name}? {var} = null;\n            if (buf[pos++] == 1) {{\n                {var} = {enum_name}Helpers.FromValue({var}Raw) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n            }}\n"));
@@ -1476,17 +1475,17 @@ fn target_decode_field(
                     out.push_str(&format!("            var {var} = {enum_name}Helpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n"));
                 }
                 (SbeTargetLang::TypeScript, true) => {
-                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  let {var}: {enum_name} | null = null;\n  if (buf[pos.value++] === 1) {{\n    const v = {enum_name}Helpers.FromValue({var}Raw);\n    if (v == null) throw new Error('invalid {enum_name}');\n    {var} = v;\n  }}\n"));
+                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  let {var}: {enum_name} | null = null;\n  if (buf[pos.value++] === 1) {{\n    const v = {enum_name}FromValue({var}Raw);\n    if (v == null) throw new Error('invalid {enum_name}');\n    {var} = v;\n  }}\n"));
                 }
                 (SbeTargetLang::TypeScript, false) => {
-                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  const {var} = {enum_name}Helpers.FromValue({var}Raw);\n  if ({var} == null) throw new Error('invalid {enum_name}');\n"));
+                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  const {var} = {enum_name}FromValue({var}Raw);\n  if ({var} == null) throw new Error('invalid {enum_name}');\n"));
                 }
                 (SbeTargetLang::Zig, true) => {
-                    out.push_str(&format!("        const {var}_raw = readU8(buf, &pos);\n        var {var}: ?{enum_name} = null;\n        if (buf[pos] == 1) {{\n            pos += 1;\n            {var} = try {enum_name}Helpers.FromValue({var}_raw);\n        }} else {{\n            pos += 1;\n        }}\n"));
+                    out.push_str(&format!("        const {var}_raw = readU8(buf, &pos);\n        var {var}: ?{enum_name} = null;\n        if (buf[pos] == 1) {{\n            pos += 1;\n            {var} = try {enum_name}FromValue({var}_raw);\n        }} else {{\n            pos += 1;\n        }}\n"));
                 }
                 (SbeTargetLang::Zig, false) => {
                     out.push_str(&format!(
-                        "        const {var} = try {enum_name}Helpers.FromValue(readU8(buf, &pos));\n"
+                        "        const {var} = try {enum_name}FromValue(readU8(buf, &pos));\n"
                     ));
                 }
             }

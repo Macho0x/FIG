@@ -420,7 +420,7 @@ export function AggregateTradeEncoderEncode(value: AggregateTrade, buf: number[]
   writeString(buf, value.agg_trade_id);
   writeF64BE(buf, value.price);
   writeF64BE(buf, value.qty);
-  buf.push(AggregateTradeSideHelpers.ToValue(value.side));
+  buf.push(AggregateTradeSideToValue(value.side));
   writeString(buf, value.first_trade_id);
   writeString(buf, value.last_trade_id);
   writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
@@ -433,7 +433,7 @@ export function AggregateTradeDecoderDecode(buf: Uint8Array, pos: { value: numbe
   const price = readF64BE(buf, pos);
   const qty = readF64BE(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = AggregateTradeSideHelpers.FromValue(sideRaw);
+  const side = AggregateTradeSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid AggregateTradeSide');
   const first_trade_id = readString(buf, pos);
   const last_trade_id = readString(buf, pos);
@@ -463,7 +463,7 @@ export interface LiquidationTrade {
 /** Encode LiquidationTrade fields (no header). */
 export function LiquidationTradeEncoderEncode(value: LiquidationTrade, buf: number[]): void {
   writeString(buf, value.symbol);
-  buf.push(LiquidationTradeSideHelpers.ToValue(value.side));
+  buf.push(LiquidationTradeSideToValue(value.side));
   writeF64BE(buf, value.price);
   writeF64BE(buf, value.qty);
   writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
@@ -473,7 +473,7 @@ export function LiquidationTradeEncoderEncode(value: LiquidationTrade, buf: numb
 export function LiquidationTradeDecoderDecode(buf: Uint8Array, pos: { value: number }): LiquidationTrade {
   const symbol = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = LiquidationTradeSideHelpers.FromValue(sideRaw);
+  const side = LiquidationTradeSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid LiquidationTradeSide');
   const price = readF64BE(buf, pos);
   const qty = readF64BE(buf, pos);
@@ -527,8 +527,8 @@ export interface MarketDataUpdate {
 
 /** Encode MarketDataUpdate fields (no header). */
 export function MarketDataUpdateEncoderEncode(value: MarketDataUpdate, buf: number[]): void {
-  buf.push(MarketDataUpdateSideHelpers.ToValue(value.side));
-  buf.push(MarketDataUpdateActionHelpers.ToValue(value.action));
+  buf.push(MarketDataUpdateSideToValue(value.side));
+  buf.push(MarketDataUpdateActionToValue(value.action));
   writeF64BE(buf, value.price);
   writeF64BE(buf, value.qty);
 }
@@ -536,10 +536,10 @@ export function MarketDataUpdateEncoderEncode(value: MarketDataUpdate, buf: numb
 /** Decode MarketDataUpdate fields; advances `pos`. */
 export function MarketDataUpdateDecoderDecode(buf: Uint8Array, pos: { value: number }): MarketDataUpdate {
   const sideRaw = readU8(buf, pos);
-  const side = MarketDataUpdateSideHelpers.FromValue(sideRaw);
+  const side = MarketDataUpdateSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid MarketDataUpdateSide');
   const actionRaw = readU8(buf, pos);
-  const action = MarketDataUpdateActionHelpers.FromValue(actionRaw);
+  const action = MarketDataUpdateActionFromValue(actionRaw);
   if (action == null) throw new Error('invalid MarketDataUpdateAction');
   const price = readF64BE(buf, pos);
   const qty = readF64BE(buf, pos);
@@ -629,7 +629,7 @@ export function PublicTradeEncoderEncode(value: PublicTrade, buf: number[]): voi
   writeString(buf, value.trade_id);
   writeF64BE(buf, value.price);
   writeF64BE(buf, value.qty);
-  buf.push(PublicTradeSideHelpers.ToValue(value.side));
+  buf.push(PublicTradeSideToValue(value.side));
   writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
 }
 
@@ -640,7 +640,7 @@ export function PublicTradeDecoderDecode(buf: Uint8Array, pos: { value: number }
   const price = readF64BE(buf, pos);
   const qty = readF64BE(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = PublicTradeSideHelpers.FromValue(sideRaw);
+  const side = PublicTradeSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid PublicTradeSide');
   const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
   const value: PublicTrade = {
@@ -799,7 +799,7 @@ export interface CapabilityPath {
 /** Encode CapabilityPath fields (no header). */
 export function CapabilityPathEncoderEncode(value: CapabilityPath, buf: number[]): void {
   writeString(buf, value.path);
-  buf.push(CapabilityPathPatternHelpers.ToValue(value.pattern));
+  buf.push(CapabilityPathPatternToValue(value.pattern));
   buf.push(value.auth_required);
 }
 
@@ -807,7 +807,7 @@ export function CapabilityPathEncoderEncode(value: CapabilityPath, buf: number[]
 export function CapabilityPathDecoderDecode(buf: Uint8Array, pos: { value: number }): CapabilityPath {
   const path = readString(buf, pos);
   const patternRaw = readU8(buf, pos);
-  const pattern = CapabilityPathPatternHelpers.FromValue(patternRaw);
+  const pattern = CapabilityPathPatternFromValue(patternRaw);
   if (pattern == null) throw new Error('invalid CapabilityPathPattern');
   const auth_required = readU8(buf, pos);
   const value: CapabilityPath = {
@@ -841,21 +841,21 @@ export interface NewOrderSingle {
 /** SBE body encoder for NewOrderSingle (fields only, no header). */
 export function NewOrderSingleBodyEncoderEncode(value: NewOrderSingle, buf: number[]): void {
   writeString(buf, value.cl_ord_id);
-  buf.push(NewOrderSingleSideHelpers.ToValue(value.side));
+  buf.push(NewOrderSingleSideToValue(value.side));
   writeF64BE(buf, value.order_qty);
   writeF64BE(buf, value.price ?? 0);
   buf.push(value.price != null ? 1 : 0);
   writeF64BE(buf, value.stop_price ?? 0);
   buf.push(value.stop_price != null ? 1 : 0);
   writeString(buf, value.symbol);
-  buf.push(NewOrderSingleOrderTypeHelpers.ToValue(value.order_type));
-  buf.push(NewOrderSingleTimeInForceHelpers.ToValue(value.time_in_force));
+  buf.push(NewOrderSingleOrderTypeToValue(value.order_type));
+  buf.push(NewOrderSingleTimeInForceToValue(value.time_in_force));
   writeU64BE(buf, BigInt.asUintN(64, value.expire_time ?? 0n));
   buf.push(value.expire_time != null ? 1 : 0);
   if (value.account != null) { buf.push(1); writeString(buf, value.account); } else { buf.push(0); }
   if (value.strategy_id != null) { buf.push(1); writeString(buf, value.strategy_id); } else { buf.push(0); }
   if (value.security_id != null) { buf.push(1); writeString(buf, value.security_id); } else { buf.push(0); }
-  buf.push(value.id_source != null ? NewOrderSingleIdSourceHelpers.ToValue(value.id_source) : 0);
+  buf.push(value.id_source != null ? NewOrderSingleIdSourceToValue(value.id_source) : 0);
   buf.push(value.id_source != null ? 1 : 0);
   if (value.security_exchange != null) { buf.push(1); writeString(buf, value.security_exchange); } else { buf.push(0); }
   buf.push(value.post_only ?? 0);
@@ -872,7 +872,7 @@ export function NewOrderSingleBodyDecoderDecode(buf: Uint8Array, pos: { value: n
   let security_exchange: string | null = null;
   const cl_ord_id = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = NewOrderSingleSideHelpers.FromValue(sideRaw);
+  const side = NewOrderSingleSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid NewOrderSingleSide');
   const order_qty = readF64BE(buf, pos);
   const price_v = readF64BE(buf, pos);
@@ -881,10 +881,10 @@ export function NewOrderSingleBodyDecoderDecode(buf: Uint8Array, pos: { value: n
   const stop_price = buf[pos.value++] === 1 ? stop_price_v : null;
   const symbol = readString(buf, pos);
   const order_typeRaw = readU8(buf, pos);
-  const order_type = NewOrderSingleOrderTypeHelpers.FromValue(order_typeRaw);
+  const order_type = NewOrderSingleOrderTypeFromValue(order_typeRaw);
   if (order_type == null) throw new Error('invalid NewOrderSingleOrderType');
   const time_in_forceRaw = readU8(buf, pos);
-  const time_in_force = NewOrderSingleTimeInForceHelpers.FromValue(time_in_forceRaw);
+  const time_in_force = NewOrderSingleTimeInForceFromValue(time_in_forceRaw);
   if (time_in_force == null) throw new Error('invalid NewOrderSingleTimeInForce');
   const expire_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
   const expire_time = buf[pos.value++] === 1 ? expire_time_v : null;
@@ -894,7 +894,7 @@ export function NewOrderSingleBodyDecoderDecode(buf: Uint8Array, pos: { value: n
   const id_sourceRaw = readU8(buf, pos);
   let id_source: NewOrderSingleIdSource | null = null;
   if (buf[pos.value++] === 1) {
-    const v = NewOrderSingleIdSourceHelpers.FromValue(id_sourceRaw);
+    const v = NewOrderSingleIdSourceFromValue(id_sourceRaw);
     if (v == null) throw new Error('invalid NewOrderSingleIdSource');
     id_source = v;
   }
@@ -932,21 +932,21 @@ export function NewOrderSingleEncoderEncode(cl_ord_id: string, side: NewOrderSin
   writeU16BE(buf, 0);
   writeU16BE(buf, 38);
   writeString(buf, cl_ord_id);
-  buf.push(NewOrderSingleSideHelpers.ToValue(side));
+  buf.push(NewOrderSingleSideToValue(side));
   writeF64BE(buf, order_qty);
   writeF64BE(buf, price ?? 0);
   buf.push(price != null ? 1 : 0);
   writeF64BE(buf, stop_price ?? 0);
   buf.push(stop_price != null ? 1 : 0);
   writeString(buf, symbol);
-  buf.push(NewOrderSingleOrderTypeHelpers.ToValue(order_type));
-  buf.push(NewOrderSingleTimeInForceHelpers.ToValue(time_in_force));
+  buf.push(NewOrderSingleOrderTypeToValue(order_type));
+  buf.push(NewOrderSingleTimeInForceToValue(time_in_force));
   writeU64BE(buf, BigInt.asUintN(64, expire_time ?? 0n));
   buf.push(expire_time != null ? 1 : 0);
   if (account != null) { buf.push(1); writeString(buf, account); } else { buf.push(0); }
   if (strategy_id != null) { buf.push(1); writeString(buf, strategy_id); } else { buf.push(0); }
   if (security_id != null) { buf.push(1); writeString(buf, security_id); } else { buf.push(0); }
-  buf.push(id_source != null ? NewOrderSingleIdSourceHelpers.ToValue(id_source) : 0);
+  buf.push(id_source != null ? NewOrderSingleIdSourceToValue(id_source) : 0);
   buf.push(id_source != null ? 1 : 0);
   if (security_exchange != null) { buf.push(1); writeString(buf, security_exchange); } else { buf.push(0); }
   buf.push(post_only ?? 0);
@@ -972,7 +972,7 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingle {
   let security_exchange: string | null = null;
   const cl_ord_id = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = NewOrderSingleSideHelpers.FromValue(sideRaw);
+  const side = NewOrderSingleSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid NewOrderSingleSide');
   const order_qty = readF64BE(buf, pos);
   const price_v = readF64BE(buf, pos);
@@ -981,10 +981,10 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingle {
   const stop_price = buf[pos.value++] === 1 ? stop_price_v : null;
   const symbol = readString(buf, pos);
   const order_typeRaw = readU8(buf, pos);
-  const order_type = NewOrderSingleOrderTypeHelpers.FromValue(order_typeRaw);
+  const order_type = NewOrderSingleOrderTypeFromValue(order_typeRaw);
   if (order_type == null) throw new Error('invalid NewOrderSingleOrderType');
   const time_in_forceRaw = readU8(buf, pos);
-  const time_in_force = NewOrderSingleTimeInForceHelpers.FromValue(time_in_forceRaw);
+  const time_in_force = NewOrderSingleTimeInForceFromValue(time_in_forceRaw);
   if (time_in_force == null) throw new Error('invalid NewOrderSingleTimeInForce');
   const expire_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
   const expire_time = buf[pos.value++] === 1 ? expire_time_v : null;
@@ -994,7 +994,7 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingle {
   const id_sourceRaw = readU8(buf, pos);
   let id_source: NewOrderSingleIdSource | null = null;
   if (buf[pos.value++] === 1) {
-    const v = NewOrderSingleIdSourceHelpers.FromValue(id_sourceRaw);
+    const v = NewOrderSingleIdSourceFromValue(id_sourceRaw);
     if (v == null) throw new Error('invalid NewOrderSingleIdSource');
     id_source = v;
   }
@@ -1038,7 +1038,7 @@ export function CancelRequestBodyEncoderEncode(value: CancelRequest, buf: number
   writeString(buf, value.cl_ord_id);
   writeString(buf, value.orig_cl_ord_id);
   writeString(buf, value.symbol);
-  buf.push(CancelRequestSideHelpers.ToValue(value.side));
+  buf.push(CancelRequestSideToValue(value.side));
   writeF64BE(buf, value.order_qty ?? 0);
   buf.push(value.order_qty != null ? 1 : 0);
 }
@@ -1049,7 +1049,7 @@ export function CancelRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: nu
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = CancelRequestSideHelpers.FromValue(sideRaw);
+  const side = CancelRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelRequestSide');
   const order_qty_v = readF64BE(buf, pos);
   const order_qty = buf[pos.value++] === 1 ? order_qty_v : null;
@@ -1073,7 +1073,7 @@ export function CancelRequestEncoderEncode(cl_ord_id: string, orig_cl_ord_id: st
   writeString(buf, cl_ord_id);
   writeString(buf, orig_cl_ord_id);
   writeString(buf, symbol);
-  buf.push(CancelRequestSideHelpers.ToValue(side));
+  buf.push(CancelRequestSideToValue(side));
   writeF64BE(buf, order_qty ?? 0);
   buf.push(order_qty != null ? 1 : 0);
   return new Uint8Array(buf);
@@ -1093,7 +1093,7 @@ export function CancelRequestDecoderDecode(buf: Uint8Array): CancelRequest {
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = CancelRequestSideHelpers.FromValue(sideRaw);
+  const side = CancelRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelRequestSide');
   const order_qty_v = readF64BE(buf, pos);
   const order_qty = buf[pos.value++] === 1 ? order_qty_v : null;
@@ -1122,7 +1122,7 @@ export function CancelReplaceRequestBodyEncoderEncode(value: CancelReplaceReques
   writeString(buf, value.cl_ord_id);
   writeString(buf, value.orig_cl_ord_id);
   writeString(buf, value.symbol);
-  buf.push(CancelReplaceRequestSideHelpers.ToValue(value.side));
+  buf.push(CancelReplaceRequestSideToValue(value.side));
   writeF64BE(buf, value.order_qty);
   writeF64BE(buf, value.price ?? 0);
   buf.push(value.price != null ? 1 : 0);
@@ -1134,7 +1134,7 @@ export function CancelReplaceRequestBodyDecoderDecode(buf: Uint8Array, pos: { va
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = CancelReplaceRequestSideHelpers.FromValue(sideRaw);
+  const side = CancelReplaceRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelReplaceRequestSide');
   const order_qty = readF64BE(buf, pos);
   const price_v = readF64BE(buf, pos);
@@ -1160,7 +1160,7 @@ export function CancelReplaceRequestEncoderEncode(cl_ord_id: string, orig_cl_ord
   writeString(buf, cl_ord_id);
   writeString(buf, orig_cl_ord_id);
   writeString(buf, symbol);
-  buf.push(CancelReplaceRequestSideHelpers.ToValue(side));
+  buf.push(CancelReplaceRequestSideToValue(side));
   writeF64BE(buf, order_qty);
   writeF64BE(buf, price ?? 0);
   buf.push(price != null ? 1 : 0);
@@ -1181,7 +1181,7 @@ export function CancelReplaceRequestDecoderDecode(buf: Uint8Array): CancelReplac
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
   const sideRaw = readU8(buf, pos);
-  const side = CancelReplaceRequestSideHelpers.FromValue(sideRaw);
+  const side = CancelReplaceRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelReplaceRequestSide');
   const order_qty = readF64BE(buf, pos);
   const price_v = readF64BE(buf, pos);
@@ -1219,9 +1219,9 @@ export function ExecutionReportBodyEncoderEncode(value: ExecutionReport, buf: nu
   writeString(buf, value.cl_ord_id);
   writeString(buf, value.order_id);
   writeString(buf, value.exec_id);
-  buf.push(ExecutionReportExecTypeHelpers.ToValue(value.exec_type));
-  buf.push(ExecutionReportOrdStatusHelpers.ToValue(value.ord_status));
-  buf.push(ExecutionReportSideHelpers.ToValue(value.side));
+  buf.push(ExecutionReportExecTypeToValue(value.exec_type));
+  buf.push(ExecutionReportOrdStatusToValue(value.ord_status));
+  buf.push(ExecutionReportSideToValue(value.side));
   writeF64BE(buf, value.last_qty ?? 0);
   buf.push(value.last_qty != null ? 1 : 0);
   writeF64BE(buf, value.last_price ?? 0);
@@ -1239,13 +1239,13 @@ export function ExecutionReportBodyDecoderDecode(buf: Uint8Array, pos: { value: 
   const order_id = readString(buf, pos);
   const exec_id = readString(buf, pos);
   const exec_typeRaw = readU8(buf, pos);
-  const exec_type = ExecutionReportExecTypeHelpers.FromValue(exec_typeRaw);
+  const exec_type = ExecutionReportExecTypeFromValue(exec_typeRaw);
   if (exec_type == null) throw new Error('invalid ExecutionReportExecType');
   const ord_statusRaw = readU8(buf, pos);
-  const ord_status = ExecutionReportOrdStatusHelpers.FromValue(ord_statusRaw);
+  const ord_status = ExecutionReportOrdStatusFromValue(ord_statusRaw);
   if (ord_status == null) throw new Error('invalid ExecutionReportOrdStatus');
   const sideRaw = readU8(buf, pos);
-  const side = ExecutionReportSideHelpers.FromValue(sideRaw);
+  const side = ExecutionReportSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid ExecutionReportSide');
   const last_qty_v = readF64BE(buf, pos);
   const last_qty = buf[pos.value++] === 1 ? last_qty_v : null;
@@ -1284,9 +1284,9 @@ export function ExecutionReportEncoderEncode(cl_ord_id: string, order_id: string
   writeString(buf, cl_ord_id);
   writeString(buf, order_id);
   writeString(buf, exec_id);
-  buf.push(ExecutionReportExecTypeHelpers.ToValue(exec_type));
-  buf.push(ExecutionReportOrdStatusHelpers.ToValue(ord_status));
-  buf.push(ExecutionReportSideHelpers.ToValue(side));
+  buf.push(ExecutionReportExecTypeToValue(exec_type));
+  buf.push(ExecutionReportOrdStatusToValue(ord_status));
+  buf.push(ExecutionReportSideToValue(side));
   writeF64BE(buf, last_qty ?? 0);
   buf.push(last_qty != null ? 1 : 0);
   writeF64BE(buf, last_price ?? 0);
@@ -1313,13 +1313,13 @@ export function ExecutionReportDecoderDecode(buf: Uint8Array): ExecutionReport {
   const order_id = readString(buf, pos);
   const exec_id = readString(buf, pos);
   const exec_typeRaw = readU8(buf, pos);
-  const exec_type = ExecutionReportExecTypeHelpers.FromValue(exec_typeRaw);
+  const exec_type = ExecutionReportExecTypeFromValue(exec_typeRaw);
   if (exec_type == null) throw new Error('invalid ExecutionReportExecType');
   const ord_statusRaw = readU8(buf, pos);
-  const ord_status = ExecutionReportOrdStatusHelpers.FromValue(ord_statusRaw);
+  const ord_status = ExecutionReportOrdStatusFromValue(ord_statusRaw);
   if (ord_status == null) throw new Error('invalid ExecutionReportOrdStatus');
   const sideRaw = readU8(buf, pos);
-  const side = ExecutionReportSideHelpers.FromValue(sideRaw);
+  const side = ExecutionReportSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid ExecutionReportSide');
   const last_qty_v = readF64BE(buf, pos);
   const last_qty = buf[pos.value++] === 1 ? last_qty_v : null;
@@ -1360,7 +1360,7 @@ export interface CancelReject {
 export function CancelRejectBodyEncoderEncode(value: CancelReject, buf: number[]): void {
   writeString(buf, value.cl_ord_id);
   writeString(buf, value.orig_cl_ord_id);
-  buf.push(CancelRejectRejectReasonHelpers.ToValue(value.reject_reason));
+  buf.push(CancelRejectRejectReasonToValue(value.reject_reason));
   writeString(buf, value.symbol);
 }
 
@@ -1369,7 +1369,7 @@ export function CancelRejectBodyDecoderDecode(buf: Uint8Array, pos: { value: num
   const cl_ord_id = readString(buf, pos);
   const orig_cl_ord_id = readString(buf, pos);
   const reject_reasonRaw = readU8(buf, pos);
-  const reject_reason = CancelRejectRejectReasonHelpers.FromValue(reject_reasonRaw);
+  const reject_reason = CancelRejectRejectReasonFromValue(reject_reasonRaw);
   if (reject_reason == null) throw new Error('invalid CancelRejectRejectReason');
   const symbol = readString(buf, pos);
   const value: CancelReject = {
@@ -1390,7 +1390,7 @@ export function CancelRejectEncoderEncode(cl_ord_id: string, orig_cl_ord_id: str
   writeU16BE(buf, 1);
   writeString(buf, cl_ord_id);
   writeString(buf, orig_cl_ord_id);
-  buf.push(CancelRejectRejectReasonHelpers.ToValue(reject_reason));
+  buf.push(CancelRejectRejectReasonToValue(reject_reason));
   writeString(buf, symbol);
   return new Uint8Array(buf);
 }
@@ -1408,7 +1408,7 @@ export function CancelRejectDecoderDecode(buf: Uint8Array): CancelReject {
   const cl_ord_id = readString(buf, pos);
   const orig_cl_ord_id = readString(buf, pos);
   const reject_reasonRaw = readU8(buf, pos);
-  const reject_reason = CancelRejectRejectReasonHelpers.FromValue(reject_reasonRaw);
+  const reject_reason = CancelRejectRejectReasonFromValue(reject_reasonRaw);
   if (reject_reason == null) throw new Error('invalid CancelRejectRejectReason');
   const symbol = readString(buf, pos);
   const value: CancelReject = {
@@ -3745,7 +3745,7 @@ export function BalanceUpdateBodyEncoderEncode(value: BalanceUpdate, buf: number
   writeF64BE(buf, value.delta);
   writeF64BE(buf, value.total);
   writeF64BE(buf, value.available);
-  buf.push(BalanceUpdateReasonHelpers.ToValue(value.reason));
+  buf.push(BalanceUpdateReasonToValue(value.reason));
 }
 
 /** SBE body decoder for BalanceUpdate: reads fields at `pos`. */
@@ -3756,7 +3756,7 @@ export function BalanceUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: nu
   const total = readF64BE(buf, pos);
   const available = readF64BE(buf, pos);
   const reasonRaw = readU8(buf, pos);
-  const reason = BalanceUpdateReasonHelpers.FromValue(reasonRaw);
+  const reason = BalanceUpdateReasonFromValue(reasonRaw);
   if (reason == null) throw new Error('invalid BalanceUpdateReason');
   const value: BalanceUpdate = {
     account: account,
@@ -3781,7 +3781,7 @@ export function BalanceUpdateEncoderEncode(account: string, asset: string, delta
   writeF64BE(buf, delta);
   writeF64BE(buf, total);
   writeF64BE(buf, available);
-  buf.push(BalanceUpdateReasonHelpers.ToValue(reason));
+  buf.push(BalanceUpdateReasonToValue(reason));
   return new Uint8Array(buf);
 }
 
@@ -3801,7 +3801,7 @@ export function BalanceUpdateDecoderDecode(buf: Uint8Array): BalanceUpdate {
   const total = readF64BE(buf, pos);
   const available = readF64BE(buf, pos);
   const reasonRaw = readU8(buf, pos);
-  const reason = BalanceUpdateReasonHelpers.FromValue(reasonRaw);
+  const reason = BalanceUpdateReasonFromValue(reasonRaw);
   if (reason == null) throw new Error('invalid BalanceUpdateReason');
   const value: BalanceUpdate = {
     account: account,
@@ -4134,7 +4134,7 @@ export interface OrderListStatus {
 export function OrderListStatusBodyEncoderEncode(value: OrderListStatus, buf: number[]): void {
   writeString(buf, value.account);
   writeString(buf, value.list_id);
-  buf.push(OrderListStatusStatusHelpers.ToValue(value.status));
+  buf.push(OrderListStatusStatusToValue(value.status));
   if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
 }
 
@@ -4144,7 +4144,7 @@ export function OrderListStatusBodyDecoderDecode(buf: Uint8Array, pos: { value: 
   const account = readString(buf, pos);
   const list_id = readString(buf, pos);
   const statusRaw = readU8(buf, pos);
-  const status = OrderListStatusStatusHelpers.FromValue(statusRaw);
+  const status = OrderListStatusStatusFromValue(statusRaw);
   if (status == null) throw new Error('invalid OrderListStatusStatus');
   if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
   const value: OrderListStatus = {
@@ -4165,7 +4165,7 @@ export function OrderListStatusEncoderEncode(account: string, list_id: string, s
   writeU16BE(buf, 1);
   writeString(buf, account);
   writeString(buf, list_id);
-  buf.push(OrderListStatusStatusHelpers.ToValue(status));
+  buf.push(OrderListStatusStatusToValue(status));
   if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
@@ -4184,7 +4184,7 @@ export function OrderListStatusDecoderDecode(buf: Uint8Array): OrderListStatus {
   const account = readString(buf, pos);
   const list_id = readString(buf, pos);
   const statusRaw = readU8(buf, pos);
-  const status = OrderListStatusStatusHelpers.FromValue(statusRaw);
+  const status = OrderListStatusStatusFromValue(statusRaw);
   if (status == null) throw new Error('invalid OrderListStatusStatus');
   if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
   const value: OrderListStatus = {
@@ -4671,7 +4671,7 @@ export function LedgerUpdateBodyEncoderEncode(value: LedgerUpdate, buf: number[]
   writeString(buf, value.account);
   writeString(buf, value.asset);
   writeF64BE(buf, value.delta);
-  buf.push(LedgerUpdateKindHelpers.ToValue(value.kind));
+  buf.push(LedgerUpdateKindToValue(value.kind));
   writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
   if (value.reference_id != null) { buf.push(1); writeString(buf, value.reference_id); } else { buf.push(0); }
 }
@@ -4683,7 +4683,7 @@ export function LedgerUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: num
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
   const kindRaw = readU8(buf, pos);
-  const kind = LedgerUpdateKindHelpers.FromValue(kindRaw);
+  const kind = LedgerUpdateKindFromValue(kindRaw);
   if (kind == null) throw new Error('invalid LedgerUpdateKind');
   const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
   if (readU8(buf, pos) === 1) reference_id = readString(buf, pos);
@@ -4708,7 +4708,7 @@ export function LedgerUpdateEncoderEncode(account: string, asset: string, delta:
   writeString(buf, account);
   writeString(buf, asset);
   writeF64BE(buf, delta);
-  buf.push(LedgerUpdateKindHelpers.ToValue(kind));
+  buf.push(LedgerUpdateKindToValue(kind));
   writeU64BE(buf, BigInt.asUintN(64, timestamp));
   if (reference_id != null) { buf.push(1); writeString(buf, reference_id); } else { buf.push(0); }
   return new Uint8Array(buf);
@@ -4729,7 +4729,7 @@ export function LedgerUpdateDecoderDecode(buf: Uint8Array): LedgerUpdate {
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
   const kindRaw = readU8(buf, pos);
-  const kind = LedgerUpdateKindHelpers.FromValue(kindRaw);
+  const kind = LedgerUpdateKindFromValue(kindRaw);
   if (kind == null) throw new Error('invalid LedgerUpdateKind');
   const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
   if (readU8(buf, pos) === 1) reference_id = readString(buf, pos);
