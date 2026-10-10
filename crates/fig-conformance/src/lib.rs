@@ -331,7 +331,7 @@ fn sample_symbol_ticker() -> SymbolTicker {
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
         encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
-        encode_order_book_snapshot, encode_symbol_ticker,
+        encode_capabilities_response, encode_order_book_snapshot, encode_symbol_ticker,
     };
 
     let encoded = match vector.message_type.as_str() {
@@ -348,6 +348,7 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "SymbolTicker" => encode_symbol_ticker(&sample_symbol_ticker()),
         "OrderBookSnapshot" => encode_order_book_snapshot(&sample_order_book_snapshot()),
         "BalanceSnapshot" => encode_balance_snapshot(&sample_balance_snapshot()),
+        "CapabilitiesResponse" => encode_capabilities_response(&sample_capabilities_response()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;
@@ -357,6 +358,15 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         let decoded = decode_new_order_single(&encoded).map_err(|e| anyhow!("sbe decode: {e}"))?;
         if decoded.cl_ord_id != order.cl_ord_id {
             return Err(anyhow!("sbe round-trip cl_ord_id mismatch"));
+        }
+    }
+    if vector.message_type == "CapabilitiesResponse" {
+        // Round-trips the list-of-scalar layout (list<uint8>, list<string>, list<enum>).
+        let want = sample_capabilities_response();
+        let decoded = fig_core::sbe::decode_capabilities_response(&encoded)
+            .map_err(|e| anyhow!("sbe decode: {e}"))?;
+        if decoded != want {
+            return Err(anyhow!("sbe round-trip capabilities mismatch: {decoded:?}"));
         }
     }
     Ok(())

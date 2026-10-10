@@ -49,6 +49,17 @@ int main() {
             "AAPL", "SIM", bids, asks, 1700000000000000000LL, uint64_t{42}, uint8_t{1}),
         "000100090000001100044141504c000353494d00000001000000154059000000000000401400000000000000000001010000000017979cfe362a0000000000000000002a010101");
 
+    // list-of-scalar message (list<uint8>, list<string>, list<enum>)
+    bad += check(
+        "capabilities_response",
+        fig::sbe::CapabilitiesResponseEncoder::encode(
+            std::vector<uint8_t>{1, 2, 3},
+            std::vector<fig::sbe::CapabilityPath>{
+                fig::sbe::CapabilityPath{"marketdata/AAPL/candles/5m",
+                                         fig::sbe::CapabilityPathPattern::PubSub, uint8_t{0}}},
+            std::vector<std::string>{"AAPL"}, std::vector<std::string>{"5m"}),
+        "000100350000000000000003010203000000010000001e001a6d61726b6574646174612f4141504c2f63616e646c65732f356d010000000001000000044141504c0000000100000002356d");
+
     // Round trip through the generated decoder
     auto raw = fig::sbe::NewOrderSingleEncoder::encode(
         "RT-001", fig::sbe::NewOrderSingleSide::Buy, 7.0, 12.5, std::nullopt, "MSFT",

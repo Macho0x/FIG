@@ -97,3 +97,20 @@ func TestRoundTrips(t *testing.T) {
 		t.Fatalf("optionals round trip mismatch: %+v", snapGot)
 	}
 }
+
+func TestCapabilitiesResponseMatchesConformanceVector(t *testing.T) {
+	// Exercises the list-of-scalar layout: list<uint8>, list<string>, list<enum>.
+	const want = "000100350000000000000003010203000000010000001e001a6d61726b6574646174612f4141504c2f63616e646c65732f356d010000000001000000044141504c0000000100000002356d"
+	got, err := CapabilitiesResponseEncoder{}.Encode(
+		[]uint8{1, 2, 3},
+		[]CapabilityPath{{Path: "marketdata/AAPL/candles/5m", Pattern: CapabilityPathPatternPubSub, AuthRequired: 0}},
+		[]string{"AAPL"},
+		[]string{"5m"},
+	)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if hex.EncodeToString(got) != want {
+		t.Fatalf("hex mismatch\n got %s\nwant %s", hex.EncodeToString(got), want)
+	}
+}

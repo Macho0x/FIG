@@ -263,6 +263,38 @@ pub fn encode_order_book_snapshot(snap: &OrderBookSnapshot) -> Vec<u8> {
     )
 }
 
+/// Decode a `CapabilitiesResponse` SBE message.
+pub fn decode_capabilities_response(
+    buf: &[u8],
+) -> Result<crate::messages::CapabilitiesResponse, SbeError> {
+    let d = CapabilitiesResponseDecoder::decode(buf).map_err(decode_err)?;
+    Ok(crate::messages::CapabilitiesResponse {
+        schema_ids: d.schema_ids,
+        paths: d
+            .paths
+            .into_iter()
+            .map(|p| crate::messages::CapabilityPath {
+                path: p.path,
+                pattern: p.pattern,
+                auth_required: p.auth_required,
+            })
+            .collect(),
+        symbols: d.symbols,
+        intervals: d.intervals,
+    })
+}
+
+/// Encode a `CapabilitiesResponse` SBE message — exercises list-of-scalar fields
+/// (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`).
+pub fn encode_capabilities_response(resp: &crate::messages::CapabilitiesResponse) -> Vec<u8> {
+    CapabilitiesResponseEncoder::encode(
+        resp.schema_ids.clone(),
+        resp.paths.clone(),
+        resp.symbols.clone(),
+        resp.intervals.clone(),
+    )
+}
+
 /// Encode a `BalanceSnapshot` SBE message (template 33).
 pub fn encode_balance_snapshot(snap: &BalanceSnapshot) -> Vec<u8> {
     BalanceSnapshotEncoder::encode(

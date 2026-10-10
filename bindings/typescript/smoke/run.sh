@@ -34,6 +34,7 @@ import { readFileSync } from "fs";
 import {
   NewOrderSingleEncoderEncode, NewOrderSingleSide, NewOrderSingleOrderType, NewOrderSingleTimeInForce,
   OrderBookSnapshotEncoderEncode, NewOrderSingleDecoderDecode,
+  CapabilitiesResponseEncoderEncode, CapabilityPathPattern,
 } from "./bindings/typescript/sbe_generated.ts";
 
 const root = process.env.FIG_REPO_ROOT ?? process.cwd();
@@ -62,5 +63,14 @@ const round = NewOrderSingleDecoderDecode(order);
 if (round.cl_ord_id !== "CONF-001" || round.symbol !== "AAPL" || round.order_qty !== 100 || round.price !== 50.25) {
   throw new Error("round trip failed: " + JSON.stringify(round));
 }
+const caps = CapabilitiesResponseEncoderEncode(
+  [1, 2, 3],
+  [{ path: "marketdata/AAPL/candles/5m", pattern: CapabilityPathPattern.PubSub, auth_required: 0 }],
+  ["AAPL"], ["5m"],
+);
+if (hex(caps) !== want("sbe.capabilities_response.demo")) {
+  throw new Error("capabilities_response parity failed\n got " + hex(caps) + "\nwant " + want("sbe.capabilities_response.demo"));
+}
+
 console.log("fig-ts sbe parity OK");
 '

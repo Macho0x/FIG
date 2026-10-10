@@ -56,8 +56,8 @@ nxt = sub.next(timeout_ms=5000)
 Per-language generated SBE (`bindings/{go,cpp,csharp,typescript,zig}/*_generated.*`) is
 emitted by `cargo xtask codegen`. All five targets are compiled in CI, and each one is
 byte-for-byte parity-checked against the shared conformance vectors by its own smoke
-(`bindings/*/smoke`, `bindings/zig/sbe_parity.zig`). Scalar list items are not yet defined on
-either side (see TODO §16.2). The FFI wire codecs remain the recommended production path.
+(`bindings/*/smoke`, `bindings/zig/sbe_parity.zig`), including list-of-scalar payloads. The FFI
+wire codecs remain the recommended production path.
 
 ## Manual crates.io publish (maintainers)
 

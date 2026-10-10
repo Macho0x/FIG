@@ -15,6 +15,8 @@ namespace Fig.Sbe
 
     internal static class Wire
     {
+        public static void WriteStringU32(List<byte> buf, string s) { var b = System.Text.Encoding.UTF8.GetBytes(s); WriteU32BE(buf, (uint)b.Length); buf.AddRange(b); }
+        public static string ReadStringU32(byte[] buf, ref int pos) { uint n = ReadU32BE(buf, ref pos); var s = System.Text.Encoding.UTF8.GetString(buf, pos, (int)n); pos += (int)n; return s; }
         public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
         public static void WriteU16BE(List<byte> buf, ushort v) { buf.Add((byte)(v >> 8)); buf.Add((byte)v); }
         public static void WriteU32BE(List<byte> buf, uint v) {
@@ -6256,6 +6258,10 @@ public static class CapabilityPathDecoder
         public static void Encode(CapabilitiesResponse value, List<byte> buf)
         {
             Wire.WriteU32BE(buf, (uint)value.SchemaIds.Count);
+            foreach (var item in value.SchemaIds)
+            {
+            buf.Add(item);
+            }
             Wire.WriteU32BE(buf, (uint)value.Paths.Count);
             foreach (var item in value.Paths)
             {
@@ -6265,7 +6271,15 @@ public static class CapabilityPathDecoder
                 buf.AddRange(itemBuf);
             }
             Wire.WriteU32BE(buf, (uint)value.Symbols.Count);
+            foreach (var item in value.Symbols)
+            {
+                Wire.WriteStringU32(buf, item);
+            }
             Wire.WriteU32BE(buf, (uint)value.Intervals.Count);
+            foreach (var item in value.Intervals)
+            {
+                Wire.WriteStringU32(buf, item);
+            }
         }
     }
 
@@ -6276,8 +6290,11 @@ public static class CapabilityPathDecoder
         {
             var value = new CapabilitiesResponse();
             uint schema_idsCount = Wire.ReadU32BE(buf, ref pos);
-            var schema_ids = new List<byte>();
-            _ = schema_idsCount;
+            var schema_ids = new List<byte>((int)schema_idsCount);
+            for (int i = 0; i < (int)schema_idsCount; i++)
+            {
+                schema_ids.Add(Wire.TakeU8(buf, ref pos));
+            }
             uint pathsCount = Wire.ReadU32BE(buf, ref pos);
             var paths = new List<CapabilityPath>((int)pathsCount);
             for (int i = 0; i < (int)pathsCount; i++)
@@ -6289,11 +6306,17 @@ public static class CapabilityPathDecoder
                 paths.Add(item);
             }
             uint symbolsCount = Wire.ReadU32BE(buf, ref pos);
-            var symbols = new List<string>();
-            _ = symbolsCount;
+            var symbols = new List<string>((int)symbolsCount);
+            for (int i = 0; i < (int)symbolsCount; i++)
+            {
+                symbols.Add(Wire.ReadStringU32(buf, ref pos));
+            }
             uint intervalsCount = Wire.ReadU32BE(buf, ref pos);
-            var intervals = new List<string>();
-            _ = intervalsCount;
+            var intervals = new List<string>((int)intervalsCount);
+            for (int i = 0; i < (int)intervalsCount; i++)
+            {
+                intervals.Add(Wire.ReadStringU32(buf, ref pos));
+            }
             value.SchemaIds = schema_ids;
             value.Paths = paths;
             value.Symbols = symbols;
@@ -6313,6 +6336,10 @@ public static class CapabilityPathDecoder
             Wire.WriteU16BE(buf, 0);
             Wire.WriteU16BE(buf, 0);
             Wire.WriteU32BE(buf, (uint)SchemaIds.Count);
+            foreach (var item in SchemaIds)
+            {
+            buf.Add(item);
+            }
             Wire.WriteU32BE(buf, (uint)Paths.Count);
             foreach (var item in Paths)
             {
@@ -6322,7 +6349,15 @@ public static class CapabilityPathDecoder
                 buf.AddRange(itemBuf);
             }
             Wire.WriteU32BE(buf, (uint)Symbols.Count);
+            foreach (var item in Symbols)
+            {
+                Wire.WriteStringU32(buf, item);
+            }
             Wire.WriteU32BE(buf, (uint)Intervals.Count);
+            foreach (var item in Intervals)
+            {
+                Wire.WriteStringU32(buf, item);
+            }
             return buf.ToArray();
         }
     }
@@ -6342,8 +6377,11 @@ public static class CapabilityPathDecoder
             if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 53) throw new InvalidOperationException("invalid template_id");
             uint schema_idsCount = Wire.ReadU32BE(buf, ref pos);
-            var schema_ids = new List<byte>();
-            _ = schema_idsCount;
+            var schema_ids = new List<byte>((int)schema_idsCount);
+            for (int i = 0; i < (int)schema_idsCount; i++)
+            {
+                schema_ids.Add(Wire.TakeU8(buf, ref pos));
+            }
             uint pathsCount = Wire.ReadU32BE(buf, ref pos);
             var paths = new List<CapabilityPath>((int)pathsCount);
             for (int i = 0; i < (int)pathsCount; i++)
@@ -6355,11 +6393,17 @@ public static class CapabilityPathDecoder
                 paths.Add(item);
             }
             uint symbolsCount = Wire.ReadU32BE(buf, ref pos);
-            var symbols = new List<string>();
-            _ = symbolsCount;
+            var symbols = new List<string>((int)symbolsCount);
+            for (int i = 0; i < (int)symbolsCount; i++)
+            {
+                symbols.Add(Wire.ReadStringU32(buf, ref pos));
+            }
             uint intervalsCount = Wire.ReadU32BE(buf, ref pos);
-            var intervals = new List<string>();
-            _ = intervalsCount;
+            var intervals = new List<string>((int)intervalsCount);
+            for (int i = 0; i < (int)intervalsCount; i++)
+            {
+                intervals.Add(Wire.ReadStringU32(buf, ref pos));
+            }
             value.SchemaIds = schema_ids;
             value.Paths = paths;
             value.Symbols = symbols;

@@ -30,6 +30,18 @@ func writeString(buf *[]byte, s string) {
 	*buf = append(*buf, []byte(s)...)
 }
 
+func writeStringU32(buf *[]byte, s string) {
+	writeU32BE(buf, uint32(len(s)))
+	*buf = append(*buf, []byte(s)...)
+}
+
+func readStringU32(buf []byte, pos *int) string {
+	n := int(readU32BE(buf, pos))
+	s := string(buf[*pos : *pos+n])
+	*pos += n
+	return s
+}
+
 func readU8(buf []byte, pos *int) uint8 {
 	v := buf[*pos]
 	*pos = *pos + 1
@@ -8697,6 +8709,9 @@ type CapabilitiesResponseBodyEncoder struct{}
 func (CapabilitiesResponseBodyEncoder) Encode(value CapabilitiesResponse, buf *[]byte) {
 	local := *buf
 	writeU32BE(&local, uint32(len(value.SchemaIds)))
+	for _, item := range value.SchemaIds {
+		local = append(local, uint8(item))
+	}
 	writeU32BE(&local, uint32(len(value.Paths)))
 	for _, item := range value.Paths {
 		var item_buf []byte
@@ -8705,15 +8720,23 @@ func (CapabilitiesResponseBodyEncoder) Encode(value CapabilitiesResponse, buf *[
 		local = append(local, item_buf...)
 	}
 	writeU32BE(&local, uint32(len(value.Symbols)))
+	for _, item := range value.Symbols {
+		writeStringU32(&local, item)
+	}
 	writeU32BE(&local, uint32(len(value.Intervals)))
+	for _, item := range value.Intervals {
+		writeStringU32(&local, item)
+	}
 	*buf = local
 }
 
 // SBE body decoder for CapabilitiesResponse: reads fields at pos, returns the value and the new offset.
 func CapabilitiesResponseBodyDecoderDecode(buf []byte, pos int) (CapabilitiesResponse, int, error) {
 	schema_ids_count := readU32BE(buf, &pos)
-	schema_ids := make([]uint8, 0)
-	_ = schema_ids_count
+	schema_ids := make([]uint8, 0, schema_ids_count)
+	for i := 0; i < int(schema_ids_count); i++ {
+		schema_ids = append(schema_ids, readU8(buf, &pos))
+	}
 	paths_count := readU32BE(buf, &pos)
 	paths := make([]CapabilityPath, 0, paths_count)
 	for i := 0; i < int(paths_count); i++ {
@@ -8727,11 +8750,15 @@ func CapabilitiesResponseBodyDecoderDecode(buf []byte, pos int) (CapabilitiesRes
 		paths = append(paths, item)
 	}
 	symbols_count := readU32BE(buf, &pos)
-	symbols := make([]string, 0)
-	_ = symbols_count
+	symbols := make([]string, 0, symbols_count)
+	for i := 0; i < int(symbols_count); i++ {
+		symbols = append(symbols, readStringU32(buf, &pos))
+	}
 	intervals_count := readU32BE(buf, &pos)
-	intervals := make([]string, 0)
-	_ = intervals_count
+	intervals := make([]string, 0, intervals_count)
+	for i := 0; i < int(intervals_count); i++ {
+		intervals = append(intervals, readStringU32(buf, &pos))
+	}
 	value := CapabilitiesResponse{
 		SchemaIds: schema_ids,
 		Paths:     paths,
@@ -8752,6 +8779,9 @@ func (CapabilitiesResponseEncoder) Encode(SchemaIds []uint8, Paths []CapabilityP
 	writeU16BE(&buf, 0)
 	writeU16BE(&buf, 0)
 	writeU32BE(&buf, uint32(len(SchemaIds)))
+	for _, item := range SchemaIds {
+		buf = append(buf, uint8(item))
+	}
 	writeU32BE(&buf, uint32(len(Paths)))
 	for _, item := range Paths {
 		var item_buf []byte
@@ -8760,7 +8790,13 @@ func (CapabilitiesResponseEncoder) Encode(SchemaIds []uint8, Paths []CapabilityP
 		buf = append(buf, item_buf...)
 	}
 	writeU32BE(&buf, uint32(len(Symbols)))
+	for _, item := range Symbols {
+		writeStringU32(&buf, item)
+	}
 	writeU32BE(&buf, uint32(len(Intervals)))
+	for _, item := range Intervals {
+		writeStringU32(&buf, item)
+	}
 	return buf, nil
 }
 
@@ -8782,8 +8818,10 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponse, int, e
 		return CapabilitiesResponse{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	schema_ids_count := readU32BE(buf, &pos)
-	schema_ids := make([]uint8, 0)
-	_ = schema_ids_count
+	schema_ids := make([]uint8, 0, schema_ids_count)
+	for i := 0; i < int(schema_ids_count); i++ {
+		schema_ids = append(schema_ids, readU8(buf, &pos))
+	}
 	paths_count := readU32BE(buf, &pos)
 	paths := make([]CapabilityPath, 0, paths_count)
 	for i := 0; i < int(paths_count); i++ {
@@ -8797,11 +8835,15 @@ func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponse, int, e
 		paths = append(paths, item)
 	}
 	symbols_count := readU32BE(buf, &pos)
-	symbols := make([]string, 0)
-	_ = symbols_count
+	symbols := make([]string, 0, symbols_count)
+	for i := 0; i < int(symbols_count); i++ {
+		symbols = append(symbols, readStringU32(buf, &pos))
+	}
 	intervals_count := readU32BE(buf, &pos)
-	intervals := make([]string, 0)
-	_ = intervals_count
+	intervals := make([]string, 0, intervals_count)
+	for i := 0; i < int(intervals_count); i++ {
+		intervals = append(intervals, readStringU32(buf, &pos))
+	}
 	value := CapabilitiesResponse{
 		SchemaIds: schema_ids,
 		Paths:     paths,

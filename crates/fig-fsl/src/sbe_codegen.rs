@@ -934,7 +934,6 @@ pub(crate) fn generate_decode_field(
         }
         FieldType::List(inner) => {
             // Repeating group: read count, then N items
-            let inner_type = sbe_field_type_name(inner);
             out.push_str(&format!(
                 "        let {}_count = sbe_u32(buf, &mut pos)? as usize;\n",
                 field_name
@@ -974,7 +973,7 @@ pub(crate) fn generate_decode_field(
                     out.push_str(&format!("            {field_name}.push(item);\n"));
                     out.push_str("        }\n");
                 } else {
-                    out.push_str(&format!("        // TODO: decode list<{}>\n", inner_type));
+                    emit_scalar_list_decode(&mut out, field_name, inner);
                 }
             } else if let FieldType::InlineStruct(_) = inner.as_ref() {
                 let inline_name = format!("{context}{}", pascal_case(field_name));
@@ -987,7 +986,7 @@ pub(crate) fn generate_decode_field(
                 out.push_str(&format!("            {field_name}.push(item);\n"));
                 out.push_str("        }\n");
             } else {
-                out.push_str(&format!("        // TODO: decode list<{}>\n", inner_type));
+                emit_scalar_list_decode(&mut out, field_name, inner);
             }
         }
         FieldType::InlineStruct(_) => {
@@ -1197,7 +1196,6 @@ pub(crate) fn generate_encode_field(
             }
         }
         FieldType::List(inner) => {
-            let inner_type = sbe_field_type_name(inner);
             out.push_str(&format!(
                 "        {buf_var}.extend_from_slice(&({ref_name}.len() as u32).to_be_bytes());\n"
             ));
@@ -1226,16 +1224,10 @@ pub(crate) fn generate_encode_field(
                         "            {buf_var}.extend_from_slice(&item_buf);\n"
                     ));
                 } else {
-                    out.push_str(&format!(
-                        "            // TODO: encode list<{}>\n",
-                        inner_type
-                    ));
+                    emit_scalar_list_encode(&mut out, &ref_name, buf_var, inner);
                 }
             } else {
-                out.push_str(&format!(
-                    "            // TODO: encode list<{}>\n",
-                    inner_type
-                ));
+                emit_scalar_list_encode(&mut out, &ref_name, buf_var, inner);
             }
             out.push_str("        }\n");
         }
@@ -1248,6 +1240,47 @@ pub(crate) fn generate_encode_field(
     }
 
     out
+}
+
+/// Encode a list of scalar items: `u32 len + bytes` for strings, raw big-endian otherwise.
+fn emit_scalar_list_encode(out: &mut String, ref_name: &str, buf_var: &str, inner: &FieldType) {
+    // The caller already emits `for item in &{ref_name} {{`; only the body goes here.
+    let _ = ref_name;
+    match field_type_wire(inner).as_str() {
+        "str" => out.push_str(&format!(
+            "            let b = item.as_bytes();\n            {buf_var}.extend_from_slice(&(b.len() as u32).to_be_bytes());\n            {buf_var}.extend_from_slice(b);\n"
+        )),
+        "u8" => out.push_str(&format!("            {buf_var}.push(*item);\n")),
+        "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "f32" | "f64" => out.push_str(&format!(
+            "            {buf_var}.extend_from_slice(&item.to_be_bytes());\n"
+        )),
+        other => out.push_str(&format!("            // unsupported scalar list item type: {other}\n")),
+    }
+}
+
+/// Decode a list of scalar items (mirrors [`emit_scalar_list_encode`]).
+fn emit_scalar_list_decode(out: &mut String, field_name: &str, inner: &FieldType) {
+    let wire = field_type_wire(inner);
+    match wire.as_str() {
+        "str" => out.push_str(&format!(
+            "        for _ in 0..{field_name}_count {{\n            let item_len = sbe_u32(buf, &mut pos)? as usize;\n            let item_bytes = sbe_take(buf, &mut pos, item_len)?;\n            {field_name}.push(String::from_utf8_lossy(item_bytes).into_owned());\n        }}\n"
+        )),
+        "u8" => out.push_str(&format!(
+            "        for _ in 0..{field_name}_count {{\n            {field_name}.push(sbe_u8(buf, &mut pos)?);\n        }}\n"
+        )),
+        "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "f32" | "f64" => {
+            let width = match wire.as_str() {
+                "u16" | "i16" => 2,
+                "u32" | "i32" | "f32" => 4,
+                _ => 8,
+            };
+            let ty = sbe_field_type_name(inner);
+            out.push_str(&format!(
+                "        for _ in 0..{field_name}_count {{\n            let item_bytes = sbe_take(buf, &mut pos, {width})?;\n            let item_arr: [u8; {width}] = item_bytes.try_into().map_err(|_| \"sbe: short list item\".to_string())?;\n            {field_name}.push({ty}::from_be_bytes(item_arr));\n        }}\n"
+            ));
+        }
+        other => out.push_str(&format!("        // unsupported scalar list item type: {other}\n")),
+    }
 }
 
 // ── SBE type mapping helpers ──────────────────────────────────
@@ -1288,6 +1321,17 @@ fn sbe_field_type_name_for_message_inner(ft: &FieldType, _msg_name: &str) -> Str
         FieldType::Named(name) => name.clone(),
         FieldType::InlineStruct(_) => "()".to_string(),
         _ => sbe_field_type_name(ft),
+    }
+}
+
+/// SBE wire type of a field type (independent of any message context).
+fn field_type_wire(ft: &FieldType) -> String {
+    match ft {
+        FieldType::Named(n) => sbe_named_type_to_wire_type(n),
+        FieldType::InlineBase(bt, _) => sbe_base_type_to_wire_type(bt),
+        FieldType::Enum(_) => "u8".to_string(),
+        FieldType::List(inner) => field_type_wire(inner),
+        FieldType::InlineStruct(_) => "struct".to_string(),
     }
 }
 

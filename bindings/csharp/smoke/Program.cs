@@ -55,4 +55,22 @@ if (Hex(genSnapshot) != Want(doc, "sbe.order_book_snapshot.demo"))
     throw new InvalidOperationException($"generated C# order_book_snapshot mismatch: {Hex(genSnapshot)}");
 }
 
+var genCaps = Fig.Sbe.CapabilitiesResponseEncoder.Encode(
+    new List<byte> { 1, 2, 3 },
+    new List<Fig.Sbe.CapabilityPath>
+    {
+        new Fig.Sbe.CapabilityPath
+        {
+            Path = "marketdata/AAPL/candles/5m",
+            Pattern = Fig.Sbe.CapabilityPathPattern.PubSub,
+            AuthRequired = 0,
+        },
+    },
+    new List<string> { "AAPL" },
+    new List<string> { "5m" });
+if (Hex(genCaps) != "000100350000000000000003010203000000010000001e001a6d61726b6574646174612f4141504c2f63616e646c65732f356d010000000001000000044141504c0000000100000002356d")
+{
+    throw new InvalidOperationException($"generated C# capabilities_response mismatch: {Hex(genCaps)}");
+}
+
 Console.WriteLine("fig-csharp generated SBE parity OK");

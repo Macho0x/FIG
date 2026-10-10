@@ -20,8 +20,9 @@ use fig_core::messages::{
     PriceLevel, Quantity, Side, SymbolTicker, TimeInForce,
 };
 use fig_core::sbe::{
-    encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch, encode_new_order_single,
-    encode_order_book_snapshot, encode_symbol_ticker,
+    encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
+    encode_capabilities_response, encode_new_order_single, encode_order_book_snapshot,
+    encode_symbol_ticker,
 };
 
 #[derive(Parser)]
@@ -722,6 +723,27 @@ fn build_suite() -> Result<ConformanceSuite> {
                 description: "OrderBookSnapshot SBE (template 9)".into(),
                 message_type: "OrderBookSnapshot".into(),
                 expected_hex: hex::encode(encode_order_book_snapshot(&book_snap)),
+                frame: None,
+                payload: None,
+                channel: None,
+            },
+            ConformanceVector {
+                id: "sbe.capabilities_response.demo".into(),
+                category: "sbe".into(),
+                description: "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>".into(),
+                message_type: "CapabilitiesResponse".into(),
+                expected_hex: hex::encode(encode_capabilities_response(
+                    &CapabilitiesResponse {
+                        schema_ids: vec![1, 2, 3],
+                        paths: vec![CapabilityPath {
+                            path: "marketdata/AAPL/candles/5m".into(),
+                            pattern: CapabilityPathPattern::PubSub,
+                            auth_required: false,
+                        }],
+                        symbols: vec!["AAPL".into()],
+                        intervals: vec!["5m".into()],
+                    },
+                )),
                 frame: None,
                 payload: None,
                 channel: None,

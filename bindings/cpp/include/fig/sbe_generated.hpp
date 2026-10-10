@@ -57,6 +57,9 @@ inline std::string read_string(const std::vector<uint8_t>& buf, size_t& pos) {
     uint16_t len = read_u16_be(buf, pos); std::string s(reinterpret_cast<const char*>(&buf[pos]), len); pos += len; return s;
 }
 
+inline void write_string_u32(std::vector<uint8_t>& buf, const std::string& s) { write_u32_be(buf, static_cast<uint32_t>(s.size())); buf.insert(buf.end(), s.begin(), s.end()); }
+inline std::string read_string_u32(const std::vector<uint8_t>& buf, std::size_t& pos) { uint32_t n = read_u32_be(buf, pos); std::string s(reinterpret_cast<const char*>(buf.data() + pos), n); pos += n; return s; }
+
 enum class NewOrderSingleSide : uint8_t {
     Buy = 1,
     Sell = 2,
@@ -6390,6 +6393,9 @@ struct CapabilitiesResponseBodyEncoder {
 
 inline void CapabilitiesResponseBodyEncoder::encode(const CapabilitiesResponse& value, std::vector<uint8_t>& buf) {
         write_u32_be(buf, static_cast<uint32_t>(value.schema_ids.size()));
+        for (const auto& item : value.schema_ids) {
+        buf.push_back(item);
+        }
         write_u32_be(buf, static_cast<uint32_t>(value.paths.size()));
         for (const auto& item : value.paths) {
             std::vector<uint8_t> item_buf;
@@ -6398,7 +6404,13 @@ inline void CapabilitiesResponseBodyEncoder::encode(const CapabilitiesResponse& 
             buf.insert(buf.end(), item_buf.begin(), item_buf.end());
         }
         write_u32_be(buf, static_cast<uint32_t>(value.symbols.size()));
+        for (const auto& item : value.symbols) {
+            write_string_u32(buf, item);
+        }
         write_u32_be(buf, static_cast<uint32_t>(value.intervals.size()));
+        for (const auto& item : value.intervals) {
+            write_string_u32(buf, item);
+        }
 }
 
 // SBE body decoder for CapabilitiesResponse: reads fields at pos.
@@ -6410,7 +6422,10 @@ inline std::pair<CapabilitiesResponse, std::size_t> CapabilitiesResponseBodyDeco
     CapabilitiesResponse value{};
         uint32_t schema_ids_count = read_u32_be(buf, pos);
         std::vector<uint8_t> schema_ids;
-        (void)schema_ids_count;
+        schema_ids.reserve(schema_ids_count);
+        for (uint32_t i = 0; i < schema_ids_count; ++i) {
+            schema_ids.push_back(take_u8(buf, pos));
+        }
         uint32_t paths_count = read_u32_be(buf, pos);
         std::vector<CapabilityPath> paths;
         paths.reserve(paths_count);
@@ -6424,10 +6439,16 @@ inline std::pair<CapabilitiesResponse, std::size_t> CapabilitiesResponseBodyDeco
         }
         uint32_t symbols_count = read_u32_be(buf, pos);
         std::vector<std::string> symbols;
-        (void)symbols_count;
+        symbols.reserve(symbols_count);
+        for (uint32_t i = 0; i < symbols_count; ++i) {
+            symbols.push_back(read_string_u32(buf, pos));
+        }
         uint32_t intervals_count = read_u32_be(buf, pos);
         std::vector<std::string> intervals;
-        (void)intervals_count;
+        intervals.reserve(intervals_count);
+        for (uint32_t i = 0; i < intervals_count; ++i) {
+            intervals.push_back(read_string_u32(buf, pos));
+        }
     value.schema_ids = schema_ids;
     value.paths = paths;
     value.symbols = symbols;
@@ -6447,6 +6468,9 @@ inline std::vector<uint8_t> CapabilitiesResponseEncoder::encode(std::vector<uint
         write_u16_be(buf, 0);
         write_u16_be(buf, 0);
         write_u32_be(buf, static_cast<uint32_t>(schema_ids.size()));
+        for (const auto& item : schema_ids) {
+        buf.push_back(item);
+        }
         write_u32_be(buf, static_cast<uint32_t>(paths.size()));
         for (const auto& item : paths) {
             std::vector<uint8_t> item_buf;
@@ -6455,7 +6479,13 @@ inline std::vector<uint8_t> CapabilitiesResponseEncoder::encode(std::vector<uint
             buf.insert(buf.end(), item_buf.begin(), item_buf.end());
         }
         write_u32_be(buf, static_cast<uint32_t>(symbols.size()));
+        for (const auto& item : symbols) {
+            write_string_u32(buf, item);
+        }
         write_u32_be(buf, static_cast<uint32_t>(intervals.size()));
+        for (const auto& item : intervals) {
+            write_string_u32(buf, item);
+        }
         return buf;
 }
 
@@ -6476,7 +6506,10 @@ inline CapabilitiesResponse CapabilitiesResponseDecoder::decode(const std::vecto
         if (tmpl_id != 53) throw std::runtime_error("invalid template_id");
         uint32_t schema_ids_count = read_u32_be(buf, pos);
         std::vector<uint8_t> schema_ids;
-        (void)schema_ids_count;
+        schema_ids.reserve(schema_ids_count);
+        for (uint32_t i = 0; i < schema_ids_count; ++i) {
+            schema_ids.push_back(take_u8(buf, pos));
+        }
         uint32_t paths_count = read_u32_be(buf, pos);
         std::vector<CapabilityPath> paths;
         paths.reserve(paths_count);
@@ -6490,10 +6523,16 @@ inline CapabilitiesResponse CapabilitiesResponseDecoder::decode(const std::vecto
         }
         uint32_t symbols_count = read_u32_be(buf, pos);
         std::vector<std::string> symbols;
-        (void)symbols_count;
+        symbols.reserve(symbols_count);
+        for (uint32_t i = 0; i < symbols_count; ++i) {
+            symbols.push_back(read_string_u32(buf, pos));
+        }
         uint32_t intervals_count = read_u32_be(buf, pos);
         std::vector<std::string> intervals;
-        (void)intervals_count;
+        intervals.reserve(intervals_count);
+        for (uint32_t i = 0; i < intervals_count; ++i) {
+            intervals.push_back(read_string_u32(buf, pos));
+        }
     value.schema_ids = schema_ids;
     value.paths = paths;
     value.symbols = symbols;

@@ -60,5 +60,19 @@ pub fn main() !void {
         return error.ParityMismatch;
     }
 
+    const caps_want = "000100350000000000000003010203000000010000001e001a6d61726b6574646174612f4141504c2f63616e646c65732f356d010000000001000000044141504c0000000100000002356d";
+    const caps = try sbe.CapabilitiesResponseEncoder.encode(
+        allocator, &.{1, 2, 3},
+        &.{sbe.CapabilityPath{ .path = "marketdata/AAPL/candles/5m", .pattern = .PubSub, .auth_required = 0 }},
+        &.{"AAPL"}, &.{"5m"},
+    );
+    defer allocator.free(caps);
+    const caps_hex = try hexAlloc(allocator, caps);
+    defer allocator.free(caps_hex);
+    if (!std.mem.eql(u8, caps_hex, caps_want)) {
+        std.debug.print("zig sbe parity capabilities_response FAILED\n got  {s}\n want {s}\n", .{ caps_hex, caps_want });
+        return error.ParityMismatch;
+    }
+
     std.debug.print("fig-zig sbe parity OK\n", .{});
 }

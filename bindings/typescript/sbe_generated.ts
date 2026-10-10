@@ -3,6 +3,8 @@
 
 export const SCHEMA_ID = 0x01 as const;
 
+function writeStringU32(buf: number[], s: string): void { const b = new TextEncoder().encode(s); writeU32BE(buf, b.length); for (const x of b) buf.push(x); }
+function readStringU32(buf: Uint8Array, pos: { value: number }): string { const n = readU32BE(buf, pos); const s = new TextDecoder().decode(buf.subarray(pos.value, pos.value + n)); pos.value += n; return s; }
 function readU8(buf: Uint8Array, pos: { value: number }): number { return buf[pos.value++]; }
 function f32Bits(v: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setFloat32(0, v, false); return dv.getUint32(0, false); }
 function f32FromBits(bits: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, bits >>> 0, false); return dv.getFloat32(0, false); }
@@ -5327,6 +5329,9 @@ export interface CapabilitiesResponse {
 /** SBE body encoder for CapabilitiesResponse (fields only, no header). */
 export function CapabilitiesResponseBodyEncoderEncode(value: CapabilitiesResponse, buf: number[]): void {
   writeU32BE(buf, value.schema_ids.length);
+  for (const item of value.schema_ids) {
+  buf.push(item);
+  }
   writeU32BE(buf, value.paths.length);
   for (const item of value.paths) {
     const itemBuf: number[] = [];
@@ -5335,13 +5340,22 @@ export function CapabilitiesResponseBodyEncoderEncode(value: CapabilitiesRespons
     for (const b of itemBuf) buf.push(b);
   }
   writeU32BE(buf, value.symbols.length);
+  for (const item of value.symbols) {
+    writeStringU32(buf, item);
+  }
   writeU32BE(buf, value.intervals.length);
+  for (const item of value.intervals) {
+    writeStringU32(buf, item);
+  }
 }
 
 /** SBE body decoder for CapabilitiesResponse: reads fields at `pos`. */
 export function CapabilitiesResponseBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CapabilitiesResponse {
   const schema_idsCount = readU32BE(buf, pos);
   const schema_ids: number[] = [];
+  for (let i = 0; i < schema_idsCount; i++) {
+    schema_ids.push(readU8(buf, pos));
+  }
   const pathsCount = readU32BE(buf, pos);
   const paths: CapabilityPath[] = [];
   for (let i = 0; i < pathsCount; i++) {
@@ -5353,8 +5367,14 @@ export function CapabilitiesResponseBodyDecoderDecode(buf: Uint8Array, pos: { va
   }
   const symbolsCount = readU32BE(buf, pos);
   const symbols: string[] = [];
+  for (let i = 0; i < symbolsCount; i++) {
+    symbols.push(readStringU32(buf, pos));
+  }
   const intervalsCount = readU32BE(buf, pos);
   const intervals: string[] = [];
+  for (let i = 0; i < intervalsCount; i++) {
+    intervals.push(readStringU32(buf, pos));
+  }
   const value: CapabilitiesResponse = {
     schema_ids: schema_ids,
     paths: paths,
@@ -5372,6 +5392,9 @@ export function CapabilitiesResponseEncoderEncode(schema_ids: number[], paths: C
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
   writeU32BE(buf, schema_ids.length);
+  for (const item of schema_ids) {
+  buf.push(item);
+  }
   writeU32BE(buf, paths.length);
   for (const item of paths) {
     const itemBuf: number[] = [];
@@ -5380,7 +5403,13 @@ export function CapabilitiesResponseEncoderEncode(schema_ids: number[], paths: C
     for (const b of itemBuf) buf.push(b);
   }
   writeU32BE(buf, symbols.length);
+  for (const item of symbols) {
+    writeStringU32(buf, item);
+  }
   writeU32BE(buf, intervals.length);
+  for (const item of intervals) {
+    writeStringU32(buf, item);
+  }
   return new Uint8Array(buf);
 }
 
@@ -5396,6 +5425,9 @@ export function CapabilitiesResponseDecoderDecode(buf: Uint8Array): Capabilities
   if (tmplId !== 53) throw new Error("invalid template_id");
   const schema_idsCount = readU32BE(buf, pos);
   const schema_ids: number[] = [];
+  for (let i = 0; i < schema_idsCount; i++) {
+    schema_ids.push(readU8(buf, pos));
+  }
   const pathsCount = readU32BE(buf, pos);
   const paths: CapabilityPath[] = [];
   for (let i = 0; i < pathsCount; i++) {
@@ -5407,8 +5439,14 @@ export function CapabilitiesResponseDecoderDecode(buf: Uint8Array): Capabilities
   }
   const symbolsCount = readU32BE(buf, pos);
   const symbols: string[] = [];
+  for (let i = 0; i < symbolsCount; i++) {
+    symbols.push(readStringU32(buf, pos));
+  }
   const intervalsCount = readU32BE(buf, pos);
   const intervals: string[] = [];
+  for (let i = 0; i < intervalsCount; i++) {
+    intervals.push(readStringU32(buf, pos));
+  }
   const value: CapabilitiesResponse = {
     schema_ids: schema_ids,
     paths: paths,

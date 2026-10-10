@@ -680,7 +680,7 @@ schema trading.orders v1.0.0 {
 | Target | Output (1.0) | On-wire serializer |
 |---|---|---|
 | Rust | Structs + serde (`RustCodegen`); SBE encode/decode | ✅ CBOR + SBE in `fig-core` |
-| SBE | Per-language `sbe_generated.*` + Rust codec | ✅ Rust reference; compile-smoke elsewhere |
+| SBE | Per-language `sbe_generated.*` + Rust codec | ✅ Rust reference; all five targets compiled and hex-parity-checked in CI |
 | Python | PyO3 (`fig-python`) + `fig-client` merge helpers | ✅ CBOR via FFI / PyO3 |
 | Go / C++ / C# / TypeScript / Zig | Generated types + thin FFI wrapper | ✅ Wire via `fig-ffi` (CBOR + frames) |
 | OCaml | FSL types + C stubs | ✅ Wire via `fig-ffi` |
@@ -689,9 +689,18 @@ schema trading.orders v1.0.0 {
 | Protobuf | — | ❌ Removed from FIG wire (was experimental) |
 
 **1.0 rule:** multi-language clients SHOULD use **`fig-ffi`** (C ABI) or
-**`fig-python`** for encode/decode/conformance-tested paths. Per-language
-generated SBE is for zero-copy hot paths once hex parity CI lands — see
-[bindings/README.md](bindings/README.md).
+**`fig-python`** for encode/decode/conformance-tested paths. The per-language
+generated SBE codecs (Go, C++, C#, TypeScript, Zig) are a drop-in alternative for
+zero-copy hot paths that avoids shipping the native library: each target compiles
+in CI and is checked byte-for-byte against `tests/conformance/vectors/v1.json` —
+see [bindings/README.md](bindings/README.md).
+
+**SBE field layout** (identical in the Rust reference and every generated target):
+strings are `u16 len + UTF-8 bytes` in structs and presence-prefixed in messages;
+numerics and enums are written value-first with a trailing presence byte when
+optional; lists are `u32 count`, then per item `u32 len + body` for variable-length
+items (strings, structs, messages) and raw big-endian bytes for fixed-width
+scalars.
 
 Full multi-language serializer and native TREE client parity: [TODO.md §16](TODO.md).
 Schema change policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).

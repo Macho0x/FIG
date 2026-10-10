@@ -5,6 +5,8 @@ const std = @import("std");
 
 pub const SCHEMA_ID: u16 = 0x01;
 
+fn writeStringU32(buf: *std.ArrayList(u8), s: []const u8) !void { try writeU32BE(buf, @intCast(s.len)); try buf.appendSlice(s); }
+fn readStringU32(buf: []const u8, pos: *usize, allocator: std.mem.Allocator) ![]u8 { const n = readU32BE(buf, pos); const s = try allocator.dupe(u8, buf[pos.* .. pos.* + n]); pos.* += n; return s; }
 fn readU8(buf: []const u8, pos: *usize) u8 { const v = buf[pos.*]; pos.* += 1; return v; }
 fn writeU16BE(buf: *std.ArrayList(u8), v: u16) !void { try buf.append(@intCast(v >> 8)); try buf.append(@intCast(v & 0xFF)); }
 fn writeU32BE(buf: *std.ArrayList(u8), v: u32) !void { try buf.append(@intCast(v >> 24)); try buf.append(@intCast(v >> 16)); try buf.append(@intCast(v >> 8)); try buf.append(@intCast(v & 0xFF)); }
@@ -1558,7 +1560,7 @@ pub const MarketDataSnapshotBodyDecoder = struct {
 
 /// SBE encoder for MarketDataSnapshot
 pub const MarketDataSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []PriceLevel, asks: []PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -1700,7 +1702,7 @@ pub const MarketDataIncrementalRefreshBodyDecoder = struct {
 
 /// SBE encoder for MarketDataIncrementalRefresh
 pub const MarketDataIncrementalRefreshEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -1927,7 +1929,7 @@ pub const OrderBookSnapshotBodyDecoder = struct {
 
 /// SBE encoder for OrderBookSnapshot
 pub const OrderBookSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []PriceLevel, asks: []PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -2069,7 +2071,7 @@ pub const OrderBookDeltaBodyDecoder = struct {
 
 /// SBE encoder for OrderBookDelta
 pub const OrderBookDeltaEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -2355,7 +2357,7 @@ pub const AggregateTradeBatchBodyDecoder = struct {
 
 /// SBE encoder for AggregateTradeBatch
 pub const AggregateTradeBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []AggregateTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const AggregateTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -2602,7 +2604,7 @@ pub const AllMidsBatchBodyDecoder = struct {
 
 /// SBE encoder for AllMidsBatch
 pub const AllMidsBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, tickers: []MiniTicker) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, tickers: []const MiniTicker) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -3107,7 +3109,7 @@ pub const CandleBarBatchBodyDecoder = struct {
 
 /// SBE encoder for CandleBarBatch
 pub const CandleBarBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, bars: []CandleBar, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, bars: []const CandleBar, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -3399,7 +3401,7 @@ pub const PublicTradeBatchBodyDecoder = struct {
 
 /// SBE encoder for PublicTradeBatch
 pub const PublicTradeBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []PublicTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const PublicTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -3865,7 +3867,7 @@ pub const InstrumentCatalogResponseBodyDecoder = struct {
 
 /// SBE encoder for InstrumentCatalogResponse
 pub const InstrumentCatalogResponseEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, instruments: []InstrumentMetadata) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, instruments: []const InstrumentMetadata) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -4138,7 +4140,7 @@ pub const BalanceSnapshotBodyDecoder = struct {
 
 /// SBE encoder for BalanceSnapshot
 pub const BalanceSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, balances: []BalanceEntry, is_snapshot: ?u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, balances: []const BalanceEntry, is_snapshot: ?u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -4336,7 +4338,7 @@ pub const PositionSnapshotBodyDecoder = struct {
 
 /// SBE encoder for PositionSnapshot
 pub const PositionSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, positions: []PositionEntry, is_snapshot: ?u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, positions: []const PositionEntry, is_snapshot: ?u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -4915,7 +4917,7 @@ pub const FillHistoryBatchBodyDecoder = struct {
 
 /// SBE encoder for FillHistoryBatch
 pub const FillHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, fills: []ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, fills: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -5245,7 +5247,7 @@ pub const FundingHistoryBatchBodyDecoder = struct {
 
 /// SBE encoder for FundingHistoryBatch
 pub const FundingHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, payments: []FundingPayment, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, payments: []const FundingPayment, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -5582,7 +5584,7 @@ pub const LedgerHistoryBatchBodyDecoder = struct {
 
 /// SBE encoder for LedgerHistoryBatch
 pub const LedgerHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, entries: []LedgerUpdate, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, entries: []const LedgerUpdate, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -5770,7 +5772,7 @@ pub const OpenOrdersSnapshotBodyDecoder = struct {
 
 /// SBE encoder for OpenOrdersSnapshot
 pub const OpenOrdersSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []ExecutionReport, is_snapshot: ?u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, is_snapshot: ?u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -6017,7 +6019,7 @@ pub const OrderHistoryBatchBodyDecoder = struct {
 
 /// SBE encoder for OrderHistoryBatch
 pub const OrderHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -6146,6 +6148,9 @@ pub const CapabilitiesResponse = struct {
 pub const CapabilitiesResponseBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CapabilitiesResponse, buf: *std.ArrayList(u8)) !void {
         try writeU32BE(buf, @intCast(value.schema_ids.len));
+        for (value.schema_ids) |item| {
+        try buf.append(@intCast(item));
+        }
         try writeU32BE(buf, @intCast(value.paths.len));
         for (value.paths) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
@@ -6155,7 +6160,13 @@ pub const CapabilitiesResponseBodyEncoder = struct {
             try buf.appendSlice(item_buf.items);
         }
         try writeU32BE(buf, @intCast(value.symbols.len));
+        for (value.symbols) |item| {
+            try writeStringU32(buf, item);
+        }
         try writeU32BE(buf, @intCast(value.intervals.len));
+        for (value.intervals) |item| {
+            try writeStringU32(buf, item);
+        }
     }
 };
 
@@ -6164,8 +6175,11 @@ pub const CapabilitiesResponseBodyDecoder = struct {
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CapabilitiesResponse {
         var value: CapabilitiesResponse = undefined;
         const schema_ids_count = readU32BE(buf, &pos);
-        const schema_ids = try allocator.alloc(u8, 0);
-        _ = schema_ids_count;
+        var schema_ids = try allocator.alloc(u8, schema_ids_count);
+        var schema_ids_idx: usize = 0;
+        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
+            schema_ids[schema_ids_idx] = readU8(buf, &pos);
+        }
         const paths_count = readU32BE(buf, &pos);
         var paths = try allocator.alloc(CapabilityPath, paths_count);
         var paths_idx: usize = 0;
@@ -6177,11 +6191,17 @@ pub const CapabilitiesResponseBodyDecoder = struct {
             paths[paths_idx] = item;
         }
         const symbols_count = readU32BE(buf, &pos);
-        const symbols = try allocator.alloc([]const u8, 0);
-        _ = symbols_count;
+        var symbols = try allocator.alloc([]const u8, symbols_count);
+        var symbols_idx: usize = 0;
+        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
+            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
+        }
         const intervals_count = readU32BE(buf, &pos);
-        const intervals = try allocator.alloc([]const u8, 0);
-        _ = intervals_count;
+        var intervals = try allocator.alloc([]const u8, intervals_count);
+        var intervals_idx: usize = 0;
+        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
+            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
+        }
         value.schema_ids = schema_ids;
         value.paths = paths;
         value.symbols = symbols;
@@ -6192,7 +6212,7 @@ pub const CapabilitiesResponseBodyDecoder = struct {
 
 /// SBE encoder for CapabilitiesResponse
 pub const CapabilitiesResponseEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, schema_ids: []u8, paths: []CapabilityPath, symbols: [][]const u8, intervals: [][]const u8) ![]u8 {
+    pub fn encode(allocator: std.mem.Allocator, schema_ids: []const u8, paths: []const CapabilityPath, symbols: []const []const u8, intervals: []const []const u8) ![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         defer list.deinit();
         const buf = &list;
@@ -6201,6 +6221,9 @@ pub const CapabilitiesResponseEncoder = struct {
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 0);
         try writeU32BE(buf, @intCast(schema_ids.len));
+        for (schema_ids) |item| {
+        try buf.append(@intCast(item));
+        }
         try writeU32BE(buf, @intCast(paths.len));
         for (paths) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
@@ -6210,7 +6233,13 @@ pub const CapabilitiesResponseEncoder = struct {
             try buf.appendSlice(item_buf.items);
         }
         try writeU32BE(buf, @intCast(symbols.len));
+        for (symbols) |item| {
+            try writeStringU32(buf, item);
+        }
         try writeU32BE(buf, @intCast(intervals.len));
+        for (intervals) |item| {
+            try writeStringU32(buf, item);
+        }
         return buf.toOwnedSlice();
     }
 };
@@ -6228,8 +6257,11 @@ pub const CapabilitiesResponseDecoder = struct {
         if (tmpl_id != 53) return error.InvalidTemplateId;
         var value: CapabilitiesResponse = undefined;
         const schema_ids_count = readU32BE(buf, &pos);
-        const schema_ids = try allocator.alloc(u8, 0);
-        _ = schema_ids_count;
+        var schema_ids = try allocator.alloc(u8, schema_ids_count);
+        var schema_ids_idx: usize = 0;
+        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
+            schema_ids[schema_ids_idx] = readU8(buf, &pos);
+        }
         const paths_count = readU32BE(buf, &pos);
         var paths = try allocator.alloc(CapabilityPath, paths_count);
         var paths_idx: usize = 0;
@@ -6241,11 +6273,17 @@ pub const CapabilitiesResponseDecoder = struct {
             paths[paths_idx] = item;
         }
         const symbols_count = readU32BE(buf, &pos);
-        const symbols = try allocator.alloc([]const u8, 0);
-        _ = symbols_count;
+        var symbols = try allocator.alloc([]const u8, symbols_count);
+        var symbols_idx: usize = 0;
+        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
+            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
+        }
         const intervals_count = readU32BE(buf, &pos);
-        const intervals = try allocator.alloc([]const u8, 0);
-        _ = intervals_count;
+        var intervals = try allocator.alloc([]const u8, intervals_count);
+        var intervals_idx: usize = 0;
+        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
+            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
+        }
         value.schema_ids = schema_ids;
         value.paths = paths;
         value.symbols = symbols;

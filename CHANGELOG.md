@@ -1,6 +1,30 @@
 # Changelog
 
-All notable changes to the FIG repository. The wire format is versioned in
+All notable changes to the FIG repository.
+## 1.3.0
+
+### Added
+- **Native per-language SBE codecs (Go, C++, C#, TypeScript, Zig).** `cargo xtask codegen`
+  now emits working encoders/decoders for all five targets; each compiles in CI and is
+  checked byte-for-byte against `tests/conformance/vectors/v1.json` by its own smoke
+  (`bindings/{go,cpp,csharp,typescript,zig}`). Previously the generated code did not compile
+  (or, for Go, matched only the simplest message).
+
+### Changed
+- **SBE list-of-scalar payloads are now on the wire.** `CapabilitiesResponse`'s
+  `list<uint8>`, `list<Symbol>` and `list<CandleInterval>` previously wrote a count and dropped
+  the items. Lists now write `u32 count`, then per item `u32 len + body` for variable-length
+  items and raw big-endian bytes for fixed-width scalars — in the Rust reference codec and in
+  every generated target. A `sbe.capabilities_response.demo` conformance vector pins the layout.
+- Zig generated encoders take list parameters as `[]const T` (previously `[]T`, which rejected
+  const array literals at call sites).
+
+### Fixed
+- Generated C# now compiles: parameters are declared type-first, `Schema.SCHEMA_ID` and the
+  `{Enum}Helpers` classes are no longer emitted at namespace level, nullable-reference optionals
+  test `!= null` instead of `.HasValue`, and `Wire.TakeU8` is qualified.
+- Generated Zig enums carry their 1-based wire values instead of defaulting to zero.
+ The wire format is versioned in
 [SPEC.md](SPEC.md); this file tracks the libraries and tooling.
 
 ## 1.2.2

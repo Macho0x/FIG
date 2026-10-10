@@ -372,7 +372,7 @@
     {
       "id": "sbe.candle_bar.snapshot",
       "category": "sbe",
-      "description": "CandleBar SBE (template 20)",
+      "description": "CandleBar SBE (template 21)",
       "message_type": "CandleBar",
       "expected_hex": "000100140000000000044141504c0002356d4062c000000000004062e000000000004062b000000000004062d00000000000408f40000000000017979cfe362a000017979d440f8eb800010001",
       "frame": null,
@@ -421,9 +421,19 @@
       "channel": null
     },
     {
+      "id": "sbe.capabilities_response.demo",
+      "category": "sbe",
+      "description": "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>",
+      "message_type": "CapabilitiesResponse",
+      "expected_hex": "000100350000000000000003010203000000010000001e001a6d61726b6574646174612f4141504c2f63616e646c65732f356d010000000001000000044141504c0000000100000002356d",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "sbe.balance_snapshot.demo",
       "category": "sbe",
-      "description": "BalanceSnapshot SBE (template 33)",
+      "description": "BalanceSnapshot SBE (template 30)",
       "message_type": "BalanceSnapshot",
       "expected_hex": "0001002100000001000444454d4f000000010000001d0003555344412e848000000000413e84800000000000000000000000000101",
       "frame": null,

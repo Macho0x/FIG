@@ -533,28 +533,30 @@ integration tests are the reference behavior.
 
 ### 16.2 FSL Codegen Parity (Track A)
 
-> **Native SBE codecs per language: shipped for all five targets.**
+> **Native SBE codecs per language: shipped for all five targets, scalar lists included.**
 > The emission layer was rewritten (per-language type maps, parameter syntax, the normative field
 > layout, `{Name}Encoder`/`{Name}Decoder` for structs, `{Name}BodyEncoder`/`{Name}BodyDecoder` for
-> message nesting, `(buf, pos)` decoders, list layout with per-item length prefixes). All five
-> targets compile in CI and each is byte-for-byte parity-checked against the conformance vectors:
-> Go (`bindings/go/fig/sbe/parity_test.go`), C++ (`bindings/cpp/smoke/sbe_parity.cpp`), C#
-> (`bindings/csharp/smoke/Program.cs`), TypeScript (`bindings/typescript/smoke/run.sh`), Zig
-> (`bindings/zig/sbe_parity.zig`). Verified bugs fixed along the way include: language-specific
-> parameter order, wire tokens leaking into type positions, struct-typed fields resolving to
-> strings, colliding temporaries, optional-enum/`i64` presence-byte ordering, Go `*[]byte`
-> double pointers, Zig 0-based enum values, and C# namespace-level constants/helpers.
+> message nesting, `(buf, pos)` decoders, list layout with per-item length prefixes, list-of-scalar
+> payloads). All five targets compile in CI and each is byte-for-byte parity-checked against the
+> conformance vectors: Go (`bindings/go/fig/sbe/parity_test.go`), C++
+> (`bindings/cpp/smoke/sbe_parity.cpp`), C# (`bindings/csharp/smoke/Program.cs`), TypeScript
+> (`bindings/typescript/smoke/run.sh`), Zig (`bindings/zig/sbe_parity.zig`) — covering
+> `NewOrderSingle`, `OrderBookSnapshot` and `CapabilitiesResponse` (the list-of-scalar case).
+> Bugs fixed along the way: language-specific parameter order, wire tokens leaking into type
+> positions, struct-typed fields resolving to strings, colliding temporaries, optional-enum/`i64`
+> presence-byte ordering, Go `*[]byte` double pointers, Zig 0-based enum values and mutable list
+> parameters, C# namespace-level constants/helpers and nullable-reference optionals, and
+> `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
 > **Outstanding:**
-> 1. Scalar list items (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) still have **no
->    payload layout on either side** — `sbe_codegen.rs` (Rust) writes a count plus a `// TODO`,
->    and the targets mirror that so both ends agree. Defining it is a wire-format decision
->    (suggested: `u32 count` + `u32 len + body` per variable-length item, raw big-endian for
->    fixed-width items) and needs a conformance vector.
-> 2. Widen the vectors: only 6 of 54 SBE messages have one, so parity is proven for
->    `NewOrderSingle` and `OrderBookSnapshot` only.
-> 3. Once (1) and (2) land, drop the "generated SBE" caveats from `bindings/README.md` and
->    `docs/PUBLISHING.md` (they currently describe only the scalar-list gap).
+> 1. Widen the vectors: 7 of 54 SBE messages have one (`NewOrderSingle`, `OrderBookSnapshot`,
+>    `CapabilitiesResponse`, plus the CBOR/other-category entries), so parity is proven for those
+>    three message types only. Adding a vector requires an `encode_*` helper in `fig-core::sbe`
+>    plus a `sample_*` in `fig-conformance` to keep encoder and runner aligned.
+> 2. Scalar list items are defined for `u8`/`u16`/`i16`/`u32`/`i32`/`u64`/`i64`/`f32`/`f64` and
+>    strings, but no schema currently exercises the numeric variants (the only scalar lists in the
+>    catalog are `list<uint8>`, `list<Symbol>`, `list<CandleInterval>`), so those paths are emitted
+>    but unverified.
 
 Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 

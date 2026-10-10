@@ -190,7 +190,7 @@ fn schema_id_const(lang: SbeTargetLang) -> String {
 fn wire_helpers(lang: SbeTargetLang) -> String {
     match lang {
         SbeTargetLang::Go => {
-            "func writeU16BE(buf *[]byte, v uint16) {\n\t*buf = append(*buf, byte(v>>8), byte(v))\n}\n\nfunc writeU32BE(buf *[]byte, v uint32) {\n\t*buf = append(*buf, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))\n}\n\nfunc writeU64BE(buf *[]byte, v uint64) {\n\t*buf = append(*buf, byte(v>>56), byte(v>>48), byte(v>>40), byte(v>>32), byte(v>>24), byte(v>>16), byte(v>>8), byte(v))\n}\n\nfunc writeF64BE(buf *[]byte, v float64) { writeU64BE(buf, math.Float64bits(v)) }\nfunc writeI64BE(buf *[]byte, v int64) { writeU64BE(buf, uint64(v)) }\n\nfunc writeString(buf *[]byte, s string) {\n\twriteU16BE(buf, uint16(len(s)))\n\t*buf = append(*buf, []byte(s)...)\n}\n\nfunc readU8(buf []byte, pos *int) uint8 {\n\tv := buf[*pos]\n\t*pos = *pos + 1\n\treturn v\n}\n\nfunc readU16BE(buf []byte, pos *int) uint16 {\n\tv := uint16(buf[*pos])<<8 | uint16(buf[*pos+1])\n\t*pos += 2\n\treturn v\n}\n\nfunc readU32BE(buf []byte, pos *int) uint32 {\n\tv := uint32(buf[*pos])<<24 | uint32(buf[*pos+1])<<16 | uint32(buf[*pos+2])<<8 | uint32(buf[*pos+3])\n\t*pos += 4\n\treturn v\n}\n\nfunc readU64BE(buf []byte, pos *int) uint64 {\n\tv := uint64(buf[*pos])<<56 | uint64(buf[*pos+1])<<48 | uint64(buf[*pos+2])<<40 | uint64(buf[*pos+3])<<32 |\n\t\tuint64(buf[*pos+4])<<24 | uint64(buf[*pos+5])<<16 | uint64(buf[*pos+6])<<8 | uint64(buf[*pos+7])\n\t*pos += 8\n\treturn v\n}\n\nfunc readF64BE(buf []byte, pos *int) float64 { return math.Float64frombits(readU64BE(buf, pos)) }\nfunc readI64BE(buf []byte, pos *int) int64 { return int64(readU64BE(buf, pos)) }\n\nfunc readString(buf []byte, pos *int) string {\n\tn := int(readU16BE(buf, pos))\n\ts := string(buf[*pos : *pos+n])\n\t*pos += n\n\treturn s\n}\n".to_string()
+            "func writeU16BE(buf *[]byte, v uint16) {\n\t*buf = append(*buf, byte(v>>8), byte(v))\n}\n\nfunc writeU32BE(buf *[]byte, v uint32) {\n\t*buf = append(*buf, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))\n}\n\nfunc writeU64BE(buf *[]byte, v uint64) {\n\t*buf = append(*buf, byte(v>>56), byte(v>>48), byte(v>>40), byte(v>>32), byte(v>>24), byte(v>>16), byte(v>>8), byte(v))\n}\n\nfunc writeF64BE(buf *[]byte, v float64) { writeU64BE(buf, math.Float64bits(v)) }\nfunc writeI64BE(buf *[]byte, v int64) { writeU64BE(buf, uint64(v)) }\n\nfunc writeString(buf *[]byte, s string) {\n\twriteU16BE(buf, uint16(len(s)))\n\t*buf = append(*buf, []byte(s)...)\n}\n\nfunc writeStringU32(buf *[]byte, s string) {\n\twriteU32BE(buf, uint32(len(s)))\n\t*buf = append(*buf, []byte(s)...)\n}\n\nfunc readStringU32(buf []byte, pos *int) string {\n\tn := int(readU32BE(buf, pos))\n\ts := string(buf[*pos : *pos+n])\n\t*pos += n\n\treturn s\n}\n\nfunc readU8(buf []byte, pos *int) uint8 {\n\tv := buf[*pos]\n\t*pos = *pos + 1\n\treturn v\n}\n\nfunc readU16BE(buf []byte, pos *int) uint16 {\n\tv := uint16(buf[*pos])<<8 | uint16(buf[*pos+1])\n\t*pos += 2\n\treturn v\n}\n\nfunc readU32BE(buf []byte, pos *int) uint32 {\n\tv := uint32(buf[*pos])<<24 | uint32(buf[*pos+1])<<16 | uint32(buf[*pos+2])<<8 | uint32(buf[*pos+3])\n\t*pos += 4\n\treturn v\n}\n\nfunc readU64BE(buf []byte, pos *int) uint64 {\n\tv := uint64(buf[*pos])<<56 | uint64(buf[*pos+1])<<48 | uint64(buf[*pos+2])<<40 | uint64(buf[*pos+3])<<32 |\n\t\tuint64(buf[*pos+4])<<24 | uint64(buf[*pos+5])<<16 | uint64(buf[*pos+6])<<8 | uint64(buf[*pos+7])\n\t*pos += 8\n\treturn v\n}\n\nfunc readF64BE(buf []byte, pos *int) float64 { return math.Float64frombits(readU64BE(buf, pos)) }\nfunc readI64BE(buf []byte, pos *int) int64 { return int64(readU64BE(buf, pos)) }\n\nfunc readString(buf []byte, pos *int) string {\n\tn := int(readU16BE(buf, pos))\n\ts := string(buf[*pos : *pos+n])\n\t*pos += n\n\treturn s\n}\n".to_string()
         }
         SbeTargetLang::Cpp => r#"inline uint8_t take_u8(const std::vector<uint8_t>& buf, std::size_t& pos) { return buf[pos++]; }
 inline float f32_from_bits(uint32_t bits) { float v; std::memcpy(&v, &bits, 4); return v; }
@@ -234,10 +234,15 @@ inline int64_t read_i64_be(const std::vector<uint8_t>& buf, size_t& pos) { retur
 inline std::string read_string(const std::vector<uint8_t>& buf, size_t& pos) {
     uint16_t len = read_u16_be(buf, pos); std::string s(reinterpret_cast<const char*>(&buf[pos]), len); pos += len; return s;
 }
+
+inline void write_string_u32(std::vector<uint8_t>& buf, const std::string& s) { write_u32_be(buf, static_cast<uint32_t>(s.size())); buf.insert(buf.end(), s.begin(), s.end()); }
+inline std::string read_string_u32(const std::vector<uint8_t>& buf, std::size_t& pos) { uint32_t n = read_u32_be(buf, pos); std::string s(reinterpret_cast<const char*>(buf.data() + pos), n); pos += n; return s; }
 "#.to_string(),
         SbeTargetLang::Csharp => r#"
     internal static class Wire
     {
+        public static void WriteStringU32(List<byte> buf, string s) { var b = System.Text.Encoding.UTF8.GetBytes(s); WriteU32BE(buf, (uint)b.Length); buf.AddRange(b); }
+        public static string ReadStringU32(byte[] buf, ref int pos) { uint n = ReadU32BE(buf, ref pos); var s = System.Text.Encoding.UTF8.GetString(buf, pos, (int)n); pos += (int)n; return s; }
         public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
         public static void WriteU16BE(List<byte> buf, ushort v) { buf.Add((byte)(v >> 8)); buf.Add((byte)v); }
         public static void WriteU32BE(List<byte> buf, uint v) {
@@ -269,7 +274,9 @@ inline std::string read_string(const std::vector<uint8_t>& buf, size_t& pos) {
         }
     }
 "#.to_string(),
-        SbeTargetLang::TypeScript => r#"function readU8(buf: Uint8Array, pos: { value: number }): number { return buf[pos.value++]; }
+        SbeTargetLang::TypeScript => r#"function writeStringU32(buf: number[], s: string): void { const b = new TextEncoder().encode(s); writeU32BE(buf, b.length); for (const x of b) buf.push(x); }
+function readStringU32(buf: Uint8Array, pos: { value: number }): string { const n = readU32BE(buf, pos); const s = new TextDecoder().decode(buf.subarray(pos.value, pos.value + n)); pos.value += n; return s; }
+function readU8(buf: Uint8Array, pos: { value: number }): number { return buf[pos.value++]; }
 function f32Bits(v: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setFloat32(0, v, false); return dv.getUint32(0, false); }
 function f32FromBits(bits: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, bits >>> 0, false); return dv.getFloat32(0, false); }
 function writeU16BE(buf: number[], v: number): void { buf.push((v >> 8) & 0xff, v & 0xff); }
@@ -289,7 +296,9 @@ function readF64BE(buf: Uint8Array, pos: { value: number }): number { const dv =
 function readI64BE(buf: Uint8Array, pos: { value: number }): bigint { return readU64BE(buf, pos); }
 function readString(buf: Uint8Array, pos: { value: number }): string { const len = readU16BE(buf, pos); const s = new TextDecoder().decode(buf.subarray(pos.value, pos.value + len)); pos.value += len; return s; }
 "#.to_string(),
-        SbeTargetLang::Zig => r#"fn readU8(buf: []const u8, pos: *usize) u8 { const v = buf[pos.*]; pos.* += 1; return v; }
+        SbeTargetLang::Zig => r#"fn writeStringU32(buf: *std.ArrayList(u8), s: []const u8) !void { try writeU32BE(buf, @intCast(s.len)); try buf.appendSlice(s); }
+fn readStringU32(buf: []const u8, pos: *usize, allocator: std.mem.Allocator) ![]u8 { const n = readU32BE(buf, pos); const s = try allocator.dupe(u8, buf[pos.* .. pos.* + n]); pos.* += n; return s; }
+fn readU8(buf: []const u8, pos: *usize) u8 { const v = buf[pos.*]; pos.* += 1; return v; }
 fn writeU16BE(buf: *std.ArrayList(u8), v: u16) !void { try buf.append(@intCast(v >> 8)); try buf.append(@intCast(v & 0xFF)); }
 fn writeU32BE(buf: *std.ArrayList(u8), v: u32) !void { try buf.append(@intCast(v >> 24)); try buf.append(@intCast(v >> 16)); try buf.append(@intCast(v >> 8)); try buf.append(@intCast(v & 0xFF)); }
 fn writeU64BE(buf: *std.ArrayList(u8), v: u64) !void { var i: i32 = 7; while (i >= 0) : (i -= 1) try buf.append(@intCast((v >> @intCast(i * 8)) & 0xFF)); }
@@ -452,7 +461,7 @@ fn target_encoder_params(
     msg.fields
         .iter()
         .map(|field| {
-            let base = target_field_type_full(
+            let mut base = target_field_type_full(
                 lang,
                 &field.field_type,
                 &msg.name,
@@ -460,6 +469,21 @@ fn target_encoder_params(
                 structs,
                 messages,
             );
+            // Zig encoders only read their inputs, so list parameters are `[]const T`
+            // (a const array literal then coerces; decoders still return `[]T`).
+            if lang == SbeTargetLang::Zig {
+                if let FieldType::List(inner) = &field.field_type {
+                    let inner_ty = target_field_type_ctx(
+                        lang,
+                        inner,
+                        &msg.name,
+                        &field.name,
+                        structs,
+                        messages,
+                    );
+                    base = format!("[]const {inner_ty}");
+                }
+            }
             let ty = if field.optional {
                 target_optional_type(lang, &base)
             } else {
@@ -1237,8 +1261,50 @@ fn target_encode_field(
                 )),
             }
             if !composite {
-                // Scalar list items have no payload layout in the Rust generator yet
-                // (sbe_codegen.rs writes a count plus a TODO); mirror it so both agree.
+                // Scalar items: strings are u32-length-prefixed, other scalars are raw
+                // big-endian (mirrors `sbe_codegen.rs::emit_scalar_list_encode`).
+                let wire = sbe_field_wire_type_of(inner);
+                match lang {
+                    SbeTargetLang::Go => {
+                        out.push_str(&format!("\tfor _, item := range {pname} {{\n"))
+                    }
+                    SbeTargetLang::Cpp => {
+                        out.push_str(&format!("        for (const auto& item : {pname}) {{\n"))
+                    }
+                    SbeTargetLang::Csharp => out.push_str(&format!(
+                        "            foreach (var item in {pname})\n            {{\n"
+                    )),
+                    SbeTargetLang::TypeScript => {
+                        out.push_str(&format!("  for (const item of {pname}) {{\n"))
+                    }
+                    SbeTargetLang::Zig => {
+                        out.push_str(&format!("        for ({pname}) |item| {{\n"))
+                    }
+                }
+                if wire == "str" {
+                    out.push_str(&match lang {
+                        SbeTargetLang::Go => format!("\t\twriteStringU32(&{buf}, item)\n"),
+                        SbeTargetLang::Cpp => {
+                            "            write_string_u32(buf, item);\n".to_string()
+                        }
+                        SbeTargetLang::Csharp => {
+                            "                Wire.WriteStringU32(buf, item);\n".to_string()
+                        }
+                        SbeTargetLang::TypeScript => "    writeStringU32(buf, item);\n".to_string(),
+                        SbeTargetLang::Zig => {
+                            "            try writeStringU32(buf, item);\n".to_string()
+                        }
+                    });
+                } else if let Some(kind) = field_scalar_kind(inner) {
+                    out.push_str(&emit_write_scalar(lang, buf, "item", kind));
+                }
+                out.push_str(match lang {
+                    SbeTargetLang::Go => "\t}\n",
+                    SbeTargetLang::Cpp => "        }\n",
+                    SbeTargetLang::Csharp => "            }\n",
+                    SbeTargetLang::TypeScript => "  }\n",
+                    SbeTargetLang::Zig => "        }\n",
+                });
                 return out;
             }
             match lang {
@@ -1511,14 +1577,55 @@ fn target_decode_field(
             if !matches!(inner.as_ref(), FieldType::Named(n)
                 if is_struct_name(n, structs) || is_message_name(n, messages))
             {
-                // Scalar list items: the Rust generator does not read them yet.
+                // Scalar items: u32-length-prefixed strings, raw big-endian otherwise
+                // (mirrors `sbe_codegen.rs::emit_scalar_list_decode`).
+                let wire = sbe_field_wire_type_of(inner);
                 match lang {
-                    SbeTargetLang::Go => out.push_str(&format!("\t{var} := make([]{inner_ty}, 0)\n\t_ = {var}_count\n")),
-                    SbeTargetLang::Cpp => out.push_str(&format!("        std::vector<{inner_ty}> {var};\n        (void){var}_count;\n")),
-                    SbeTargetLang::Csharp => out.push_str(&format!("            var {var} = new List<{inner_ty}>();\n            _ = {var}Count;\n")),
-                    SbeTargetLang::TypeScript => out.push_str(&format!("  const {var}: {inner_ty}[] = [];\n")),
-                    SbeTargetLang::Zig => out.push_str(&format!("        const {var} = try allocator.alloc({inner_ty}, 0);\n        _ = {var}_count;\n")),
+                    SbeTargetLang::Go => out.push_str(&format!("\t{var} := make([]{inner_ty}, 0, {var}_count)\n\tfor i := 0; i < int({var}_count); i++ {{\n")),
+                    SbeTargetLang::Cpp => out.push_str(&format!("        std::vector<{inner_ty}> {var};\n        {var}.reserve({var}_count);\n        for (uint32_t i = 0; i < {var}_count; ++i) {{\n")),
+                    SbeTargetLang::Csharp => out.push_str(&format!("            var {var} = new List<{inner_ty}>((int){var}Count);\n            for (int i = 0; i < (int){var}Count; i++)\n            {{\n")),
+                    SbeTargetLang::TypeScript => out.push_str(&format!("  const {var}: {inner_ty}[] = [];\n  for (let i = 0; i < {var}Count; i++) {{\n")),
+                    SbeTargetLang::Zig => out.push_str(&format!("        var {var} = try allocator.alloc({inner_ty}, {var}_count);\n        var {var}_idx: usize = 0;\n        while ({var}_idx < {var}_count) : ({var}_idx += 1) {{\n")),
                 }
+                let (read_expr, push_stmt) = if wire == "str" {
+                    let e = match lang {
+                        SbeTargetLang::Go => "readStringU32(buf, &pos)".to_string(),
+                        SbeTargetLang::Cpp => "read_string_u32(buf, pos)".to_string(),
+                        SbeTargetLang::Csharp => "Wire.ReadStringU32(buf, ref pos)".to_string(),
+                        SbeTargetLang::TypeScript => "readStringU32(buf, pos)".to_string(),
+                        SbeTargetLang::Zig => "try readStringU32(buf, &pos, allocator)".to_string(),
+                    };
+                    let p = match lang {
+                        SbeTargetLang::Go => format!("\t\t{var} = append({var}, {e})\n"),
+                        SbeTargetLang::Cpp => format!("            {var}.push_back({e});\n"),
+                        SbeTargetLang::Csharp => format!("                {var}.Add({e});\n"),
+                        SbeTargetLang::TypeScript => format!("    {var}.push({e});\n"),
+                        SbeTargetLang::Zig => format!("            {var}[{var}_idx] = {e};\n"),
+                    };
+                    (e, p)
+                } else {
+                    let kind = field_scalar_kind(inner).expect("scalar list item");
+                    // `emit_read_scalar` already advances `pos` on every target, but the Zig
+                    // helper returns a bare read; wrap the call sites that need assignment.
+                    let e = emit_read_scalar(lang, "buf", kind);
+                    let p = match lang {
+                        SbeTargetLang::Go => format!("\t\t{var} = append({var}, {e})\n"),
+                        SbeTargetLang::Cpp => format!("            {var}.push_back({e});\n"),
+                        SbeTargetLang::Csharp => format!("                {var}.Add({e});\n"),
+                        SbeTargetLang::TypeScript => format!("    {var}.push({e});\n"),
+                        SbeTargetLang::Zig => format!("            {var}[{var}_idx] = {e};\n"),
+                    };
+                    (e, p)
+                };
+                let _ = read_expr;
+                out.push_str(&push_stmt);
+                out.push_str(match lang {
+                    SbeTargetLang::Go => "\t}\n",
+                    SbeTargetLang::Cpp => "        }\n",
+                    SbeTargetLang::Csharp => "            }\n",
+                    SbeTargetLang::TypeScript => "  }\n",
+                    SbeTargetLang::Zig => "        }\n",
+                });
                 return (decls, out);
             }
             match lang {

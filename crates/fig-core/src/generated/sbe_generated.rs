@@ -3977,7 +3977,7 @@ impl CapabilitiesResponseBodyEncoder {
     pub fn encode(value: &CapabilitiesResponse, buf: &mut Vec<u8>) {
         buf.extend_from_slice(&(value.schema_ids.len() as u32).to_be_bytes());
         for item in &value.schema_ids {
-            // TODO: encode list<u8>
+            buf.push(*item);
         }
         buf.extend_from_slice(&(value.paths.len() as u32).to_be_bytes());
         for item in &value.paths {
@@ -3988,11 +3988,15 @@ impl CapabilitiesResponseBodyEncoder {
         }
         buf.extend_from_slice(&(value.symbols.len() as u32).to_be_bytes());
         for item in &value.symbols {
-            // TODO: encode list<Symbol>
+            let b = item.as_bytes();
+            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
+            buf.extend_from_slice(b);
         }
         buf.extend_from_slice(&(value.intervals.len() as u32).to_be_bytes());
         for item in &value.intervals {
-            // TODO: encode list<CandleInterval>
+            let b = item.as_bytes();
+            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
+            buf.extend_from_slice(b);
         }
     }
 }
@@ -4009,7 +4013,9 @@ impl CapabilitiesResponseBodyDecoder {
             schema_ids_count,
             buf.len().saturating_sub(pos),
         ));
-        // TODO: decode list<u8>
+        for _ in 0..schema_ids_count {
+            schema_ids.push(sbe_u8(buf, &mut pos)?);
+        }
         let paths_count = sbe_u32(buf, &mut pos)? as usize;
         let mut paths =
             Vec::with_capacity(sbe_capacity(paths_count, buf.len().saturating_sub(pos)));
@@ -4027,11 +4033,19 @@ impl CapabilitiesResponseBodyDecoder {
         let symbols_count = sbe_u32(buf, &mut pos)? as usize;
         let mut symbols =
             Vec::with_capacity(sbe_capacity(symbols_count, buf.len().saturating_sub(pos)));
-        // TODO: decode list<Symbol>
+        for _ in 0..symbols_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            symbols.push(String::from_utf8_lossy(item_bytes).into_owned());
+        }
         let intervals_count = sbe_u32(buf, &mut pos)? as usize;
         let mut intervals =
             Vec::with_capacity(sbe_capacity(intervals_count, buf.len().saturating_sub(pos)));
-        // TODO: decode list<CandleInterval>
+        for _ in 0..intervals_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            intervals.push(String::from_utf8_lossy(item_bytes).into_owned());
+        }
 
         Ok((
             CapabilitiesResponse {
@@ -9099,7 +9113,7 @@ impl CapabilitiesResponseEncoder {
         // Fixed fields
         buf.extend_from_slice(&(schema_ids.len() as u32).to_be_bytes());
         for item in &schema_ids {
-            // TODO: encode list<u8>
+            buf.push(*item);
         }
         buf.extend_from_slice(&(paths.len() as u32).to_be_bytes());
         for item in &paths {
@@ -9110,11 +9124,15 @@ impl CapabilitiesResponseEncoder {
         }
         buf.extend_from_slice(&(symbols.len() as u32).to_be_bytes());
         for item in &symbols {
-            // TODO: encode list<Symbol>
+            let b = item.as_bytes();
+            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
+            buf.extend_from_slice(b);
         }
         buf.extend_from_slice(&(intervals.len() as u32).to_be_bytes());
         for item in &intervals {
-            // TODO: encode list<CandleInterval>
+            let b = item.as_bytes();
+            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
+            buf.extend_from_slice(b);
         }
 
         buf
@@ -9156,7 +9174,9 @@ impl CapabilitiesResponseDecoder {
             schema_ids_count,
             buf.len().saturating_sub(pos),
         ));
-        // TODO: decode list<u8>
+        for _ in 0..schema_ids_count {
+            schema_ids.push(sbe_u8(buf, &mut pos)?);
+        }
         let paths_count = sbe_u32(buf, &mut pos)? as usize;
         let mut paths =
             Vec::with_capacity(sbe_capacity(paths_count, buf.len().saturating_sub(pos)));
@@ -9174,11 +9194,19 @@ impl CapabilitiesResponseDecoder {
         let symbols_count = sbe_u32(buf, &mut pos)? as usize;
         let mut symbols =
             Vec::with_capacity(sbe_capacity(symbols_count, buf.len().saturating_sub(pos)));
-        // TODO: decode list<Symbol>
+        for _ in 0..symbols_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            symbols.push(String::from_utf8_lossy(item_bytes).into_owned());
+        }
         let intervals_count = sbe_u32(buf, &mut pos)? as usize;
         let mut intervals =
             Vec::with_capacity(sbe_capacity(intervals_count, buf.len().saturating_sub(pos)));
-        // TODO: decode list<CandleInterval>
+        for _ in 0..intervals_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            intervals.push(String::from_utf8_lossy(item_bytes).into_owned());
+        }
 
         Ok(Self {
             schema_ids,
