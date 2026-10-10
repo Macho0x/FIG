@@ -54,10 +54,10 @@ nxt = sub.next(timeout_ms=5000)
 
 **Conformance:** Rust vectors + `fig-ffi` `binding_conformance` are CI-tested.
 Per-language generated SBE (`bindings/{go,cpp,csharp,typescript,zig}/*_generated.*`) is
-emitted by `cargo xtask codegen`. Go, C++, TypeScript and Zig are compiled in CI, and the Go
-target is byte-for-byte parity-tested against the shared conformance vectors; C# and the
-parity drivers for the other languages are still to come. Prefer the FFI wire codecs for
-production; SBE hex parity for the bindings themselves is measured against the FFI encoders.
+emitted by `cargo xtask codegen`. All five targets are compiled in CI, and each one is
+byte-for-byte parity-checked against the shared conformance vectors by its own smoke
+(`bindings/*/smoke`, `bindings/zig/sbe_parity.zig`). Scalar list items are not yet defined on
+either side (see TODO §16.2). The FFI wire codecs remain the recommended production path.
 
 ## Manual crates.io publish (maintainers)
 

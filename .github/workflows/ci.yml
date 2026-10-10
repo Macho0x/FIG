@@ -85,6 +85,11 @@ jobs:
           g++ -std=c++20 -fsyntax-only -I bindings/cpp/include "$RUNNER_TEMP/sbe.cpp"
           bun build bindings/typescript/sbe_generated.ts --target=bun --outfile "$RUNNER_TEMP/sbe.ts.js"
           zig build-obj bindings/zig/sbe_generated.zig -femit-bin="$RUNNER_TEMP/sbe.zig.o"
+      - name: Generated SBE parity (C++ / Zig; TypeScript runs in its smoke)
+        run: |
+          bash bindings/cpp/smoke/sbe_parity.sh
+          zig build-exe bindings/zig/sbe_parity.zig -I bindings/zig -femit-bin="$RUNNER_TEMP/sbe_parity"
+          "$RUNNER_TEMP/sbe_parity"
       - name: FFI binding conformance
         run: cargo test -p fig-ffi binding_conformance
       - name: FFI stream merge handles

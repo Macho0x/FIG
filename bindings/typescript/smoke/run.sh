@@ -26,3 +26,41 @@ const got = bytes.toString("hex");
 if (got !== expected) throw new Error("SBE hex mismatch expected=" + expected + " got=" + got);
 console.log("fig-ts smoke OK", v);
 '
+
+# Per-language SBE parity: encode with the *generated* TypeScript code and compare
+# against the shared conformance vectors (produced by the Rust/FFI encoder).
+bun -e '
+import { readFileSync } from "fs";
+import {
+  NewOrderSingleEncoderEncode, NewOrderSingleSide, NewOrderSingleOrderType, NewOrderSingleTimeInForce,
+  OrderBookSnapshotEncoderEncode, NewOrderSingleDecoderDecode,
+} from "./bindings/typescript/sbe_generated.ts";
+
+const root = process.env.FIG_REPO_ROOT ?? process.cwd();
+const vectors = JSON.parse(readFileSync(root + "/tests/conformance/vectors/v1.json", "utf8")).vectors;
+const want = (id) => vectors.find((v) => v.id === id).expected_hex;
+const hex = (b) => Buffer.from(b).toString("hex");
+
+const order = NewOrderSingleEncoderEncode(
+  "CONF-001", NewOrderSingleSide.Buy, 100, 50.25, null, "AAPL",
+  NewOrderSingleOrderType.Limit, NewOrderSingleTimeInForce.Day,
+  null, null, null, null, null, null, null, null,
+);
+if (hex(order) !== want("sbe.new_order_single.limit_buy")) {
+  throw new Error("new_order_single parity failed\n got " + hex(order) + "\nwant " + want("sbe.new_order_single.limit_buy"));
+}
+
+const snapshot = OrderBookSnapshotEncoderEncode(
+  "AAPL", "SIM", [{ price: 100, qty: 5, order_count: 1 }], [],
+  1700000000000000000n, 42n, 1,
+);
+if (hex(snapshot) !== want("sbe.order_book_snapshot.demo")) {
+  throw new Error("order_book_snapshot parity failed\n got " + hex(snapshot) + "\nwant " + want("sbe.order_book_snapshot.demo"));
+}
+
+const round = NewOrderSingleDecoderDecode(order);
+if (round.cl_ord_id !== "CONF-001" || round.symbol !== "AAPL" || round.order_qty !== 100 || round.price !== 50.25) {
+  throw new Error("round trip failed: " + JSON.stringify(round));
+}
+console.log("fig-ts sbe parity OK");
+'

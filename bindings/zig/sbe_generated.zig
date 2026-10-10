@@ -20,10 +20,10 @@ fn readI64BE(buf: []const u8, pos: *usize) i64 { return @bitCast(readU64BE(buf, 
 fn readString(buf: []const u8, pos: *usize, allocator: std.mem.Allocator) ![]u8 { const len = readU16BE(buf, pos); const s = try allocator.dupe(u8, buf[pos.* .. pos.* + len]); pos.* += len; return s; }
 
 pub const NewOrderSingleSide = enum(u8) {
-    Buy,
-    Sell,
-    SellShort,
-    SellShortExempt,
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
+    SellShortExempt = 4,
 };
 
 pub fn NewOrderSingleSideFromValue(v: u8) !NewOrderSingleSide {
@@ -39,13 +39,13 @@ pub fn NewOrderSingleSideFromValue(v: u8) !NewOrderSingleSide {
 pub fn NewOrderSingleSideToValue(e: NewOrderSingleSide) u8 { return @intFromEnum(e); }
 
 pub const NewOrderSingleOrderType = enum(u8) {
-    Market,
-    Limit,
-    Stop,
-    StopLimit,
-    MarketOnClose,
-    LimitOnClose,
-    Pegged,
+    Market = 1,
+    Limit = 2,
+    Stop = 3,
+    StopLimit = 4,
+    MarketOnClose = 5,
+    LimitOnClose = 6,
+    Pegged = 7,
 };
 
 pub fn NewOrderSingleOrderTypeFromValue(v: u8) !NewOrderSingleOrderType {
@@ -64,11 +64,11 @@ pub fn NewOrderSingleOrderTypeFromValue(v: u8) !NewOrderSingleOrderType {
 pub fn NewOrderSingleOrderTypeToValue(e: NewOrderSingleOrderType) u8 { return @intFromEnum(e); }
 
 pub const NewOrderSingleTimeInForce = enum(u8) {
-    Day,
-    Gtc,
-    Ioc,
-    Fok,
-    Gtd,
+    Day = 1,
+    Gtc = 2,
+    Ioc = 3,
+    Fok = 4,
+    Gtd = 5,
 };
 
 pub fn NewOrderSingleTimeInForceFromValue(v: u8) !NewOrderSingleTimeInForce {
@@ -85,11 +85,11 @@ pub fn NewOrderSingleTimeInForceFromValue(v: u8) !NewOrderSingleTimeInForce {
 pub fn NewOrderSingleTimeInForceToValue(e: NewOrderSingleTimeInForce) u8 { return @intFromEnum(e); }
 
 pub const NewOrderSingleIdSource = enum(u8) {
-    Cusip,
-    Sedol,
-    Isin,
-    Ric,
-    ExchangeSymbol,
+    Cusip = 1,
+    Sedol = 2,
+    Isin = 3,
+    Ric = 4,
+    ExchangeSymbol = 5,
 };
 
 pub fn NewOrderSingleIdSourceFromValue(v: u8) !NewOrderSingleIdSource {
@@ -106,9 +106,9 @@ pub fn NewOrderSingleIdSourceFromValue(v: u8) !NewOrderSingleIdSource {
 pub fn NewOrderSingleIdSourceToValue(e: NewOrderSingleIdSource) u8 { return @intFromEnum(e); }
 
 pub const CancelRequestSide = enum(u8) {
-    Buy,
-    Sell,
-    SellShort,
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
 };
 
 pub fn CancelRequestSideFromValue(v: u8) !CancelRequestSide {
@@ -123,9 +123,9 @@ pub fn CancelRequestSideFromValue(v: u8) !CancelRequestSide {
 pub fn CancelRequestSideToValue(e: CancelRequestSide) u8 { return @intFromEnum(e); }
 
 pub const CancelReplaceRequestSide = enum(u8) {
-    Buy,
-    Sell,
-    SellShort,
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
 };
 
 pub fn CancelReplaceRequestSideFromValue(v: u8) !CancelReplaceRequestSide {
@@ -140,18 +140,18 @@ pub fn CancelReplaceRequestSideFromValue(v: u8) !CancelReplaceRequestSide {
 pub fn CancelReplaceRequestSideToValue(e: CancelReplaceRequestSide) u8 { return @intFromEnum(e); }
 
 pub const ExecutionReportExecType = enum(u8) {
-    New,
-    PartialFill,
-    Fill,
-    DoneForDay,
-    Canceled,
-    Replaced,
-    PendingCancel,
-    Stopped,
-    Rejected,
-    Suspended,
-    PendingNew,
-    Expired,
+    New = 1,
+    PartialFill = 2,
+    Fill = 3,
+    DoneForDay = 4,
+    Canceled = 5,
+    Replaced = 6,
+    PendingCancel = 7,
+    Stopped = 8,
+    Rejected = 9,
+    Suspended = 10,
+    PendingNew = 11,
+    Expired = 12,
 };
 
 pub fn ExecutionReportExecTypeFromValue(v: u8) !ExecutionReportExecType {
@@ -175,18 +175,18 @@ pub fn ExecutionReportExecTypeFromValue(v: u8) !ExecutionReportExecType {
 pub fn ExecutionReportExecTypeToValue(e: ExecutionReportExecType) u8 { return @intFromEnum(e); }
 
 pub const ExecutionReportOrdStatus = enum(u8) {
-    New,
-    PartiallyFilled,
-    Filled,
-    DoneForDay,
-    Canceled,
-    PendingCancel,
-    Stopped,
-    Rejected,
-    Suspended,
-    PendingNew,
-    Expired,
-    Replaced,
+    New = 1,
+    PartiallyFilled = 2,
+    Filled = 3,
+    DoneForDay = 4,
+    Canceled = 5,
+    PendingCancel = 6,
+    Stopped = 7,
+    Rejected = 8,
+    Suspended = 9,
+    PendingNew = 10,
+    Expired = 11,
+    Replaced = 12,
 };
 
 pub fn ExecutionReportOrdStatusFromValue(v: u8) !ExecutionReportOrdStatus {
@@ -210,9 +210,9 @@ pub fn ExecutionReportOrdStatusFromValue(v: u8) !ExecutionReportOrdStatus {
 pub fn ExecutionReportOrdStatusToValue(e: ExecutionReportOrdStatus) u8 { return @intFromEnum(e); }
 
 pub const ExecutionReportSide = enum(u8) {
-    Buy,
-    Sell,
-    SellShort,
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
 };
 
 pub fn ExecutionReportSideFromValue(v: u8) !ExecutionReportSide {
@@ -227,10 +227,10 @@ pub fn ExecutionReportSideFromValue(v: u8) !ExecutionReportSide {
 pub fn ExecutionReportSideToValue(e: ExecutionReportSide) u8 { return @intFromEnum(e); }
 
 pub const CancelRejectRejectReason = enum(u8) {
-    OrderNotFound,
-    AlreadyCanceled,
-    AlreadyFilled,
-    TooLateToCancel,
+    OrderNotFound = 1,
+    AlreadyCanceled = 2,
+    AlreadyFilled = 3,
+    TooLateToCancel = 4,
 };
 
 pub fn CancelRejectRejectReasonFromValue(v: u8) !CancelRejectRejectReason {
@@ -246,11 +246,11 @@ pub fn CancelRejectRejectReasonFromValue(v: u8) !CancelRejectRejectReason {
 pub fn CancelRejectRejectReasonToValue(e: CancelRejectRejectReason) u8 { return @intFromEnum(e); }
 
 pub const BalanceUpdateReason = enum(u8) {
-    Trade,
-    Deposit,
-    Withdrawal,
-    Transfer,
-    Fee,
+    Trade = 1,
+    Deposit = 2,
+    Withdrawal = 3,
+    Transfer = 4,
+    Fee = 5,
 };
 
 pub fn BalanceUpdateReasonFromValue(v: u8) !BalanceUpdateReason {
@@ -267,9 +267,9 @@ pub fn BalanceUpdateReasonFromValue(v: u8) !BalanceUpdateReason {
 pub fn BalanceUpdateReasonToValue(e: BalanceUpdateReason) u8 { return @intFromEnum(e); }
 
 pub const OrderListStatusStatus = enum(u8) {
-    Executing,
-    AllDone,
-    Reject,
+    Executing = 1,
+    AllDone = 2,
+    Reject = 3,
 };
 
 pub fn OrderListStatusStatusFromValue(v: u8) !OrderListStatusStatus {
@@ -284,11 +284,11 @@ pub fn OrderListStatusStatusFromValue(v: u8) !OrderListStatusStatus {
 pub fn OrderListStatusStatusToValue(e: OrderListStatusStatus) u8 { return @intFromEnum(e); }
 
 pub const LedgerUpdateKind = enum(u8) {
-    Deposit,
-    Withdrawal,
-    Transfer,
-    Fee,
-    Funding,
+    Deposit = 1,
+    Withdrawal = 2,
+    Transfer = 3,
+    Fee = 4,
+    Funding = 5,
 };
 
 pub fn LedgerUpdateKindFromValue(v: u8) !LedgerUpdateKind {
@@ -305,8 +305,8 @@ pub fn LedgerUpdateKindFromValue(v: u8) !LedgerUpdateKind {
 pub fn LedgerUpdateKindToValue(e: LedgerUpdateKind) u8 { return @intFromEnum(e); }
 
 pub const AggregateTradeSide = enum(u8) {
-    Buy,
-    Sell,
+    Buy = 1,
+    Sell = 2,
 };
 
 pub fn AggregateTradeSideFromValue(v: u8) !AggregateTradeSide {
@@ -320,8 +320,8 @@ pub fn AggregateTradeSideFromValue(v: u8) !AggregateTradeSide {
 pub fn AggregateTradeSideToValue(e: AggregateTradeSide) u8 { return @intFromEnum(e); }
 
 pub const LiquidationTradeSide = enum(u8) {
-    Buy,
-    Sell,
+    Buy = 1,
+    Sell = 2,
 };
 
 pub fn LiquidationTradeSideFromValue(v: u8) !LiquidationTradeSide {
@@ -335,8 +335,8 @@ pub fn LiquidationTradeSideFromValue(v: u8) !LiquidationTradeSide {
 pub fn LiquidationTradeSideToValue(e: LiquidationTradeSide) u8 { return @intFromEnum(e); }
 
 pub const MarketDataUpdateSide = enum(u8) {
-    Buy,
-    Sell,
+    Buy = 1,
+    Sell = 2,
 };
 
 pub fn MarketDataUpdateSideFromValue(v: u8) !MarketDataUpdateSide {
@@ -350,9 +350,9 @@ pub fn MarketDataUpdateSideFromValue(v: u8) !MarketDataUpdateSide {
 pub fn MarketDataUpdateSideToValue(e: MarketDataUpdateSide) u8 { return @intFromEnum(e); }
 
 pub const MarketDataUpdateAction = enum(u8) {
-    New,
-    Change,
-    Delete,
+    New = 1,
+    Change = 2,
+    Delete = 3,
 };
 
 pub fn MarketDataUpdateActionFromValue(v: u8) !MarketDataUpdateAction {
@@ -367,8 +367,8 @@ pub fn MarketDataUpdateActionFromValue(v: u8) !MarketDataUpdateAction {
 pub fn MarketDataUpdateActionToValue(e: MarketDataUpdateAction) u8 { return @intFromEnum(e); }
 
 pub const PublicTradeSide = enum(u8) {
-    Buy,
-    Sell,
+    Buy = 1,
+    Sell = 2,
 };
 
 pub fn PublicTradeSideFromValue(v: u8) !PublicTradeSide {
@@ -382,9 +382,9 @@ pub fn PublicTradeSideFromValue(v: u8) !PublicTradeSide {
 pub fn PublicTradeSideToValue(e: PublicTradeSide) u8 { return @intFromEnum(e); }
 
 pub const CapabilityPathPattern = enum(u8) {
-    PubSub,
-    RequestResponse,
-    RequestStream,
+    PubSub = 1,
+    RequestResponse = 2,
+    RequestStream = 3,
 };
 
 pub fn CapabilityPathPatternFromValue(v: u8) !CapabilityPathPattern {
@@ -411,14 +411,14 @@ pub const AggregateTrade = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: AggregateTrade, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.agg_trade_id);
-        try writeF64BE(&buf, value.price);
-        try writeF64BE(&buf, value.qty);
-        try buf.append(AggregateTradeSideToValue(value.side));
-        try writeString(&buf, value.first_trade_id);
-        try writeString(&buf, value.last_trade_id);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.agg_trade_id);
+        try writeF64BE(buf, value.price);
+        try writeF64BE(buf, value.qty);
+        try buf.append(AggregateTradeSideHelpers.ToValue(value.side));
+        try writeString(buf, value.first_trade_id);
+        try writeString(buf, value.last_trade_id);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AggregateTrade {
@@ -427,7 +427,7 @@ pub const AggregateTrade = struct {
         const agg_trade_id = try readString(buf, &pos, allocator);
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
-        const side = try AggregateTradeSideFromValue(readU8(buf, &pos));
+        const side = try AggregateTradeSideHelpers.FromValue(readU8(buf, &pos));
         const first_trade_id = try readString(buf, &pos, allocator);
         const last_trade_id = try readString(buf, &pos, allocator);
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
@@ -453,17 +453,17 @@ pub const LiquidationTrade = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: LiquidationTrade, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try buf.append(LiquidationTradeSideToValue(value.side));
-        try writeF64BE(&buf, value.price);
-        try writeF64BE(&buf, value.qty);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.symbol);
+        try buf.append(LiquidationTradeSideHelpers.ToValue(value.side));
+        try writeF64BE(buf, value.price);
+        try writeF64BE(buf, value.qty);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LiquidationTrade {
         var value: LiquidationTrade = undefined;
         const symbol = try readString(buf, &pos, allocator);
-        const side = try LiquidationTradeSideFromValue(readU8(buf, &pos));
+        const side = try LiquidationTradeSideHelpers.FromValue(readU8(buf, &pos));
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
@@ -484,9 +484,9 @@ pub const PriceLevel = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: PriceLevel, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeF64BE(&buf, value.price);
-        try writeF64BE(&buf, value.qty);
-        try writeU32BE(&buf, @intCast(value.order_count orelse 0));
+        try writeF64BE(buf, value.price);
+        try writeF64BE(buf, value.qty);
+        try writeU32BE(buf, @intCast(value.order_count orelse 0));
         try buf.append(if (value.order_count != null) 1 else 0);
     }
 
@@ -514,17 +514,17 @@ pub const MarketDataUpdate = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: MarketDataUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try buf.append(MarketDataUpdateSideToValue(value.side));
-        try buf.append(MarketDataUpdateActionToValue(value.action));
-        try writeF64BE(&buf, value.price);
-        try writeF64BE(&buf, value.qty);
+        try buf.append(MarketDataUpdateSideHelpers.ToValue(value.side));
+        try buf.append(MarketDataUpdateActionHelpers.ToValue(value.action));
+        try writeF64BE(buf, value.price);
+        try writeF64BE(buf, value.qty);
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataUpdate {
         _ = allocator;
         var value: MarketDataUpdate = undefined;
-        const side = try MarketDataUpdateSideFromValue(readU8(buf, &pos));
-        const action = try MarketDataUpdateActionFromValue(readU8(buf, &pos));
+        const side = try MarketDataUpdateSideHelpers.FromValue(readU8(buf, &pos));
+        const action = try MarketDataUpdateActionHelpers.FromValue(readU8(buf, &pos));
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
         value.side = side;
@@ -551,15 +551,15 @@ pub const CandleBar = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: CandleBar, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.interval);
-        try writeF64BE(&buf, value.open);
-        try writeF64BE(&buf, value.high);
-        try writeF64BE(&buf, value.low);
-        try writeF64BE(&buf, value.close);
-        try writeF64BE(&buf, value.volume);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.bar_start)));
-        try writeU64BE(&buf, @as(i64, @bitCast(value.bar_end)));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.interval);
+        try writeF64BE(buf, value.open);
+        try writeF64BE(buf, value.high);
+        try writeF64BE(buf, value.low);
+        try writeF64BE(buf, value.close);
+        try writeF64BE(buf, value.volume);
+        try writeU64BE(buf, @as(u64, @bitCast(value.bar_start)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.bar_end)));
         try buf.append(@intCast(value.is_final));
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
@@ -606,12 +606,12 @@ pub const PublicTrade = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: PublicTrade, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.trade_id);
-        try writeF64BE(&buf, value.price);
-        try writeF64BE(&buf, value.qty);
-        try buf.append(PublicTradeSideToValue(value.side));
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.trade_id);
+        try writeF64BE(buf, value.price);
+        try writeF64BE(buf, value.qty);
+        try buf.append(PublicTradeSideHelpers.ToValue(value.side));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PublicTrade {
@@ -620,7 +620,7 @@ pub const PublicTrade = struct {
         const trade_id = try readString(buf, &pos, allocator);
         const price = readF64BE(buf, &pos);
         const qty = readF64BE(buf, &pos);
-        const side = try PublicTradeSideFromValue(readU8(buf, &pos));
+        const side = try PublicTradeSideHelpers.FromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         value.symbol = symbol;
         value.trade_id = trade_id;
@@ -644,14 +644,14 @@ pub const InstrumentMetadata = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: InstrumentMetadata, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.instrument_id);
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.product_kind);
-        if (value.margin_asset) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        if (value.display_name) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeF64BE(&buf, value.tick_size orelse 0);
+        try writeString(buf, value.instrument_id);
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.product_kind);
+        if (value.margin_asset) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        if (value.display_name) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeF64BE(buf, value.tick_size orelse 0);
         try buf.append(if (value.tick_size != null) 1 else 0);
-        try writeF64BE(&buf, value.lot_size orelse 0);
+        try writeF64BE(buf, value.lot_size orelse 0);
         try buf.append(if (value.lot_size != null) 1 else 0);
     }
 
@@ -700,10 +700,10 @@ pub const BalanceEntry = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: BalanceEntry, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.asset);
-        try writeF64BE(&buf, value.total);
-        try writeF64BE(&buf, value.available);
-        try writeF64BE(&buf, value.hold);
+        try writeString(buf, value.asset);
+        try writeF64BE(buf, value.total);
+        try writeF64BE(buf, value.available);
+        try writeF64BE(buf, value.hold);
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BalanceEntry {
@@ -729,10 +729,10 @@ pub const PositionEntry = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: PositionEntry, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.qty);
-        try writeF64BE(&buf, value.entry_price);
-        try writeF64BE(&buf, value.unrealized_pnl);
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.qty);
+        try writeF64BE(buf, value.entry_price);
+        try writeF64BE(buf, value.unrealized_pnl);
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PositionEntry {
@@ -757,7 +757,7 @@ pub const PageInfo = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PageInfo, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PageInfo {
@@ -784,15 +784,15 @@ pub const CapabilityPath = struct {
 
     pub fn encode(allocator: std.mem.Allocator, value: CapabilityPath, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.path);
-        try buf.append(CapabilityPathPatternToValue(value.pattern));
+        try writeString(buf, value.path);
+        try buf.append(CapabilityPathPatternHelpers.ToValue(value.pattern));
         try buf.append(@intCast(value.auth_required));
     }
 
     pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CapabilityPath {
         var value: CapabilityPath = undefined;
         const path = try readString(buf, &pos, allocator);
-        const pattern = try CapabilityPathPatternFromValue(readU8(buf, &pos));
+        const pattern = try CapabilityPathPatternHelpers.FromValue(readU8(buf, &pos));
         const auth_required = readU8(buf, &pos);
         value.path = path;
         value.pattern = pattern;
@@ -825,24 +825,24 @@ pub const NewOrderSingle = struct {
 pub const NewOrderSingleBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: NewOrderSingle, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.cl_ord_id);
-        try buf.append(NewOrderSingleSideToValue(value.side));
-        try writeF64BE(&buf, value.order_qty);
-        try writeF64BE(&buf, value.price orelse 0);
+        try writeString(buf, value.cl_ord_id);
+        try buf.append(NewOrderSingleSideHelpers.ToValue(value.side));
+        try writeF64BE(buf, value.order_qty);
+        try writeF64BE(buf, value.price orelse 0);
         try buf.append(if (value.price != null) 1 else 0);
-        try writeF64BE(&buf, value.stop_price orelse 0);
+        try writeF64BE(buf, value.stop_price orelse 0);
         try buf.append(if (value.stop_price != null) 1 else 0);
-        try writeString(&buf, value.symbol);
-        try buf.append(NewOrderSingleOrderTypeToValue(value.order_type));
-        try buf.append(NewOrderSingleTimeInForceToValue(value.time_in_force));
-        try writeU64BE(&buf, @as(i64, @bitCast(value.expire_time orelse 0)));
+        try writeString(buf, value.symbol);
+        try buf.append(NewOrderSingleOrderTypeHelpers.ToValue(value.order_type));
+        try buf.append(NewOrderSingleTimeInForceHelpers.ToValue(value.time_in_force));
+        try writeU64BE(buf, @as(u64, @bitCast(value.expire_time orelse 0)));
         try buf.append(if (value.expire_time != null) 1 else 0);
-        if (value.account) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        if (value.strategy_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        if (value.security_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try buf.append(if (value.id_source) |e| NewOrderSingleIdSourceToValue(e) else 0);
+        if (value.account) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        if (value.strategy_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        if (value.security_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try buf.append(if (value.id_source) |e| NewOrderSingleIdSourceHelpers.ToValue(e) else 0);
         try buf.append(if (value.id_source != null) 1 else 0);
-        if (value.security_exchange) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.security_exchange) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         try buf.append(@intCast(value.post_only orelse 0));
         try buf.append(if (value.post_only != null) 1 else 0);
         try buf.append(@intCast(value.reduce_only orelse 0));
@@ -859,7 +859,7 @@ pub const NewOrderSingleBodyDecoder = struct {
         var security_id: ?[]u8 = null;
         var security_exchange: ?[]u8 = null;
         const cl_ord_id = try readString(buf, &pos, allocator);
-        const side = try NewOrderSingleSideFromValue(readU8(buf, &pos));
+        const side = try NewOrderSingleSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -868,8 +868,8 @@ pub const NewOrderSingleBodyDecoder = struct {
         var stop_price: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; stop_price = stop_price_v; } else { pos += 1; }
         const symbol = try readString(buf, &pos, allocator);
-        const order_type = try NewOrderSingleOrderTypeFromValue(readU8(buf, &pos));
-        const time_in_force = try NewOrderSingleTimeInForceFromValue(readU8(buf, &pos));
+        const order_type = try NewOrderSingleOrderTypeHelpers.FromValue(readU8(buf, &pos));
+        const time_in_force = try NewOrderSingleTimeInForceHelpers.FromValue(readU8(buf, &pos));
         const expire_time_v = @as(i64, @bitCast(readU64BE(buf, &pos)));
         var expire_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; expire_time = expire_time_v; } else { pos += 1; }
@@ -895,7 +895,7 @@ pub const NewOrderSingleBodyDecoder = struct {
         var id_source: ?NewOrderSingleIdSource = null;
         if (buf[pos] == 1) {
             pos += 1;
-            id_source = try NewOrderSingleIdSourceFromValue(id_source_raw);
+            id_source = try NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
         } else {
             pos += 1;
         }
@@ -934,30 +934,31 @@ pub const NewOrderSingleBodyDecoder = struct {
 /// SBE encoder for NewOrderSingle
 pub const NewOrderSingleEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, side: NewOrderSingleSide, order_qty: f64, price: ?f64, stop_price: ?f64, symbol: []const u8, order_type: NewOrderSingleOrderType, time_in_force: NewOrderSingleTimeInForce, expire_time: ?i64, account: ?[]const u8, strategy_id: ?[]const u8, security_id: ?[]const u8, id_source: ?NewOrderSingleIdSource, security_exchange: ?[]const u8, post_only: ?u8, reduce_only: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 1);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 38);
-        try writeString(&buf, cl_ord_id);
-        try buf.append(NewOrderSingleSideToValue(side));
-        try writeF64BE(&buf, order_qty);
-        try writeF64BE(&buf, price orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 1);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 38);
+        try writeString(buf, cl_ord_id);
+        try buf.append(NewOrderSingleSideHelpers.ToValue(side));
+        try writeF64BE(buf, order_qty);
+        try writeF64BE(buf, price orelse 0);
         try buf.append(if (price != null) 1 else 0);
-        try writeF64BE(&buf, stop_price orelse 0);
+        try writeF64BE(buf, stop_price orelse 0);
         try buf.append(if (stop_price != null) 1 else 0);
-        try writeString(&buf, symbol);
-        try buf.append(NewOrderSingleOrderTypeToValue(order_type));
-        try buf.append(NewOrderSingleTimeInForceToValue(time_in_force));
-        try writeU64BE(&buf, @as(i64, @bitCast(expire_time orelse 0)));
+        try writeString(buf, symbol);
+        try buf.append(NewOrderSingleOrderTypeHelpers.ToValue(order_type));
+        try buf.append(NewOrderSingleTimeInForceHelpers.ToValue(time_in_force));
+        try writeU64BE(buf, @as(u64, @bitCast(expire_time orelse 0)));
         try buf.append(if (expire_time != null) 1 else 0);
-        if (account) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        if (strategy_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        if (security_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try buf.append(if (id_source) |e| NewOrderSingleIdSourceToValue(e) else 0);
+        if (account) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        if (strategy_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        if (security_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try buf.append(if (id_source) |e| NewOrderSingleIdSourceHelpers.ToValue(e) else 0);
         try buf.append(if (id_source != null) 1 else 0);
-        if (security_exchange) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (security_exchange) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         try buf.append(@intCast(post_only orelse 0));
         try buf.append(if (post_only != null) 1 else 0);
         try buf.append(@intCast(reduce_only orelse 0));
@@ -983,7 +984,7 @@ pub const NewOrderSingleDecoder = struct {
         var security_id: ?[]u8 = null;
         var security_exchange: ?[]u8 = null;
         const cl_ord_id = try readString(buf, &pos, allocator);
-        const side = try NewOrderSingleSideFromValue(readU8(buf, &pos));
+        const side = try NewOrderSingleSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -992,8 +993,8 @@ pub const NewOrderSingleDecoder = struct {
         var stop_price: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; stop_price = stop_price_v; } else { pos += 1; }
         const symbol = try readString(buf, &pos, allocator);
-        const order_type = try NewOrderSingleOrderTypeFromValue(readU8(buf, &pos));
-        const time_in_force = try NewOrderSingleTimeInForceFromValue(readU8(buf, &pos));
+        const order_type = try NewOrderSingleOrderTypeHelpers.FromValue(readU8(buf, &pos));
+        const time_in_force = try NewOrderSingleTimeInForceHelpers.FromValue(readU8(buf, &pos));
         const expire_time_v = @as(i64, @bitCast(readU64BE(buf, &pos)));
         var expire_time: ?i64 = null;
         if (buf[pos] == 1) { pos += 1; expire_time = expire_time_v; } else { pos += 1; }
@@ -1019,7 +1020,7 @@ pub const NewOrderSingleDecoder = struct {
         var id_source: ?NewOrderSingleIdSource = null;
         if (buf[pos] == 1) {
             pos += 1;
-            id_source = try NewOrderSingleIdSourceFromValue(id_source_raw);
+            id_source = try NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
         } else {
             pos += 1;
         }
@@ -1068,11 +1069,11 @@ pub const CancelRequest = struct {
 pub const CancelRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CancelRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.cl_ord_id);
-        try writeString(&buf, value.orig_cl_ord_id);
-        try writeString(&buf, value.symbol);
-        try buf.append(CancelRequestSideToValue(value.side));
-        try writeF64BE(&buf, value.order_qty orelse 0);
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.orig_cl_ord_id);
+        try writeString(buf, value.symbol);
+        try buf.append(CancelRequestSideHelpers.ToValue(value.side));
+        try writeF64BE(buf, value.order_qty orelse 0);
         try buf.append(if (value.order_qty != null) 1 else 0);
     }
 };
@@ -1084,7 +1085,7 @@ pub const CancelRequestBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelRequestSideFromValue(readU8(buf, &pos));
+        const side = try CancelRequestSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty_v = readF64BE(buf, &pos);
         var order_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; order_qty = order_qty_v; } else { pos += 1; }
@@ -1100,17 +1101,18 @@ pub const CancelRequestBodyDecoder = struct {
 /// SBE encoder for CancelRequest
 pub const CancelRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, orig_cl_ord_id: []const u8, symbol: []const u8, side: CancelRequestSide, order_qty: ?f64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 2);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 9);
-        try writeString(&buf, cl_ord_id);
-        try writeString(&buf, orig_cl_ord_id);
-        try writeString(&buf, symbol);
-        try buf.append(CancelRequestSideToValue(side));
-        try writeF64BE(&buf, order_qty orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 2);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 9);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, orig_cl_ord_id);
+        try writeString(buf, symbol);
+        try buf.append(CancelRequestSideHelpers.ToValue(side));
+        try writeF64BE(buf, order_qty orelse 0);
         try buf.append(if (order_qty != null) 1 else 0);
         return buf.toOwnedSlice();
     }
@@ -1131,7 +1133,7 @@ pub const CancelRequestDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelRequestSideFromValue(readU8(buf, &pos));
+        const side = try CancelRequestSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty_v = readF64BE(buf, &pos);
         var order_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; order_qty = order_qty_v; } else { pos += 1; }
@@ -1158,12 +1160,12 @@ pub const CancelReplaceRequest = struct {
 pub const CancelReplaceRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CancelReplaceRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.cl_ord_id);
-        try writeString(&buf, value.orig_cl_ord_id);
-        try writeString(&buf, value.symbol);
-        try buf.append(CancelReplaceRequestSideToValue(value.side));
-        try writeF64BE(&buf, value.order_qty);
-        try writeF64BE(&buf, value.price orelse 0);
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.orig_cl_ord_id);
+        try writeString(buf, value.symbol);
+        try buf.append(CancelReplaceRequestSideHelpers.ToValue(value.side));
+        try writeF64BE(buf, value.order_qty);
+        try writeF64BE(buf, value.price orelse 0);
         try buf.append(if (value.price != null) 1 else 0);
     }
 };
@@ -1175,7 +1177,7 @@ pub const CancelReplaceRequestBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelReplaceRequestSideFromValue(readU8(buf, &pos));
+        const side = try CancelReplaceRequestSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -1193,18 +1195,19 @@ pub const CancelReplaceRequestBodyDecoder = struct {
 /// SBE encoder for CancelReplaceRequest
 pub const CancelReplaceRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, orig_cl_ord_id: []const u8, symbol: []const u8, side: CancelReplaceRequestSide, order_qty: f64, price: ?f64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 3);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 17);
-        try writeString(&buf, cl_ord_id);
-        try writeString(&buf, orig_cl_ord_id);
-        try writeString(&buf, symbol);
-        try buf.append(CancelReplaceRequestSideToValue(side));
-        try writeF64BE(&buf, order_qty);
-        try writeF64BE(&buf, price orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 3);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, orig_cl_ord_id);
+        try writeString(buf, symbol);
+        try buf.append(CancelReplaceRequestSideHelpers.ToValue(side));
+        try writeF64BE(buf, order_qty);
+        try writeF64BE(buf, price orelse 0);
         try buf.append(if (price != null) 1 else 0);
         return buf.toOwnedSlice();
     }
@@ -1225,7 +1228,7 @@ pub const CancelReplaceRequestDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
         const symbol = try readString(buf, &pos, allocator);
-        const side = try CancelReplaceRequestSideFromValue(readU8(buf, &pos));
+        const side = try CancelReplaceRequestSideHelpers.FromValue(readU8(buf, &pos));
         const order_qty = readF64BE(buf, &pos);
         const price_v = readF64BE(buf, &pos);
         var price: ?f64 = null;
@@ -1261,21 +1264,21 @@ pub const ExecutionReport = struct {
 pub const ExecutionReportBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: ExecutionReport, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.cl_ord_id);
-        try writeString(&buf, value.order_id);
-        try writeString(&buf, value.exec_id);
-        try buf.append(ExecutionReportExecTypeToValue(value.exec_type));
-        try buf.append(ExecutionReportOrdStatusToValue(value.ord_status));
-        try buf.append(ExecutionReportSideToValue(value.side));
-        try writeF64BE(&buf, value.last_qty orelse 0);
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.order_id);
+        try writeString(buf, value.exec_id);
+        try buf.append(ExecutionReportExecTypeHelpers.ToValue(value.exec_type));
+        try buf.append(ExecutionReportOrdStatusHelpers.ToValue(value.ord_status));
+        try buf.append(ExecutionReportSideHelpers.ToValue(value.side));
+        try writeF64BE(buf, value.last_qty orelse 0);
         try buf.append(if (value.last_qty != null) 1 else 0);
-        try writeF64BE(&buf, value.last_price orelse 0);
+        try writeF64BE(buf, value.last_price orelse 0);
         try buf.append(if (value.last_price != null) 1 else 0);
-        try writeF64BE(&buf, value.leaves_qty);
-        try writeF64BE(&buf, value.cum_qty);
-        try writeF64BE(&buf, value.avg_price);
-        try writeString(&buf, value.symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.transact_time)));
+        try writeF64BE(buf, value.leaves_qty);
+        try writeF64BE(buf, value.cum_qty);
+        try writeF64BE(buf, value.avg_price);
+        try writeString(buf, value.symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(value.transact_time)));
     }
 };
 
@@ -1286,9 +1289,9 @@ pub const ExecutionReportBodyDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const order_id = try readString(buf, &pos, allocator);
         const exec_id = try readString(buf, &pos, allocator);
-        const exec_type = try ExecutionReportExecTypeFromValue(readU8(buf, &pos));
-        const ord_status = try ExecutionReportOrdStatusFromValue(readU8(buf, &pos));
-        const side = try ExecutionReportSideFromValue(readU8(buf, &pos));
+        const exec_type = try ExecutionReportExecTypeHelpers.FromValue(readU8(buf, &pos));
+        const ord_status = try ExecutionReportOrdStatusHelpers.FromValue(readU8(buf, &pos));
+        const side = try ExecutionReportSideHelpers.FromValue(readU8(buf, &pos));
         const last_qty_v = readF64BE(buf, &pos);
         var last_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; last_qty = last_qty_v; } else { pos += 1; }
@@ -1320,27 +1323,28 @@ pub const ExecutionReportBodyDecoder = struct {
 /// SBE encoder for ExecutionReport
 pub const ExecutionReportEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, order_id: []const u8, exec_id: []const u8, exec_type: ExecutionReportExecType, ord_status: ExecutionReportOrdStatus, side: ExecutionReportSide, last_qty: ?f64, last_price: ?f64, leaves_qty: f64, cum_qty: f64, avg_price: f64, symbol: []const u8, transact_time: i64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 4);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 51);
-        try writeString(&buf, cl_ord_id);
-        try writeString(&buf, order_id);
-        try writeString(&buf, exec_id);
-        try buf.append(ExecutionReportExecTypeToValue(exec_type));
-        try buf.append(ExecutionReportOrdStatusToValue(ord_status));
-        try buf.append(ExecutionReportSideToValue(side));
-        try writeF64BE(&buf, last_qty orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 4);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 51);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, order_id);
+        try writeString(buf, exec_id);
+        try buf.append(ExecutionReportExecTypeHelpers.ToValue(exec_type));
+        try buf.append(ExecutionReportOrdStatusHelpers.ToValue(ord_status));
+        try buf.append(ExecutionReportSideHelpers.ToValue(side));
+        try writeF64BE(buf, last_qty orelse 0);
         try buf.append(if (last_qty != null) 1 else 0);
-        try writeF64BE(&buf, last_price orelse 0);
+        try writeF64BE(buf, last_price orelse 0);
         try buf.append(if (last_price != null) 1 else 0);
-        try writeF64BE(&buf, leaves_qty);
-        try writeF64BE(&buf, cum_qty);
-        try writeF64BE(&buf, avg_price);
-        try writeString(&buf, symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(transact_time)));
+        try writeF64BE(buf, leaves_qty);
+        try writeF64BE(buf, cum_qty);
+        try writeF64BE(buf, avg_price);
+        try writeString(buf, symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(transact_time)));
         return buf.toOwnedSlice();
     }
 };
@@ -1360,9 +1364,9 @@ pub const ExecutionReportDecoder = struct {
         const cl_ord_id = try readString(buf, &pos, allocator);
         const order_id = try readString(buf, &pos, allocator);
         const exec_id = try readString(buf, &pos, allocator);
-        const exec_type = try ExecutionReportExecTypeFromValue(readU8(buf, &pos));
-        const ord_status = try ExecutionReportOrdStatusFromValue(readU8(buf, &pos));
-        const side = try ExecutionReportSideFromValue(readU8(buf, &pos));
+        const exec_type = try ExecutionReportExecTypeHelpers.FromValue(readU8(buf, &pos));
+        const ord_status = try ExecutionReportOrdStatusHelpers.FromValue(readU8(buf, &pos));
+        const side = try ExecutionReportSideHelpers.FromValue(readU8(buf, &pos));
         const last_qty_v = readF64BE(buf, &pos);
         var last_qty: ?f64 = null;
         if (buf[pos] == 1) { pos += 1; last_qty = last_qty_v; } else { pos += 1; }
@@ -1403,10 +1407,10 @@ pub const CancelReject = struct {
 pub const CancelRejectBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CancelReject, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.cl_ord_id);
-        try writeString(&buf, value.orig_cl_ord_id);
-        try buf.append(CancelRejectRejectReasonToValue(value.reject_reason));
-        try writeString(&buf, value.symbol);
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.orig_cl_ord_id);
+        try buf.append(CancelRejectRejectReasonHelpers.ToValue(value.reject_reason));
+        try writeString(buf, value.symbol);
     }
 };
 
@@ -1416,7 +1420,7 @@ pub const CancelRejectBodyDecoder = struct {
         var value: CancelReject = undefined;
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
-        const reject_reason = try CancelRejectRejectReasonFromValue(readU8(buf, &pos));
+        const reject_reason = try CancelRejectRejectReasonHelpers.FromValue(readU8(buf, &pos));
         const symbol = try readString(buf, &pos, allocator);
         value.cl_ord_id = cl_ord_id;
         value.orig_cl_ord_id = orig_cl_ord_id;
@@ -1429,16 +1433,17 @@ pub const CancelRejectBodyDecoder = struct {
 /// SBE encoder for CancelReject
 pub const CancelRejectEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, orig_cl_ord_id: []const u8, reject_reason: CancelRejectRejectReason, symbol: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 5);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, cl_ord_id);
-        try writeString(&buf, orig_cl_ord_id);
-        try buf.append(CancelRejectRejectReasonToValue(reject_reason));
-        try writeString(&buf, symbol);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 5);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, orig_cl_ord_id);
+        try buf.append(CancelRejectRejectReasonHelpers.ToValue(reject_reason));
+        try writeString(buf, symbol);
         return buf.toOwnedSlice();
     }
 };
@@ -1457,7 +1462,7 @@ pub const CancelRejectDecoder = struct {
         var value: CancelReject = undefined;
         const cl_ord_id = try readString(buf, &pos, allocator);
         const orig_cl_ord_id = try readString(buf, &pos, allocator);
-        const reject_reason = try CancelRejectRejectReasonFromValue(readU8(buf, &pos));
+        const reject_reason = try CancelRejectRejectReasonHelpers.FromValue(readU8(buf, &pos));
         const symbol = try readString(buf, &pos, allocator);
         value.cl_ord_id = cl_ord_id;
         value.orig_cl_ord_id = orig_cl_ord_id;
@@ -1481,26 +1486,26 @@ pub const MarketDataSnapshot = struct {
 /// SBE body encoder for MarketDataSnapshot (fields only, no header).
 pub const MarketDataSnapshotBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarketDataSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.exchange);
-        try writeU32BE(&buf, @intCast(value.bids.len));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.exchange);
+        try writeU32BE(buf, @intCast(value.bids.len));
         for (value.bids) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(value.asks.len));
+        try writeU32BE(buf, @intCast(value.asks.len));
         for (value.asks) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
-        try writeU64BE(&buf, @intCast(value.sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
         try buf.append(if (value.sequence != null) 1 else 0);
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
@@ -1554,32 +1559,33 @@ pub const MarketDataSnapshotBodyDecoder = struct {
 /// SBE encoder for MarketDataSnapshot
 pub const MarketDataSnapshotEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []PriceLevel, asks: []PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 6);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 17);
-        try writeString(&buf, symbol);
-        try writeString(&buf, exchange);
-        try writeU32BE(&buf, @intCast(bids.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 6);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, symbol);
+        try writeString(buf, exchange);
+        try writeU32BE(buf, @intCast(bids.len));
         for (bids) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(asks.len));
+        try writeU32BE(buf, @intCast(asks.len));
         for (asks) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
-        try writeU64BE(&buf, @intCast(sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
         try buf.append(if (sequence != null) 1 else 0);
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
@@ -1650,17 +1656,17 @@ pub const MarketDataIncrementalRefresh = struct {
 /// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
 pub const MarketDataIncrementalRefreshBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarketDataIncrementalRefresh, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeU32BE(&buf, @intCast(value.updates.len));
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.updates.len));
         for (value.updates) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
-        try writeU64BE(&buf, @intCast(value.sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
         try buf.append(if (value.sequence != null) 1 else 0);
     }
 };
@@ -1695,23 +1701,24 @@ pub const MarketDataIncrementalRefreshBodyDecoder = struct {
 /// SBE encoder for MarketDataIncrementalRefresh
 pub const MarketDataIncrementalRefreshEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 7);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 16);
-        try writeString(&buf, symbol);
-        try writeU32BE(&buf, @intCast(updates.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 7);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 16);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(updates.len));
         for (updates) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
-        try writeU64BE(&buf, @intCast(sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
         try buf.append(if (sequence != null) 1 else 0);
         return buf.toOwnedSlice();
     }
@@ -1763,10 +1770,10 @@ pub const OrderBookRequest = struct {
 pub const OrderBookRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderBookRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeU32BE(&buf, @intCast(value.depth orelse 0));
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.depth orelse 0));
         try buf.append(if (value.depth != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.at_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.at_time orelse 0)));
         try buf.append(if (value.at_time != null) 1 else 0);
     }
 };
@@ -1792,16 +1799,17 @@ pub const OrderBookRequestBodyDecoder = struct {
 /// SBE encoder for OrderBookRequest
 pub const OrderBookRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, depth: ?u32, at_time: ?i64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 8);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 12);
-        try writeString(&buf, symbol);
-        try writeU32BE(&buf, @intCast(depth orelse 0));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 8);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 12);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(depth orelse 0));
         try buf.append(if (depth != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(at_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(at_time orelse 0)));
         try buf.append(if (at_time != null) 1 else 0);
         return buf.toOwnedSlice();
     }
@@ -1847,26 +1855,26 @@ pub const OrderBookSnapshot = struct {
 /// SBE body encoder for OrderBookSnapshot (fields only, no header).
 pub const OrderBookSnapshotBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderBookSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.exchange);
-        try writeU32BE(&buf, @intCast(value.bids.len));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.exchange);
+        try writeU32BE(buf, @intCast(value.bids.len));
         for (value.bids) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(value.asks.len));
+        try writeU32BE(buf, @intCast(value.asks.len));
         for (value.asks) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
-        try writeU64BE(&buf, @intCast(value.sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
         try buf.append(if (value.sequence != null) 1 else 0);
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
@@ -1920,32 +1928,33 @@ pub const OrderBookSnapshotBodyDecoder = struct {
 /// SBE encoder for OrderBookSnapshot
 pub const OrderBookSnapshotEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []PriceLevel, asks: []PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 9);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 17);
-        try writeString(&buf, symbol);
-        try writeString(&buf, exchange);
-        try writeU32BE(&buf, @intCast(bids.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 9);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, symbol);
+        try writeString(buf, exchange);
+        try writeU32BE(buf, @intCast(bids.len));
         for (bids) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(asks.len));
+        try writeU32BE(buf, @intCast(asks.len));
         for (asks) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
-        try writeU64BE(&buf, @intCast(sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
         try buf.append(if (sequence != null) 1 else 0);
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
@@ -2016,17 +2025,17 @@ pub const OrderBookDelta = struct {
 /// SBE body encoder for OrderBookDelta (fields only, no header).
 pub const OrderBookDeltaBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderBookDelta, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeU32BE(&buf, @intCast(value.updates.len));
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.updates.len));
         for (value.updates) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
-        try writeU64BE(&buf, @intCast(value.sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
         try buf.append(if (value.sequence != null) 1 else 0);
     }
 };
@@ -2061,23 +2070,24 @@ pub const OrderBookDeltaBodyDecoder = struct {
 /// SBE encoder for OrderBookDelta
 pub const OrderBookDeltaEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 10);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 16);
-        try writeString(&buf, symbol);
-        try writeU32BE(&buf, @intCast(updates.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 10);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 16);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(updates.len));
         for (updates) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
-        try writeU64BE(&buf, @intCast(sequence orelse 0));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
         try buf.append(if (sequence != null) 1 else 0);
         return buf.toOwnedSlice();
     }
@@ -2143,12 +2153,13 @@ pub const AggregateTradeEventBodyDecoder = struct {
 /// SBE encoder for AggregateTradeEvent
 pub const AggregateTradeEventEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, trade: AggregateTrade) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 11);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 11);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         try AggregateTrade.encode(allocator, trade, &buf);
         return buf.toOwnedSlice();
     }
@@ -2185,14 +2196,14 @@ pub const AggregateTradeRequest = struct {
 pub const AggregateTradeRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -2229,20 +2240,21 @@ pub const AggregateTradeRequestBodyDecoder = struct {
 /// SBE encoder for AggregateTradeRequest
 pub const AggregateTradeRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 12);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 12);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -2296,17 +2308,17 @@ pub const AggregateTradeBatch = struct {
 /// SBE body encoder for AggregateTradeBatch (fields only, no header).
 pub const AggregateTradeBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeU32BE(&buf, @intCast(value.trades.len));
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.trades.len));
         for (value.trades) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try AggregateTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -2344,23 +2356,24 @@ pub const AggregateTradeBatchBodyDecoder = struct {
 /// SBE encoder for AggregateTradeBatch
 pub const AggregateTradeBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []AggregateTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 13);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, symbol);
-        try writeU32BE(&buf, @intCast(trades.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 13);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(trades.len));
         for (trades) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try AggregateTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -2417,10 +2430,10 @@ pub const MiniTicker = struct {
 pub const MiniTickerBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MiniTicker, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.last_price);
-        try writeF64BE(&buf, value.volume);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.last_price);
+        try writeF64BE(buf, value.volume);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
     }
@@ -2449,16 +2462,17 @@ pub const MiniTickerBodyDecoder = struct {
 /// SBE encoder for MiniTicker
 pub const MiniTickerEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, last_price: f64, volume: f64, timestamp: i64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 14);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 25);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, last_price);
-        try writeF64BE(&buf, volume);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 14);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 25);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, last_price);
+        try writeF64BE(buf, volume);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
         return buf.toOwnedSlice();
@@ -2520,12 +2534,13 @@ pub const AllMidsRequestBodyDecoder = struct {
 /// SBE encoder for AllMidsRequest
 pub const AllMidsRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, ) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 15);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 15);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         return buf.toOwnedSlice();
     }
 };
@@ -2555,12 +2570,12 @@ pub const AllMidsBatch = struct {
 /// SBE body encoder for AllMidsBatch (fields only, no header).
 pub const AllMidsBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: AllMidsBatch, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(&buf, @intCast(value.tickers.len));
+        try writeU32BE(buf, @intCast(value.tickers.len));
         for (value.tickers) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
     }
@@ -2588,18 +2603,19 @@ pub const AllMidsBatchBodyDecoder = struct {
 /// SBE encoder for AllMidsBatch
 pub const AllMidsBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, tickers: []MiniTicker) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 16);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeU32BE(&buf, @intCast(tickers.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 16);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(tickers.len));
         for (tickers) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         return buf.toOwnedSlice();
@@ -2647,13 +2663,13 @@ pub const MarkPriceUpdate = struct {
 pub const MarkPriceUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarkPriceUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.mark_price);
-        try writeF64BE(&buf, value.index_price orelse 0);
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.mark_price);
+        try writeF64BE(buf, value.index_price orelse 0);
         try buf.append(if (value.index_price != null) 1 else 0);
-        try writeF64BE(&buf, value.funding_rate orelse 0);
+        try writeF64BE(buf, value.funding_rate orelse 0);
         try buf.append(if (value.funding_rate != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
     }
@@ -2688,19 +2704,20 @@ pub const MarkPriceUpdateBodyDecoder = struct {
 /// SBE encoder for MarkPriceUpdate
 pub const MarkPriceUpdateEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, mark_price: f64, index_price: ?f64, funding_rate: ?f64, timestamp: i64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 17);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 33);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, mark_price);
-        try writeF64BE(&buf, index_price orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 17);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 33);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, mark_price);
+        try writeF64BE(buf, index_price orelse 0);
         try buf.append(if (index_price != null) 1 else 0);
-        try writeF64BE(&buf, funding_rate orelse 0);
+        try writeF64BE(buf, funding_rate orelse 0);
         try buf.append(if (funding_rate != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
         return buf.toOwnedSlice();
@@ -2750,7 +2767,7 @@ pub const MarkPriceRequest = struct {
 pub const MarkPriceRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarkPriceRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
+        try writeString(buf, value.symbol);
     }
 };
 
@@ -2767,13 +2784,14 @@ pub const MarkPriceRequestBodyDecoder = struct {
 /// SBE encoder for MarkPriceRequest
 pub const MarkPriceRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 18);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeString(&buf, symbol);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 18);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, symbol);
         return buf.toOwnedSlice();
     }
 };
@@ -2821,12 +2839,13 @@ pub const LiquidationTradeEventBodyDecoder = struct {
 /// SBE encoder for LiquidationTradeEvent
 pub const LiquidationTradeEventEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, trade: LiquidationTrade) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 19);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 19);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         try LiquidationTrade.encode(allocator, trade, &buf);
         return buf.toOwnedSlice();
     }
@@ -2875,12 +2894,13 @@ pub const CandleBarEventBodyDecoder = struct {
 /// SBE encoder for CandleBarEvent
 pub const CandleBarEventEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, bar: CandleBar) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 20);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 20);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         try CandleBar.encode(allocator, bar, &buf);
         return buf.toOwnedSlice();
     }
@@ -2918,15 +2938,15 @@ pub const CandleBarRequest = struct {
 pub const CandleBarRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CandleBarRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.interval);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.interval);
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -2965,21 +2985,22 @@ pub const CandleBarRequestBodyDecoder = struct {
 /// SBE encoder for CandleBarRequest
 pub const CandleBarRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 21);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, symbol);
-        try writeString(&buf, interval);
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 21);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, symbol);
+        try writeString(buf, interval);
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -3036,18 +3057,18 @@ pub const CandleBarBatch = struct {
 /// SBE body encoder for CandleBarBatch (fields only, no header).
 pub const CandleBarBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CandleBarBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeString(&buf, value.interval);
-        try writeU32BE(&buf, @intCast(value.bars.len));
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.interval);
+        try writeU32BE(buf, @intCast(value.bars.len));
         for (value.bars) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try CandleBar.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -3087,24 +3108,25 @@ pub const CandleBarBatchBodyDecoder = struct {
 /// SBE encoder for CandleBarBatch
 pub const CandleBarBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, bars: []CandleBar, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 22);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, symbol);
-        try writeString(&buf, interval);
-        try writeU32BE(&buf, @intCast(bars.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 22);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeString(buf, interval);
+        try writeU32BE(buf, @intCast(bars.len));
         for (bars) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try CandleBar.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -3175,12 +3197,13 @@ pub const PublicTradeEventBodyDecoder = struct {
 /// SBE encoder for PublicTradeEvent
 pub const PublicTradeEventEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, trade: PublicTrade) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 23);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 23);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         try PublicTrade.encode(allocator, trade, &buf);
         return buf.toOwnedSlice();
     }
@@ -3217,14 +3240,14 @@ pub const TradeHistoryRequest = struct {
 pub const TradeHistoryRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: TradeHistoryRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -3261,20 +3284,21 @@ pub const TradeHistoryRequestBodyDecoder = struct {
 /// SBE encoder for TradeHistoryRequest
 pub const TradeHistoryRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 24);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, symbol);
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 24);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, symbol);
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -3328,17 +3352,17 @@ pub const PublicTradeBatch = struct {
 /// SBE body encoder for PublicTradeBatch (fields only, no header).
 pub const PublicTradeBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PublicTradeBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.symbol);
-        try writeU32BE(&buf, @intCast(value.trades.len));
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.trades.len));
         for (value.trades) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PublicTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -3376,23 +3400,24 @@ pub const PublicTradeBatchBodyDecoder = struct {
 /// SBE encoder for PublicTradeBatch
 pub const PublicTradeBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []PublicTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 25);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, symbol);
-        try writeU32BE(&buf, @intCast(trades.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 25);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(trades.len));
         for (trades) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PublicTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -3451,16 +3476,16 @@ pub const BestBidOffer = struct {
 pub const BestBidOfferBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: BestBidOffer, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.bid_price orelse 0);
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.bid_price orelse 0);
         try buf.append(if (value.bid_price != null) 1 else 0);
-        try writeF64BE(&buf, value.bid_qty orelse 0);
+        try writeF64BE(buf, value.bid_qty orelse 0);
         try buf.append(if (value.bid_qty != null) 1 else 0);
-        try writeF64BE(&buf, value.ask_price orelse 0);
+        try writeF64BE(buf, value.ask_price orelse 0);
         try buf.append(if (value.ask_price != null) 1 else 0);
-        try writeF64BE(&buf, value.ask_qty orelse 0);
+        try writeF64BE(buf, value.ask_qty orelse 0);
         try buf.append(if (value.ask_qty != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
     }
@@ -3501,22 +3526,23 @@ pub const BestBidOfferBodyDecoder = struct {
 /// SBE encoder for BestBidOffer
 pub const BestBidOfferEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, bid_price: ?f64, bid_qty: ?f64, ask_price: ?f64, ask_qty: ?f64, timestamp: i64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 26);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 41);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, bid_price orelse 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 26);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 41);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, bid_price orelse 0);
         try buf.append(if (bid_price != null) 1 else 0);
-        try writeF64BE(&buf, bid_qty orelse 0);
+        try writeF64BE(buf, bid_qty orelse 0);
         try buf.append(if (bid_qty != null) 1 else 0);
-        try writeF64BE(&buf, ask_price orelse 0);
+        try writeF64BE(buf, ask_price orelse 0);
         try buf.append(if (ask_price != null) 1 else 0);
-        try writeF64BE(&buf, ask_qty orelse 0);
+        try writeF64BE(buf, ask_qty orelse 0);
         try buf.append(if (ask_qty != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
         return buf.toOwnedSlice();
@@ -3581,15 +3607,15 @@ pub const SymbolTicker = struct {
 pub const SymbolTickerBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: SymbolTicker, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.last_price);
-        try writeF64BE(&buf, value.price_change);
-        try writeF64BE(&buf, value.price_change_pct);
-        try writeF64BE(&buf, value.volume);
-        try writeF64BE(&buf, value.high);
-        try writeF64BE(&buf, value.low);
-        try writeF64BE(&buf, value.open);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.last_price);
+        try writeF64BE(buf, value.price_change);
+        try writeF64BE(buf, value.price_change_pct);
+        try writeF64BE(buf, value.volume);
+        try writeF64BE(buf, value.high);
+        try writeF64BE(buf, value.low);
+        try writeF64BE(buf, value.open);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
     }
@@ -3628,21 +3654,22 @@ pub const SymbolTickerBodyDecoder = struct {
 /// SBE encoder for SymbolTicker
 pub const SymbolTickerEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, last_price: f64, price_change: f64, price_change_pct: f64, volume: f64, high: f64, low: f64, open: f64, timestamp: i64, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 27);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 65);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, last_price);
-        try writeF64BE(&buf, price_change);
-        try writeF64BE(&buf, price_change_pct);
-        try writeF64BE(&buf, volume);
-        try writeF64BE(&buf, high);
-        try writeF64BE(&buf, low);
-        try writeF64BE(&buf, open);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 27);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 65);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, last_price);
+        try writeF64BE(buf, price_change);
+        try writeF64BE(buf, price_change_pct);
+        try writeF64BE(buf, volume);
+        try writeF64BE(buf, high);
+        try writeF64BE(buf, low);
+        try writeF64BE(buf, open);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
         return buf.toOwnedSlice();
@@ -3696,7 +3723,7 @@ pub const TickerRequest = struct {
 pub const TickerRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: TickerRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.symbol);
+        try writeString(buf, value.symbol);
     }
 };
 
@@ -3713,13 +3740,14 @@ pub const TickerRequestBodyDecoder = struct {
 /// SBE encoder for TickerRequest
 pub const TickerRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, symbol: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 28);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeString(&buf, symbol);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 28);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, symbol);
         return buf.toOwnedSlice();
     }
 };
@@ -3769,12 +3797,13 @@ pub const InstrumentCatalogRequestBodyDecoder = struct {
 /// SBE encoder for InstrumentCatalogRequest
 pub const InstrumentCatalogRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, ) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 29);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 29);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         return buf.toOwnedSlice();
     }
 };
@@ -3804,12 +3833,12 @@ pub const InstrumentCatalogResponse = struct {
 /// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
 pub const InstrumentCatalogResponseBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: InstrumentCatalogResponse, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(&buf, @intCast(value.instruments.len));
+        try writeU32BE(buf, @intCast(value.instruments.len));
         for (value.instruments) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try InstrumentMetadata.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
     }
@@ -3837,18 +3866,19 @@ pub const InstrumentCatalogResponseBodyDecoder = struct {
 /// SBE encoder for InstrumentCatalogResponse
 pub const InstrumentCatalogResponseEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, instruments: []InstrumentMetadata) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 30);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeU32BE(&buf, @intCast(instruments.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 30);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(instruments.len));
         for (instruments) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try InstrumentMetadata.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         return buf.toOwnedSlice();
@@ -3894,10 +3924,10 @@ pub const AccountSummary = struct {
 pub const AccountSummaryBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: AccountSummary, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeF64BE(&buf, value.balance);
-        try writeF64BE(&buf, value.buying_power);
-        try writeString(&buf, value.currency);
+        try writeString(buf, value.account);
+        try writeF64BE(buf, value.balance);
+        try writeF64BE(buf, value.buying_power);
+        try writeString(buf, value.currency);
     }
 };
 
@@ -3920,16 +3950,17 @@ pub const AccountSummaryBodyDecoder = struct {
 /// SBE encoder for AccountSummary
 pub const AccountSummaryEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, balance: f64, buying_power: f64, currency: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 31);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 16);
-        try writeString(&buf, account);
-        try writeF64BE(&buf, balance);
-        try writeF64BE(&buf, buying_power);
-        try writeString(&buf, currency);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 31);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 16);
+        try writeString(buf, account);
+        try writeF64BE(buf, balance);
+        try writeF64BE(buf, buying_power);
+        try writeString(buf, currency);
         return buf.toOwnedSlice();
     }
 };
@@ -3973,13 +4004,13 @@ pub const MarginSummary = struct {
 pub const MarginSummaryBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarginSummary, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeF64BE(&buf, value.balance);
-        try writeF64BE(&buf, value.buying_power);
-        try writeF64BE(&buf, value.equity);
-        try writeF64BE(&buf, value.margin_used);
-        try writeF64BE(&buf, value.available);
-        try writeString(&buf, value.currency);
+        try writeString(buf, value.account);
+        try writeF64BE(buf, value.balance);
+        try writeF64BE(buf, value.buying_power);
+        try writeF64BE(buf, value.equity);
+        try writeF64BE(buf, value.margin_used);
+        try writeF64BE(buf, value.available);
+        try writeString(buf, value.currency);
     }
 };
 
@@ -4008,19 +4039,20 @@ pub const MarginSummaryBodyDecoder = struct {
 /// SBE encoder for MarginSummary
 pub const MarginSummaryEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, balance: f64, buying_power: f64, equity: f64, margin_used: f64, available: f64, currency: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 32);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 40);
-        try writeString(&buf, account);
-        try writeF64BE(&buf, balance);
-        try writeF64BE(&buf, buying_power);
-        try writeF64BE(&buf, equity);
-        try writeF64BE(&buf, margin_used);
-        try writeF64BE(&buf, available);
-        try writeString(&buf, currency);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 32);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 40);
+        try writeString(buf, account);
+        try writeF64BE(buf, balance);
+        try writeF64BE(buf, buying_power);
+        try writeF64BE(buf, equity);
+        try writeF64BE(buf, margin_used);
+        try writeF64BE(buf, available);
+        try writeString(buf, currency);
         return buf.toOwnedSlice();
     }
 };
@@ -4065,13 +4097,13 @@ pub const BalanceSnapshot = struct {
 /// SBE body encoder for BalanceSnapshot (fields only, no header).
 pub const BalanceSnapshotBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: BalanceSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.balances.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.balances.len));
         for (value.balances) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try BalanceEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.is_snapshot orelse 0));
@@ -4107,19 +4139,20 @@ pub const BalanceSnapshotBodyDecoder = struct {
 /// SBE encoder for BalanceSnapshot
 pub const BalanceSnapshotEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, balances: []BalanceEntry, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 33);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(balances.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 33);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(balances.len));
         for (balances) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try BalanceEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(is_snapshot orelse 0));
@@ -4175,12 +4208,12 @@ pub const BalanceUpdate = struct {
 pub const BalanceUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: BalanceUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeString(&buf, value.asset);
-        try writeF64BE(&buf, value.delta);
-        try writeF64BE(&buf, value.total);
-        try writeF64BE(&buf, value.available);
-        try buf.append(BalanceUpdateReasonToValue(value.reason));
+        try writeString(buf, value.account);
+        try writeString(buf, value.asset);
+        try writeF64BE(buf, value.delta);
+        try writeF64BE(buf, value.total);
+        try writeF64BE(buf, value.available);
+        try buf.append(BalanceUpdateReasonHelpers.ToValue(value.reason));
     }
 };
 
@@ -4193,7 +4226,7 @@ pub const BalanceUpdateBodyDecoder = struct {
         const delta = readF64BE(buf, &pos);
         const total = readF64BE(buf, &pos);
         const available = readF64BE(buf, &pos);
-        const reason = try BalanceUpdateReasonFromValue(readU8(buf, &pos));
+        const reason = try BalanceUpdateReasonHelpers.FromValue(readU8(buf, &pos));
         value.account = account;
         value.asset = asset;
         value.delta = delta;
@@ -4207,18 +4240,19 @@ pub const BalanceUpdateBodyDecoder = struct {
 /// SBE encoder for BalanceUpdate
 pub const BalanceUpdateEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, asset: []const u8, delta: f64, total: f64, available: f64, reason: BalanceUpdateReason) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 34);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 25);
-        try writeString(&buf, account);
-        try writeString(&buf, asset);
-        try writeF64BE(&buf, delta);
-        try writeF64BE(&buf, total);
-        try writeF64BE(&buf, available);
-        try buf.append(BalanceUpdateReasonToValue(reason));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 34);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 25);
+        try writeString(buf, account);
+        try writeString(buf, asset);
+        try writeF64BE(buf, delta);
+        try writeF64BE(buf, total);
+        try writeF64BE(buf, available);
+        try buf.append(BalanceUpdateReasonHelpers.ToValue(reason));
         return buf.toOwnedSlice();
     }
 };
@@ -4240,7 +4274,7 @@ pub const BalanceUpdateDecoder = struct {
         const delta = readF64BE(buf, &pos);
         const total = readF64BE(buf, &pos);
         const available = readF64BE(buf, &pos);
-        const reason = try BalanceUpdateReasonFromValue(readU8(buf, &pos));
+        const reason = try BalanceUpdateReasonHelpers.FromValue(readU8(buf, &pos));
         value.account = account;
         value.asset = asset;
         value.delta = delta;
@@ -4261,13 +4295,13 @@ pub const PositionSnapshot = struct {
 /// SBE body encoder for PositionSnapshot (fields only, no header).
 pub const PositionSnapshotBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PositionSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.positions.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.positions.len));
         for (value.positions) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PositionEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.is_snapshot orelse 0));
@@ -4303,19 +4337,20 @@ pub const PositionSnapshotBodyDecoder = struct {
 /// SBE encoder for PositionSnapshot
 pub const PositionSnapshotEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, positions: []PositionEntry, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 35);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(positions.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 35);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(positions.len));
         for (positions) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try PositionEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(is_snapshot orelse 0));
@@ -4370,11 +4405,11 @@ pub const PositionUpdate = struct {
 pub const PositionUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PositionUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.qty);
-        try writeF64BE(&buf, value.entry_price);
-        try writeF64BE(&buf, value.unrealized_pnl);
+        try writeString(buf, value.account);
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.qty);
+        try writeF64BE(buf, value.entry_price);
+        try writeF64BE(buf, value.unrealized_pnl);
     }
 };
 
@@ -4399,17 +4434,18 @@ pub const PositionUpdateBodyDecoder = struct {
 /// SBE encoder for PositionUpdate
 pub const PositionUpdateEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: []const u8, qty: f64, entry_price: f64, unrealized_pnl: f64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 36);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 24);
-        try writeString(&buf, account);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, qty);
-        try writeF64BE(&buf, entry_price);
-        try writeF64BE(&buf, unrealized_pnl);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 36);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 24);
+        try writeString(buf, account);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, qty);
+        try writeF64BE(buf, entry_price);
+        try writeF64BE(buf, unrealized_pnl);
         return buf.toOwnedSlice();
     }
 };
@@ -4450,7 +4486,7 @@ pub const MarginUpdate = struct {
 /// SBE body encoder for MarginUpdate (fields only, no header).
 pub const MarginUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarginUpdate, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
+        try writeString(buf, value.account);
         try MarginSummaryBodyEncoder.encode(allocator, value.summary, &buf);
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
@@ -4476,13 +4512,14 @@ pub const MarginUpdateBodyDecoder = struct {
 /// SBE encoder for MarginUpdate
 pub const MarginUpdateEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, summary: MarginSummary, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 37);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 37);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
         try MarginSummaryBodyEncoder.encode(allocator, summary, &buf);
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
@@ -4527,11 +4564,11 @@ pub const UserLiquidation = struct {
 pub const UserLiquidationBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: UserLiquidation, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeString(&buf, value.symbol);
-        try writeF64BE(&buf, value.qty);
-        try writeF64BE(&buf, value.price);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.account);
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.qty);
+        try writeF64BE(buf, value.price);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 };
 
@@ -4556,17 +4593,18 @@ pub const UserLiquidationBodyDecoder = struct {
 /// SBE encoder for UserLiquidation
 pub const UserLiquidationEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: []const u8, qty: f64, price: f64, timestamp: i64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 38);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 24);
-        try writeString(&buf, account);
-        try writeString(&buf, symbol);
-        try writeF64BE(&buf, qty);
-        try writeF64BE(&buf, price);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 38);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 24);
+        try writeString(buf, account);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, qty);
+        try writeF64BE(buf, price);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         return buf.toOwnedSlice();
     }
 };
@@ -4609,10 +4647,10 @@ pub const OrderListStatus = struct {
 pub const OrderListStatusBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderListStatus, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeString(&buf, value.list_id);
-        try buf.append(OrderListStatusStatusToValue(value.status));
-        if (value.symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        try writeString(buf, value.account);
+        try writeString(buf, value.list_id);
+        try buf.append(OrderListStatusStatusHelpers.ToValue(value.status));
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -4623,7 +4661,7 @@ pub const OrderListStatusBodyDecoder = struct {
         var symbol: ?[]u8 = null;
         const account = try readString(buf, &pos, allocator);
         const list_id = try readString(buf, &pos, allocator);
-        const status = try OrderListStatusStatusFromValue(readU8(buf, &pos));
+        const status = try OrderListStatusStatusHelpers.FromValue(readU8(buf, &pos));
         if (buf[pos] == 1) {
             pos += 1;
             symbol = try readString(buf, &pos, allocator);
@@ -4641,16 +4679,17 @@ pub const OrderListStatusBodyDecoder = struct {
 /// SBE encoder for OrderListStatus
 pub const OrderListStatusEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, list_id: []const u8, status: OrderListStatusStatus, symbol: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 39);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeString(&buf, list_id);
-        try buf.append(OrderListStatusStatusToValue(status));
-        if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 39);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeString(buf, list_id);
+        try buf.append(OrderListStatusStatusHelpers.ToValue(status));
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -4670,7 +4709,7 @@ pub const OrderListStatusDecoder = struct {
         var symbol: ?[]u8 = null;
         const account = try readString(buf, &pos, allocator);
         const list_id = try readString(buf, &pos, allocator);
-        const status = try OrderListStatusStatusFromValue(readU8(buf, &pos));
+        const status = try OrderListStatusStatusHelpers.FromValue(readU8(buf, &pos));
         if (buf[pos] == 1) {
             pos += 1;
             symbol = try readString(buf, &pos, allocator);
@@ -4699,15 +4738,15 @@ pub const FillHistoryRequest = struct {
 pub const FillHistoryRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: FillHistoryRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        if (value.symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -4752,21 +4791,22 @@ pub const FillHistoryRequestBodyDecoder = struct {
 /// SBE encoder for FillHistoryRequest
 pub const FillHistoryRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: ?[]const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 40);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, account);
-        if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 40);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -4828,17 +4868,17 @@ pub const FillHistoryBatch = struct {
 /// SBE body encoder for FillHistoryBatch (fields only, no header).
 pub const FillHistoryBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: FillHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.fills.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.fills.len));
         for (value.fills) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -4876,23 +4916,24 @@ pub const FillHistoryBatchBodyDecoder = struct {
 /// SBE encoder for FillHistoryBatch
 pub const FillHistoryBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, fills: []ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 41);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(fills.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 41);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(fills.len));
         for (fills) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -4949,11 +4990,11 @@ pub const FundingPayment = struct {
 pub const FundingPaymentBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: FundingPayment, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        if (value.symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeF64BE(&buf, value.amount);
-        try writeF64BE(&buf, value.rate);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeF64BE(buf, value.amount);
+        try writeF64BE(buf, value.rate);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
     }
 };
 
@@ -4984,17 +5025,18 @@ pub const FundingPaymentBodyDecoder = struct {
 /// SBE encoder for FundingPayment
 pub const FundingPaymentEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: ?[]const u8, amount: f64, rate: f64, timestamp: i64) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 42);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 24);
-        try writeString(&buf, account);
-        if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeF64BE(&buf, amount);
-        try writeF64BE(&buf, rate);
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 42);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 24);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeF64BE(buf, amount);
+        try writeF64BE(buf, rate);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
         return buf.toOwnedSlice();
     }
 };
@@ -5044,14 +5086,14 @@ pub const FundingHistoryRequest = struct {
 pub const FundingHistoryRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: FundingHistoryRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.account);
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5088,20 +5130,21 @@ pub const FundingHistoryRequestBodyDecoder = struct {
 /// SBE encoder for FundingHistoryRequest
 pub const FundingHistoryRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 43);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, account);
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 43);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, account);
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5155,17 +5198,17 @@ pub const FundingHistoryBatch = struct {
 /// SBE body encoder for FundingHistoryBatch (fields only, no header).
 pub const FundingHistoryBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: FundingHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.payments.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.payments.len));
         for (value.payments) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5203,23 +5246,24 @@ pub const FundingHistoryBatchBodyDecoder = struct {
 /// SBE encoder for FundingHistoryBatch
 pub const FundingHistoryBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, payments: []FundingPayment, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 44);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(payments.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 44);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(payments.len));
         for (payments) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5277,12 +5321,12 @@ pub const LedgerUpdate = struct {
 pub const LedgerUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: LedgerUpdate, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeString(&buf, value.asset);
-        try writeF64BE(&buf, value.delta);
-        try buf.append(LedgerUpdateKindToValue(value.kind));
-        try writeU64BE(&buf, @as(i64, @bitCast(value.timestamp)));
-        if (value.reference_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        try writeString(buf, value.account);
+        try writeString(buf, value.asset);
+        try writeF64BE(buf, value.delta);
+        try buf.append(LedgerUpdateKindHelpers.ToValue(value.kind));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        if (value.reference_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5294,7 +5338,7 @@ pub const LedgerUpdateBodyDecoder = struct {
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
-        const kind = try LedgerUpdateKindFromValue(readU8(buf, &pos));
+        const kind = try LedgerUpdateKindHelpers.FromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         if (buf[pos] == 1) {
             pos += 1;
@@ -5315,18 +5359,19 @@ pub const LedgerUpdateBodyDecoder = struct {
 /// SBE encoder for LedgerUpdate
 pub const LedgerUpdateEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, asset: []const u8, delta: f64, kind: LedgerUpdateKind, timestamp: i64, reference_id: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 45);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 17);
-        try writeString(&buf, account);
-        try writeString(&buf, asset);
-        try writeF64BE(&buf, delta);
-        try buf.append(LedgerUpdateKindToValue(kind));
-        try writeU64BE(&buf, @as(i64, @bitCast(timestamp)));
-        if (reference_id) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 45);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, account);
+        try writeString(buf, asset);
+        try writeF64BE(buf, delta);
+        try buf.append(LedgerUpdateKindHelpers.ToValue(kind));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        if (reference_id) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5347,7 +5392,7 @@ pub const LedgerUpdateDecoder = struct {
         const account = try readString(buf, &pos, allocator);
         const asset = try readString(buf, &pos, allocator);
         const delta = readF64BE(buf, &pos);
-        const kind = try LedgerUpdateKindFromValue(readU8(buf, &pos));
+        const kind = try LedgerUpdateKindHelpers.FromValue(readU8(buf, &pos));
         const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
         if (buf[pos] == 1) {
             pos += 1;
@@ -5378,14 +5423,14 @@ pub const LedgerHistoryRequest = struct {
 pub const LedgerHistoryRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: LedgerHistoryRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.account);
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5422,20 +5467,21 @@ pub const LedgerHistoryRequestBodyDecoder = struct {
 /// SBE encoder for LedgerHistoryRequest
 pub const LedgerHistoryRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 46);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, account);
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 46);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, account);
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5489,17 +5535,17 @@ pub const LedgerHistoryBatch = struct {
 /// SBE body encoder for LedgerHistoryBatch (fields only, no header).
 pub const LedgerHistoryBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: LedgerHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.entries.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.entries.len));
         for (value.entries) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5537,23 +5583,24 @@ pub const LedgerHistoryBatchBodyDecoder = struct {
 /// SBE encoder for LedgerHistoryBatch
 pub const LedgerHistoryBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, entries: []LedgerUpdate, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 47);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(entries.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 47);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(entries.len));
         for (entries) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5607,8 +5654,8 @@ pub const OpenOrdersRequest = struct {
 pub const OpenOrdersRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OpenOrdersRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        if (value.symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5633,14 +5680,15 @@ pub const OpenOrdersRequestBodyDecoder = struct {
 /// SBE encoder for OpenOrdersRequest
 pub const OpenOrdersRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 48);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeString(&buf, account);
-        if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 48);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5681,13 +5729,13 @@ pub const OpenOrdersSnapshot = struct {
 /// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
 pub const OpenOrdersSnapshotBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OpenOrdersSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.orders.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.orders.len));
         for (value.orders) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.is_snapshot orelse 0));
@@ -5723,19 +5771,20 @@ pub const OpenOrdersSnapshotBodyDecoder = struct {
 /// SBE encoder for OpenOrdersSnapshot
 pub const OpenOrdersSnapshotEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []ExecutionReport, is_snapshot: ?u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 49);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(orders.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 49);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(orders.len));
         for (orders) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(is_snapshot orelse 0));
@@ -5791,15 +5840,15 @@ pub const OrderHistoryRequest = struct {
 pub const OrderHistoryRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderHistoryRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
-        if (value.symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeU64BE(&buf, @as(i64, @bitCast(value.start_time orelse 0)));
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU64BE(buf, @as(u64, @bitCast(value.start_time orelse 0)));
         try buf.append(if (value.start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(value.end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(value.end_time orelse 0)));
         try buf.append(if (value.end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(value.limit orelse 0));
+        try writeU32BE(buf, @intCast(value.limit orelse 0));
         try buf.append(if (value.limit != null) 1 else 0);
-        if (value.cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5844,21 +5893,22 @@ pub const OrderHistoryRequestBodyDecoder = struct {
 /// SBE encoder for OrderHistoryRequest
 pub const OrderHistoryRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, symbol: ?[]const u8, start_time: ?i64, end_time: ?i64, limit: ?u32, cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 50);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 20);
-        try writeString(&buf, account);
-        if (symbol) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
-        try writeU64BE(&buf, @as(i64, @bitCast(start_time orelse 0)));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 50);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 20);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU64BE(buf, @as(u64, @bitCast(start_time orelse 0)));
         try buf.append(if (start_time != null) 1 else 0);
-        try writeU64BE(&buf, @as(i64, @bitCast(end_time orelse 0)));
+        try writeU64BE(buf, @as(u64, @bitCast(end_time orelse 0)));
         try buf.append(if (end_time != null) 1 else 0);
-        try writeU32BE(&buf, @intCast(limit orelse 0));
+        try writeU32BE(buf, @intCast(limit orelse 0));
         try buf.append(if (limit != null) 1 else 0);
-        if (cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -5920,17 +5970,17 @@ pub const OrderHistoryBatch = struct {
 /// SBE body encoder for OrderHistoryBatch (fields only, no header).
 pub const OrderHistoryBatchBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: OrderHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(&buf, value.account);
-        try writeU32BE(&buf, @intCast(value.orders.len));
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.orders.len));
         for (value.orders) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
     }
 };
 
@@ -5968,23 +6018,24 @@ pub const OrderHistoryBatchBodyDecoder = struct {
 /// SBE encoder for OrderHistoryBatch
 pub const OrderHistoryBatchEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 51);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 1);
-        try writeString(&buf, account);
-        try writeU32BE(&buf, @intCast(orders.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 51);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(orders.len));
         for (orders) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
         try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(&buf, s); } else { try buf.append(0); }
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
         return buf.toOwnedSlice();
     }
 };
@@ -6055,12 +6106,13 @@ pub const CapabilitiesRequestBodyDecoder = struct {
 /// SBE encoder for CapabilitiesRequest
 pub const CapabilitiesRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, ) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 52);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 52);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
         return buf.toOwnedSlice();
     }
 };
@@ -6093,17 +6145,17 @@ pub const CapabilitiesResponse = struct {
 /// SBE body encoder for CapabilitiesResponse (fields only, no header).
 pub const CapabilitiesResponseBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CapabilitiesResponse, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(&buf, @intCast(value.schema_ids.len));
-        try writeU32BE(&buf, @intCast(value.paths.len));
+        try writeU32BE(buf, @intCast(value.schema_ids.len));
+        try writeU32BE(buf, @intCast(value.paths.len));
         for (value.paths) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try CapabilityPath.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(value.symbols.len));
-        try writeU32BE(&buf, @intCast(value.intervals.len));
+        try writeU32BE(buf, @intCast(value.symbols.len));
+        try writeU32BE(buf, @intCast(value.intervals.len));
     }
 };
 
@@ -6141,23 +6193,24 @@ pub const CapabilitiesResponseBodyDecoder = struct {
 /// SBE encoder for CapabilitiesResponse
 pub const CapabilitiesResponseEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, schema_ids: []u8, paths: []CapabilityPath, symbols: [][]const u8, intervals: [][]const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 53);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeU32BE(&buf, @intCast(schema_ids.len));
-        try writeU32BE(&buf, @intCast(paths.len));
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 53);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(schema_ids.len));
+        try writeU32BE(buf, @intCast(paths.len));
         for (paths) |item| {
             var item_buf = std.ArrayList(u8).init(allocator);
             defer item_buf.deinit();
             try CapabilityPath.encode(allocator, item, &item_buf);
-            try writeU32BE(&buf, @intCast(item_buf.items.len));
+            try writeU32BE(buf, @intCast(item_buf.items.len));
             try buf.appendSlice(item_buf.items);
         }
-        try writeU32BE(&buf, @intCast(symbols.len));
-        try writeU32BE(&buf, @intCast(intervals.len));
+        try writeU32BE(buf, @intCast(symbols.len));
+        try writeU32BE(buf, @intCast(intervals.len));
         return buf.toOwnedSlice();
     }
 };
@@ -6210,7 +6263,7 @@ pub const PositionRequest = struct {
 pub const PositionRequestBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PositionRequest, buf: *std.ArrayList(u8)) !void {
         _ = allocator;
-        try writeString(&buf, value.account);
+        try writeString(buf, value.account);
     }
 };
 
@@ -6227,13 +6280,14 @@ pub const PositionRequestBodyDecoder = struct {
 /// SBE encoder for PositionRequest
 pub const PositionRequestEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, account: []const u8) ![]u8 {
-        var buf = std.ArrayList(u8).init(allocator);
-        defer buf.deinit();
-        try writeU16BE(&buf, SCHEMA_ID);
-        try writeU16BE(&buf, 54);
-        try writeU16BE(&buf, 0);
-        try writeU16BE(&buf, 0);
-        try writeString(&buf, account);
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 54);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, account);
         return buf.toOwnedSlice();
     }
 };

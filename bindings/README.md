@@ -99,24 +99,25 @@ Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformanc
 
 **Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. The SBE hex parity checks for Go/C++/C# call the **FFI** encoders (`fig_sbe_encode_*`) against the §16.1 vectors — they do not exercise the per-language generated SBE files.
 
-**Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): new, partially verified.**
+**Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): compiling and parity-checked.**
 
-`cargo run -p xtask -- codegen` emits native SBE encoders/decoders per language from FSL.
-Status after the 2026-10 audit:
+`cargo run -p xtask -- codegen` emits native SBE encoders/decoders per language from FSL. After
+the 2026-10 rework of the emission layer (`crates/fig-fsl/src/sbe_target_codegen.rs`) every target
+compiles in CI and encodes byte-for-byte identically to the shared conformance vectors:
 
-| Target | Compiles | Parity vs conformance vectors |
+| Target | Compiles | Parity vs `tests/conformance/vectors/v1.json` |
 |---|---|---|
-| Go (`go/fig/sbe/`) | ✅ CI | ✅ `go test ./sbe` — NewOrderSingle + OrderBookSnapshot byte-exact, plus round-trips |
-| C++ (`cpp/include/fig/sbe_generated.hpp`) | ✅ CI | ⬜ not yet |
-| TypeScript (`typescript/sbe_generated.ts`) | ✅ CI | ⬜ not yet |
-| Zig (`zig/sbe_generated.zig`) | ✅ CI | ⬜ not yet |
-| C# (`csharp/Fig/SbeGenerated.cs`) | ⬜ unverified | ⬜ not yet |
+| Go (`go/fig/sbe/`) | ✅ CI | ✅ `go test ./sbe` — `NewOrderSingle` + `OrderBookSnapshot` + round-trips |
+| C++ (`cpp/include/fig/sbe_generated.hpp`) | ✅ CI | ✅ `bash bindings/cpp/smoke/sbe_parity.sh` |
+| C# (`csharp/Fig/SbeGenerated.cs`) | ✅ CI | ✅ `bindings/csharp/smoke` (generated parity + FFI hex) |
+| TypeScript (`typescript/sbe_generated.ts`) | ✅ CI | ✅ `bindings/typescript/smoke/run.sh` |
+| Zig (`zig/sbe_generated.zig`) | ✅ CI | ✅ `bindings/zig/sbe_parity.zig` (CI builds and runs it) |
 
-The wire layout follows `crates/fig-core/src/generated/sbe_generated.rs` (the normative Rust
-encoder). CI steps `Generated SBE targets compile` and `Go binding (generated SBE parity + FFI
-conformance)` keep the artifacts honest. One gap is shared with Rust: scalar list items
-(`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) have no defined payload layout — both
-ends write a count and drop the items ([TODO.md §16.2](../TODO.md)). The **FFI** wire codecs
-remain the recommended path for production.
+The wire layout mirrors `crates/fig-core/src/generated/sbe_generated.rs` (the normative Rust
+encoder). One gap is **shared with Rust**: scalar list items (`list<uint8>`, `list<Symbol>`,
+`list<CandleInterval>`) have no defined payload layout — both ends write a count and drop the
+items ([TODO.md §16.2](../TODO.md)). The **FFI** wire codecs remain the recommended path for
+production; the generated codecs are a drop-in alternative that avoids shipping the native
+library.
 
 Go smoke: `cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance`.

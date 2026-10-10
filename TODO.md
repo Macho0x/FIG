@@ -533,29 +533,28 @@ integration tests are the reference behavior.
 
 ### 16.2 FSL Codegen Parity (Track A)
 
-> **Native SBE codecs per language (`sbe_codegen.rs` → `sbe_target_codegen.rs`): partially delivered.**
-> After the 2026-10 audit the emission layer was rewritten: per-language type maps for every
-> wire token, per-language parameter syntax, the normative field layout (strings
-> presence-then-`u16 len`; numerics/enums value-then-presence), `{Name}Encoder`/`{Name}Decoder`
-> for structs, `{Name}BodyEncoder`/`{Name}BodyDecoder` for message nesting, and `(buf, pos)`
-> decoders with no `EncodedLen`.
->
-> **Verified now:** Go, C++, TypeScript and Zig compile in CI; the Go target is byte-for-byte
-> identical to the shared conformance vectors for `NewOrderSingle` and `OrderBookSnapshot`
-> (lists + optionals) and round-trips. Tests: `bindings/go/fig/sbe/parity_test.go`.
+> **Native SBE codecs per language: shipped for all five targets.**
+> The emission layer was rewritten (per-language type maps, parameter syntax, the normative field
+> layout, `{Name}Encoder`/`{Name}Decoder` for structs, `{Name}BodyEncoder`/`{Name}BodyDecoder` for
+> message nesting, `(buf, pos)` decoders, list layout with per-item length prefixes). All five
+> targets compile in CI and each is byte-for-byte parity-checked against the conformance vectors:
+> Go (`bindings/go/fig/sbe/parity_test.go`), C++ (`bindings/cpp/smoke/sbe_parity.cpp`), C#
+> (`bindings/csharp/smoke/Program.cs`), TypeScript (`bindings/typescript/smoke/run.sh`), Zig
+> (`bindings/zig/sbe_parity.zig`). Verified bugs fixed along the way include: language-specific
+> parameter order, wire tokens leaking into type positions, struct-typed fields resolving to
+> strings, colliding temporaries, optional-enum/`i64` presence-byte ordering, Go `*[]byte`
+> double pointers, Zig 0-based enum values, and C# namespace-level constants/helpers.
 >
 > **Outstanding:**
-> 1. C# compiles — unverified locally (no .NET SDK); add `SbeGenerated.cs` to
->    `bindings/csharp/smoke/FigSmoke.csproj` once it is known to build.
-> 2. Parity drivers for C++/TypeScript/Zig: encode with the *generated* code and compare with
->    `tests/conformance/vectors/v1.json` (Go is done).
-> 3. Scalar list items (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) still have **no
->    payload layout in the Rust generator either** — `sbe_codegen.rs` writes a count plus a
->    `// TODO`, so `CapabilitiesResponse.schema_ids/symbols/intervals` are dropped by *both*
->    ends. Defining it is a wire-format decision (suggested: `u32 count` + `u32 len + body` per
->    variable-length item, raw big-endian for fixed-width items) and needs a conformance vector.
-> 4. Widen the vectors (6 of 54 SBE messages today) so per-language parity is meaningful.
-> 5. Remove the "experimental" caveats from `bindings/README.md` / `docs/PUBLISHING.md`.
+> 1. Scalar list items (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) still have **no
+>    payload layout on either side** — `sbe_codegen.rs` (Rust) writes a count plus a `// TODO`,
+>    and the targets mirror that so both ends agree. Defining it is a wire-format decision
+>    (suggested: `u32 count` + `u32 len + body` per variable-length item, raw big-endian for
+>    fixed-width items) and needs a conformance vector.
+> 2. Widen the vectors: only 6 of 54 SBE messages have one, so parity is proven for
+>    `NewOrderSingle` and `OrderBookSnapshot` only.
+> 3. Once (1) and (2) land, drop the "generated SBE" caveats from `bindings/README.md` and
+>    `docs/PUBLISHING.md` (they currently describe only the scalar-list gap).
 
 Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 

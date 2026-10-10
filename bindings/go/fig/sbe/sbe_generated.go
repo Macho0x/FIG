@@ -621,7 +621,7 @@ func AggregateTradeDecoderDecode(buf []byte, pos int) (AggregateTrade, int, erro
 	price := readF64BE(buf, &pos)
 	qty := readF64BE(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := AggregateTradeSideFromValue(side_raw)
+	side, side_err := AggregateTradeSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return AggregateTrade{}, pos, side_err
 	}
@@ -667,7 +667,7 @@ func (LiquidationTradeEncoder) Encode(value LiquidationTrade, buf *[]byte) {
 func LiquidationTradeDecoderDecode(buf []byte, pos int) (LiquidationTrade, int, error) {
 	symbol := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := LiquidationTradeSideFromValue(side_raw)
+	side, side_err := LiquidationTradeSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return LiquidationTrade{}, pos, side_err
 	}
@@ -755,12 +755,12 @@ func (MarketDataUpdateEncoder) Encode(value MarketDataUpdate, buf *[]byte) {
 // DecodeMarketDataUpdateDecoder reads MarketDataUpdate fields starting at pos and returns the new offset.
 func MarketDataUpdateDecoderDecode(buf []byte, pos int) (MarketDataUpdate, int, error) {
 	side_raw := readU8(buf, &pos)
-	side, side_err := MarketDataUpdateSideFromValue(side_raw)
+	side, side_err := MarketDataUpdateSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return MarketDataUpdate{}, pos, side_err
 	}
 	action_raw := readU8(buf, &pos)
-	action, action_err := MarketDataUpdateActionFromValue(action_raw)
+	action, action_err := MarketDataUpdateActionHelpers.FromValue(action_raw)
 	if action_err != nil {
 		return MarketDataUpdate{}, pos, action_err
 	}
@@ -886,7 +886,7 @@ func PublicTradeDecoderDecode(buf []byte, pos int) (PublicTrade, int, error) {
 	price := readF64BE(buf, &pos)
 	qty := readF64BE(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := PublicTradeSideFromValue(side_raw)
+	side, side_err := PublicTradeSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return PublicTrade{}, pos, side_err
 	}
@@ -1138,7 +1138,7 @@ func (CapabilityPathEncoder) Encode(value CapabilityPath, buf *[]byte) {
 func CapabilityPathDecoderDecode(buf []byte, pos int) (CapabilityPath, int, error) {
 	path := readString(buf, &pos)
 	pattern_raw := readU8(buf, &pos)
-	pattern, pattern_err := CapabilityPathPatternFromValue(pattern_raw)
+	pattern, pattern_err := CapabilityPathPatternHelpers.FromValue(pattern_raw)
 	if pattern_err != nil {
 		return CapabilityPath{}, pos, pattern_err
 	}
@@ -1277,7 +1277,7 @@ func NewOrderSingleBodyDecoderDecode(buf []byte, pos int) (NewOrderSingle, int, 
 	var security_exchange *string
 	cl_ord_id := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := NewOrderSingleSideFromValue(side_raw)
+	side, side_err := NewOrderSingleSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return NewOrderSingle{}, pos, side_err
 	}
@@ -1302,12 +1302,12 @@ func NewOrderSingleBodyDecoderDecode(buf []byte, pos int) (NewOrderSingle, int, 
 	}
 	symbol := readString(buf, &pos)
 	order_type_raw := readU8(buf, &pos)
-	order_type, order_type_err := NewOrderSingleOrderTypeFromValue(order_type_raw)
+	order_type, order_type_err := NewOrderSingleOrderTypeHelpers.FromValue(order_type_raw)
 	if order_type_err != nil {
 		return NewOrderSingle{}, pos, order_type_err
 	}
 	time_in_force_raw := readU8(buf, &pos)
-	time_in_force, time_in_force_err := NewOrderSingleTimeInForceFromValue(time_in_force_raw)
+	time_in_force, time_in_force_err := NewOrderSingleTimeInForceHelpers.FromValue(time_in_force_raw)
 	if time_in_force_err != nil {
 		return NewOrderSingle{}, pos, time_in_force_err
 	}
@@ -1345,7 +1345,7 @@ func NewOrderSingleBodyDecoderDecode(buf []byte, pos int) (NewOrderSingle, int, 
 	var id_source *NewOrderSingleIdSource
 	if buf[pos] == 1 {
 		pos++
-		e, id_source_err := NewOrderSingleIdSourceFromValue(id_source_raw)
+		e, id_source_err := NewOrderSingleIdSourceHelpers.FromValue(id_source_raw)
 		if id_source_err != nil {
 			return NewOrderSingle{}, pos, id_source_err
 		}
@@ -1526,7 +1526,7 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingle, int, error) {
 	var security_exchange *string
 	cl_ord_id := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := NewOrderSingleSideFromValue(side_raw)
+	side, side_err := NewOrderSingleSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return NewOrderSingle{}, pos, side_err
 	}
@@ -1551,12 +1551,12 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingle, int, error) {
 	}
 	symbol := readString(buf, &pos)
 	order_type_raw := readU8(buf, &pos)
-	order_type, order_type_err := NewOrderSingleOrderTypeFromValue(order_type_raw)
+	order_type, order_type_err := NewOrderSingleOrderTypeHelpers.FromValue(order_type_raw)
 	if order_type_err != nil {
 		return NewOrderSingle{}, pos, order_type_err
 	}
 	time_in_force_raw := readU8(buf, &pos)
-	time_in_force, time_in_force_err := NewOrderSingleTimeInForceFromValue(time_in_force_raw)
+	time_in_force, time_in_force_err := NewOrderSingleTimeInForceHelpers.FromValue(time_in_force_raw)
 	if time_in_force_err != nil {
 		return NewOrderSingle{}, pos, time_in_force_err
 	}
@@ -1594,7 +1594,7 @@ func NewOrderSingleDecoderDecode(buf []byte) (NewOrderSingle, int, error) {
 	var id_source *NewOrderSingleIdSource
 	if buf[pos] == 1 {
 		pos++
-		e, id_source_err := NewOrderSingleIdSourceFromValue(id_source_raw)
+		e, id_source_err := NewOrderSingleIdSourceHelpers.FromValue(id_source_raw)
 		if id_source_err != nil {
 			return NewOrderSingle{}, pos, id_source_err
 		}
@@ -1686,7 +1686,7 @@ func CancelRequestBodyDecoderDecode(buf []byte, pos int) (CancelRequest, int, er
 	orig_cl_ord_id := readString(buf, &pos)
 	symbol := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := CancelRequestSideFromValue(side_raw)
+	side, side_err := CancelRequestSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return CancelRequest{}, pos, side_err
 	}
@@ -1757,7 +1757,7 @@ func CancelRequestDecoderDecode(buf []byte) (CancelRequest, int, error) {
 	orig_cl_ord_id := readString(buf, &pos)
 	symbol := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := CancelRequestSideFromValue(side_raw)
+	side, side_err := CancelRequestSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return CancelRequest{}, pos, side_err
 	}
@@ -1819,7 +1819,7 @@ func CancelReplaceRequestBodyDecoderDecode(buf []byte, pos int) (CancelReplaceRe
 	orig_cl_ord_id := readString(buf, &pos)
 	symbol := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := CancelReplaceRequestSideFromValue(side_raw)
+	side, side_err := CancelReplaceRequestSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return CancelReplaceRequest{}, pos, side_err
 	}
@@ -1893,7 +1893,7 @@ func CancelReplaceRequestDecoderDecode(buf []byte) (CancelReplaceRequest, int, e
 	orig_cl_ord_id := readString(buf, &pos)
 	symbol := readString(buf, &pos)
 	side_raw := readU8(buf, &pos)
-	side, side_err := CancelReplaceRequestSideFromValue(side_raw)
+	side, side_err := CancelReplaceRequestSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return CancelReplaceRequest{}, pos, side_err
 	}
@@ -1980,17 +1980,17 @@ func ExecutionReportBodyDecoderDecode(buf []byte, pos int) (ExecutionReport, int
 	order_id := readString(buf, &pos)
 	exec_id := readString(buf, &pos)
 	exec_type_raw := readU8(buf, &pos)
-	exec_type, exec_type_err := ExecutionReportExecTypeFromValue(exec_type_raw)
+	exec_type, exec_type_err := ExecutionReportExecTypeHelpers.FromValue(exec_type_raw)
 	if exec_type_err != nil {
 		return ExecutionReport{}, pos, exec_type_err
 	}
 	ord_status_raw := readU8(buf, &pos)
-	ord_status, ord_status_err := ExecutionReportOrdStatusFromValue(ord_status_raw)
+	ord_status, ord_status_err := ExecutionReportOrdStatusHelpers.FromValue(ord_status_raw)
 	if ord_status_err != nil {
 		return ExecutionReport{}, pos, ord_status_err
 	}
 	side_raw := readU8(buf, &pos)
-	side, side_err := ExecutionReportSideFromValue(side_raw)
+	side, side_err := ExecutionReportSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return ExecutionReport{}, pos, side_err
 	}
@@ -2100,17 +2100,17 @@ func ExecutionReportDecoderDecode(buf []byte) (ExecutionReport, int, error) {
 	order_id := readString(buf, &pos)
 	exec_id := readString(buf, &pos)
 	exec_type_raw := readU8(buf, &pos)
-	exec_type, exec_type_err := ExecutionReportExecTypeFromValue(exec_type_raw)
+	exec_type, exec_type_err := ExecutionReportExecTypeHelpers.FromValue(exec_type_raw)
 	if exec_type_err != nil {
 		return ExecutionReport{}, pos, exec_type_err
 	}
 	ord_status_raw := readU8(buf, &pos)
-	ord_status, ord_status_err := ExecutionReportOrdStatusFromValue(ord_status_raw)
+	ord_status, ord_status_err := ExecutionReportOrdStatusHelpers.FromValue(ord_status_raw)
 	if ord_status_err != nil {
 		return ExecutionReport{}, pos, ord_status_err
 	}
 	side_raw := readU8(buf, &pos)
-	side, side_err := ExecutionReportSideFromValue(side_raw)
+	side, side_err := ExecutionReportSideHelpers.FromValue(side_raw)
 	if side_err != nil {
 		return ExecutionReport{}, pos, side_err
 	}
@@ -2180,7 +2180,7 @@ func CancelRejectBodyDecoderDecode(buf []byte, pos int) (CancelReject, int, erro
 	cl_ord_id := readString(buf, &pos)
 	orig_cl_ord_id := readString(buf, &pos)
 	reject_reason_raw := readU8(buf, &pos)
-	reject_reason, reject_reason_err := CancelRejectRejectReasonFromValue(reject_reason_raw)
+	reject_reason, reject_reason_err := CancelRejectRejectReasonHelpers.FromValue(reject_reason_raw)
 	if reject_reason_err != nil {
 		return CancelReject{}, pos, reject_reason_err
 	}
@@ -2231,7 +2231,7 @@ func CancelRejectDecoderDecode(buf []byte) (CancelReject, int, error) {
 	cl_ord_id := readString(buf, &pos)
 	orig_cl_ord_id := readString(buf, &pos)
 	reject_reason_raw := readU8(buf, &pos)
-	reject_reason, reject_reason_err := CancelRejectRejectReasonFromValue(reject_reason_raw)
+	reject_reason, reject_reason_err := CancelRejectRejectReasonHelpers.FromValue(reject_reason_raw)
 	if reject_reason_err != nil {
 		return CancelReject{}, pos, reject_reason_err
 	}
@@ -6049,7 +6049,7 @@ func BalanceUpdateBodyDecoderDecode(buf []byte, pos int) (BalanceUpdate, int, er
 	total := readF64BE(buf, &pos)
 	available := readF64BE(buf, &pos)
 	reason_raw := readU8(buf, &pos)
-	reason, reason_err := BalanceUpdateReasonFromValue(reason_raw)
+	reason, reason_err := BalanceUpdateReasonHelpers.FromValue(reason_raw)
 	if reason_err != nil {
 		return BalanceUpdate{}, pos, reason_err
 	}
@@ -6106,7 +6106,7 @@ func BalanceUpdateDecoderDecode(buf []byte) (BalanceUpdate, int, error) {
 	total := readF64BE(buf, &pos)
 	available := readF64BE(buf, &pos)
 	reason_raw := readU8(buf, &pos)
-	reason, reason_err := BalanceUpdateReasonFromValue(reason_raw)
+	reason, reason_err := BalanceUpdateReasonHelpers.FromValue(reason_raw)
 	if reason_err != nil {
 		return BalanceUpdate{}, pos, reason_err
 	}
@@ -6590,7 +6590,7 @@ func OrderListStatusBodyDecoderDecode(buf []byte, pos int) (OrderListStatus, int
 	account := readString(buf, &pos)
 	list_id := readString(buf, &pos)
 	status_raw := readU8(buf, &pos)
-	status, status_err := OrderListStatusStatusFromValue(status_raw)
+	status, status_err := OrderListStatusStatusHelpers.FromValue(status_raw)
 	if status_err != nil {
 		return OrderListStatus{}, pos, status_err
 	}
@@ -6653,7 +6653,7 @@ func OrderListStatusDecoderDecode(buf []byte) (OrderListStatus, int, error) {
 	account := readString(buf, &pos)
 	list_id := readString(buf, &pos)
 	status_raw := readU8(buf, &pos)
-	status, status_err := OrderListStatusStatusFromValue(status_raw)
+	status, status_err := OrderListStatusStatusHelpers.FromValue(status_raw)
 	if status_err != nil {
 		return OrderListStatus{}, pos, status_err
 	}
@@ -7563,7 +7563,7 @@ func LedgerUpdateBodyDecoderDecode(buf []byte, pos int) (LedgerUpdate, int, erro
 	asset := readString(buf, &pos)
 	delta := readF64BE(buf, &pos)
 	kind_raw := readU8(buf, &pos)
-	kind, kind_err := LedgerUpdateKindFromValue(kind_raw)
+	kind, kind_err := LedgerUpdateKindHelpers.FromValue(kind_raw)
 	if kind_err != nil {
 		return LedgerUpdate{}, pos, kind_err
 	}
@@ -7632,7 +7632,7 @@ func LedgerUpdateDecoderDecode(buf []byte) (LedgerUpdate, int, error) {
 	asset := readString(buf, &pos)
 	delta := readF64BE(buf, &pos)
 	kind_raw := readU8(buf, &pos)
-	kind, kind_err := LedgerUpdateKindFromValue(kind_raw)
+	kind, kind_err := LedgerUpdateKindHelpers.FromValue(kind_raw)
 	if kind_err != nil {
 		return LedgerUpdate{}, pos, kind_err
 	}

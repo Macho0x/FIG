@@ -27,3 +27,32 @@ foreach (var v in doc.RootElement.GetProperty("vectors").EnumerateArray())
 }
 
 Console.WriteLine($"fig-csharp smoke OK ({bytes.Length} bytes, SBE hex verified)");
+
+// Per-language SBE parity: encode with the *generated* C# code and compare against
+// the shared conformance vectors (produced by the Rust/FFI encoder).
+static string Hex(byte[] b) => Convert.ToHexString(b).ToLowerInvariant();
+static string Want(JsonDocument doc, string id) =>
+    doc.RootElement.GetProperty("vectors").EnumerateArray()
+        .First(v => v.GetProperty("id").GetString() == id)
+        .GetProperty("expected_hex").GetString()!;
+
+var genOrder = Fig.Sbe.NewOrderSingleEncoder.Encode(
+    "CONF-001", Fig.Sbe.NewOrderSingleSide.Buy, 100.0, 50.25, null, "AAPL",
+    Fig.Sbe.NewOrderSingleOrderType.Limit, Fig.Sbe.NewOrderSingleTimeInForce.Day,
+    null, null, null, null, null, null, null, null);
+if (Hex(genOrder) != Want(doc, "sbe.new_order_single.limit_buy"))
+{
+    throw new InvalidOperationException($"generated C# new_order_single mismatch: {Hex(genOrder)}");
+}
+
+var genSnapshot = Fig.Sbe.OrderBookSnapshotEncoder.Encode(
+    "AAPL", "SIM",
+    new List<Fig.Sbe.PriceLevel> { new Fig.Sbe.PriceLevel { Price = 100.0, Qty = 5.0, OrderCount = 1 } },
+    new List<Fig.Sbe.PriceLevel>(),
+    1700000000000000000L, 42UL, 1);
+if (Hex(genSnapshot) != Want(doc, "sbe.order_book_snapshot.demo"))
+{
+    throw new InvalidOperationException($"generated C# order_book_snapshot mismatch: {Hex(genSnapshot)}");
+}
+
+Console.WriteLine("fig-csharp generated SBE parity OK");

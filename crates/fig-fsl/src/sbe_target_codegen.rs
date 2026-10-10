@@ -177,7 +177,7 @@ fn schema_id_const(lang: SbeTargetLang) -> String {
         SbeTargetLang::Go => format!("const SCHEMA_ID uint16 = 0x{:02X}\n\n", SCHEMA_ID),
         SbeTargetLang::Cpp => format!("constexpr uint16_t SCHEMA_ID = 0x{:02X};\n\n", SCHEMA_ID),
         SbeTargetLang::Csharp => format!(
-            "    public const ushort SCHEMA_ID = 0x{:02X};\n\n",
+            "    public static class Schema\n    {{\n        public const ushort SCHEMA_ID = 0x{:02X};\n    }}\n\n",
             SCHEMA_ID
         ),
         SbeTargetLang::TypeScript => {
@@ -236,9 +236,9 @@ inline std::string read_string(const std::vector<uint8_t>& buf, size_t& pos) {
 }
 "#.to_string(),
         SbeTargetLang::Csharp => r#"
-        public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
     internal static class Wire
     {
+        public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
         public static void WriteU16BE(List<byte> buf, ushort v) { buf.Add((byte)(v >> 8)); buf.Add((byte)v); }
         public static void WriteU32BE(List<byte> buf, uint v) {
             buf.Add((byte)(v >> 24)); buf.Add((byte)(v >> 16)); buf.Add((byte)(v >> 8)); buf.Add((byte)v);
@@ -251,7 +251,6 @@ inline std::string read_string(const std::vector<uint8_t>& buf, size_t& pos) {
         public static void WriteString(List<byte> buf, string s) {
             var bytes = Encoding.UTF8.GetBytes(s); WriteU16BE(buf, (ushort)bytes.Length); buf.AddRange(bytes);
         }
-        public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
 
         public static ushort ReadU16BE(byte[] buf, ref int pos) {
             ushort v = (ushort)((buf[pos] << 8) | buf[pos + 1]); pos += 2; return v;
@@ -440,7 +439,7 @@ fn target_param_decl(lang: SbeTargetLang, name: &str, ty: &str) -> String {
         SbeTargetLang::Zig | SbeTargetLang::TypeScript => format!("{name}: {ty}"),
         SbeTargetLang::Cpp => format!("{ty} {name}"),
         SbeTargetLang::Go => format!("{} {ty}", target_param_name(lang, name)),
-        SbeTargetLang::Csharp => format!("{} {ty}", target_param_name(lang, name)),
+        SbeTargetLang::Csharp => format!("{ty} {}", target_param_name(lang, name)),
     }
 }
 
@@ -519,7 +518,7 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
             }
             out.push_str("    }\n\n");
             out.push_str(&format!(
-                "    public static {name}? {name}FromValue(byte v) => v switch {{\n"
+                "    public static class {name}Helpers\n    {{\n        public static {name}? FromValue(byte v) => v switch {{\n"
             ));
             for (i, v) in variants.iter().enumerate() {
                 out.push_str(&format!(
@@ -528,9 +527,9 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
                     pascal_case(v)
                 ));
             }
-            out.push_str("        _ => null,\n    };\n\n");
+            out.push_str("            _ => null,\n        };\n\n");
             out.push_str(&format!(
-                "    public static byte {name}ToValue({name} e) => (byte)e;\n"
+                "        public static byte ToValue({name} e) => (byte)e;\n    }}\n"
             ));
             out
         }
@@ -558,8 +557,9 @@ fn generate_target_enum(lang: SbeTargetLang, name: &str, variants: &[String]) ->
         }
         SbeTargetLang::Zig => {
             let mut out = format!("pub const {name} = enum(u8) {{\n");
-            for v in variants {
-                out.push_str(&format!("    {},\n", pascal_case(v)));
+            for (i, v) in variants.iter().enumerate() {
+                // Zig enums default to 0; the SBE wire values are 1-based.
+                out.push_str(&format!("    {} = {},\n", pascal_case(v), i + 1));
             }
             out.push_str("};\n\n");
             out.push_str(&format!(
@@ -710,9 +710,9 @@ impl ScalarKind {
             (ScalarKind::I64, SbeTargetLang::TypeScript) => {
                 format!("BigInt.asUintN(64, {expr})")
             }
-            (ScalarKind::I64, SbeTargetLang::Zig) => format!("@as(i64, @bitCast({expr}))"),
-            (ScalarKind::I32, SbeTargetLang::Zig) => format!("@as(i32, @bitCast({expr}))"),
-            (ScalarKind::I16, SbeTargetLang::Zig) => format!("@as(i16, @bitCast({expr}))"),
+            (ScalarKind::I64, SbeTargetLang::Zig) => format!("@as(u64, @bitCast({expr}))"),
+            (ScalarKind::I32, SbeTargetLang::Zig) => format!("@as(u32, @bitCast({expr}))"),
+            (ScalarKind::I16, SbeTargetLang::Zig) => format!("@as(u16, @bitCast({expr}))"),
             (ScalarKind::I32 | ScalarKind::I16, SbeTargetLang::TypeScript) => {
                 format!("({expr}) >>> 0")
             }
@@ -781,7 +781,7 @@ fn emit_write_scalar(lang: SbeTargetLang, buf: &str, value: &str, kind: ScalarKi
             SbeTargetLang::Cpp => format!("        write_f64_be(buf, {value});\n"),
             SbeTargetLang::Csharp => format!("            Wire.WriteF64BE(buf, {value});\n"),
             SbeTargetLang::TypeScript => format!("  writeF64BE(buf, {value});\n"),
-            SbeTargetLang::Zig => format!("        try writeF64BE(&{buf}, {value});\n"),
+            SbeTargetLang::Zig => format!("        try writeF64BE({buf}, {value});\n"),
         };
     }
     let w = kind.helper_width();
@@ -792,7 +792,7 @@ fn emit_write_scalar(lang: SbeTargetLang, buf: &str, value: &str, kind: ScalarKi
             SbeTargetLang::Cpp => format!("        buf.push_back({v});\n"),
             SbeTargetLang::Csharp => format!("            buf.Add({v});\n"),
             SbeTargetLang::TypeScript => format!("  buf.push({v});\n"),
-            SbeTargetLang::Zig => format!("        try buf.append({v});\n"),
+            SbeTargetLang::Zig => format!("        try {buf}.append({v});\n"),
         };
     }
     match lang {
@@ -800,7 +800,7 @@ fn emit_write_scalar(lang: SbeTargetLang, buf: &str, value: &str, kind: ScalarKi
         SbeTargetLang::Cpp => format!("        write_{}_be(buf, {v});\n", w.to_lowercase()),
         SbeTargetLang::Csharp => format!("            Wire.Write{w}BE(buf, {v});\n"),
         SbeTargetLang::TypeScript => format!("  write{w}BE(buf, {v});\n"),
-        SbeTargetLang::Zig => format!("        try write{w}BE(&{buf}, {v});\n"),
+        SbeTargetLang::Zig => format!("        try write{w}BE({buf}, {v});\n"),
     }
 }
 
@@ -820,7 +820,7 @@ fn emit_read_scalar(lang: SbeTargetLang, buf: &str, kind: ScalarKind) -> String 
         return match lang {
             SbeTargetLang::Go => format!("readU8({buf}, &pos)"),
             SbeTargetLang::Cpp => format!("take_u8({buf}, pos)"),
-            SbeTargetLang::Csharp => format!("TakeU8({buf}, ref pos)"),
+            SbeTargetLang::Csharp => format!("Wire.TakeU8({buf}, ref pos)"),
             SbeTargetLang::TypeScript => format!("readU8({buf}, pos)"),
             SbeTargetLang::Zig => format!("readU8({buf}, &pos)"),
         };
@@ -1026,16 +1026,6 @@ fn field_scalar_kind(ft: &FieldType) -> Option<ScalarKind> {
     ScalarKind::from_wire_token(&token)
 }
 
-/// Buffer type used by the generated encoders.
-fn buf_type(lang: SbeTargetLang) -> &'static str {
-    match lang {
-        SbeTargetLang::Go => "*[]byte",
-        SbeTargetLang::Cpp => "std::vector<uint8_t>&",
-        SbeTargetLang::Csharp => "List<byte>",
-        SbeTargetLang::TypeScript => "number[]",
-        SbeTargetLang::Zig => "*std.ArrayList(u8)",
-    }
-}
 
 /// Buffer parameter declaration, always named `buf`.
 fn buf_param(lang: SbeTargetLang) -> &'static str {
@@ -1124,11 +1114,10 @@ fn generate_target_struct(
              /** Decode {name} fields; advances `pos`. */\nexport function {decoder}Decode(buf: Uint8Array, pos: {{ value: number }}): {name} {{\n{dec_decls}{dec_body}  return value;\n}}\n"
         ),
         SbeTargetLang::Zig => format!(
-            "/// SBE struct {name}\npub const {name} = struct {{\n{field_decls}\n    pub fn encode(allocator: std.mem.Allocator, value: {name}, buf: {buf}) !void {{\n{enc_discard}{enc_body}    }}\n\n    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !{name} {{\n{dec_discard}        {zig_value_kw} value: {name} = undefined;\n{dec_decls}{dec_body}        return value;\n    }}\n}};\n",
+            "/// SBE struct {name}\npub const {name} = struct {{\n{field_decls}\n    pub fn encode(allocator: std.mem.Allocator, value: {name}, buf: *std.ArrayList(u8)) !void {{\n{enc_discard}{enc_body}    }}\n\n    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !{name} {{\n{dec_discard}        {zig_value_kw} value: {name} = undefined;\n{dec_decls}{dec_body}        return value;\n    }}\n}};\n",
             enc_discard = zig_discards(&enc_body, &["allocator", "value", "buf"]),
             dec_discard = zig_discards(&dec_body, &["allocator", "buf", "pos"]),
             zig_value_kw = if dec_body.contains("value.") { "var" } else { "const" },
-            buf = buf_type(lang),
         ),
     }
 }
@@ -1218,14 +1207,14 @@ fn target_encode_field(
                 out.push_str(&format!("\t{etmp}_v := uint8(0)\n\tif {pname} != nil {{\n\t\t{etmp}_v = byte({pname}.ToValue())\n\t}}\n\t{buf} = append({buf}, {etmp}_v)\n\tif {pname} != nil {{\n\t\t{buf} = append({buf}, 1)\n\t}} else {{\n\t\t{buf} = append({buf}, 0)\n\t}}\n"));
             },
                 (SbeTargetLang::Go, false) => out.push_str(&format!("\t{buf} = append({buf}, byte({pname}.ToValue()))\n")),
-                (SbeTargetLang::Cpp, true) => out.push_str(&format!("        buf.push_back({pname}.has_value() ? {enum_name}ToValue(*{pname}) : 0);\n        buf.push_back({pname}.has_value() ? 1 : 0);\n")),
-                (SbeTargetLang::Cpp, false) => out.push_str(&format!("        buf.push_back({enum_name}ToValue({pname}));\n")),
-                (SbeTargetLang::Csharp, true) => out.push_str(&format!("            buf.Add({pname}.HasValue ? {enum_name}ToValue({pname}.Value) : (byte)0);\n            buf.Add((byte)({pname}.HasValue ? 1 : 0));\n")),
-                (SbeTargetLang::Csharp, false) => out.push_str(&format!("            buf.Add({enum_name}ToValue({pname}));\n")),
-                (SbeTargetLang::TypeScript, true) => out.push_str(&format!("  buf.push({pname} != null ? {enum_name}ToValue({pname}) : 0);\n  buf.push({pname} != null ? 1 : 0);\n")),
-                (SbeTargetLang::TypeScript, false) => out.push_str(&format!("  buf.push({enum_name}ToValue({pname}));\n")),
-                (SbeTargetLang::Zig, true) => out.push_str(&format!("        try buf.append(if ({pname}) |e| {enum_name}ToValue(e) else 0);\n        try buf.append(if ({pname} != null) 1 else 0);\n")),
-                (SbeTargetLang::Zig, false) => out.push_str(&format!("        try buf.append({enum_name}ToValue({pname}));\n")),
+                (SbeTargetLang::Cpp, true) => out.push_str(&format!("        buf.push_back({pname}.has_value() ? {enum_name}Helpers.ToValue(*{pname}) : 0);\n        buf.push_back({pname}.has_value() ? 1 : 0);\n")),
+                (SbeTargetLang::Cpp, false) => out.push_str(&format!("        buf.push_back({enum_name}Helpers.ToValue({pname}));\n")),
+                (SbeTargetLang::Csharp, true) => out.push_str(&format!("            buf.Add({pname}.HasValue ? {enum_name}Helpers.ToValue({pname}.Value) : (byte)0);\n            buf.Add((byte)({pname}.HasValue ? 1 : 0));\n")),
+                (SbeTargetLang::Csharp, false) => out.push_str(&format!("            buf.Add({enum_name}Helpers.ToValue({pname}));\n")),
+                (SbeTargetLang::TypeScript, true) => out.push_str(&format!("  buf.push({pname} != null ? {enum_name}Helpers.ToValue({pname}) : 0);\n  buf.push({pname} != null ? 1 : 0);\n")),
+                (SbeTargetLang::TypeScript, false) => out.push_str(&format!("  buf.push({enum_name}Helpers.ToValue({pname}));\n")),
+                (SbeTargetLang::Zig, true) => out.push_str(&format!("        try {buf}.append(if ({pname}) |e| {enum_name}Helpers.ToValue(e) else 0);\n        try {buf}.append(if ({pname} != null) 1 else 0);\n")),
+                (SbeTargetLang::Zig, false) => out.push_str(&format!("        try {buf}.append({enum_name}Helpers.ToValue({pname}));\n")),
             }
         }
         FieldType::List(inner) => {
@@ -1245,7 +1234,7 @@ fn target_encode_field(
                     out.push_str(&format!("  writeU32BE(buf, {pname}.length);\n"))
                 }
                 SbeTargetLang::Zig => out.push_str(&format!(
-                    "        try writeU32BE(&{buf}, @intCast({pname}.len));\n"
+                    "        try writeU32BE({buf}, @intCast({pname}.len));\n"
                 )),
             }
             if !composite {
@@ -1302,7 +1291,7 @@ fn target_encode_field(
                 SbeTargetLang::Cpp => "            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));\n            buf.insert(buf.end(), item_buf.begin(), item_buf.end());\n        }\n".to_string(),
                 SbeTargetLang::Csharp => "                Wire.WriteU32BE(buf, (uint)itemBuf.Count);\n                buf.AddRange(itemBuf);\n            }\n".to_string(),
                 SbeTargetLang::TypeScript => "    writeU32BE(buf, itemBuf.length);\n    for (const b of itemBuf) buf.push(b);\n  }\n".to_string(),
-                SbeTargetLang::Zig => format!("            try writeU32BE(&{buf}, @intCast(item_buf.items.len));\n            try {buf}.appendSlice(item_buf.items);\n        }}\n"),
+                SbeTargetLang::Zig => format!("            try writeU32BE({buf}, @intCast(item_buf.items.len));\n            try {buf}.appendSlice(item_buf.items);\n        }}\n"),
             });
         }
         FieldType::InlineStruct(fields) => {
@@ -1378,9 +1367,9 @@ fn encode_string(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, ou
         match lang {
             SbeTargetLang::Go => out.push_str(&format!("\tif {field} != nil {{\n\t\t{buf} = append({buf}, 1)\n\t\twriteString(&{buf}, *{field})\n\t}} else {{\n\t\t{buf} = append({buf}, 0)\n\t}}\n")),
             SbeTargetLang::Cpp => out.push_str(&format!("        if ({field}.has_value()) {{ buf.push_back(1); write_string(buf, *{field}); }} else {{ buf.push_back(0); }}\n")),
-            SbeTargetLang::Csharp => out.push_str(&format!("            if ({field}.HasValue) {{ buf.Add(1); Wire.WriteString(buf, {field}.Value); }} else {{ buf.Add(0); }}\n")),
+            SbeTargetLang::Csharp => out.push_str(&format!("            if ({field} != null) {{ buf.Add(1); Wire.WriteString(buf, {field}); }} else {{ buf.Add(0); }}\n")),
             SbeTargetLang::TypeScript => out.push_str(&format!("  if ({field} != null) {{ buf.push(1); writeString(buf, {field}); }} else {{ buf.push(0); }}\n")),
-            SbeTargetLang::Zig => out.push_str(&format!("        if ({field}) |s| {{ try buf.append(1); try writeString(&{buf}, s); }} else {{ try buf.append(0); }}\n")),
+            SbeTargetLang::Zig => out.push_str(&format!("        if ({field}) |s| {{ try {buf}.append(1); try writeString({buf}, s); }} else {{ try {buf}.append(0); }}\n")),
         }
     } else {
         match lang {
@@ -1391,7 +1380,7 @@ fn encode_string(lang: SbeTargetLang, buf: &str, field: &str, optional: bool, ou
             }
             SbeTargetLang::TypeScript => out.push_str(&format!("  writeString(buf, {field});\n")),
             SbeTargetLang::Zig => {
-                out.push_str(&format!("        try writeString(&{buf}, {field});\n"))
+                out.push_str(&format!("        try writeString({buf}, {field});\n"))
             }
         }
     }
@@ -1469,35 +1458,35 @@ fn target_decode_field(
             let enum_name = format!("{parent}{}", pascal_case(&field.name));
             match (lang, optional) {
                 (SbeTargetLang::Go, true) => {
-                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\tvar {var} *{enum_name}\n\tif buf[pos] == 1 {{\n\t\tpos++\n\t\te, {var}_err := {enum_name}FromValue({var}_raw)\n\t\tif {var}_err != nil {{\n\t\t\treturn {parent}{{}}, pos, {var}_err\n\t\t}}\n\t\t{var} = &e\n\t}} else {{\n\t\tpos++\n\t\t{var} = nil\n\t}}\n"));
+                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\tvar {var} *{enum_name}\n\tif buf[pos] == 1 {{\n\t\tpos++\n\t\te, {var}_err := {enum_name}Helpers.FromValue({var}_raw)\n\t\tif {var}_err != nil {{\n\t\t\treturn {parent}{{}}, pos, {var}_err\n\t\t}}\n\t\t{var} = &e\n\t}} else {{\n\t\tpos++\n\t\t{var} = nil\n\t}}\n"));
                 }
                 (SbeTargetLang::Go, false) => {
-                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\t{var}, {var}_err := {enum_name}FromValue({var}_raw)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n"));
+                    out.push_str(&format!("\t{var}_raw := readU8(buf, &pos)\n\t{var}, {var}_err := {enum_name}Helpers.FromValue({var}_raw)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n"));
                 }
                 (SbeTargetLang::Cpp, true) => {
-                    out.push_str(&format!("        auto {var}_raw = take_u8(buf, pos);\n        std::optional<{enum_name}> {var};\n        if (buf[pos++] == 1) {{\n            auto v = {enum_name}FromValue({var}_raw);\n            if (!v) throw std::runtime_error(\"invalid {enum_name}\");\n            {var} = *v;\n        }}\n"));
+                    out.push_str(&format!("        auto {var}_raw = take_u8(buf, pos);\n        std::optional<{enum_name}> {var};\n        if (buf[pos++] == 1) {{\n            auto v = {enum_name}Helpers.FromValue({var}_raw);\n            if (!v) throw std::runtime_error(\"invalid {enum_name}\");\n            {var} = *v;\n        }}\n"));
                 }
                 (SbeTargetLang::Cpp, false) => {
-                    out.push_str(&format!("        auto {var}_v = {enum_name}FromValue(take_u8(buf, pos));\n        if (!{var}_v) throw std::runtime_error(\"invalid {enum_name}\");\n        {enum_name} {var} = *{var}_v;\n"));
+                    out.push_str(&format!("        auto {var}_v = {enum_name}Helpers.FromValue(take_u8(buf, pos));\n        if (!{var}_v) throw std::runtime_error(\"invalid {enum_name}\");\n        {enum_name} {var} = *{var}_v;\n"));
                 }
                 (SbeTargetLang::Csharp, true) => {
-                    out.push_str(&format!("            var {var}Raw = TakeU8(buf, ref pos);\n            {enum_name}? {var} = null;\n            if (buf[pos++] == 1) {{\n                {var} = {enum_name}FromValue({var}Raw) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n            }}\n"));
+                    out.push_str(&format!("            var {var}Raw = Wire.TakeU8(buf, ref pos);\n            {enum_name}? {var} = null;\n            if (buf[pos++] == 1) {{\n                {var} = {enum_name}Helpers.FromValue({var}Raw) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n            }}\n"));
                 }
                 (SbeTargetLang::Csharp, false) => {
-                    out.push_str(&format!("            var {var} = {enum_name}FromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n"));
+                    out.push_str(&format!("            var {var} = {enum_name}Helpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException(\"invalid {enum_name}\");\n"));
                 }
                 (SbeTargetLang::TypeScript, true) => {
-                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  let {var}: {enum_name} | null = null;\n  if (buf[pos.value++] === 1) {{\n    const v = {enum_name}FromValue({var}Raw);\n    if (v == null) throw new Error('invalid {enum_name}');\n    {var} = v;\n  }}\n"));
+                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  let {var}: {enum_name} | null = null;\n  if (buf[pos.value++] === 1) {{\n    const v = {enum_name}Helpers.FromValue({var}Raw);\n    if (v == null) throw new Error('invalid {enum_name}');\n    {var} = v;\n  }}\n"));
                 }
                 (SbeTargetLang::TypeScript, false) => {
-                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  const {var} = {enum_name}FromValue({var}Raw);\n  if ({var} == null) throw new Error('invalid {enum_name}');\n"));
+                    out.push_str(&format!("  const {var}Raw = readU8(buf, pos);\n  const {var} = {enum_name}Helpers.FromValue({var}Raw);\n  if ({var} == null) throw new Error('invalid {enum_name}');\n"));
                 }
                 (SbeTargetLang::Zig, true) => {
-                    out.push_str(&format!("        const {var}_raw = readU8(buf, &pos);\n        var {var}: ?{enum_name} = null;\n        if (buf[pos] == 1) {{\n            pos += 1;\n            {var} = try {enum_name}FromValue({var}_raw);\n        }} else {{\n            pos += 1;\n        }}\n"));
+                    out.push_str(&format!("        const {var}_raw = readU8(buf, &pos);\n        var {var}: ?{enum_name} = null;\n        if (buf[pos] == 1) {{\n            pos += 1;\n            {var} = try {enum_name}Helpers.FromValue({var}_raw);\n        }} else {{\n            pos += 1;\n        }}\n"));
                 }
                 (SbeTargetLang::Zig, false) => {
                     out.push_str(&format!(
-                        "        const {var} = try {enum_name}FromValue(readU8(buf, &pos));\n"
+                        "        const {var} = try {enum_name}Helpers.FromValue(readU8(buf, &pos));\n"
                     ));
                 }
             }
@@ -1681,8 +1670,8 @@ fn decode_optional_string(lang: SbeTargetLang, var: &str, decls: &mut String) ->
             format!("        if (take_u8(buf, pos) == 1) {var} = read_string(buf, pos);\n")
         }
         SbeTargetLang::Csharp => {
-            decls.push_str(&format!("            string? {var};\n"));
-            format!("            if (TakeU8(buf, ref pos) == 1) {var} = Wire.ReadString(buf, ref pos);\n")
+            decls.push_str(&format!("            string? {var} = null;\n"));
+            format!("            if (Wire.TakeU8(buf, ref pos) == 1) {var} = Wire.ReadString(buf, ref pos);\n")
         }
         SbeTargetLang::TypeScript => {
             decls.push_str(&format!("  let {var}: string | null = null;\n"));
@@ -1736,13 +1725,13 @@ fn target_write_header(lang: SbeTargetLang, template_id: u16, block_length: u16)
             "        write_u16_be(buf, SCHEMA_ID);\n        write_u16_be(buf, {template_id});\n        write_u16_be(buf, 0);\n        write_u16_be(buf, {block_length});\n"
         ),
         SbeTargetLang::Csharp => format!(
-            "            Wire.WriteU16BE(buf, SCHEMA_ID);\n            Wire.WriteU16BE(buf, {template_id});\n            Wire.WriteU16BE(buf, 0);\n            Wire.WriteU16BE(buf, {block_length});\n"
+            "            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);\n            Wire.WriteU16BE(buf, {template_id});\n            Wire.WriteU16BE(buf, 0);\n            Wire.WriteU16BE(buf, {block_length});\n"
         ),
         SbeTargetLang::TypeScript => format!(
             "  writeU16BE(buf, SCHEMA_ID);\n  writeU16BE(buf, {template_id});\n  writeU16BE(buf, 0);\n  writeU16BE(buf, {block_length});\n"
         ),
         SbeTargetLang::Zig => format!(
-            "        try writeU16BE(&buf, SCHEMA_ID);\n        try writeU16BE(&buf, {template_id});\n        try writeU16BE(&buf, 0);\n        try writeU16BE(&buf, {block_length});\n"
+            "        try writeU16BE(buf, SCHEMA_ID);\n        try writeU16BE(buf, {template_id});\n        try writeU16BE(buf, 0);\n        try writeU16BE(buf, {block_length});\n"
         ),
     }
 }
@@ -1757,7 +1746,7 @@ fn target_check_header(lang: SbeTargetLang, msg_name: &str, template_id: u16) ->
             "        if (buf.size() < 8) throw std::runtime_error(\"buffer too short for SBE header\");\n        std::size_t pos = 0;\n        uint16_t schema_id = read_u16_be(buf, pos);\n        uint16_t tmpl_id = read_u16_be(buf, pos);\n        (void)read_u16_be(buf, pos);\n        (void)read_u16_be(buf, pos);\n        if (schema_id != SCHEMA_ID) throw std::runtime_error(\"invalid schema_id\");\n        if (tmpl_id != {template_id}) throw std::runtime_error(\"invalid template_id\");\n"
         ),
         SbeTargetLang::Csharp => format!(
-            "            if (buf.Length < 8) throw new InvalidOperationException(\"buffer too short for SBE header\");\n            int pos = 0;\n            ushort schemaId = Wire.ReadU16BE(buf, ref pos);\n            ushort tmplId = Wire.ReadU16BE(buf, ref pos);\n            _ = Wire.ReadU16BE(buf, ref pos);\n            _ = Wire.ReadU16BE(buf, ref pos);\n            if (schemaId != SCHEMA_ID) throw new InvalidOperationException(\"invalid schema_id\");\n            if (tmplId != {template_id}) throw new InvalidOperationException(\"invalid template_id\");\n"
+            "            if (buf.Length < 8) throw new InvalidOperationException(\"buffer too short for SBE header\");\n            int pos = 0;\n            ushort schemaId = Wire.ReadU16BE(buf, ref pos);\n            ushort tmplId = Wire.ReadU16BE(buf, ref pos);\n            _ = Wire.ReadU16BE(buf, ref pos);\n            _ = Wire.ReadU16BE(buf, ref pos);\n            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException(\"invalid schema_id\");\n            if (tmplId != {template_id}) throw new InvalidOperationException(\"invalid template_id\");\n"
         ),
         SbeTargetLang::TypeScript => format!(
             "  if (buf.length < 8) throw new Error(\"buffer too short for SBE header\");\n  const pos = {{ value: 0 }};\n  const schemaId = readU16BE(buf, pos);\n  const tmplId = readU16BE(buf, pos);\n  readU16BE(buf, pos);\n  readU16BE(buf, pos);\n  if (schemaId !== SCHEMA_ID) throw new Error(\"invalid schema_id\");\n  if (tmplId !== {template_id}) throw new Error(\"invalid template_id\");\n"
@@ -1805,7 +1794,7 @@ fn generate_target_message_encoder(
             name = msg.name
         ),
         SbeTargetLang::Zig => format!(
-            "/// SBE encoder for {name}\npub const {enc} = struct {{\n    pub fn encode(allocator: std.mem.Allocator, {params}) ![]u8 {{\n        var buf = std.ArrayList(u8).init(allocator);\n        defer buf.deinit();\n{header}{body}        return buf.toOwnedSlice();\n    }}\n}};\n",
+            "/// SBE encoder for {name}\npub const {enc} = struct {{\n    pub fn encode(allocator: std.mem.Allocator, {params}) ![]u8 {{\n        var list = std.ArrayList(u8).init(allocator);\n        defer list.deinit();\n        const buf = &list;\n{header}{body}        return buf.toOwnedSlice();\n    }}\n}};\n",
             name = msg.name
         ),
     }

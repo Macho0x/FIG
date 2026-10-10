@@ -9,5 +9,6 @@
   <ItemGroup>
     <Compile Include="../Fig/FigNative.cs" Link="FigNative.cs" />
     <Compile Include="../Fig/MergeStates.cs" Link="MergeStates.cs" />
+    <Compile Include="../Fig/SbeGenerated.cs" Link="SbeGenerated.cs" />
   </ItemGroup>
 </Project>

@@ -461,7 +461,7 @@ inline void AggregateTradeEncoder::encode(const AggregateTrade& value, std::vect
         write_string(buf, value.agg_trade_id);
         write_f64_be(buf, value.price);
         write_f64_be(buf, value.qty);
-        buf.push_back(AggregateTradeSideToValue(value.side));
+        buf.push_back(AggregateTradeSideHelpers.ToValue(value.side));
         write_string(buf, value.first_trade_id);
         write_string(buf, value.last_trade_id);
         write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
@@ -473,7 +473,7 @@ inline std::pair<AggregateTrade, std::size_t> AggregateTradeDecoder::decode(cons
         std::string agg_trade_id = read_string(buf, pos);
         double price = read_f64_be(buf, pos);
         double qty = read_f64_be(buf, pos);
-        auto side_v = AggregateTradeSideFromValue(take_u8(buf, pos));
+        auto side_v = AggregateTradeSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid AggregateTradeSide");
         AggregateTradeSide side = *side_v;
         std::string first_trade_id = read_string(buf, pos);
@@ -509,7 +509,7 @@ struct LiquidationTradeDecoder {
 
 inline void LiquidationTradeEncoder::encode(const LiquidationTrade& value, std::vector<uint8_t>& buf) {
         write_string(buf, value.symbol);
-        buf.push_back(LiquidationTradeSideToValue(value.side));
+        buf.push_back(LiquidationTradeSideHelpers.ToValue(value.side));
         write_f64_be(buf, value.price);
         write_f64_be(buf, value.qty);
         write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
@@ -518,7 +518,7 @@ inline void LiquidationTradeEncoder::encode(const LiquidationTrade& value, std::
 inline std::pair<LiquidationTrade, std::size_t> LiquidationTradeDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
     LiquidationTrade value{};
         std::string symbol = read_string(buf, pos);
-        auto side_v = LiquidationTradeSideFromValue(take_u8(buf, pos));
+        auto side_v = LiquidationTradeSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid LiquidationTradeSide");
         LiquidationTradeSide side = *side_v;
         double price = read_f64_be(buf, pos);
@@ -584,18 +584,18 @@ struct MarketDataUpdateDecoder {
 };
 
 inline void MarketDataUpdateEncoder::encode(const MarketDataUpdate& value, std::vector<uint8_t>& buf) {
-        buf.push_back(MarketDataUpdateSideToValue(value.side));
-        buf.push_back(MarketDataUpdateActionToValue(value.action));
+        buf.push_back(MarketDataUpdateSideHelpers.ToValue(value.side));
+        buf.push_back(MarketDataUpdateActionHelpers.ToValue(value.action));
         write_f64_be(buf, value.price);
         write_f64_be(buf, value.qty);
 }
 
 inline std::pair<MarketDataUpdate, std::size_t> MarketDataUpdateDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
     MarketDataUpdate value{};
-        auto side_v = MarketDataUpdateSideFromValue(take_u8(buf, pos));
+        auto side_v = MarketDataUpdateSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid MarketDataUpdateSide");
         MarketDataUpdateSide side = *side_v;
-        auto action_v = MarketDataUpdateActionFromValue(take_u8(buf, pos));
+        auto action_v = MarketDataUpdateActionHelpers.FromValue(take_u8(buf, pos));
         if (!action_v) throw std::runtime_error("invalid MarketDataUpdateAction");
         MarketDataUpdateAction action = *action_v;
         double price = read_f64_be(buf, pos);
@@ -697,7 +697,7 @@ inline void PublicTradeEncoder::encode(const PublicTrade& value, std::vector<uin
         write_string(buf, value.trade_id);
         write_f64_be(buf, value.price);
         write_f64_be(buf, value.qty);
-        buf.push_back(PublicTradeSideToValue(value.side));
+        buf.push_back(PublicTradeSideHelpers.ToValue(value.side));
         write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
 }
 
@@ -707,7 +707,7 @@ inline std::pair<PublicTrade, std::size_t> PublicTradeDecoder::decode(const std:
         std::string trade_id = read_string(buf, pos);
         double price = read_f64_be(buf, pos);
         double qty = read_f64_be(buf, pos);
-        auto side_v = PublicTradeSideFromValue(take_u8(buf, pos));
+        auto side_v = PublicTradeSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid PublicTradeSide");
         PublicTradeSide side = *side_v;
         int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
@@ -894,14 +894,14 @@ struct CapabilityPathDecoder {
 
 inline void CapabilityPathEncoder::encode(const CapabilityPath& value, std::vector<uint8_t>& buf) {
         write_string(buf, value.path);
-        buf.push_back(CapabilityPathPatternToValue(value.pattern));
+        buf.push_back(CapabilityPathPatternHelpers.ToValue(value.pattern));
         buf.push_back(value.auth_required);
 }
 
 inline std::pair<CapabilityPath, std::size_t> CapabilityPathDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
     CapabilityPath value{};
         std::string path = read_string(buf, pos);
-        auto pattern_v = CapabilityPathPatternFromValue(take_u8(buf, pos));
+        auto pattern_v = CapabilityPathPatternHelpers.FromValue(take_u8(buf, pos));
         if (!pattern_v) throw std::runtime_error("invalid CapabilityPathPattern");
         CapabilityPathPattern pattern = *pattern_v;
         uint8_t auth_required = take_u8(buf, pos);
@@ -938,21 +938,21 @@ struct NewOrderSingleBodyEncoder {
 
 inline void NewOrderSingleBodyEncoder::encode(const NewOrderSingle& value, std::vector<uint8_t>& buf) {
         write_string(buf, value.cl_ord_id);
-        buf.push_back(NewOrderSingleSideToValue(value.side));
+        buf.push_back(NewOrderSingleSideHelpers.ToValue(value.side));
         write_f64_be(buf, value.order_qty);
         write_f64_be(buf, value.price.value_or(0.0));
         buf.push_back(value.price.has_value() ? 1 : 0);
         write_f64_be(buf, value.stop_price.value_or(0.0));
         buf.push_back(value.stop_price.has_value() ? 1 : 0);
         write_string(buf, value.symbol);
-        buf.push_back(NewOrderSingleOrderTypeToValue(value.order_type));
-        buf.push_back(NewOrderSingleTimeInForceToValue(value.time_in_force));
+        buf.push_back(NewOrderSingleOrderTypeHelpers.ToValue(value.order_type));
+        buf.push_back(NewOrderSingleTimeInForceHelpers.ToValue(value.time_in_force));
         write_u64_be(buf, static_cast<uint64_t>(value.expire_time.value_or(0)));
         buf.push_back(value.expire_time.has_value() ? 1 : 0);
         if (value.account.has_value()) { buf.push_back(1); write_string(buf, *value.account); } else { buf.push_back(0); }
         if (value.strategy_id.has_value()) { buf.push_back(1); write_string(buf, *value.strategy_id); } else { buf.push_back(0); }
         if (value.security_id.has_value()) { buf.push_back(1); write_string(buf, *value.security_id); } else { buf.push_back(0); }
-        buf.push_back(value.id_source.has_value() ? NewOrderSingleIdSourceToValue(*value.id_source) : 0);
+        buf.push_back(value.id_source.has_value() ? NewOrderSingleIdSourceHelpers.ToValue(*value.id_source) : 0);
         buf.push_back(value.id_source.has_value() ? 1 : 0);
         if (value.security_exchange.has_value()) { buf.push_back(1); write_string(buf, *value.security_exchange); } else { buf.push_back(0); }
         buf.push_back(value.post_only.value_or(0));
@@ -973,7 +973,7 @@ inline std::pair<NewOrderSingle, std::size_t> NewOrderSingleBodyDecoder::decode(
         std::optional<std::string> security_id;
         std::optional<std::string> security_exchange;
         std::string cl_ord_id = read_string(buf, pos);
-        auto side_v = NewOrderSingleSideFromValue(take_u8(buf, pos));
+        auto side_v = NewOrderSingleSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid NewOrderSingleSide");
         NewOrderSingleSide side = *side_v;
         double order_qty = read_f64_be(buf, pos);
@@ -984,10 +984,10 @@ inline std::pair<NewOrderSingle, std::size_t> NewOrderSingleBodyDecoder::decode(
         std::optional<double> stop_price;
         if (buf[pos++] == 1) stop_price = stop_price_v;
         std::string symbol = read_string(buf, pos);
-        auto order_type_v = NewOrderSingleOrderTypeFromValue(take_u8(buf, pos));
+        auto order_type_v = NewOrderSingleOrderTypeHelpers.FromValue(take_u8(buf, pos));
         if (!order_type_v) throw std::runtime_error("invalid NewOrderSingleOrderType");
         NewOrderSingleOrderType order_type = *order_type_v;
-        auto time_in_force_v = NewOrderSingleTimeInForceFromValue(take_u8(buf, pos));
+        auto time_in_force_v = NewOrderSingleTimeInForceHelpers.FromValue(take_u8(buf, pos));
         if (!time_in_force_v) throw std::runtime_error("invalid NewOrderSingleTimeInForce");
         NewOrderSingleTimeInForce time_in_force = *time_in_force_v;
         int64_t expire_time_v = static_cast<int64_t>(read_u64_be(buf, pos));
@@ -999,7 +999,7 @@ inline std::pair<NewOrderSingle, std::size_t> NewOrderSingleBodyDecoder::decode(
         auto id_source_raw = take_u8(buf, pos);
         std::optional<NewOrderSingleIdSource> id_source;
         if (buf[pos++] == 1) {
-            auto v = NewOrderSingleIdSourceFromValue(id_source_raw);
+            auto v = NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
             if (!v) throw std::runtime_error("invalid NewOrderSingleIdSource");
             id_source = *v;
         }
@@ -1041,21 +1041,21 @@ inline std::vector<uint8_t> NewOrderSingleEncoder::encode(std::string cl_ord_id,
         write_u16_be(buf, 0);
         write_u16_be(buf, 38);
         write_string(buf, cl_ord_id);
-        buf.push_back(NewOrderSingleSideToValue(side));
+        buf.push_back(NewOrderSingleSideHelpers.ToValue(side));
         write_f64_be(buf, order_qty);
         write_f64_be(buf, price.value_or(0.0));
         buf.push_back(price.has_value() ? 1 : 0);
         write_f64_be(buf, stop_price.value_or(0.0));
         buf.push_back(stop_price.has_value() ? 1 : 0);
         write_string(buf, symbol);
-        buf.push_back(NewOrderSingleOrderTypeToValue(order_type));
-        buf.push_back(NewOrderSingleTimeInForceToValue(time_in_force));
+        buf.push_back(NewOrderSingleOrderTypeHelpers.ToValue(order_type));
+        buf.push_back(NewOrderSingleTimeInForceHelpers.ToValue(time_in_force));
         write_u64_be(buf, static_cast<uint64_t>(expire_time.value_or(0)));
         buf.push_back(expire_time.has_value() ? 1 : 0);
         if (account.has_value()) { buf.push_back(1); write_string(buf, *account); } else { buf.push_back(0); }
         if (strategy_id.has_value()) { buf.push_back(1); write_string(buf, *strategy_id); } else { buf.push_back(0); }
         if (security_id.has_value()) { buf.push_back(1); write_string(buf, *security_id); } else { buf.push_back(0); }
-        buf.push_back(id_source.has_value() ? NewOrderSingleIdSourceToValue(*id_source) : 0);
+        buf.push_back(id_source.has_value() ? NewOrderSingleIdSourceHelpers.ToValue(*id_source) : 0);
         buf.push_back(id_source.has_value() ? 1 : 0);
         if (security_exchange.has_value()) { buf.push_back(1); write_string(buf, *security_exchange); } else { buf.push_back(0); }
         buf.push_back(post_only.value_or(0));
@@ -1085,7 +1085,7 @@ inline NewOrderSingle NewOrderSingleDecoder::decode(const std::vector<uint8_t>& 
         std::optional<std::string> security_id;
         std::optional<std::string> security_exchange;
         std::string cl_ord_id = read_string(buf, pos);
-        auto side_v = NewOrderSingleSideFromValue(take_u8(buf, pos));
+        auto side_v = NewOrderSingleSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid NewOrderSingleSide");
         NewOrderSingleSide side = *side_v;
         double order_qty = read_f64_be(buf, pos);
@@ -1096,10 +1096,10 @@ inline NewOrderSingle NewOrderSingleDecoder::decode(const std::vector<uint8_t>& 
         std::optional<double> stop_price;
         if (buf[pos++] == 1) stop_price = stop_price_v;
         std::string symbol = read_string(buf, pos);
-        auto order_type_v = NewOrderSingleOrderTypeFromValue(take_u8(buf, pos));
+        auto order_type_v = NewOrderSingleOrderTypeHelpers.FromValue(take_u8(buf, pos));
         if (!order_type_v) throw std::runtime_error("invalid NewOrderSingleOrderType");
         NewOrderSingleOrderType order_type = *order_type_v;
-        auto time_in_force_v = NewOrderSingleTimeInForceFromValue(take_u8(buf, pos));
+        auto time_in_force_v = NewOrderSingleTimeInForceHelpers.FromValue(take_u8(buf, pos));
         if (!time_in_force_v) throw std::runtime_error("invalid NewOrderSingleTimeInForce");
         NewOrderSingleTimeInForce time_in_force = *time_in_force_v;
         int64_t expire_time_v = static_cast<int64_t>(read_u64_be(buf, pos));
@@ -1111,7 +1111,7 @@ inline NewOrderSingle NewOrderSingleDecoder::decode(const std::vector<uint8_t>& 
         auto id_source_raw = take_u8(buf, pos);
         std::optional<NewOrderSingleIdSource> id_source;
         if (buf[pos++] == 1) {
-            auto v = NewOrderSingleIdSourceFromValue(id_source_raw);
+            auto v = NewOrderSingleIdSourceHelpers.FromValue(id_source_raw);
             if (!v) throw std::runtime_error("invalid NewOrderSingleIdSource");
             id_source = *v;
         }
@@ -1160,7 +1160,7 @@ inline void CancelRequestBodyEncoder::encode(const CancelRequest& value, std::ve
         write_string(buf, value.cl_ord_id);
         write_string(buf, value.orig_cl_ord_id);
         write_string(buf, value.symbol);
-        buf.push_back(CancelRequestSideToValue(value.side));
+        buf.push_back(CancelRequestSideHelpers.ToValue(value.side));
         write_f64_be(buf, value.order_qty.value_or(0.0));
         buf.push_back(value.order_qty.has_value() ? 1 : 0);
 }
@@ -1175,7 +1175,7 @@ inline std::pair<CancelRequest, std::size_t> CancelRequestBodyDecoder::decode(co
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
-        auto side_v = CancelRequestSideFromValue(take_u8(buf, pos));
+        auto side_v = CancelRequestSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid CancelRequestSide");
         CancelRequestSide side = *side_v;
         double order_qty_v = read_f64_be(buf, pos);
@@ -1203,7 +1203,7 @@ inline std::vector<uint8_t> CancelRequestEncoder::encode(std::string cl_ord_id, 
         write_string(buf, cl_ord_id);
         write_string(buf, orig_cl_ord_id);
         write_string(buf, symbol);
-        buf.push_back(CancelRequestSideToValue(side));
+        buf.push_back(CancelRequestSideHelpers.ToValue(side));
         write_f64_be(buf, order_qty.value_or(0.0));
         buf.push_back(order_qty.has_value() ? 1 : 0);
         return buf;
@@ -1227,7 +1227,7 @@ inline CancelRequest CancelRequestDecoder::decode(const std::vector<uint8_t>& bu
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
-        auto side_v = CancelRequestSideFromValue(take_u8(buf, pos));
+        auto side_v = CancelRequestSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid CancelRequestSide");
         CancelRequestSide side = *side_v;
         double order_qty_v = read_f64_be(buf, pos);
@@ -1261,7 +1261,7 @@ inline void CancelReplaceRequestBodyEncoder::encode(const CancelReplaceRequest& 
         write_string(buf, value.cl_ord_id);
         write_string(buf, value.orig_cl_ord_id);
         write_string(buf, value.symbol);
-        buf.push_back(CancelReplaceRequestSideToValue(value.side));
+        buf.push_back(CancelReplaceRequestSideHelpers.ToValue(value.side));
         write_f64_be(buf, value.order_qty);
         write_f64_be(buf, value.price.value_or(0.0));
         buf.push_back(value.price.has_value() ? 1 : 0);
@@ -1277,7 +1277,7 @@ inline std::pair<CancelReplaceRequest, std::size_t> CancelReplaceRequestBodyDeco
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
-        auto side_v = CancelReplaceRequestSideFromValue(take_u8(buf, pos));
+        auto side_v = CancelReplaceRequestSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid CancelReplaceRequestSide");
         CancelReplaceRequestSide side = *side_v;
         double order_qty = read_f64_be(buf, pos);
@@ -1307,7 +1307,7 @@ inline std::vector<uint8_t> CancelReplaceRequestEncoder::encode(std::string cl_o
         write_string(buf, cl_ord_id);
         write_string(buf, orig_cl_ord_id);
         write_string(buf, symbol);
-        buf.push_back(CancelReplaceRequestSideToValue(side));
+        buf.push_back(CancelReplaceRequestSideHelpers.ToValue(side));
         write_f64_be(buf, order_qty);
         write_f64_be(buf, price.value_or(0.0));
         buf.push_back(price.has_value() ? 1 : 0);
@@ -1332,7 +1332,7 @@ inline CancelReplaceRequest CancelReplaceRequestDecoder::decode(const std::vecto
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
         std::string symbol = read_string(buf, pos);
-        auto side_v = CancelReplaceRequestSideFromValue(take_u8(buf, pos));
+        auto side_v = CancelReplaceRequestSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid CancelReplaceRequestSide");
         CancelReplaceRequestSide side = *side_v;
         double order_qty = read_f64_be(buf, pos);
@@ -1375,9 +1375,9 @@ inline void ExecutionReportBodyEncoder::encode(const ExecutionReport& value, std
         write_string(buf, value.cl_ord_id);
         write_string(buf, value.order_id);
         write_string(buf, value.exec_id);
-        buf.push_back(ExecutionReportExecTypeToValue(value.exec_type));
-        buf.push_back(ExecutionReportOrdStatusToValue(value.ord_status));
-        buf.push_back(ExecutionReportSideToValue(value.side));
+        buf.push_back(ExecutionReportExecTypeHelpers.ToValue(value.exec_type));
+        buf.push_back(ExecutionReportOrdStatusHelpers.ToValue(value.ord_status));
+        buf.push_back(ExecutionReportSideHelpers.ToValue(value.side));
         write_f64_be(buf, value.last_qty.value_or(0.0));
         buf.push_back(value.last_qty.has_value() ? 1 : 0);
         write_f64_be(buf, value.last_price.value_or(0.0));
@@ -1399,13 +1399,13 @@ inline std::pair<ExecutionReport, std::size_t> ExecutionReportBodyDecoder::decod
         std::string cl_ord_id = read_string(buf, pos);
         std::string order_id = read_string(buf, pos);
         std::string exec_id = read_string(buf, pos);
-        auto exec_type_v = ExecutionReportExecTypeFromValue(take_u8(buf, pos));
+        auto exec_type_v = ExecutionReportExecTypeHelpers.FromValue(take_u8(buf, pos));
         if (!exec_type_v) throw std::runtime_error("invalid ExecutionReportExecType");
         ExecutionReportExecType exec_type = *exec_type_v;
-        auto ord_status_v = ExecutionReportOrdStatusFromValue(take_u8(buf, pos));
+        auto ord_status_v = ExecutionReportOrdStatusHelpers.FromValue(take_u8(buf, pos));
         if (!ord_status_v) throw std::runtime_error("invalid ExecutionReportOrdStatus");
         ExecutionReportOrdStatus ord_status = *ord_status_v;
-        auto side_v = ExecutionReportSideFromValue(take_u8(buf, pos));
+        auto side_v = ExecutionReportSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid ExecutionReportSide");
         ExecutionReportSide side = *side_v;
         double last_qty_v = read_f64_be(buf, pos);
@@ -1449,9 +1449,9 @@ inline std::vector<uint8_t> ExecutionReportEncoder::encode(std::string cl_ord_id
         write_string(buf, cl_ord_id);
         write_string(buf, order_id);
         write_string(buf, exec_id);
-        buf.push_back(ExecutionReportExecTypeToValue(exec_type));
-        buf.push_back(ExecutionReportOrdStatusToValue(ord_status));
-        buf.push_back(ExecutionReportSideToValue(side));
+        buf.push_back(ExecutionReportExecTypeHelpers.ToValue(exec_type));
+        buf.push_back(ExecutionReportOrdStatusHelpers.ToValue(ord_status));
+        buf.push_back(ExecutionReportSideHelpers.ToValue(side));
         write_f64_be(buf, last_qty.value_or(0.0));
         buf.push_back(last_qty.has_value() ? 1 : 0);
         write_f64_be(buf, last_price.value_or(0.0));
@@ -1482,13 +1482,13 @@ inline ExecutionReport ExecutionReportDecoder::decode(const std::vector<uint8_t>
         std::string cl_ord_id = read_string(buf, pos);
         std::string order_id = read_string(buf, pos);
         std::string exec_id = read_string(buf, pos);
-        auto exec_type_v = ExecutionReportExecTypeFromValue(take_u8(buf, pos));
+        auto exec_type_v = ExecutionReportExecTypeHelpers.FromValue(take_u8(buf, pos));
         if (!exec_type_v) throw std::runtime_error("invalid ExecutionReportExecType");
         ExecutionReportExecType exec_type = *exec_type_v;
-        auto ord_status_v = ExecutionReportOrdStatusFromValue(take_u8(buf, pos));
+        auto ord_status_v = ExecutionReportOrdStatusHelpers.FromValue(take_u8(buf, pos));
         if (!ord_status_v) throw std::runtime_error("invalid ExecutionReportOrdStatus");
         ExecutionReportOrdStatus ord_status = *ord_status_v;
-        auto side_v = ExecutionReportSideFromValue(take_u8(buf, pos));
+        auto side_v = ExecutionReportSideHelpers.FromValue(take_u8(buf, pos));
         if (!side_v) throw std::runtime_error("invalid ExecutionReportSide");
         ExecutionReportSide side = *side_v;
         double last_qty_v = read_f64_be(buf, pos);
@@ -1535,7 +1535,7 @@ struct CancelRejectBodyEncoder {
 inline void CancelRejectBodyEncoder::encode(const CancelReject& value, std::vector<uint8_t>& buf) {
         write_string(buf, value.cl_ord_id);
         write_string(buf, value.orig_cl_ord_id);
-        buf.push_back(CancelRejectRejectReasonToValue(value.reject_reason));
+        buf.push_back(CancelRejectRejectReasonHelpers.ToValue(value.reject_reason));
         write_string(buf, value.symbol);
 }
 
@@ -1548,7 +1548,7 @@ inline std::pair<CancelReject, std::size_t> CancelRejectBodyDecoder::decode(cons
     CancelReject value{};
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
-        auto reject_reason_v = CancelRejectRejectReasonFromValue(take_u8(buf, pos));
+        auto reject_reason_v = CancelRejectRejectReasonHelpers.FromValue(take_u8(buf, pos));
         if (!reject_reason_v) throw std::runtime_error("invalid CancelRejectRejectReason");
         CancelRejectRejectReason reject_reason = *reject_reason_v;
         std::string symbol = read_string(buf, pos);
@@ -1572,7 +1572,7 @@ inline std::vector<uint8_t> CancelRejectEncoder::encode(std::string cl_ord_id, s
         write_u16_be(buf, 1);
         write_string(buf, cl_ord_id);
         write_string(buf, orig_cl_ord_id);
-        buf.push_back(CancelRejectRejectReasonToValue(reject_reason));
+        buf.push_back(CancelRejectRejectReasonHelpers.ToValue(reject_reason));
         write_string(buf, symbol);
         return buf;
 }
@@ -1594,7 +1594,7 @@ inline CancelReject CancelRejectDecoder::decode(const std::vector<uint8_t>& buf)
         if (tmpl_id != 5) throw std::runtime_error("invalid template_id");
         std::string cl_ord_id = read_string(buf, pos);
         std::string orig_cl_ord_id = read_string(buf, pos);
-        auto reject_reason_v = CancelRejectRejectReasonFromValue(take_u8(buf, pos));
+        auto reject_reason_v = CancelRejectRejectReasonHelpers.FromValue(take_u8(buf, pos));
         if (!reject_reason_v) throw std::runtime_error("invalid CancelRejectRejectReason");
         CancelRejectRejectReason reject_reason = *reject_reason_v;
         std::string symbol = read_string(buf, pos);
@@ -4467,7 +4467,7 @@ inline void BalanceUpdateBodyEncoder::encode(const BalanceUpdate& value, std::ve
         write_f64_be(buf, value.delta);
         write_f64_be(buf, value.total);
         write_f64_be(buf, value.available);
-        buf.push_back(BalanceUpdateReasonToValue(value.reason));
+        buf.push_back(BalanceUpdateReasonHelpers.ToValue(value.reason));
 }
 
 // SBE body decoder for BalanceUpdate: reads fields at pos.
@@ -4482,7 +4482,7 @@ inline std::pair<BalanceUpdate, std::size_t> BalanceUpdateBodyDecoder::decode(co
         double delta = read_f64_be(buf, pos);
         double total = read_f64_be(buf, pos);
         double available = read_f64_be(buf, pos);
-        auto reason_v = BalanceUpdateReasonFromValue(take_u8(buf, pos));
+        auto reason_v = BalanceUpdateReasonHelpers.FromValue(take_u8(buf, pos));
         if (!reason_v) throw std::runtime_error("invalid BalanceUpdateReason");
         BalanceUpdateReason reason = *reason_v;
     value.account = account;
@@ -4510,7 +4510,7 @@ inline std::vector<uint8_t> BalanceUpdateEncoder::encode(std::string account, st
         write_f64_be(buf, delta);
         write_f64_be(buf, total);
         write_f64_be(buf, available);
-        buf.push_back(BalanceUpdateReasonToValue(reason));
+        buf.push_back(BalanceUpdateReasonHelpers.ToValue(reason));
         return buf;
 }
 
@@ -4534,7 +4534,7 @@ inline BalanceUpdate BalanceUpdateDecoder::decode(const std::vector<uint8_t>& bu
         double delta = read_f64_be(buf, pos);
         double total = read_f64_be(buf, pos);
         double available = read_f64_be(buf, pos);
-        auto reason_v = BalanceUpdateReasonFromValue(take_u8(buf, pos));
+        auto reason_v = BalanceUpdateReasonHelpers.FromValue(take_u8(buf, pos));
         if (!reason_v) throw std::runtime_error("invalid BalanceUpdateReason");
         BalanceUpdateReason reason = *reason_v;
     value.account = account;
@@ -4941,7 +4941,7 @@ struct OrderListStatusBodyEncoder {
 inline void OrderListStatusBodyEncoder::encode(const OrderListStatus& value, std::vector<uint8_t>& buf) {
         write_string(buf, value.account);
         write_string(buf, value.list_id);
-        buf.push_back(OrderListStatusStatusToValue(value.status));
+        buf.push_back(OrderListStatusStatusHelpers.ToValue(value.status));
         if (value.symbol.has_value()) { buf.push_back(1); write_string(buf, *value.symbol); } else { buf.push_back(0); }
 }
 
@@ -4955,7 +4955,7 @@ inline std::pair<OrderListStatus, std::size_t> OrderListStatusBodyDecoder::decod
         std::optional<std::string> symbol;
         std::string account = read_string(buf, pos);
         std::string list_id = read_string(buf, pos);
-        auto status_v = OrderListStatusStatusFromValue(take_u8(buf, pos));
+        auto status_v = OrderListStatusStatusHelpers.FromValue(take_u8(buf, pos));
         if (!status_v) throw std::runtime_error("invalid OrderListStatusStatus");
         OrderListStatusStatus status = *status_v;
         if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
@@ -4979,7 +4979,7 @@ inline std::vector<uint8_t> OrderListStatusEncoder::encode(std::string account, 
         write_u16_be(buf, 1);
         write_string(buf, account);
         write_string(buf, list_id);
-        buf.push_back(OrderListStatusStatusToValue(status));
+        buf.push_back(OrderListStatusStatusHelpers.ToValue(status));
         if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
         return buf;
 }
@@ -5002,7 +5002,7 @@ inline OrderListStatus OrderListStatusDecoder::decode(const std::vector<uint8_t>
         std::optional<std::string> symbol;
         std::string account = read_string(buf, pos);
         std::string list_id = read_string(buf, pos);
-        auto status_v = OrderListStatusStatusFromValue(take_u8(buf, pos));
+        auto status_v = OrderListStatusStatusHelpers.FromValue(take_u8(buf, pos));
         if (!status_v) throw std::runtime_error("invalid OrderListStatusStatus");
         OrderListStatusStatus status = *status_v;
         if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
@@ -5588,7 +5588,7 @@ inline void LedgerUpdateBodyEncoder::encode(const LedgerUpdate& value, std::vect
         write_string(buf, value.account);
         write_string(buf, value.asset);
         write_f64_be(buf, value.delta);
-        buf.push_back(LedgerUpdateKindToValue(value.kind));
+        buf.push_back(LedgerUpdateKindHelpers.ToValue(value.kind));
         write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
         if (value.reference_id.has_value()) { buf.push_back(1); write_string(buf, *value.reference_id); } else { buf.push_back(0); }
 }
@@ -5604,7 +5604,7 @@ inline std::pair<LedgerUpdate, std::size_t> LedgerUpdateBodyDecoder::decode(cons
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
         double delta = read_f64_be(buf, pos);
-        auto kind_v = LedgerUpdateKindFromValue(take_u8(buf, pos));
+        auto kind_v = LedgerUpdateKindHelpers.FromValue(take_u8(buf, pos));
         if (!kind_v) throw std::runtime_error("invalid LedgerUpdateKind");
         LedgerUpdateKind kind = *kind_v;
         int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
@@ -5632,7 +5632,7 @@ inline std::vector<uint8_t> LedgerUpdateEncoder::encode(std::string account, std
         write_string(buf, account);
         write_string(buf, asset);
         write_f64_be(buf, delta);
-        buf.push_back(LedgerUpdateKindToValue(kind));
+        buf.push_back(LedgerUpdateKindHelpers.ToValue(kind));
         write_u64_be(buf, static_cast<uint64_t>(timestamp));
         if (reference_id.has_value()) { buf.push_back(1); write_string(buf, *reference_id); } else { buf.push_back(0); }
         return buf;
@@ -5657,7 +5657,7 @@ inline LedgerUpdate LedgerUpdateDecoder::decode(const std::vector<uint8_t>& buf)
         std::string account = read_string(buf, pos);
         std::string asset = read_string(buf, pos);
         double delta = read_f64_be(buf, pos);
-        auto kind_v = LedgerUpdateKindFromValue(take_u8(buf, pos));
+        auto kind_v = LedgerUpdateKindHelpers.FromValue(take_u8(buf, pos));
         if (!kind_v) throw std::runtime_error("invalid LedgerUpdateKind");
         LedgerUpdateKind kind = *kind_v;
         int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
