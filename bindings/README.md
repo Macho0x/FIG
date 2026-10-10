@@ -110,7 +110,7 @@ compiles in CI and encodes byte-for-byte identically to the shared conformance v
 
 | Target | Compiles | Parity vs `tests/conformance/vectors/v1.json` |
 |---|---|---|
-| Go (`go/fig/sbe/`) | ✅ CI | ✅ `go test ./sbe` — `NewOrderSingle`, `OrderBookSnapshot`, `CapabilitiesResponse` + round-trips |
+| Go (`go/fig/sbe/`) | ✅ CI | ✅ `go test ./sbe` — all 55 catalog messages + round-trips |
 | C++ (`cpp/include/fig/sbe_generated.hpp`) | ✅ CI | ✅ `bash bindings/cpp/smoke/sbe_parity.sh` |
 | C# (`csharp/Fig/SbeGenerated.cs`) | ✅ CI | ✅ `bindings/csharp/smoke` (generated parity + FFI hex) |
 | TypeScript (`typescript/sbe_generated.ts`) | ✅ CI | ✅ `bindings/typescript/smoke/run.sh` |

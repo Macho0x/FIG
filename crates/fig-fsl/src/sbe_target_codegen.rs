@@ -1401,7 +1401,17 @@ fn encode_body_value(
         SbeTargetLang::Cpp => format!("        {enc}::encode({value}, {b});\n"),
         SbeTargetLang::Csharp => format!("            {enc}.Encode({value}, {b});\n"),
         SbeTargetLang::TypeScript => format!("  {enc}Encode({value}, {b});\n"),
-        SbeTargetLang::Zig => format!("        try {enc}.encode(allocator, {value}, &{b});\n"),
+        // Message encoders bind `const buf = &list` (already a pointer). List-item
+        // loops bind `var item_buf = ArrayList.init(...)` (a value) so they still
+        // take the address.
+        SbeTargetLang::Zig => {
+            let buf_arg = if into_item {
+                format!("&{b}")
+            } else {
+                b.to_string()
+            };
+            format!("        try {enc}.encode(allocator, {value}, {buf_arg});\n")
+        }
     }
 }
 
@@ -1422,7 +1432,14 @@ fn encode_named_value(
         SbeTargetLang::Cpp => format!("        {enc}::encode({value}, {b});\n"),
         SbeTargetLang::Csharp => format!("            {enc}.Encode({value}, {b});\n"),
         SbeTargetLang::TypeScript => format!("  {enc}Encode({value}, {b});\n"),
-        SbeTargetLang::Zig => format!("        try {name}.encode(allocator, {value}, &{b});\n"),
+        SbeTargetLang::Zig => {
+            let buf_arg = if into_item {
+                format!("&{b}")
+            } else {
+                b.to_string()
+            };
+            format!("        try {name}.encode(allocator, {value}, {buf_arg});\n")
+        }
     }
 }
 

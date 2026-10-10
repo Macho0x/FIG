@@ -217,7 +217,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.3.1** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+Latest release **1.3.2** ([release notes](CHANGELOG.md)). The wire format is **frozen**
 ([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
 your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).

@@ -2138,7 +2138,7 @@ pub const AggregateTradeEvent = struct {
 /// SBE body encoder for AggregateTradeEvent (fields only, no header).
 pub const AggregateTradeEventBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try AggregateTrade.encode(allocator, value.trade, &buf);
+        try AggregateTrade.encode(allocator, value.trade, buf);
     }
 };
 
@@ -2162,7 +2162,7 @@ pub const AggregateTradeEventEncoder = struct {
         try writeU16BE(buf, 11);
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 0);
-        try AggregateTrade.encode(allocator, trade, &buf);
+        try AggregateTrade.encode(allocator, trade, buf);
         return buf.toOwnedSlice();
     }
 };
@@ -2824,7 +2824,7 @@ pub const LiquidationTradeEvent = struct {
 /// SBE body encoder for LiquidationTradeEvent (fields only, no header).
 pub const LiquidationTradeEventBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: LiquidationTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try LiquidationTrade.encode(allocator, value.trade, &buf);
+        try LiquidationTrade.encode(allocator, value.trade, buf);
     }
 };
 
@@ -2848,7 +2848,7 @@ pub const LiquidationTradeEventEncoder = struct {
         try writeU16BE(buf, 19);
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 0);
-        try LiquidationTrade.encode(allocator, trade, &buf);
+        try LiquidationTrade.encode(allocator, trade, buf);
         return buf.toOwnedSlice();
     }
 };
@@ -2879,7 +2879,7 @@ pub const CandleBarEvent = struct {
 /// SBE body encoder for CandleBarEvent (fields only, no header).
 pub const CandleBarEventBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: CandleBarEvent, buf: *std.ArrayList(u8)) !void {
-        try CandleBar.encode(allocator, value.bar, &buf);
+        try CandleBar.encode(allocator, value.bar, buf);
     }
 };
 
@@ -2903,7 +2903,7 @@ pub const CandleBarEventEncoder = struct {
         try writeU16BE(buf, 20);
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 0);
-        try CandleBar.encode(allocator, bar, &buf);
+        try CandleBar.encode(allocator, bar, buf);
         return buf.toOwnedSlice();
     }
 };
@@ -3182,7 +3182,7 @@ pub const PublicTradeEvent = struct {
 /// SBE body encoder for PublicTradeEvent (fields only, no header).
 pub const PublicTradeEventBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: PublicTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try PublicTrade.encode(allocator, value.trade, &buf);
+        try PublicTrade.encode(allocator, value.trade, buf);
     }
 };
 
@@ -3206,7 +3206,7 @@ pub const PublicTradeEventEncoder = struct {
         try writeU16BE(buf, 23);
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 0);
-        try PublicTrade.encode(allocator, trade, &buf);
+        try PublicTrade.encode(allocator, trade, buf);
         return buf.toOwnedSlice();
     }
 };
@@ -4489,7 +4489,7 @@ pub const MarginUpdate = struct {
 pub const MarginUpdateBodyEncoder = struct {
     pub fn encode(allocator: std.mem.Allocator, value: MarginUpdate, buf: *std.ArrayList(u8)) !void {
         try writeString(buf, value.account);
-        try MarginSummaryBodyEncoder.encode(allocator, value.summary, &buf);
+        try MarginSummaryBodyEncoder.encode(allocator, value.summary, buf);
         try buf.append(@intCast(value.is_snapshot orelse 0));
         try buf.append(if (value.is_snapshot != null) 1 else 0);
     }
@@ -4522,7 +4522,7 @@ pub const MarginUpdateEncoder = struct {
         try writeU16BE(buf, 0);
         try writeU16BE(buf, 1);
         try writeString(buf, account);
-        try MarginSummaryBodyEncoder.encode(allocator, summary, &buf);
+        try MarginSummaryBodyEncoder.encode(allocator, summary, buf);
         try buf.append(@intCast(is_snapshot orelse 0));
         try buf.append(if (is_snapshot != null) 1 else 0);
         return buf.toOwnedSlice();
