@@ -340,6 +340,10 @@ mod tests {
 
     #[test]
     fn python_subscribe_live_positions_on_fill() {
+        // The simulator uses a self-signed certificate; clients verify TLS by
+        // default. Use the development bypass so this test is self-contained
+        // (no CI environment required).
+        std::env::set_var("FIG_TLS_INSECURE", "1");
         let server_rt = Runtime::new().expect("server runtime");
         let endpoint = server_rt
             .block_on(run_server("127.0.0.1:0"))

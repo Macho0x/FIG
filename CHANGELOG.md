@@ -3,6 +3,20 @@
 All notable changes to the FIG repository. The wire format is versioned in
 [SPEC.md](SPEC.md); this file tracks the libraries and tooling.
 
+## 1.2.1
+
+### Fixed
+- CI: `fig-python`'s live-subscribe test configured TLS for itself instead of
+  depending on an environment variable set by another CI job, so it passes under
+  `cargo llvm-cov --workspace` (and for anyone running the crate's tests locally).
+- `DoSGuard::channel_closed` no longer uses `Atomic::fetch_update`, which is
+  deprecated on current stable toolchains; the saturating decrement is now a
+  compare-exchange loop that keeps the declared MSRV working.
+
+### Changed
+- CI no longer exports `FIG_TLS_INSECURE` globally, so a test that depends on
+  ambient TLS configuration fails loudly instead of passing by accident.
+
 ## 1.2.0
 
 ### Added

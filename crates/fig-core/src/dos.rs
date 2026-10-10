@@ -62,12 +62,25 @@ impl DoSGuard {
 
     /// Record channel close.
     pub fn channel_closed(&self) {
-        // Saturate at zero so a double-close cannot underflow the counter.
-        let _ = self
-            .open_channels
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                Some(current.saturating_sub(1))
-            });
+        // Saturating decrement so a double-close cannot wrap the counter.
+        // Implemented with a compare-exchange loop: `fetch_update` is deprecated
+        // in newer toolchains and `try_update` is too new for the MSRV.
+        let mut current = self.open_channels.load(Ordering::SeqCst);
+        loop {
+            let next = current.saturating_sub(1);
+            if next == current {
+                return; // already zero
+            }
+            match self.open_channels.compare_exchange_weak(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => return,
+                Err(observed) => current = observed,
+            }
+        }
     }
 
     /// Validate incoming/outgoing frame size.

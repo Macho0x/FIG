@@ -25,9 +25,9 @@ jobs:
           --health-retries 5
     env:
       REDIS_URL: redis://127.0.0.1:6379
-      # The reference simulator uses a self-signed certificate; tests exercise
-      # the dev TLS bypass. Production uses FIG_TLS_CA (see DEPLOYMENT.md).
-      FIG_TLS_INSECURE: "1"
+      # NOTE: no FIG_TLS_INSECURE here on purpose. Tests that talk to the
+      # self-signed simulator configure their own TLS (FIG_TLS_CA or the dev
+      # bypass) so they pass in any environment, including the coverage job.
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -162,7 +162,6 @@ jobs:
       - name: Build and test
         env:
           PYO3_USE_ABI3_FORWARD_COMPATIBILITY: 1
-          FIG_TLS_INSECURE: "1"
         run: cargo test --workspace --all-features --exclude fig-python
 
   fuzz:
