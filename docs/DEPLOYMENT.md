@@ -28,8 +28,8 @@ and account portals.
 ## Single node (development)
 
 ```bash
-cargo run -p fig-exchange-sim
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 Or use [docker-compose.yml](../docker-compose.yml) (Redis session store, sim,
@@ -52,7 +52,7 @@ streams still half-close after the response.
 
    ```bash
    cargo run -p fig-exchange-sim --features fig-core/session-redis -- \
-     --session-store redis --redis-url redis://redis:6379
+     --session-store redis --redis-url redis://redis:6379 --print-ca .fig/dev-ca.pem
    ```
 
 3. **Gateway** — typically stateless when proxying to `--fig-backend`; use file or redis `fix-seq-store` for FIX sequence persistence across gateway restarts.
@@ -62,7 +62,8 @@ streams still half-close after the response.
 
    ```bash
    FIG_REPLAY_REDIS_URL=redis://redis:6379 \
-     cargo run -p fig-exchange-sim --features fig-core/session-redis
+     cargo run -p fig-exchange-sim --features fig-core/session-redis -- \
+     --print-ca .fig/dev-ca.pem
    ```
 
    The cache uses `SET key 1 NX PX <window>` so a token replayed to a *different*

@@ -16,11 +16,13 @@ members = [
 ]
 
 [workspace.package]
-version = "1.1.0"
+version = "1.2.0"
 edition = "2021"
+# Verified floor: `cargo +1.97.1 check --workspace --all-features`.
+rust-version = "1.97"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/Macho0x/fig"
-homepage = "https://github.com/Macho0x/fig"
+repository = "https://github.com/Macho0x/FIG"
+homepage = "https://github.com/Macho0x/FIG"
 description = "FIG — Fast Interchange Gateway"
 
 [workspace.dependencies]

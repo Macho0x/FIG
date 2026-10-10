@@ -72,8 +72,8 @@ All produce FIG `ChannelPath` and optional CBOR request bodies.
 Run the gateway with backend proxy:
 
 ```bash
-cargo run -p fig-exchange-sim &
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem &
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 curl 'http://127.0.0.1:8080/marketdata/AAPL/candles/5m?limit=10'
 curl 'http://127.0.0.1:8080/.well-known/capabilities'
 curl 'http://127.0.0.1:8080/.well-known/instruments'

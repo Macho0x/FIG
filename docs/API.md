@@ -88,7 +88,7 @@ cargo doc --workspace --no-deps --open
 
 | Binary | Command | Purpose |
 |---|---|---|
-| `fig-gateway` | `cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876` |
+| `fig-gateway` | `FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876` |
 
 E2E alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`
 (Binance / Hyperliquid / FIX / REST fixture tables in one test file).
@@ -165,8 +165,8 @@ Live subscribe: `fig_client_subscribe`, `fig_client_sub_next`, `fig_client_sub_c
 `subscribe_live()` returns `FigPySubscription` (`snapshot`, `next`, `close`).
 
 ```bash
-cargo run -p fig-cli
-cargo run -p fig-cli -- --server 127.0.0.1:8443
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli -- --server 127.0.0.1:8443
 cargo test -p fig-cli
 ```
 

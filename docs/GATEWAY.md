@@ -27,10 +27,10 @@ WebSocket / SSE         └── use library adapters in custom gateway
 
 ```bash
 # Terminal 1: FIG exchange simulator
-cargo run -p fig-exchange-sim
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
 # Terminal 2: Gateway proxies REST GET + live WS to the simulator
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 Without `--fig-backend`, REST/FIX still translate frames in-process but do not
@@ -48,7 +48,7 @@ hit a live book. Native FIG clients (`fig-cli`) connect to `:8443` directly.
 Example:
 
 ```bash
-cargo run -p fig-gateways --bin fig-gateway -- \
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- \
   --rest-addr 0.0.0.0:8080 \
   --fix-addr 0.0.0.0:9876
 ```
@@ -118,6 +118,9 @@ docker build -t fig-exchange-sim .
 docker run --rm -p 8443:8443/udp fig-exchange-sim
 ```
 
+Clients verify TLS by default: pin the simulator's certificate with `--print-ca` +
+`FIG_TLS_CA`, or use `FIG_TLS_INSECURE=1` in development only.
+
 Full stack (sim + gateway + metrics): `docker compose up`. See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 See [Dockerfile](../Dockerfile) for the multi-stage build definition.
@@ -142,10 +145,10 @@ pointing at the same native paths documented in [SPEC.md §9.1](../SPEC.md).
 
 ```bash
 # Terminal 1: venue FIG backend (or exchange-sim for testing)
-cargo run -p fig-exchange-sim
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
 # Terminal 2: gateway proxies legacy JSON/FIX to native FIG
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 ### Reference WebSocket alias coverage

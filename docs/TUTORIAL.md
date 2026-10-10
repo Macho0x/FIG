@@ -23,16 +23,20 @@ cargo test --workspace
 ## 1. Start the exchange simulator
 
 ```bash
-cargo run -p fig-exchange-sim
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 ```
 
 The server binds to **`127.0.0.1:8443`** (UDP/TREE) by default and persists
 sessions under `/tmp/fig-exchange-sessions`.
 
-Optional mTLS mode:
+Optional mTLS mode — the server then requires a client certificate, verified
+against `FIG_MTLS_CA` (without it, any client certificate is accepted; that is
+development-only). `fig-cli` does not present a client certificate, so use this
+with an integration that configures its own TLS client key:
 
 ```bash
-FIG_MTLS=1 cargo run -p fig-exchange-sim
+FIG_MTLS=1 FIG_MTLS_CA=/path/to/client-ca.pem \
+  cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 ```
 
 ## 2. Run the native client
@@ -40,7 +44,7 @@ FIG_MTLS=1 cargo run -p fig-exchange-sim
 In another terminal:
 
 ```bash
-cargo run -p fig-cli
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli
 cargo run -p fig-cli -- --help
 ```
 
@@ -83,10 +87,10 @@ Translate FIX, REST, and WebSocket into native FIG frames:
 
 ```bash
 # Terminal 1: backend
-cargo run -p fig-exchange-sim
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
 # Terminal 2: gateway with backend proxy
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
 
 | Listener | Address | Purpose |
@@ -239,6 +243,11 @@ docker build -t fig-exchange-sim .
 docker run --rm -p 8443:8443/udp fig-exchange-sim
 ```
 
+The container's simulator presents a self-signed certificate. Local clients either pin it
+(`--print-ca` on the simulator, then `FIG_TLS_CA` on the client) or, for development only, set
+`FIG_TLS_INSECURE=1`. Production deployments use `FIG_TLS_CA` with the venue CA
+([DEPLOYMENT.md](DEPLOYMENT.md)).
+
 ## Next steps
 
 - [docs/README.md](README.md) — what to read next (SUBSCRIBE vs REQUEST)
@@ -316,7 +325,7 @@ to these paths; see [AGENTS.md](../AGENTS.md).
 With the exchange simulator running and `fig-cli` as reference:
 
 ```bash
-cargo run -p fig-exchange-sim   # terminal 1
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem   # terminal 1
 cargo test -p fig-cli           # exercises FigSdkClient perps streams
 ```
 

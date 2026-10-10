@@ -81,6 +81,23 @@ pub fn generate_self_signed_cert() -> Result<
     Ok((cert_der, priv_key))
 }
 
+/// Encode a certificate as a PEM `CERTIFICATE` block.
+///
+/// Useful for exporting a development or venue CA so clients can pin it via
+/// `FIG_TLS_CA` / [`client_config_from_ca_pem`].
+pub fn certificate_to_pem(cert: &rustls::pki_types::CertificateDer<'_>) -> String {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(cert.as_ref());
+    let mut out = String::with_capacity(b64.len() + 64);
+    out.push_str("-----BEGIN CERTIFICATE-----\n");
+    for chunk in b64.as_bytes().chunks(64) {
+        out.push_str(std::str::from_utf8(chunk).unwrap_or_default());
+        out.push('\n');
+    }
+    out.push_str("-----END CERTIFICATE-----\n");
+    out
+}
+
 /// Create a TREE server configuration with a self-signed certificate.
 ///
 /// Sets ALPN to `"fig/1"`. Callers should use
@@ -1599,6 +1616,40 @@ mod tests {
             "insecure dev config should accept a self-signed certificate"
         );
         let _ = h2.await;
+    }
+
+    /// A self-signed certificate the client is told to trust (the development
+    /// flow: `--print-ca` + `FIG_TLS_CA`) must verify, while an unpinned one does not.
+    #[tokio::test]
+    async fn test_pinned_self_signed_cert_is_accepted() {
+        let (cert, key) = generate_self_signed_cert().unwrap();
+        let pem = certificate_to_pem(&cert);
+        assert!(pem.starts_with("-----BEGIN CERTIFICATE-----\n"));
+        assert!(pem.trim_end().ends_with("-----END CERTIFICATE-----"));
+        // Round-trip through the PEM loader used by `FIG_TLS_CA`.
+        let dir = std::env::temp_dir().join(format!("fig-ca-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ca_path = dir.join("dev-ca.pem");
+        std::fs::write(&ca_path, &pem).unwrap();
+
+        let server_cfg = server_config(cert, key).unwrap();
+        let server = Arc::new(
+            FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg)
+                .await
+                .unwrap(),
+        );
+        let addr = server.local_addr().unwrap();
+        let accept = server.clone();
+        let h = tokio::spawn(async move { accept.accept().await });
+
+        let cfg = client_config_from_ca_pem(&ca_path).unwrap();
+        let client = FigClient::new(cfg).unwrap();
+        assert!(
+            client.connect(addr, "localhost").await.is_ok(),
+            "a pinned self-signed certificate must verify"
+        );
+        let _ = h.await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -158,8 +158,8 @@ Use `fig_gateways::ws_catalog`:
 Run with backend proxy:
 
 ```bash
-cargo run -p fig-exchange-sim &
-cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem &
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
 ```
 

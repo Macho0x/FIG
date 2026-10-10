@@ -64,16 +64,46 @@ pub struct ExchangeState {
     pub accounts: Mutex<AccountHub>,
 }
 
+/// Options for [`run_server_with`].
+#[derive(Debug, Default, Clone)]
+pub struct ServerOptions {
+    /// Write the server's certificate as PEM here so dev clients can pin it
+    /// (`FIG_TLS_CA=<path>`). Development convenience — production uses a real
+    /// PKI, not a self-signed certificate.
+    pub print_ca: Option<std::path::PathBuf>,
+}
+
 /// Start the FIG exchange server on the given address.
 ///
 /// Spawns connection accept loop and connection handlers in the background.
 /// Returns the bound server so callers can discover the address via
 /// `server.local_addr()`.
 pub async fn run_server(addr: &str) -> anyhow::Result<Arc<FigServer>> {
+    run_server_with(addr, ServerOptions::default()).await
+}
+
+/// Start the server with explicit [`ServerOptions`].
+pub async fn run_server_with(addr: &str, options: ServerOptions) -> anyhow::Result<Arc<FigServer>> {
     tracing::info!("FIG Exchange Simulator starting...");
 
     let (cert, key) = transport::generate_self_signed_cert()
         .map_err(|e| anyhow::anyhow!("Failed to generate cert: {}", e))?;
+
+    if let Some(path) = &options.print_ca {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| anyhow::anyhow!("cannot create {}: {e}", parent.display()))?;
+            }
+        }
+        std::fs::write(path, transport::certificate_to_pem(&cert))
+            .map_err(|e| anyhow::anyhow!("cannot write {}: {e}", path.display()))?;
+        tracing::info!(
+            "wrote development CA to {} — connect with FIG_TLS_CA={}",
+            path.display(),
+            path.display()
+        );
+    }
 
     let server_config = if std::env::var("FIG_MTLS").ok().as_deref() == Some("1") {
         match std::env::var("FIG_MTLS_CA") {

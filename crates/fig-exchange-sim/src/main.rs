@@ -12,7 +12,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use fig_exchange_sim::server::run_server;
+use fig_exchange_sim::server::run_server_with;
 
 #[derive(Parser)]
 #[command(name = "fig-exchange-sim", about = "FIG reference exchange simulator")]
@@ -29,6 +29,10 @@ struct Args {
     /// Directory for file-backed sessions
     #[arg(long)]
     session_path: Option<PathBuf>,
+    /// Write the development CA (self-signed certificate) to this path so
+    /// clients can pin it: FIG_TLS_CA=<path>
+    #[arg(long)]
+    print_ca: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -47,7 +51,13 @@ async fn main() -> anyhow::Result<()> {
     }
 
     tracing::info!("FIG Exchange Simulator starting...");
-    let endpoint = run_server(&args.addr).await?;
+    let endpoint = run_server_with(
+        &args.addr,
+        fig_exchange_sim::server::ServerOptions {
+            print_ca: args.print_ca.clone(),
+        },
+    )
+    .await?;
     tracing::info!("FIG server listening on {}", endpoint.local_addr()?);
     tokio::signal::ctrl_c().await?;
     Ok(())

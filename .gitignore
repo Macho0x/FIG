@@ -33,3 +33,5 @@ __pycache__/
 *.pyd
 *.pyw
 *.pyz
+# Local dev artifacts (simulator --print-ca)
+.fig/

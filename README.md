@@ -1,483 +1,235 @@
 <p align="center">
-  <img src="assets/FIG%20Light%20Mode%20transparent%20(small).png" alt="FIG — Fast Interchange Gateway" width="320">
+  <img src="assets/fig-logo.png" alt="FIG — Fast Interchange Gateway" width="320">
 </p>
 
-# FIG — Fast Interchange Gateway
+<h1 align="center">FIG — Fast Interchange Gateway</h1>
 
-**One encrypted connection** for orders, market data, and private account streams —
-with optional FIX, REST, and WebSocket gateways for migration.
+<p align="center">
+  <b>One encrypted connection for orders, market data, and private account streams.</b><br>
+  A schema-native binary protocol for trading systems, with FIX / REST / WebSocket gateways for migration.
+</p>
 
-- **Brokers & venues** — one native FIG server surface; legacy clients via `fig-gateway`
-- **Clients & integrators** — connect once; trade and subscribe on channel paths, not three protocols
-- **Everyone** — schema-defined messages (SBE/CBOR), sequenced streams, 0-RTT reconnect over TREE (QUIC)
+<p align="center">
+  <a href="https://github.com/Macho0x/FIG/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Macho0x/FIG/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="#license"><img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg"></a>
+</p>
 
-[![CI](https://github.com/Macho0x/fig/actions/workflows/ci.yml/badge.svg)](https://github.com/Macho0x/fig/actions/workflows/ci.yml)
-[![License: MIT/Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](#license)
+**FIG is a wire protocol — not a matching engine, exchange, or API-key issuer.** It defines how
+messages move and how already-issued credentials ride on the wire, at the same layer as FIX, REST,
+and WebSocket. Venues own matching, funding, and credential issuance; FIG libraries validate
+credentials on the wire. See [SPEC.md §1.3](SPEC.md).
 
-> Schema-native, multiplexed, zero-RTT binary protocol for trading systems.
-
-**FIG is a wire protocol** — not a matching engine, account portal, or API-key issuer.
-It specifies how messages move and how credentials ride on the wire (like FIX Logon or
-an HTTP `Authorization` header). Your venue issues tokens; FIG libraries validate them
-on the wire. See [Authentication](#authentication) below.
-
-**Terms:** **FIG** = protocol · **TREE** = QUIC transport (TLS 1.3, ALPN `fig/1`) · **FSL** = schema IDL ([SPEC.md](SPEC.md) §1).
+> **FIG** = the protocol · **TREE** = its QUIC transport (TLS 1.3, ALPN `fig/1`) · **FSL** = its schema IDL.
 
 ---
 
-## Choose your path
+## Contents
 
-| I am… | Start here | You will… |
-|---|---|---|
-| **New to FIG** | [Docs map](docs/README.md) | Pick a guide; don't mix SUBSCRIBE and REQUEST I/O |
-| **Broker / venue** | [Gateway guide](docs/GATEWAY.md) · [Architecture](#architecture--migration) | Run a FIG backend + optional gateway; issue auth in *your* stack |
-| **Client / integrator** | [Tutorial](docs/TUTORIAL.md) · [Quick start by language](#quick-start-by-language) | Connect with `fig-cli` or a binding; use channel paths from [SPEC.md](SPEC.md) |
-| **Migrating from FIX/REST/WS** | [Try it](#try-it-in-60-seconds) (gateway row) | Point legacy clients at `:9876` / `:8080` / `:8090`; proxy with `--fig-backend` |
+[Why FIG](#why-fig) · [Try it in 60 seconds](#try-it-in-60-seconds) · [What FIG gives you](#what-fig-gives-you) ·
+[One connection, three flows](#one-connection-three-flows) · [Client code](#client-code) ·
+[Languages](#languages) · [Adopting FIG](#adopting-fig) · [Security](#security) ·
+[Documentation](#documentation) · [Status](#status) · [Contributing](#contributing)
 
 ---
 
-## Who uses FIG?
+## Why FIG
 
-| Persona | What you get |
+Today's trading stacks are three protocols pretending to be one — three auth models, three error
+models, three observability pipelines. FIG collapses them onto a single connection.
+
+| Problem today | With FIG |
 |---|---|
-| **Venues & brokers** | One native connection for order entry, live market data, and private account streams |
-| **Integration teams** | Replace FIX + REST + WebSocket glue with one client library and one auth model |
-| **Gateway operators** | Proxy legacy clients to a FIG backend with `fig-gateway` (`--fig-backend`) |
-| **Trading bot authors (TS)** | Native FIG on **Bun** via `bun:ffi` over `fig-ffi` — no WASM; browsers use the gateway |
-| **Schema / tooling authors** | FSL schemas compile to Rust, SBE, JSON Schema, and FIX mappings |
-
----
-
-## Why FIG?
-
-| Problem with status quo | FIG solution |
-|---|---|
-| FIX needs 4 RTTs to connect (TCP + TLS + Logon) | TREE 0-RTT session resumption — 1 RTT new, 0 RTT resumed |
-| FIX is ASCII, 200–500 bytes header overhead | Binary 16-byte fixed header + compact TLV extensions |
+| FIX needs several round trips to connect | Session resumption over QUIC 0-RTT — 1 RTT new, 0 RTT resumed |
+| FIX is ASCII with 200–500 B of header overhead | Binary 16-byte fixed header + compact TLV extensions |
 | REST is stateless — no session, no sequencing | Three channel modes: stateless, session, affinity |
-| WebSocket has no built-in schema or semantics | Schema-native framing — every frame carries a Schema ID |
-| Each protocol needs its own auth, error, observability | One auth model, one error model, one tracing pipeline |
-| No multiplexing — one session per FIX/TCP connection | 65,535 concurrent channels per TREE connection |
-| Heavy parse cost on hot paths | SBE decode **~312 ns** on reference hardware ([BENCHMARKS.md](docs/BENCHMARKS.md)) |
-
-Fewer connections and smaller headers on the wire; faster decode on order hot paths.
-Full Criterion medians and tail-latency percentiles (p99/p99.9): [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
-
-### At a glance
-
-| | FIG (SBE) | FIX ASCII (in-repo) | HTTP + JSON (in-repo) |
-|---|---|---|---|
-| Order decode | **312 ns** | ~4.8 μs | ~1.8 μs (headers) |
-| Min header | **16 B** | 200–500 B | 200–800 B |
-| Reconnect | **0-RTT** | full Logon | stateless |
-
-Industry ballparks for generic JSON/FIX stacks appear in [BENCHMARKS.md](docs/BENCHMARKS.md) as context only — not FIG regression baselines.
+| WebSocket has no schema or semantics | Schema-native framing: every frame carries a Schema ID |
+| Each protocol needs its own auth and tracing | One auth model, one error model, one tracing pipeline |
+| One session per TCP connection | 65,535 concurrent channels per TREE connection |
+| Heavy parse cost on hot paths | Bounds-checked SBE decode (measured figures: [docs/BENCHMARKS.md](docs/BENCHMARKS.md)) |
 
 ---
 
 ## Try it in 60 seconds
 
-```bash
-git clone https://github.com/Macho0x/fig.git && cd fig
-cargo run -p fig-exchange-sim          # terminal 1 — server on 127.0.0.1:8443
-FIG_TLS_INSECURE=1 cargo run -p fig-cli # terminal 2 — seven demos, one connection
-```
-
-The simulator generates a **self-signed** certificate, and FIG clients verify TLS by
-default. `FIG_TLS_INSECURE=1` is a development-only bypass; against a real deployment
-point clients at your CA instead: `FIG_TLS_CA=/path/to/ca.pem`. See
-[Transport security](#transport-security).
-
-**Migration day 1** — legacy gateway in front of the same backend (REST `:8080`, WS `:8090`, FIX `:9876`):
+Requires a Rust toolchain (edition 2021, Rust 1.97+).
 
 ```bash
-FIG_TLS_INSECURE=1 cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+git clone https://github.com/Macho0x/FIG.git && cd fig
+
+# Terminal 1 — reference venue on 127.0.0.1:8443, exporting its dev certificate
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
+
+# Terminal 2 — seven demos over one connection
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli
 ```
 
-Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md). You do **not** need to move all clients to native FIG at once.
+Clients verify TLS **by default**; `FIG_TLS_CA` pins the simulator's self-signed development
+certificate, so you never have to disable verification (in production you point at your real CA).
+The simulator is a **reference venue** — in-memory matching and dev tokens, not production
+infrastructure. Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md).
+
+Keep legacy clients on day 1 — run the gateway in front of the same backend
+(REST `:8080`, WebSocket `:8090`, FIX `:9876`):
+
+```bash
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+```
+
+---
+
+## What FIG gives you
+
+| FIG handles | Your venue owns |
+|---|---|
+| Frame format, channels, sessions, TREE transport | Matching engine, risk, funding, liquidations |
+| Message schemas and gateway mappings (FSL) | Credential issuance, KYC, entitlements, admin |
+| Wire credential verification (`AUTH_TOKEN`, mTLS) | Historical index at scale, compliance |
+| Sequencing, replay windows, flow control, DoS limits | Venue-specific products and policy |
+
+`fig-core`, `fig-client`, `fig-ffi` / `fig-python`, and `fig-gateways` are written for production use.
+[`fig-exchange-sim`](crates/fig-exchange-sim/) is a reference implementation for learning and tests.
 
 ---
 
 ## One connection, three flows
 
-Same TREE connection (`127.0.0.1:8443` in the simulator). Each logical stream is a
-**channel** (bidirectional TREE stream) identified by path extensions on the frame:
+One TREE connection; each logical stream is a **channel**, addressed by a path extension on the frame.
 
-```text
-channel 1  →  POST   trading/accounts/DEMO-ACCT/orders     →  ExecutionReport stream
-channel 2  →  SUBSCRIBE  marketdata/AAPL/candles/5m        →  CandleBarEvent stream
-channel 3  →  SUBSCRIBE  accounts/DEMO-ACCT/balances       →  BalanceSnapshot, BalanceUpdate
+```mermaid
+flowchart LR
+  C["FIG client<br/>fig-cli · fig-core · bindings"] -- "TREE · TLS 1.3 · ALPN fig/1" --> S["FIG server — your venue<br/>frames · channels · sessions · auth"]
+  S --> O["trading/accounts/{acct}/orders<br/>→ ExecutionReport"]
+  S --> M["marketdata/AAPL/candles/5m<br/>→ CandleBarEvent"]
+  S --> B["accounts/{acct}/balances<br/>→ BalanceSnapshot · BalanceUpdate"]
+  L["Legacy FIX / REST / WS clients"] --> G["fig-gateway"] --> S
 ```
 
-- Example **#1** — [Live market data](#1-live-market-data-public-subscribe)
-- Example **#2** — [Order entry](#2-order-entry)
-- Example **#3** — [Private account stream](#3-private-account-stream-wire-auth)
-- Example **#4** — [Historical query, then resume live](#4-historical-query-then-resume-live)
-
-Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
+Public market data needs no token. Private paths carry `AUTH_TOKEN` and are scoped to the
+`{account}` segment of the path. Full path catalog: [SPEC.md §9.1](SPEC.md).
 
 ---
 
-## Authentication
-
-| | |
-|---|---|
-| **Public market data** | No token — subscribe on `marketdata/...` paths |
-| **Private paths** | `AUTH_TOKEN` extension on every frame; principal must match `{account}` in `ChannelPath` ([SPEC §9.3](SPEC.md)) |
-| **Your venue** | Issues, rotates, and revokes credentials (JWT/OAuth patterns in spec) — FIG only **verifies** |
-| **Token verification** | HS256 reference verifier, or **RS256 from a JWKS/PEM key set** (`FIG_JWT_JWKS`) with `kid`-based rotation and a KMS adapter — see [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) |
-| **Local dev** | Simulator accepts test token `fig-dev-{account}`; set `FIG_DEV_OPEN=1` on the server to skip auth (ignored when `FIG_PRODUCTION=1`) |
-
-### Transport security
-
-FIG runs over TREE (QUIC + TLS 1.3). The defaults are **secure**, and every
-insecure option is explicit and named:
-
-| Concern | Default | Production setting |
-|---|---|---|
-| Server certificate verification | Clients verify against the built-in WebPKI roots (`client_config`) | `FIG_TLS_CA=/path/to/ca.pem`, or `client_config_from_ca_pem` |
-| Server-to-server identity | none | mTLS: `FIG_MTLS=1` + `FIG_MTLS_CA=/path/to/client-ca.pem` |
-| Resumption tokens (0-RTT) | HMAC-SHA256 signed and verified by the **server** | `FIG_RESUMPTION_KEY` (shared, hex or passphrase) across HA nodes |
-| `0-RTT` early data | enabled; replayed tokens rejected inside the replay window | — |
-| Dev bypass | off | never set `FIG_TLS_INSECURE`, `FIG_DEV_OPEN` in production; set `FIG_PRODUCTION=1` to refuse the auth bypass |
-
-- **`client_config_insecure()`** and **`server_config_mtls_insecure()`** exist for
-  tests/dev only and say so in their names.
-- A server restores a session **only** from a resumption token it signed
-  (`FigServer::issue_resumption_token`); unauthenticated or forged tokens are
-  rejected — see [SPEC §10.1](SPEC.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-- Frame size, per-connection channel count, and message rates are bounded by
-  `DoSGuard` / `ChannelRateLimiter` on every connection.
-
----
-
-## What's included vs reference
-
-| Component | Role |
-|---|---|
-| [`fig-core`](crates/fig-core/), [SPEC](SPEC.md), [conformance](tests/conformance/) | Protocol implementation — CI-tested (490+ workspace tests) |
-| [`fig-exchange-sim`](crates/fig-exchange-sim/) | **Reference** venue for learning — not a production exchange |
-| [`fig-gateway`](crates/fig-gateways/) | **Migration bridge** — run standalone or embed adapters |
-| Auth / API keys / matching | **Your** venue stack — outside the protocol |
-
-**Production status.** `fig-core`, `fig-ffi`/`fig-python`, and the gateways are
-written for production use: TLS verification is on by default, resumption tokens
-are authenticated, untrusted input is bounds-checked (frames, SBE, FIX, extensions),
-and connection resource limits are enforced. `fig-exchange-sim` is a **reference**
-venue (in-memory matching, dev tokens) — replace it with your own backend before
-serving real traffic, and never ship `FIG_TLS_INSECURE=1` / `FIG_DEV_OPEN=1`.
-
----
-
-## Capabilities today
-
-What the reference simulator and CLI exercise end-to-end (parity roadmap: [TODO.md §17](TODO.md)):
-
-- Order entry (limit/market), cancel, execution reports
-- Public market data subscribe (candles, ticker, agg trades, mark price, …)
-- Private account streams (balances, positions, margin) with wire auth
-- Historical query (GET + cursor) then resume live on the same connection
-- Instrument catalog and capabilities (`GET /.well-known/instruments`, `/.well-known/capabilities`)
-- Fill history on `accounts/{account}/fills`
-- FIX / REST / WebSocket gateway translation paths
-- PING/PONG, session resumption, channel sequencing
-
----
-
-## Worked examples
-
-Native FIG on **one TREE connection** (TLS + multiplexed channels). If you know legacy APIs, the mapping is:
-
-| You know… | FIG native | `CHANNEL_PATH` example |
-|-----------|------------|-------------------------|
-| **WebSocket** `SUBSCRIBE` / push stream | `SUBSCRIBE` → `STREAM_ITEM` | `marketdata/AAPL/candles/5m` |
-| **REST** `GET` / `POST` | `REQUEST` → `RESPONSE` | `marketdata/AAPL/ticker`, `trading/…/orders` |
-| **FIX** NewOrderSingle (35=D) | `REQUEST` + CBOR `NewOrderSingle` | `trading/accounts/{account}/orders` |
-| **FIX** drop copy / MD incremental | `SUBSCRIBE` → `STREAM_ITEM` | `trading/accounts/{account}/executions` |
-| **Hyperliquid** `allMids` | `GET` → `AllMidsBatch` | `marketdata/ticker/all` |
-
-**Wire notation** (SPEC §4 names → Rust — not strings on the wire):
-
-| Wire (SPEC) | Rust | SDK helper |
-|-------------|------|------------|
-| `SUBSCRIBE` | `FrameType::Subscribe` | `subscribe_frame`, `subscribe_*` |
-| `REQUEST` | `FrameType::Request` | `request_frame`, `request_*`, `post_order` |
-| `RESPONSE` | `FrameType::Response` | one-shot reply to `REQUEST` |
-| `STREAM_ITEM` | `FrameType::StreamItem` | server push (decode CBOR payload) |
-
-Recommended path: [`fig-client`](crates/fig-client/) (`FigSdkClient`) — same wire as below, less boilerplate. Full demo: [`fig-cli`](crates/fig-cli/src/lib.rs) (`run_demos`).
-
-**SUBSCRIBE vs REQUEST:** snapshot helpers (`subscribe_*`) do not wait for stream EOF.
-Use `subscribe_live` + `LiveSubscription::next_frame` for later `STREAM_ITEM`s.
-`send_and_read` is **REQUEST only** — using it on a live subscribe hangs.
+## Client code
 
 ```rust
 use fig_client::{dev_auth_token, FigSdkClient};
-use fig_core::messages::*;
 use fig_core::transport;
 use quinn::Endpoint;
 
-// Connect once (like opening a FIX session or a single WS connection).
-let client_cfg = transport::client_config()?;
 let mut ep = Endpoint::client("0.0.0.0:0".parse()?)?;
-ep.set_default_client_config(client_cfg);
+ep.set_default_client_config(transport::client_config_from_env()?);   // verifies TLS
 let conn = ep.connect("127.0.0.1:8443".parse()?, "localhost")?.await?;
 let client = FigSdkClient::new(&conn);
-let account = "DEMO-ACCT";
+
+// SUBSCRIBE → STREAM_ITEM
+let (candles, _) = client.subscribe_candles("AAPL", "5m", 2).await?;
+println!("close={}", candles.current().unwrap().close.0);
+
+// REQUEST → ExecutionReport
+let frames = client.post_order("DEMO-ACCT", &order, 3).await?;
+
+// REQUEST → RESPONSE
+let (mids, _) = client.request_all_mids(4).await?;
 ```
 
-### 1. Live market data (public subscribe)
+Order entry, private streams, historical-then-live, and gateway translation:
+[docs/TUTORIAL.md](docs/TUTORIAL.md) · [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-WebSocket-style subscribe (e.g. Binance `@kline_5m`) or a FIX market-data request — server pushes `STREAM_ITEM`s. No `AUTH_TOKEN`.
-
-```rust
-// wire: SUBSCRIBE → STREAM_ITEM (CandleBarEvent) — snapshot, then drop the live handle
-let (candles, _frames) = client.subscribe_candles("AAPL", "5m", 2).await?;
-if let Some(bar) = candles.current() {
-    println!("close={}", bar.close.0);
-}
-
-// wire: SUBSCRIBE → STREAM_ITEM (BestBidOffer)
-let (bbo, _frames) = client.subscribe_bbo("AAPL", 3).await?;
-println!("mid={:?}", bbo.implied_mid());
-
-// Hold the recv stream for later bars (do not use send_and_read):
-use fig_client::frames::subscribe_frame;
-let path = "marketdata/AAPL/candles/5m";
-let sub = subscribe_frame(2, 1, path, Some(path), None)?;
-let (_snapshot, mut live) = client.subscribe_live(sub).await?;
-while let Some(frame) = live.next_frame().await? {
-    println!("live {:?}", frame.frame_type);
-}
-
-// wire: REQUEST GET → RESPONSE (AllMidsBatch)
-let (mids, _batch) = client.request_all_mids(4).await?;
-println!("AAPL mid={:?}", mids.mid("AAPL"));
-```
-
-### 2. Order entry
-
-`REQUEST` POST — same job as `POST /accounts/{id}/orders` or FIX MsgType `D`. One-shot; execution reports come back on that request stream.
-
-```rust
-let order = NewOrderSingle {
-    cl_ord_id: "CLI-001".into(),
-    side: Side::Buy,
-    symbol: "AAPL".into(),
-    order_qty: Quantity(100.0),
-    price: Some(Price(150.25)),
-    order_type: OrderType::Limit,
-    time_in_force: TimeInForce::Day,
-    account: Some(account.into()),
-    stop_price: None,
-    expire_time: None,
-    strategy_id: None,
-    security_id: None,
-    id_source: None,
-    security_exchange: None,
-    post_only: None,
-    reduce_only: None,
-};
-// wire: REQUEST POST → STREAM_ITEM (ExecutionReport)
-let frames = client.post_order(account, &order, 1).await?;
-// Decode ExecutionReport from frames (or use OrdersState for live merge)
-```
-
-### 3. Private account stream (wire auth)
-
-Authenticated user-data WebSocket or private FIX drop copy — **`AUTH_TOKEN` required** on every channel.
-
-```rust
-// wire: SUBSCRIBE → STREAM_ITEM (BalanceSnapshot, then BalanceUpdate)
-let (balances, _frames) = client.subscribe_balances(account, 5).await?;
-println!("USD={:?}", balances.balances.get("USD"));
-
-// wire: SUBSCRIBE → STREAM_ITEM (ExecutionReport)
-let (orders, _frames) = client.subscribe_executions(account, 6).await?;
-println!("open orders={}", orders.open_count());
-
-// Keep recv open for later STREAM_ITEMs (fills, position deltas):
-use fig_client::frames::subscribe_frame;
-let path = format!("accounts/{account}/positions");
-let token = dev_auth_token(account);
-let sub = subscribe_frame(7, 1, &path, Some(&path), Some(&token))?;
-let (_snapshot, mut live) = client.subscribe_live(sub).await?;
-while let Some(frame) = live.next_frame().await? {
-    println!("live {:?}", frame.frame_type);
-}
-```
-
-### 4. Historical query, then resume live
-
-Like `GET /candles?limit=100` then a live WebSocket subscribe — both on the **same TREE connection**.
-
-```rust
-// wire: REQUEST GET → RESPONSE (CandleBarBatch)
-let (batch, _) = client.request_candles(
-    CandleBarRequest {
-        symbol: "AAPL".into(),
-        interval: "5m".into(),
-        start_time: None,
-        end_time: None,
-        limit: Some(100),
-        cursor: None,
-    },
-    7,
-).await?;
-println!("history bars={}", batch.bars.len());
-
-// wire: SUBSCRIBE → STREAM_ITEM (live candles, same connection)
-use fig_client::frames::subscribe_frame;
-let path = "marketdata/AAPL/candles/5m";
-let sub = subscribe_frame(8, 1, path, Some(path), None)?;
-let (_snapshot, mut live) = client.subscribe_live(sub).await?;
-while let Some(frame) = live.next_frame().await? {
-    println!("live {:?}", frame.frame_type);
-}
-```
-
-### 5. Legacy migration (keep FIX / REST / WS clients)
-
-Run [`fig-gateway`](crates/fig-gateways/) at the edge; translate legacy shapes to native FIG frames and proxy to your FIG backend ([docs/GATEWAY.md](docs/GATEWAY.md)).
-
-```rust
-use fig_gateways::rest::{parse_http_request};
-use fig_gateways::rest_query::http_get_to_fig_request;
-use fig_gateways::ws_catalog::legacy_ws_json_to_fig_subscribe;
-use fig_gateways::fix::{parse_fix_message, fix_to_fig_order};
-
-// wire: REST GET → REQUEST (FrameType::Request + Method GET)
-let get = parse_http_request(
-    b"GET /marketdata/AAPL/ticker HTTP/1.1\r\nHost: localhost\r\n\r\n",
-)?;
-let ticker_req = http_get_to_fig_request(&get)?;
-
-// wire: WS JSON SUBSCRIBE → SUBSCRIBE (FrameType::Subscribe)
-let ws_sub = legacy_ws_json_to_fig_subscribe(
-    r#"{"method":"SUBSCRIBE","params":["aapl@ticker"]}"#,
-    1,
-)?;
-
-// Forward translated frames to your native FIG backend (fig-gateway --fig-backend)
-// REST GET: proxy_frame(addr, ticker_req).await?
-// WS SUBSCRIBE: BackendSession::connect(addr) then send_frame + recv_frame
-// use fig_gateways::backend::{proxy_frame, BackendSession};
-
-// wire: FIX 35=D → CBOR NewOrderSingle, then REQUEST POST at gateway
-// let fix = parse_fix_message(b"8=FIX.4.4\x0135=D\x0111=CLI-001\x01...")?;
-// let order = fix_to_fig_order(&fix.tags)?;
-```
-
-**Low-level wire:** build `Frame::new(FrameType::Subscribe, …)` (or `Request`, etc.) with `fig_core` — see [SPEC §4](SPEC.md). Python/Go/C++ use the same frame types via [`fig-ffi`](crates/fig-ffi/) / [`bindings/`](bindings/README.md).
+**SUBSCRIBE vs REQUEST:** snapshot helpers (`subscribe_*`) return immediately; use `subscribe_live`
+for later `STREAM_ITEM`s. `send_and_read` is REQUEST-only and will hang on a live subscribe.
 
 ---
 
-## Architecture & migration
+## Languages
 
-**Day 1 — gateway only:** legacy FIX/REST/WS clients hit `fig-gateway`; gateway speaks FIG to your backend.
-
-**Day N — native clients:** bots and integrations connect directly over TREE; gateway shrinks to stragglers.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  FIG client (fig-cli, fig-core, bindings)                    │
-└────────────────────────┬────────────────────────────────────┘
-                         │ TREE — TLS 1.3, 0-RTT, 65k channels
-┌────────────────────────▼────────────────────────────────────┐
-│  FIG server (your venue or fig-exchange-sim reference)       │
-│  frames · channels · sessions · SBE/CBOR · auth on wire      │
-└────────────────────────┬────────────────────────────────────┘
-                         │ optional
-         ┌───────────────▼───────────────────┐
-         │  Gateway: FIX · REST · WebSocket   │
-         │  legacy clients → native FIG       │
-         └───────────────────────────────────┘
-```
-
-Reference crates: [`fig-core`](crates/fig-core/) (protocol) · [`fig-gateways`](crates/fig-gateways/) (adapters) · [`fig-exchange-sim`](crates/fig-exchange-sim/) (demo server) · [`fig-fsl`](crates/fig-fsl/) (schemas). Module index: [docs/API.md](docs/API.md).
-
-### Venue adoption (one standard)
-
-FIG is **wire infrastructure**, not an exchange. Every broker follows the same path:
-Day 1 gateway for legacy clients, Day 2 native FIG over TREE for performance clients.
-Binance and Hyperliquid wire shapes are **gateway aliases only** — see [AGENTS.md](AGENTS.md)
-and [docs/GATEWAY.md](docs/GATEWAY.md#venue-adoption--day-1-gateway). Crypto perps use
-the shared instrument model ([ADR 0007](docs/adr/0007-crypto-instrument-model.md)); colo
-order entry uses [SBE order path](docs/SBE_ORDER_PATH.md).
-
----
-
-## Quick start by language
-
-| Language | Get connected | Docs |
+| Language | Connect | Docs |
 |---|---|---|
-| **Rust** | `cargo run -p fig-cli` | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/src/main.rs) |
-| **Python** | `cargo build -p fig-python` then import `fig` | [`fig-python`](crates/fig-python/) |
-| **Go / C# / TS / Java / OCaml / Zig / C++** | `cargo build -p fig-ffi` + binding README | [`bindings/`](bindings/README.md) |
+| Rust | `fig-core` · `fig-client` · `fig-cli` | [docs/TUTORIAL.md](docs/TUTORIAL.md) |
+| Python | `cargo build -p fig-python`, then `import fig` | [crates/fig-python](crates/fig-python/) |
+| Go · C# · TypeScript · Java · OCaml · Zig · C++ | `cargo build -p fig-ffi` + the per-language wrapper over [`fig.h`](crates/fig-ffi/include/fig.h) | [bindings/README.md](bindings/README.md) |
+| Browser / no FFI | `fig-gateway` REST + WebSocket | [docs/GATEWAY.md](docs/GATEWAY.md) |
 
-**Browser:** no in-browser FIG stack — use [`fig-gateway`](crates/fig-gateways/) REST/WebSocket against your FIG backend.
-
-**FFI bindings** share [`fig-ffi`](crates/fig-ffi/include/fig.h) for connect, request, subscribe, and SBE encode/decode on the hot path. Per-language generated SBE for complex messages is evolving; prefer FFI wire codecs until your binding's conformance coverage matches Rust.
+Bindings share the C ABI for connect, request, subscribe, and SBE codecs. Prefer the FFI wire codecs
+until a given binding's generated-SBE coverage matches Rust ([TODO.md](TODO.md)).
 
 ---
 
-## Language SDKs
+## Adopting FIG
 
-Roadmap and parity definition: [TODO.md §0](TODO.md#0-active-backlog-fig-repo) (active backlog) ·
-[§16–21](TODO.md) reference. Status key: **✅** shipped · **🔶** partial · **⬜** planned · **🏛** venue-owned.
+You do not have to move every client at once, and nothing about FIG is exchange-specific — the same
+wire serves any venue.
 
-| Language | SDK status | Package / path | FSL codegen (`ftlc`) | Native FIG client |
-|---|---|---|---|---|
-| **Rust** | ✅ Reference | [`fig-core`](crates/fig-core/), [`fig-cli`](crates/fig-cli/) | ✅ full (Rust + SBE) | Tier 1–4 — `subscribe_live` + `LiveSubscription` |
-| **Python** | ✅ Reference binding | [`fig-python`](crates/fig-python/) (PyO3) | ✅ full + CBOR via PyO3 | `request()` (EOF); `subscribe()` snapshot; `subscribe_live()` / `FigPySubscription.next()` |
-| **C++** | ✅ FFI wrapper | [`bindings/cpp`](bindings/cpp/) → [`fig-ffi`](crates/fig-ffi/) | ✅ types + generated SBE | `fig::Client::subscribe` + `Subscription::next` over `fig.h` |
-| **C#** | ✅ FFI wrapper | [`bindings/csharp`](bindings/csharp/) → `fig-ffi` | ✅ types + `SbeGenerated.cs` | `FigClient.Subscribe` + `FigSubscription.Next` |
-| **Go** | ✅ FFI wrapper | [`bindings/go`](bindings/go/) → `fig-ffi` | ✅ types + `sbe_generated.go` | `Client.Subscribe` + `Subscription.Next` |
-| **Java** | ✅ FFI wrapper | [`bindings/java`](bindings/java/) → `fig-ffi` | ✅ `--lang java` | JNI `figClientSubscribe` / `figClientSubNext` |
-| **TypeScript** | ✅ FFI wrapper | [`bindings/typescript`](bindings/typescript/) → `fig-ffi` | ✅ types + generated SBE | Bun `FigClient.subscribe` / `FigSubscription.next`; browsers/Node use [gateway](docs/GATEWAY.md) |
-| **OCaml** | ✅ FFI wrapper | [`bindings/ocaml`](bindings/ocaml/) → `fig-ffi` | ✅ records + variant enums | C stubs `subscribe` / `sub_next` over `fig.h` |
-| **Zig** | ✅ FFI wrapper | [`bindings/zig`](bindings/zig/) → `fig-ffi` | ✅ types + generated SBE | `@cImport` `subscribe` / `Subscription.next` |
+1. **Day 1 — gateway.** Legacy FIX / REST / WebSocket clients keep working; `fig-gateway` translates
+   their shapes into native FIG and proxies to your backend.
+2. **Day 2 — native.** Performance clients connect directly over TREE with SBE/CBOR; the gateway
+   shrinks to stragglers.
+3. **Day 3 — extensions.** Venue-specific products extend FSL and `CapabilitiesResponse` — never a
+   protocol fork.
 
-**C ABI:** [`fig-ffi`](crates/fig-ffi/include/fig.h) + [bindings/README.md](bindings/README.md).
+Integration patterns: [docs/PROTOCOL.md](docs/PROTOCOL.md) · [docs/GATEWAY.md](docs/GATEWAY.md).
+Venue adoption tracks: [TODO.md §19–22](TODO.md).
+
+---
+
+## Security
+
+- **TLS verification is on by default.** Clients verify the server against the WebPKI roots, or pin
+  a private CA with `FIG_TLS_CA` / `client_config_from_ca_pem`. It is only skipped by explicitly
+  named `*_insecure()` APIs used in tests.
+- **mTLS verifies client certificates** against a CA (`FIG_MTLS=1` + `FIG_MTLS_CA`).
+- **Session resumption tokens are server-signed** (HMAC-SHA256) and verified before any state is
+  restored; replayed tokens are rejected inside the window, cluster-wide with Redis
+  (`FIG_REPLAY_REDIS_URL`).
+- **Untrusted input is bounded**: frame-size caps, bounds-checked SBE decoders, ASCII-safe FIX
+  parsing, validated TLV lengths — with `frame_decode` and `sbe_decode` fuzz targets in CI.
+- **Connection resource limits** (`DoSGuard`, `ChannelRateLimiter`) are enforced on the receive path.
+- **Token signing keys rotate without downtime** (RS256/JWKS with `kid` selection):
+  [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md).
+
+Deployment topology, HA, PKI, and every environment variable: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Review checklist: [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md).
+Report a vulnerability: [SECURITY.md](SECURITY.md).
 
 ---
 
 ## Documentation
 
-Index with “if you want to…” paths: **[docs/README.md](docs/README.md)**.
-
-| Document | Description |
+| Start with | |
 |---|---|
-| [docs/README.md](docs/README.md) | What to read, in what order; SUBSCRIBE vs REQUEST |
-| [AGENTS.md](AGENTS.md) | Contributor guide — one standard, gateway alias rules |
-| [SPEC.md](SPEC.md) | Normative protocol specification |
-| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started and CLI walkthrough |
+| [docs/README.md](docs/README.md) | Reading order; SUBSCRIBE vs REQUEST |
+| [SPEC.md](SPEC.md) | Normative wire format, channels, paths |
+| [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started end to end |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Worked sequences and integration patterns |
-| [docs/STREAMING.md](docs/STREAMING.md) | Live subscribe paths and WS catalog |
-| [docs/QUERY.md](docs/QUERY.md) | Historical queries and REST GET mapping |
-| [docs/GATEWAY.md](docs/GATEWAY.md) | Legacy gateway deployment and alias E2E tests |
-| [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md) | Colo SBE order entry path |
-| [docs/adr/0007-crypto-instrument-model.md](docs/adr/0007-crypto-instrument-model.md) | Crypto perp instrument catalog (FSL) |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Criterion microbenches + tail-latency harness |
-| [docs/API.md](docs/API.md) | Crate and module index |
-| [TODO.md §0](TODO.md#0-active-backlog-fig-repo) | Active backlog (priority-ordered open work) |
-| [TODO.md §18](TODO.md#18-fig-10-release-criteria) | 1.0 release criteria + venue adoption (§19–21) |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA deployment, TLS/PKI and environment configuration |
-| [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) | Rotating token signing keys with zero downtime |
-| [docs/PUBLISHING.md](docs/PUBLISHING.md) | Build and install SDKs |
-| [schemas/orders.fsl](schemas/orders.fsl) | Example FSL schema |
-| [TODO.md](TODO.md) | Implementation roadmap |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA, TLS/PKI, configuration |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | FIX / REST / WebSocket migration |
+| [docs/API.md](docs/API.md) | Crate and module map |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Methodology and tail latencies |
+| [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Build, FSL workflow, conventions |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
 ```bash
-cargo test --workspace
-cargo test -p fig-cli                              # SDK demos + SBE order demo
-cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
-cargo bench -p fig-bench                           # Criterion microbenches (medians)
-cargo run --release -p fig-bench --bin fig-latency # tail latency p99/p99.9
+cargo test --workspace                  # unit, integration, and binding tests
+cargo run -p xtask -- codegen --check   # generated artifacts are in sync
+cargo run -p xtask -- check-gateway     # gateway catalog completeness
 ```
 
 ---
 
+## Status
+
+Latest release **1.2.0** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
+There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
+your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the build, test, and
+FSL workflow; [AGENTS.md](AGENTS.md) covers the rules that keep FIG one standard instead of a set of
+per-venue forks.
+
 ## License
 
-Dual-licensed under MIT or Apache-2.0. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

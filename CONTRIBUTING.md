@@ -15,11 +15,11 @@ cargo build --workspace
 # Test
 cargo test --workspace
 
-# Run the exchange simulator
-cargo run -p fig-exchange-sim
+# Run the exchange simulator (exports its dev certificate for clients to pin)
+cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
 # Run the trading client (in another terminal)
-cargo run -p fig-cli
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli
 
 # Compile an FSL schema
 cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out src/generated/
