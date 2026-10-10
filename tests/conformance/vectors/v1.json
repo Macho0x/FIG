@@ -511,6 +511,396 @@
       "channel": null
     },
     {
+      "id": "sbe.account_summary.demo",
+      "category": "sbe",
+      "description": "AccountSummary SBE",
+      "message_type": "AccountSummary",
+      "expected_hex": "0001001f0000001000054143432d3140180000000000004008000000000000000a43555252454e43592d34",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.aggregate_trade_batch.demo",
+      "category": "sbe",
+      "description": "AggregateTradeBatch SBE",
+      "message_type": "AggregateTradeBatch",
+      "expected_hex": "0001000d0000000100044141504c000000020000005200044d534654000e4147472d54524144452d49442d334059c00000000000402200000000000002001046495253542d54524144452d49442d37000f4c4153542d54524144452d49442d3817979cfe362a00080000005200044141504c000e4147472d54524144452d49442d34405a000000000000402400000000000002001046495253542d54524144452d49442d38000f4c4153542d54524144452d49442d3917979cfe362a0009010100064e4558542d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.aggregate_trade_event.demo",
+      "category": "sbe",
+      "description": "AggregateTradeEvent SBE",
+      "message_type": "AggregateTradeEvent",
+      "expected_hex": "0001000b0000000000044141504c000e4147472d54524144452d49442d324059800000000000402000000000000002001046495253542d54524144452d49442d36000f4c4153542d54524144452d49442d3717979cfe362a0007",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.aggregate_trade_request.demo",
+      "category": "sbe",
+      "description": "AggregateTradeRequest SBE",
+      "message_type": "AggregateTradeRequest",
+      "expected_hex": "0001000c0000001400044141504c17979cfe362a00010117979cfe362a00020100000004010100054355522d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.all_mids_batch.demo",
+      "category": "sbe",
+      "description": "AllMidsBatch SBE",
+      "message_type": "AllMidsBatch",
+      "expected_hex": "0001001000000000000000020000002000044141504c4059400000000000401c00000000000017979cfe362a000301010000002000044d5346544059800000000000402000000000000017979cfe362a00040101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.all_mids_request.demo",
+      "category": "sbe",
+      "description": "AllMidsRequest SBE",
+      "message_type": "AllMidsRequest",
+      "expected_hex": "0001000f00000000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.balance_update.demo",
+      "category": "sbe",
+      "description": "BalanceUpdate SBE",
+      "message_type": "BalanceUpdate",
+      "expected_hex": "000100220000001900054143432d31000741535345542d3240080000000000004010000000000000401400000000000002",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.best_bid_offer.demo",
+      "category": "sbe",
+      "description": "BestBidOffer SBE",
+      "message_type": "BestBidOffer",
+      "expected_hex": "0001001a0000002900044141504c405940000000000001401c000000000000014059c000000000000140220000000000000117979cfe362a00050101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.cancel_reject.demo",
+      "category": "sbe",
+      "description": "CancelReject SBE",
+      "message_type": "CancelReject",
+      "expected_hex": "0001000500000001000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d320200044d534654",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.cancel_replace_request.demo",
+      "category": "sbe",
+      "description": "CancelReplaceRequest SBE",
+      "message_type": "CancelReplaceRequest",
+      "expected_hex": "0001000300000011000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c024022000000000000405a40000000000001",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.cancel_request.demo",
+      "category": "sbe",
+      "description": "CancelRequest SBE",
+      "message_type": "CancelRequest",
+      "expected_hex": "0001000200000009000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c02402200000000000001",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.candle_bar_event.demo",
+      "category": "sbe",
+      "description": "CandleBarEvent SBE",
+      "message_type": "CandleBarEvent",
+      "expected_hex": "000100140000000000044141504c0002316840598000000000004059c00000000000405a000000000000405a400000000000402600000000000017979cfe362a000717979cfe362a0008010101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.candle_bar_request.demo",
+      "category": "sbe",
+      "description": "CandleBarRequest SBE",
+      "message_type": "CandleBarRequest",
+      "expected_hex": "000100150000001400044141504c0002316817979cfe362a00020117979cfe362a00030100000005010100054355522d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.capabilities_request.demo",
+      "category": "sbe",
+      "description": "CapabilitiesRequest SBE",
+      "message_type": "CapabilitiesRequest",
+      "expected_hex": "0001003400000000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.execution_report.demo",
+      "category": "sbe",
+      "description": "ExecutionReport SBE",
+      "message_type": "ExecutionReport",
+      "expected_hex": "0001000400000033000b434c2d4f52442d49442d31000a4f524445522d49442d320009455845432d49442d33020202402600000000000001405ac0000000000001402a000000000000402c000000000000405b80000000000000044d53465417979cfe362a000c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.fill_history_batch.demo",
+      "category": "sbe",
+      "description": "FillHistoryBatch SBE",
+      "message_type": "FillHistoryBatch",
+      "expected_hex": "000100290000000100054143432d31000000020000005f000b434c2d4f52442d49442d32000a4f524445522d49442d330009455845432d49442d34020202402800000000000001405b00000000000001402c000000000000402e000000000000405bc0000000000000044141504c17979cfe362a000d0000005f000b434c2d4f52442d49442d33000a4f524445522d49442d340009455845432d49442d35020202402a00000000000001405b40000000000001402e0000000000004030000000000000405c00000000000000044d53465417979cfe362a000e010100064e4558542d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.fill_history_request.demo",
+      "category": "sbe",
+      "description": "FillHistoryRequest SBE",
+      "message_type": "FillHistoryRequest",
+      "expected_hex": "000100280000001400054143432d310100044d53465417979cfe362a00020117979cfe362a00030100000005010100054355522d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.funding_history_batch.demo",
+      "category": "sbe",
+      "description": "FundingHistoryBatch SBE",
+      "message_type": "FundingHistoryBatch",
+      "expected_hex": "0001002c0000000100054143432d31000000020000002600054143432d320100044141504c4020000000000000405a00000000000017979cfe362a00050000002600054143432d310100044d5346544022000000000000405a40000000000017979cfe362a0006010100064e4558542d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.funding_history_request.demo",
+      "category": "sbe",
+      "description": "FundingHistoryRequest SBE",
+      "message_type": "FundingHistoryRequest",
+      "expected_hex": "0001002b0000001400054143432d3117979cfe362a00010117979cfe362a00020100000004010100054355522d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.funding_payment.demo",
+      "category": "sbe",
+      "description": "FundingPayment SBE",
+      "message_type": "FundingPayment",
+      "expected_hex": "0001002a0000001800054143432d310100044d534654401c0000000000004059c0000000000017979cfe362a0004",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.instrument_catalog_request.demo",
+      "category": "sbe",
+      "description": "InstrumentCatalogRequest SBE",
+      "message_type": "InstrumentCatalogRequest",
+      "expected_hex": "0001001d00000000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.instrument_catalog_response.demo",
+      "category": "sbe",
+      "description": "InstrumentCatalogResponse SBE",
+      "message_type": "InstrumentCatalogResponse",
+      "expected_hex": "0001001e00000000000000020000005b000f494e535452554d454e542d49442d3100044d534654000e50524f445543542d4b494e442d3301000e4d415247494e2d41535345542d3401000e444953504c41592d4e414d452d354024000000000000014026000000000000010000005b000f494e535452554d454e542d49442d3200044141504c000e50524f445543542d4b494e442d3401000e4d415247494e2d41535345542d3501000e444953504c41592d4e414d452d36402600000000000001402800000000000001",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.ledger_history_batch.demo",
+      "category": "sbe",
+      "description": "LedgerHistoryBatch SBE",
+      "message_type": "LedgerHistoryBatch",
+      "expected_hex": "0001002f0000000100054143432d31000000020000003200054143432d32000741535345542d3340100000000000000217979cfe362a000501000e5245464552454e43452d49442d370000003200054143432d31000741535345542d3440140000000000000217979cfe362a000601000e5245464552454e43452d49442d38010100064e4558542d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.ledger_history_request.demo",
+      "category": "sbe",
+      "description": "LedgerHistoryRequest SBE",
+      "message_type": "LedgerHistoryRequest",
+      "expected_hex": "0001002e0000001400054143432d3117979cfe362a00010117979cfe362a00020100000004010100054355522d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.ledger_update.demo",
+      "category": "sbe",
+      "description": "LedgerUpdate SBE",
+      "message_type": "LedgerUpdate",
+      "expected_hex": "0001002d0000001100054143432d31000741535345542d3240080000000000000217979cfe362a000401000e5245464552454e43452d49442d36",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.liquidation_trade_event.demo",
+      "category": "sbe",
+      "description": "LiquidationTradeEvent SBE",
+      "message_type": "LiquidationTradeEvent",
+      "expected_hex": "000100130000000000044141504c024059800000000000402000000000000017979cfe362a0004",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.margin_summary.demo",
+      "category": "sbe",
+      "description": "MarginSummary SBE",
+      "message_type": "MarginSummary",
+      "expected_hex": "000100200000002800054143432d3140180000000000004008000000000000402000000000000040140000000000004018000000000000000a43555252454e43592d37",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.margin_update.demo",
+      "category": "sbe",
+      "description": "MarginUpdate SBE",
+      "message_type": "MarginUpdate",
+      "expected_hex": "000100250000000100054143432d3100054143432d32401c000000000000401000000000000040220000000000004018000000000000401c000000000000000a43555252454e43592d380101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.mark_price_request.demo",
+      "category": "sbe",
+      "description": "MarkPriceRequest SBE",
+      "message_type": "MarkPriceRequest",
+      "expected_hex": "000100120000000000044141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.market_data_incremental_refresh.demo",
+      "category": "sbe",
+      "description": "MarketDataIncrementalRefresh SBE",
+      "message_type": "MarketDataIncrementalRefresh",
+      "expected_hex": "000100070000001000044141504c000000020000001202024059c000000000004022000000000000000000120202405a000000000000402400000000000017979cfe362a0002000000000000000a01",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.open_orders_request.demo",
+      "category": "sbe",
+      "description": "OpenOrdersRequest SBE",
+      "message_type": "OpenOrdersRequest",
+      "expected_hex": "000100300000000000054143432d310100044d534654",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.order_book_request.demo",
+      "category": "sbe",
+      "description": "OrderBookRequest SBE",
+      "message_type": "OrderBookRequest",
+      "expected_hex": "000100080000000c00044141504c000000020117979cfe362a000201",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.position_request.demo",
+      "category": "sbe",
+      "description": "PositionRequest SBE",
+      "message_type": "PositionRequest",
+      "expected_hex": "000100360000000000054143432d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.position_snapshot.demo",
+      "category": "sbe",
+      "description": "PositionSnapshot SBE",
+      "message_type": "PositionSnapshot",
+      "expected_hex": "000100230000000100054143432d31000000020000001e00044d534654401c0000000000004059c00000000000405a0000000000000000001e00044141504c4020000000000000405a000000000000405a4000000000000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.public_trade_batch.demo",
+      "category": "sbe",
+      "description": "PublicTradeBatch SBE",
+      "message_type": "PublicTradeBatch",
+      "expected_hex": "000100190000000100044141504c000000020000002b00044d534654000a54524144452d49442d334059c0000000000040220000000000000217979cfe362a00060000002b00044141504c000a54524144452d49442d34405a00000000000040240000000000000217979cfe362a0007010100064e4558542d32",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.public_trade_event.demo",
+      "category": "sbe",
+      "description": "PublicTradeEvent SBE",
+      "message_type": "PublicTradeEvent",
+      "expected_hex": "000100170000000000044141504c000a54524144452d49442d32405980000000000040200000000000000217979cfe362a0005",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.ticker_request.demo",
+      "category": "sbe",
+      "description": "TickerRequest SBE",
+      "message_type": "TickerRequest",
+      "expected_hex": "0001001c0000000000044141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.trade_history_request.demo",
+      "category": "sbe",
+      "description": "TradeHistoryRequest SBE",
+      "message_type": "TradeHistoryRequest",
+      "expected_hex": "000100180000001400044141504c17979cfe362a00010117979cfe362a00020100000004010100054355522d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.user_liquidation.demo",
+      "category": "sbe",
+      "description": "UserLiquidation SBE",
+      "message_type": "UserLiquidation",
+      "expected_hex": "000100260000001800054143432d3100044d534654401c0000000000004059c0000000000017979cfe362a0004",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "sbe.capabilities_response.demo",
       "category": "sbe",
       "description": "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>",

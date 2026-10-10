@@ -13,12 +13,20 @@ use fig_core::codec::encode_cbor;
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
-    AggregateTrade, BalanceSnapshot, CandleBar, CandleBarBatch, CapabilitiesResponse, ExecType,
-    ExecutionReport, InstrumentCatalogResponse, MarkPriceUpdate, MarketDataAction,
-    MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle, OpenOrdersSnapshot,
-    OrdStatus, OrderBookDelta, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest,
-    OrderListStatus, OrderListStatusStatus, OrderType, PositionUpdate, Price, Quantity, Side,
-    SymbolTicker, TimeInForce,
+    AccountSummary, AggregateTrade, AggregateTradeBatch, AggregateTradeEvent,
+    AggregateTradeRequest, AllMidsBatch, AllMidsRequest, BalanceSnapshot, BalanceUpdate,
+    BestBidOffer, CancelReject, CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch,
+    CandleBarEvent, CandleBarRequest, CapabilitiesRequest, CapabilitiesResponse, ExecType,
+    ExecutionReport, FillHistoryBatch, FillHistoryRequest, FundingHistoryBatch,
+    FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest, InstrumentCatalogResponse,
+    InstrumentMetadata, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, LiquidationTrade,
+    LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
+    MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate,
+    MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    OrderListStatusStatus, OrderType, PositionEntry, PositionRequest, PositionSnapshot,
+    PositionUpdate, Price, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity, Side,
+    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, UserLiquidation,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -328,13 +336,528 @@ pub fn sample_symbol_ticker() -> SymbolTicker {
     }
 }
 
+pub fn sample_account_summary() -> AccountSummary {
+    AccountSummary {
+        account: "ACC-1".to_string(),
+        balance: 6.0,
+        buying_power: 3.0,
+        currency: "CURRENCY-4".to_string(),
+    }
+}
+pub fn sample_aggregate_trade_batch() -> AggregateTradeBatch {
+    AggregateTradeBatch {
+        symbol: "AAPL".to_string(),
+        trades: vec![
+            AggregateTrade {
+                symbol: "MSFT".to_string(),
+                agg_trade_id: "AGG-TRADE-ID-3".to_string(),
+                price: Price(103.0),
+                qty: Quantity(9.0),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                first_trade_id: "FIRST-TRADE-ID-7".to_string(),
+                last_trade_id: "LAST-TRADE-ID-8".to_string(),
+                timestamp: 1_700_000_000_000_000_000i64 + 8,
+            },
+            AggregateTrade {
+                symbol: "AAPL".to_string(),
+                agg_trade_id: "AGG-TRADE-ID-4".to_string(),
+                price: Price(104.0),
+                qty: Quantity(10.0),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                first_trade_id: "FIRST-TRADE-ID-8".to_string(),
+                last_trade_id: "LAST-TRADE-ID-9".to_string(),
+                timestamp: 1_700_000_000_000_000_000i64 + 9,
+            },
+        ],
+        has_more: true,
+        next_cursor: Some("NEXT-2".to_string()),
+    }
+}
+pub fn sample_aggregate_trade_event() -> AggregateTradeEvent {
+    AggregateTradeEvent {
+        trade: AggregateTrade {
+            symbol: "AAPL".to_string(),
+            agg_trade_id: "AGG-TRADE-ID-2".to_string(),
+            price: Price(102.0),
+            qty: Quantity(8.0),
+            side: fig_core::messages::Side::from_value(2).expect("variant"),
+            first_trade_id: "FIRST-TRADE-ID-6".to_string(),
+            last_trade_id: "LAST-TRADE-ID-7".to_string(),
+            timestamp: 1_700_000_000_000_000_000i64 + 7,
+        },
+    }
+}
+pub fn sample_aggregate_trade_request() -> AggregateTradeRequest {
+    AggregateTradeRequest {
+        symbol: "AAPL".to_string(),
+        start_time: Some(1_700_000_000_000_000_000i64 + 1),
+        end_time: Some(1_700_000_000_000_000_000i64 + 2),
+        limit: Some(4_u32),
+        cursor: Some("CUR-1".to_string()),
+    }
+}
+pub fn sample_all_mids_batch() -> AllMidsBatch {
+    AllMidsBatch {
+        tickers: vec![
+            MiniTicker {
+                symbol: "AAPL".to_string(),
+                last_price: Price(101.0),
+                volume: Quantity(7.0),
+                timestamp: 1_700_000_000_000_000_000i64 + 3,
+                is_snapshot: Some(true),
+            },
+            MiniTicker {
+                symbol: "MSFT".to_string(),
+                last_price: Price(102.0),
+                volume: Quantity(8.0),
+                timestamp: 1_700_000_000_000_000_000i64 + 4,
+                is_snapshot: Some(true),
+            },
+        ],
+    }
+}
+pub fn sample_all_mids_request() -> AllMidsRequest {
+    AllMidsRequest {}
+}
+pub fn sample_balance_update() -> BalanceUpdate {
+    BalanceUpdate {
+        account: "ACC-1".to_string(),
+        asset: "ASSET-2".to_string(),
+        delta: 3.0,
+        total: 4.0,
+        available: 5.0,
+        reason: fig_core::messages::BalanceUpdateReason::from_value(2).expect("variant"),
+    }
+}
+pub fn sample_best_bid_offer() -> BestBidOffer {
+    BestBidOffer {
+        symbol: "AAPL".to_string(),
+        bid_price: Some(Price(101.0)),
+        bid_qty: Some(Quantity(7.0)),
+        ask_price: Some(Price(103.0)),
+        ask_qty: Some(Quantity(9.0)),
+        timestamp: 1_700_000_000_000_000_000i64 + 5,
+        is_snapshot: Some(true),
+    }
+}
+pub fn sample_cancel_reject() -> CancelReject {
+    CancelReject {
+        cl_ord_id: "CL-ORD-ID-1".to_string(),
+        orig_cl_ord_id: "ORIG-CL-ORD-ID-2".to_string(),
+        reject_reason: fig_core::messages::CancelRejectReason::from_value(2).expect("variant"),
+        symbol: "MSFT".to_string(),
+    }
+}
+pub fn sample_cancel_replace_request() -> CancelReplaceRequest {
+    CancelReplaceRequest {
+        cl_ord_id: "CL-ORD-ID-1".to_string(),
+        orig_cl_ord_id: "ORIG-CL-ORD-ID-2".to_string(),
+        symbol: "AAPL".to_string(),
+        side: fig_core::messages::Side::from_value(2).expect("variant"),
+        order_qty: Quantity(9.0),
+        price: Some(Price(105.0)),
+    }
+}
+pub fn sample_cancel_request() -> CancelRequest {
+    CancelRequest {
+        cl_ord_id: "CL-ORD-ID-1".to_string(),
+        orig_cl_ord_id: "ORIG-CL-ORD-ID-2".to_string(),
+        symbol: "AAPL".to_string(),
+        side: fig_core::messages::Side::from_value(2).expect("variant"),
+        order_qty: Some(Quantity(9.0)),
+    }
+}
+pub fn sample_candle_bar_event() -> CandleBarEvent {
+    CandleBarEvent {
+        bar: CandleBar {
+            symbol: "AAPL".to_string(),
+            interval: "1h".to_string(),
+            open: Price(102.0),
+            high: Price(103.0),
+            low: Price(104.0),
+            close: Price(105.0),
+            volume: Quantity(11.0),
+            bar_start: 1_700_000_000_000_000_000i64 + 7,
+            bar_end: 1_700_000_000_000_000_000i64 + 8,
+            is_final: true,
+            is_snapshot: Some(true),
+        },
+    }
+}
+pub fn sample_candle_bar_request() -> CandleBarRequest {
+    CandleBarRequest {
+        symbol: "AAPL".to_string(),
+        interval: "1h".to_string(),
+        start_time: Some(1_700_000_000_000_000_000i64 + 2),
+        end_time: Some(1_700_000_000_000_000_000i64 + 3),
+        limit: Some(5_u32),
+        cursor: Some("CUR-2".to_string()),
+    }
+}
+pub fn sample_capabilities_request() -> CapabilitiesRequest {
+    CapabilitiesRequest {}
+}
+pub fn sample_execution_report() -> ExecutionReport {
+    ExecutionReport {
+        cl_ord_id: "CL-ORD-ID-1".to_string(),
+        order_id: "ORDER-ID-2".to_string(),
+        exec_id: "EXEC-ID-3".to_string(),
+        exec_type: fig_core::messages::ExecType::from_value(2).expect("variant"),
+        ord_status: fig_core::messages::OrdStatus::from_value(2).expect("variant"),
+        side: fig_core::messages::Side::from_value(2).expect("variant"),
+        last_qty: Some(Quantity(11.0)),
+        last_price: Some(Price(107.0)),
+        leaves_qty: Quantity(13.0),
+        cum_qty: Quantity(14.0),
+        avg_price: Price(110.0),
+        symbol: "MSFT".to_string(),
+        transact_time: 1_700_000_000_000_000_000i64 + 12,
+    }
+}
+pub fn sample_fill_history_batch() -> FillHistoryBatch {
+    FillHistoryBatch {
+        account: "ACC-1".to_string(),
+        fills: vec![
+            ExecutionReport {
+                cl_ord_id: "CL-ORD-ID-2".to_string(),
+                order_id: "ORDER-ID-3".to_string(),
+                exec_id: "EXEC-ID-4".to_string(),
+                exec_type: fig_core::messages::ExecType::from_value(2).expect("variant"),
+                ord_status: fig_core::messages::OrdStatus::from_value(2).expect("variant"),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                last_qty: Some(Quantity(12.0)),
+                last_price: Some(Price(108.0)),
+                leaves_qty: Quantity(14.0),
+                cum_qty: Quantity(15.0),
+                avg_price: Price(111.0),
+                symbol: "AAPL".to_string(),
+                transact_time: 1_700_000_000_000_000_000i64 + 13,
+            },
+            ExecutionReport {
+                cl_ord_id: "CL-ORD-ID-3".to_string(),
+                order_id: "ORDER-ID-4".to_string(),
+                exec_id: "EXEC-ID-5".to_string(),
+                exec_type: fig_core::messages::ExecType::from_value(2).expect("variant"),
+                ord_status: fig_core::messages::OrdStatus::from_value(2).expect("variant"),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                last_qty: Some(Quantity(13.0)),
+                last_price: Some(Price(109.0)),
+                leaves_qty: Quantity(15.0),
+                cum_qty: Quantity(16.0),
+                avg_price: Price(112.0),
+                symbol: "MSFT".to_string(),
+                transact_time: 1_700_000_000_000_000_000i64 + 14,
+            },
+        ],
+        has_more: true,
+        next_cursor: Some("NEXT-2".to_string()),
+    }
+}
+pub fn sample_fill_history_request() -> FillHistoryRequest {
+    FillHistoryRequest {
+        account: "ACC-1".to_string(),
+        symbol: Some("MSFT".to_string()),
+        start_time: Some(1_700_000_000_000_000_000i64 + 2),
+        end_time: Some(1_700_000_000_000_000_000i64 + 3),
+        limit: Some(5_u32),
+        cursor: Some("CUR-2".to_string()),
+    }
+}
+pub fn sample_funding_history_batch() -> FundingHistoryBatch {
+    FundingHistoryBatch {
+        account: "ACC-1".to_string(),
+        payments: vec![
+            FundingPayment {
+                account: "ACC-2".to_string(),
+                symbol: Some("AAPL".to_string()),
+                amount: 8.0,
+                rate: 104.0,
+                timestamp: 1_700_000_000_000_000_000i64 + 5,
+            },
+            FundingPayment {
+                account: "ACC-1".to_string(),
+                symbol: Some("MSFT".to_string()),
+                amount: 9.0,
+                rate: 105.0,
+                timestamp: 1_700_000_000_000_000_000i64 + 6,
+            },
+        ],
+        has_more: true,
+        next_cursor: Some("NEXT-2".to_string()),
+    }
+}
+pub fn sample_funding_history_request() -> FundingHistoryRequest {
+    FundingHistoryRequest {
+        account: "ACC-1".to_string(),
+        start_time: Some(1_700_000_000_000_000_000i64 + 1),
+        end_time: Some(1_700_000_000_000_000_000i64 + 2),
+        limit: Some(4_u32),
+        cursor: Some("CUR-1".to_string()),
+    }
+}
+pub fn sample_funding_payment() -> FundingPayment {
+    FundingPayment {
+        account: "ACC-1".to_string(),
+        symbol: Some("MSFT".to_string()),
+        amount: 7.0,
+        rate: 103.0,
+        timestamp: 1_700_000_000_000_000_000i64 + 4,
+    }
+}
+pub fn sample_instrument_catalog_request() -> InstrumentCatalogRequest {
+    InstrumentCatalogRequest {}
+}
+pub fn sample_instrument_catalog_response() -> InstrumentCatalogResponse {
+    InstrumentCatalogResponse {
+        instruments: vec![
+            InstrumentMetadata {
+                instrument_id: "INSTRUMENT-ID-1".to_string(),
+                symbol: "MSFT".to_string(),
+                product_kind: "PRODUCT-KIND-3".to_string(),
+                margin_asset: Some("MARGIN-ASSET-4".to_string()),
+                display_name: Some("DISPLAY-NAME-5".to_string()),
+                tick_size: Some(10.0),
+                lot_size: Some(11.0),
+            },
+            InstrumentMetadata {
+                instrument_id: "INSTRUMENT-ID-2".to_string(),
+                symbol: "AAPL".to_string(),
+                product_kind: "PRODUCT-KIND-4".to_string(),
+                margin_asset: Some("MARGIN-ASSET-5".to_string()),
+                display_name: Some("DISPLAY-NAME-6".to_string()),
+                tick_size: Some(11.0),
+                lot_size: Some(12.0),
+            },
+        ],
+    }
+}
+pub fn sample_ledger_history_batch() -> LedgerHistoryBatch {
+    LedgerHistoryBatch {
+        account: "ACC-1".to_string(),
+        entries: vec![
+            LedgerUpdate {
+                account: "ACC-2".to_string(),
+                asset: "ASSET-3".to_string(),
+                delta: 4.0,
+                kind: fig_core::messages::LedgerUpdateKind::from_value(2).expect("variant"),
+                timestamp: 1_700_000_000_000_000_000i64 + 5,
+                reference_id: Some("REFERENCE-ID-7".to_string()),
+            },
+            LedgerUpdate {
+                account: "ACC-1".to_string(),
+                asset: "ASSET-4".to_string(),
+                delta: 5.0,
+                kind: fig_core::messages::LedgerUpdateKind::from_value(2).expect("variant"),
+                timestamp: 1_700_000_000_000_000_000i64 + 6,
+                reference_id: Some("REFERENCE-ID-8".to_string()),
+            },
+        ],
+        has_more: true,
+        next_cursor: Some("NEXT-2".to_string()),
+    }
+}
+pub fn sample_ledger_history_request() -> LedgerHistoryRequest {
+    LedgerHistoryRequest {
+        account: "ACC-1".to_string(),
+        start_time: Some(1_700_000_000_000_000_000i64 + 1),
+        end_time: Some(1_700_000_000_000_000_000i64 + 2),
+        limit: Some(4_u32),
+        cursor: Some("CUR-1".to_string()),
+    }
+}
+pub fn sample_ledger_update() -> LedgerUpdate {
+    LedgerUpdate {
+        account: "ACC-1".to_string(),
+        asset: "ASSET-2".to_string(),
+        delta: 3.0,
+        kind: fig_core::messages::LedgerUpdateKind::from_value(2).expect("variant"),
+        timestamp: 1_700_000_000_000_000_000i64 + 4,
+        reference_id: Some("REFERENCE-ID-6".to_string()),
+    }
+}
+pub fn sample_liquidation_trade_event() -> LiquidationTradeEvent {
+    LiquidationTradeEvent {
+        trade: LiquidationTrade {
+            symbol: "AAPL".to_string(),
+            side: fig_core::messages::Side::from_value(2).expect("variant"),
+            price: Price(102.0),
+            qty: Quantity(8.0),
+            timestamp: 1_700_000_000_000_000_000i64 + 4,
+        },
+    }
+}
+pub fn sample_margin_summary() -> MarginSummary {
+    MarginSummary {
+        account: "ACC-1".to_string(),
+        balance: 6.0,
+        buying_power: 3.0,
+        equity: 8.0,
+        margin_used: 5.0,
+        available: 6.0,
+        currency: "CURRENCY-7".to_string(),
+    }
+}
+pub fn sample_margin_update() -> MarginUpdate {
+    MarginUpdate {
+        account: "ACC-1".to_string(),
+        summary: MarginSummary {
+            account: "ACC-2".to_string(),
+            balance: 7.0,
+            buying_power: 4.0,
+            equity: 9.0,
+            margin_used: 6.0,
+            available: 7.0,
+            currency: "CURRENCY-8".to_string(),
+        },
+        is_snapshot: Some(true),
+    }
+}
+pub fn sample_mark_price_request() -> MarkPriceRequest {
+    MarkPriceRequest {
+        symbol: "AAPL".to_string(),
+    }
+}
+pub fn sample_market_data_incremental_refresh() -> MarketDataIncrementalRefresh {
+    MarketDataIncrementalRefresh {
+        symbol: "AAPL".to_string(),
+        updates: vec![
+            MarketDataUpdate {
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                action: fig_core::messages::MarketDataAction::from_value(2).expect("variant"),
+                price: Price(103.0),
+                qty: Quantity(9.0),
+            },
+            MarketDataUpdate {
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                action: fig_core::messages::MarketDataAction::from_value(2).expect("variant"),
+                price: Price(104.0),
+                qty: Quantity(10.0),
+            },
+        ],
+        timestamp: 1_700_000_000_000_000_000i64 + 2,
+        sequence: Some(10_u64),
+    }
+}
+pub fn sample_open_orders_request() -> OpenOrdersRequest {
+    OpenOrdersRequest {
+        account: "ACC-1".to_string(),
+        symbol: Some("MSFT".to_string()),
+    }
+}
+pub fn sample_order_book_request() -> OrderBookRequest {
+    OrderBookRequest {
+        symbol: "AAPL".to_string(),
+        depth: Some(2_u32),
+        at_time: Some(1_700_000_000_000_000_000i64 + 2),
+    }
+}
+pub fn sample_position_request() -> PositionRequest {
+    PositionRequest {
+        account: "ACC-1".to_string(),
+    }
+}
+pub fn sample_position_snapshot() -> PositionSnapshot {
+    PositionSnapshot {
+        account: "ACC-1".to_string(),
+        positions: vec![
+            PositionEntry {
+                symbol: "MSFT".to_string(),
+                qty: Quantity(7.0),
+                entry_price: Price(103.0),
+                unrealized_pnl: 104.0,
+            },
+            PositionEntry {
+                symbol: "AAPL".to_string(),
+                qty: Quantity(8.0),
+                entry_price: Price(104.0),
+                unrealized_pnl: 105.0,
+            },
+        ],
+        is_snapshot: Some(true),
+    }
+}
+pub fn sample_public_trade_batch() -> PublicTradeBatch {
+    PublicTradeBatch {
+        symbol: "AAPL".to_string(),
+        trades: vec![
+            PublicTrade {
+                symbol: "MSFT".to_string(),
+                trade_id: "TRADE-ID-3".to_string(),
+                price: Price(103.0),
+                qty: Quantity(9.0),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                timestamp: 1_700_000_000_000_000_000i64 + 6,
+            },
+            PublicTrade {
+                symbol: "AAPL".to_string(),
+                trade_id: "TRADE-ID-4".to_string(),
+                price: Price(104.0),
+                qty: Quantity(10.0),
+                side: fig_core::messages::Side::from_value(2).expect("variant"),
+                timestamp: 1_700_000_000_000_000_000i64 + 7,
+            },
+        ],
+        has_more: true,
+        next_cursor: Some("NEXT-2".to_string()),
+    }
+}
+pub fn sample_public_trade_event() -> PublicTradeEvent {
+    PublicTradeEvent {
+        trade: PublicTrade {
+            symbol: "AAPL".to_string(),
+            trade_id: "TRADE-ID-2".to_string(),
+            price: Price(102.0),
+            qty: Quantity(8.0),
+            side: fig_core::messages::Side::from_value(2).expect("variant"),
+            timestamp: 1_700_000_000_000_000_000i64 + 5,
+        },
+    }
+}
+pub fn sample_ticker_request() -> TickerRequest {
+    TickerRequest {
+        symbol: "AAPL".to_string(),
+    }
+}
+pub fn sample_trade_history_request() -> TradeHistoryRequest {
+    TradeHistoryRequest {
+        symbol: "AAPL".to_string(),
+        start_time: Some(1_700_000_000_000_000_000i64 + 1),
+        end_time: Some(1_700_000_000_000_000_000i64 + 2),
+        limit: Some(4_u32),
+        cursor: Some("CUR-1".to_string()),
+    }
+}
+pub fn sample_user_liquidation() -> UserLiquidation {
+    UserLiquidation {
+        account: "ACC-1".to_string(),
+        symbol: "MSFT".to_string(),
+        qty: Quantity(7.0),
+        price: Price(103.0),
+        timestamp: 1_700_000_000_000_000_000i64 + 4,
+    }
+}
+
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
-        encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
-        encode_capabilities_response, encode_mark_price_update, encode_market_data_snapshot,
-        encode_mini_ticker, encode_open_orders_snapshot, encode_order_book_delta,
-        encode_order_book_snapshot, encode_order_history_batch, encode_order_history_request,
-        encode_order_list_status, encode_position_update, encode_symbol_ticker,
+        encode_account_summary, encode_aggregate_trade_batch, encode_aggregate_trade_event,
+        encode_aggregate_trade_request, encode_all_mids_batch, encode_all_mids_request,
+        encode_balance_snapshot, encode_balance_update, encode_best_bid_offer,
+        encode_cancel_reject, encode_cancel_replace_request, encode_cancel_request,
+        encode_candle_bar, encode_candle_bar_batch, encode_candle_bar_event,
+        encode_candle_bar_request, encode_capabilities_request, encode_capabilities_response,
+        encode_execution_report, encode_fill_history_batch, encode_fill_history_request,
+        encode_funding_history_batch, encode_funding_history_request, encode_funding_payment,
+        encode_instrument_catalog_request, encode_instrument_catalog_response,
+        encode_ledger_history_batch, encode_ledger_history_request, encode_ledger_update,
+        encode_liquidation_trade_event, encode_margin_summary, encode_margin_update,
+        encode_mark_price_request, encode_mark_price_update,
+        encode_market_data_incremental_refresh, encode_market_data_snapshot, encode_mini_ticker,
+        encode_open_orders_request, encode_open_orders_snapshot, encode_order_book_delta,
+        encode_order_book_request, encode_order_book_snapshot, encode_order_history_batch,
+        encode_order_history_request, encode_order_list_status, encode_position_request,
+        encode_position_snapshot, encode_position_update, encode_public_trade_batch,
+        encode_public_trade_event, encode_symbol_ticker, encode_ticker_request,
+        encode_trade_history_request, encode_user_liquidation,
     };
 
     let encoded = match vector.message_type.as_str() {
@@ -361,6 +884,57 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "OrderHistoryRequest" => encode_order_history_request(&sample_order_history_request()),
         "OrderListStatus" => encode_order_list_status(&sample_order_list_status()),
         "PositionUpdate" => encode_position_update(&sample_position_update()),
+        "AccountSummary" => encode_account_summary(&sample_account_summary()),
+        "AggregateTradeBatch" => encode_aggregate_trade_batch(&sample_aggregate_trade_batch()),
+        "AggregateTradeEvent" => encode_aggregate_trade_event(&sample_aggregate_trade_event()),
+        "AggregateTradeRequest" => {
+            encode_aggregate_trade_request(&sample_aggregate_trade_request())
+        }
+        "AllMidsBatch" => encode_all_mids_batch(&sample_all_mids_batch()),
+        "AllMidsRequest" => encode_all_mids_request(&sample_all_mids_request()),
+        "BalanceUpdate" => encode_balance_update(&sample_balance_update()),
+        "BestBidOffer" => encode_best_bid_offer(&sample_best_bid_offer()),
+        "CancelReject" => encode_cancel_reject(&sample_cancel_reject()),
+        "CancelReplaceRequest" => encode_cancel_replace_request(&sample_cancel_replace_request()),
+        "CancelRequest" => encode_cancel_request(&sample_cancel_request()),
+        "CandleBarEvent" => encode_candle_bar_event(&sample_candle_bar_event()),
+        "CandleBarRequest" => encode_candle_bar_request(&sample_candle_bar_request()),
+        "CapabilitiesRequest" => encode_capabilities_request(&sample_capabilities_request()),
+        "ExecutionReport" => encode_execution_report(&sample_execution_report()),
+        "FillHistoryBatch" => encode_fill_history_batch(&sample_fill_history_batch()),
+        "FillHistoryRequest" => encode_fill_history_request(&sample_fill_history_request()),
+        "FundingHistoryBatch" => encode_funding_history_batch(&sample_funding_history_batch()),
+        "FundingHistoryRequest" => {
+            encode_funding_history_request(&sample_funding_history_request())
+        }
+        "FundingPayment" => encode_funding_payment(&sample_funding_payment()),
+        "InstrumentCatalogRequest" => {
+            encode_instrument_catalog_request(&sample_instrument_catalog_request())
+        }
+        "InstrumentCatalogResponse" => {
+            encode_instrument_catalog_response(&sample_instrument_catalog_response())
+        }
+        "LedgerHistoryBatch" => encode_ledger_history_batch(&sample_ledger_history_batch()),
+        "LedgerHistoryRequest" => encode_ledger_history_request(&sample_ledger_history_request()),
+        "LedgerUpdate" => encode_ledger_update(&sample_ledger_update()),
+        "LiquidationTradeEvent" => {
+            encode_liquidation_trade_event(&sample_liquidation_trade_event())
+        }
+        "MarginSummary" => encode_margin_summary(&sample_margin_summary()),
+        "MarginUpdate" => encode_margin_update(&sample_margin_update()),
+        "MarkPriceRequest" => encode_mark_price_request(&sample_mark_price_request()),
+        "MarketDataIncrementalRefresh" => {
+            encode_market_data_incremental_refresh(&sample_market_data_incremental_refresh())
+        }
+        "OpenOrdersRequest" => encode_open_orders_request(&sample_open_orders_request()),
+        "OrderBookRequest" => encode_order_book_request(&sample_order_book_request()),
+        "PositionRequest" => encode_position_request(&sample_position_request()),
+        "PositionSnapshot" => encode_position_snapshot(&sample_position_snapshot()),
+        "PublicTradeBatch" => encode_public_trade_batch(&sample_public_trade_batch()),
+        "PublicTradeEvent" => encode_public_trade_event(&sample_public_trade_event()),
+        "TickerRequest" => encode_ticker_request(&sample_ticker_request()),
+        "TradeHistoryRequest" => encode_trade_history_request(&sample_trade_history_request()),
+        "UserLiquidation" => encode_user_liquidation(&sample_user_liquidation()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;

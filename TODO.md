@@ -202,7 +202,7 @@ items do not block the SPEC version bump if accepted or ticketed in §18.7.
 | **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
 | **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
 | **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
-| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers; per-language generated SBE compiled + hex-parity-checked | Native TREE per language; conformance vectors for the remaining SBE messages |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers; per-language generated SBE compiled + hex-parity-checked | Native TREE per language |
 | **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
 | **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
 | **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |
@@ -533,7 +533,7 @@ integration tests are the reference behavior.
 
 ### 16.2 FSL Codegen Parity (Track A)
 
-> **Native SBE codecs per language: shipped for all five targets, scalar lists included.**
+> **Native SBE codecs per language: shipped for all five targets; vector coverage complete.**
 > The emission layer was rewritten (per-language type maps, parameter syntax, the normative field
 > layout, `{Name}Encoder`/`{Name}Decoder` for structs, `{Name}BodyEncoder`/`{Name}BodyDecoder` for
 > message nesting, `(buf, pos)` decoders, list layout with per-item length prefixes, list-of-scalar
@@ -548,19 +548,11 @@ integration tests are the reference behavior.
 > parameters, C# namespace-level constants/helpers and nullable-reference optionals, and
 > `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
-> **Outstanding:**
-> 1. Vector coverage: 16 of 54 catalog messages now have an SBE vector (every message type that
->    already had a CBOR sample, plus `CapabilitiesResponse`); the other ~38 need a `sample_*` in
->    `fig-conformance` and an `encode_*` helper in `fig-core::sbe` — the vectors are only as good
->    as that sample data, which is why the CBOR-covered set came first. The five generated-target
->    parity drivers cover `NewOrderSingle`, `OrderBookSnapshot` and `CapabilitiesResponse`, i.e.
->    every distinct wire shape (optionals, enums, nested structs, struct lists, scalar lists);
->    extending them to all 16 would need hand-written call sites in five languages.
-> 2. Scalar list items are defined for `u8`/`u16`/`i16`/`u32`/`i32`/`u64`/`i64`/`f32`/`f64` and
->    strings, but no schema currently exercises the numeric variants (the only scalar lists in the
->    catalog are `list<uint8>`, `list<Symbol>`, `list<CandleInterval>`), so those paths are emitted
->    but unverified.
-
+> **Vector coverage is complete.** Every message in the catalog has an SBE vector (55 message
+> types, 79 vectors total). Each sample is authored to exercise the non-degenerate paths —
+> optionals present, lists with two distinct elements, enums at a non-first variant, non-empty
+> strings, timestamps in the `i64` range — and the runner re-encodes every sample and compares it
+> to the pinned hex, so a codec regression fails CI rather than silently re-pinning.
 Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 
 | Status | Item | Priority | Notes |

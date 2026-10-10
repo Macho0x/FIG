@@ -2,10 +2,19 @@
 
 use crate::generated::sbe_wire::*;
 use crate::messages::{
-    BalanceSnapshot, CancelRequest, CandleBar, CandleBarBatch, ExecutionReport, MarkPriceUpdate,
-    MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    AccountSummary, AggregateTradeBatch, AggregateTradeEvent, AggregateTradeRequest, AllMidsBatch,
+    AllMidsRequest, BalanceSnapshot, BalanceUpdate, BestBidOffer, CancelReject,
+    CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch, CandleBarEvent,
+    CandleBarRequest, CapabilitiesRequest, ExecutionReport, FillHistoryBatch, FillHistoryRequest,
+    FundingHistoryBatch, FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest,
+    InstrumentCatalogResponse, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate,
+    LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
+    MarketDataIncrementalRefresh, MarketDataSnapshot, MiniTicker, NewOrderSingle,
+    OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
     OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderType,
-    PositionUpdate, SecurityIdSource, Side, SymbolTicker, TimeInForce,
+    PositionRequest, PositionSnapshot, PositionUpdate, PublicTradeBatch, PublicTradeEvent,
+    SecurityIdSource, Side, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
+    UserLiquidation,
 };
 
 /// Errors that can occur during SBE encoding or decoding.
@@ -375,6 +384,284 @@ pub fn encode_position_update(m: &PositionUpdate) -> Vec<u8> {
     )
 }
 
+/// Encode a `AccountSummary` SBE message.
+pub fn encode_account_summary(m: &AccountSummary) -> Vec<u8> {
+    AccountSummaryEncoder::encode(
+        m.account.clone(),
+        m.balance,
+        m.buying_power,
+        m.currency.clone(),
+    )
+}
+/// Encode a `AggregateTradeBatch` SBE message.
+pub fn encode_aggregate_trade_batch(m: &AggregateTradeBatch) -> Vec<u8> {
+    AggregateTradeBatchEncoder::encode(
+        m.symbol.clone(),
+        m.trades.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+/// Encode a `AggregateTradeEvent` SBE message.
+pub fn encode_aggregate_trade_event(m: &AggregateTradeEvent) -> Vec<u8> {
+    AggregateTradeEventEncoder::encode(m.trade.clone())
+}
+/// Encode a `AggregateTradeRequest` SBE message.
+pub fn encode_aggregate_trade_request(m: &AggregateTradeRequest) -> Vec<u8> {
+    AggregateTradeRequestEncoder::encode(
+        m.symbol.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `AllMidsBatch` SBE message.
+pub fn encode_all_mids_batch(m: &AllMidsBatch) -> Vec<u8> {
+    AllMidsBatchEncoder::encode(m.tickers.clone())
+}
+/// Encode a `AllMidsRequest` SBE message.
+pub fn encode_all_mids_request(m: &AllMidsRequest) -> Vec<u8> {
+    let _ = m;
+    AllMidsRequestEncoder::encode()
+}
+/// Encode a `BalanceUpdate` SBE message.
+pub fn encode_balance_update(m: &BalanceUpdate) -> Vec<u8> {
+    BalanceUpdateEncoder::encode(
+        m.account.clone(),
+        m.asset.clone(),
+        m.delta,
+        m.total,
+        m.available,
+        m.reason,
+    )
+}
+/// Encode a `BestBidOffer` SBE message.
+pub fn encode_best_bid_offer(m: &BestBidOffer) -> Vec<u8> {
+    BestBidOfferEncoder::encode(
+        m.symbol.clone(),
+        m.bid_price.clone(),
+        m.bid_qty.clone(),
+        m.ask_price.clone(),
+        m.ask_qty.clone(),
+        m.timestamp,
+        m.is_snapshot,
+    )
+}
+/// Encode a `CancelReject` SBE message.
+pub fn encode_cancel_reject(m: &CancelReject) -> Vec<u8> {
+    CancelRejectEncoder::encode(
+        m.cl_ord_id.clone(),
+        m.orig_cl_ord_id.clone(),
+        CancelRejectRejectReason::from_value(m.reject_reason.to_value()).expect("reject_reason"),
+        m.symbol.clone(),
+    )
+}
+/// Encode a `CancelReplaceRequest` SBE message.
+pub fn encode_cancel_replace_request(m: &CancelReplaceRequest) -> Vec<u8> {
+    CancelReplaceRequestEncoder::encode(
+        m.cl_ord_id.clone(),
+        m.orig_cl_ord_id.clone(),
+        m.symbol.clone(),
+        CancelReplaceRequestSide::from_value(m.side.to_value()).expect("side"),
+        m.order_qty.clone(),
+        m.price.clone(),
+    )
+}
+/// Encode a `CandleBarEvent` SBE message.
+pub fn encode_candle_bar_event(m: &CandleBarEvent) -> Vec<u8> {
+    CandleBarEventEncoder::encode(m.bar.clone())
+}
+/// Encode a `CandleBarRequest` SBE message.
+pub fn encode_candle_bar_request(m: &CandleBarRequest) -> Vec<u8> {
+    CandleBarRequestEncoder::encode(
+        m.symbol.clone(),
+        m.interval.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `CapabilitiesRequest` SBE message.
+pub fn encode_capabilities_request(m: &CapabilitiesRequest) -> Vec<u8> {
+    let _ = m;
+    CapabilitiesRequestEncoder::encode()
+}
+/// Encode a `FillHistoryBatch` SBE message.
+pub fn encode_fill_history_batch(m: &FillHistoryBatch) -> Vec<u8> {
+    FillHistoryBatchEncoder::encode(
+        m.account.clone(),
+        m.fills.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+/// Encode a `FillHistoryRequest` SBE message.
+pub fn encode_fill_history_request(m: &FillHistoryRequest) -> Vec<u8> {
+    FillHistoryRequestEncoder::encode(
+        m.account.clone(),
+        m.symbol.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `FundingHistoryBatch` SBE message.
+pub fn encode_funding_history_batch(m: &FundingHistoryBatch) -> Vec<u8> {
+    FundingHistoryBatchEncoder::encode(
+        m.account.clone(),
+        m.payments.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+/// Encode a `FundingHistoryRequest` SBE message.
+pub fn encode_funding_history_request(m: &FundingHistoryRequest) -> Vec<u8> {
+    FundingHistoryRequestEncoder::encode(
+        m.account.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `FundingPayment` SBE message.
+pub fn encode_funding_payment(m: &FundingPayment) -> Vec<u8> {
+    FundingPaymentEncoder::encode(
+        m.account.clone(),
+        m.symbol.clone(),
+        m.amount,
+        m.rate,
+        m.timestamp,
+    )
+}
+/// Encode a `InstrumentCatalogRequest` SBE message.
+pub fn encode_instrument_catalog_request(m: &InstrumentCatalogRequest) -> Vec<u8> {
+    let _ = m;
+    InstrumentCatalogRequestEncoder::encode()
+}
+/// Encode a `InstrumentCatalogResponse` SBE message.
+pub fn encode_instrument_catalog_response(m: &InstrumentCatalogResponse) -> Vec<u8> {
+    InstrumentCatalogResponseEncoder::encode(m.instruments.clone())
+}
+/// Encode a `LedgerHistoryBatch` SBE message.
+pub fn encode_ledger_history_batch(m: &LedgerHistoryBatch) -> Vec<u8> {
+    LedgerHistoryBatchEncoder::encode(
+        m.account.clone(),
+        m.entries.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+/// Encode a `LedgerHistoryRequest` SBE message.
+pub fn encode_ledger_history_request(m: &LedgerHistoryRequest) -> Vec<u8> {
+    LedgerHistoryRequestEncoder::encode(
+        m.account.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `LedgerUpdate` SBE message.
+pub fn encode_ledger_update(m: &LedgerUpdate) -> Vec<u8> {
+    LedgerUpdateEncoder::encode(
+        m.account.clone(),
+        m.asset.clone(),
+        m.delta,
+        m.kind,
+        m.timestamp,
+        m.reference_id.clone(),
+    )
+}
+/// Encode a `LiquidationTradeEvent` SBE message.
+pub fn encode_liquidation_trade_event(m: &LiquidationTradeEvent) -> Vec<u8> {
+    LiquidationTradeEventEncoder::encode(m.trade.clone())
+}
+/// Encode a `MarginSummary` SBE message.
+pub fn encode_margin_summary(m: &MarginSummary) -> Vec<u8> {
+    MarginSummaryEncoder::encode(
+        m.account.clone(),
+        m.balance,
+        m.buying_power,
+        m.equity,
+        m.margin_used,
+        m.available,
+        m.currency.clone(),
+    )
+}
+/// Encode a `MarginUpdate` SBE message.
+pub fn encode_margin_update(m: &MarginUpdate) -> Vec<u8> {
+    MarginUpdateEncoder::encode(m.account.clone(), m.summary.clone(), m.is_snapshot)
+}
+/// Encode a `MarkPriceRequest` SBE message.
+pub fn encode_mark_price_request(m: &MarkPriceRequest) -> Vec<u8> {
+    MarkPriceRequestEncoder::encode(m.symbol.clone())
+}
+/// Encode a `MarketDataIncrementalRefresh` SBE message.
+pub fn encode_market_data_incremental_refresh(m: &MarketDataIncrementalRefresh) -> Vec<u8> {
+    MarketDataIncrementalRefreshEncoder::encode(
+        m.symbol.clone(),
+        m.updates.clone(),
+        m.timestamp,
+        m.sequence,
+    )
+}
+/// Encode a `OpenOrdersRequest` SBE message.
+pub fn encode_open_orders_request(m: &OpenOrdersRequest) -> Vec<u8> {
+    OpenOrdersRequestEncoder::encode(m.account.clone(), m.symbol.clone())
+}
+/// Encode a `OrderBookRequest` SBE message.
+pub fn encode_order_book_request(m: &OrderBookRequest) -> Vec<u8> {
+    OrderBookRequestEncoder::encode(m.symbol.clone(), m.depth, m.at_time)
+}
+/// Encode a `PositionRequest` SBE message.
+pub fn encode_position_request(m: &PositionRequest) -> Vec<u8> {
+    PositionRequestEncoder::encode(m.account.clone())
+}
+/// Encode a `PositionSnapshot` SBE message.
+pub fn encode_position_snapshot(m: &PositionSnapshot) -> Vec<u8> {
+    PositionSnapshotEncoder::encode(m.account.clone(), m.positions.clone(), m.is_snapshot)
+}
+/// Encode a `PublicTradeBatch` SBE message.
+pub fn encode_public_trade_batch(m: &PublicTradeBatch) -> Vec<u8> {
+    PublicTradeBatchEncoder::encode(
+        m.symbol.clone(),
+        m.trades.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+/// Encode a `PublicTradeEvent` SBE message.
+pub fn encode_public_trade_event(m: &PublicTradeEvent) -> Vec<u8> {
+    PublicTradeEventEncoder::encode(m.trade.clone())
+}
+/// Encode a `TickerRequest` SBE message.
+pub fn encode_ticker_request(m: &TickerRequest) -> Vec<u8> {
+    TickerRequestEncoder::encode(m.symbol.clone())
+}
+/// Encode a `TradeHistoryRequest` SBE message.
+pub fn encode_trade_history_request(m: &TradeHistoryRequest) -> Vec<u8> {
+    TradeHistoryRequestEncoder::encode(
+        m.symbol.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+/// Encode a `UserLiquidation` SBE message.
+pub fn encode_user_liquidation(m: &UserLiquidation) -> Vec<u8> {
+    UserLiquidationEncoder::encode(
+        m.account.clone(),
+        m.symbol.clone(),
+        m.qty.clone(),
+        m.price.clone(),
+        m.timestamp,
+    )
+}
 /// Encode a `CapabilitiesResponse` SBE message — exercises list-of-scalar fields
 /// (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`).
 pub fn encode_capabilities_response(resp: &crate::messages::CapabilitiesResponse) -> Vec<u8> {

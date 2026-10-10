@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to the FIG repository.
+## 1.3.1
+
+### Added
+- **Complete SBE conformance-vector coverage.** Every message in the catalog now has an SBE
+  vector — 55 message types / 79 vectors total, up from 7. Samples are authored to exercise the
+  non-degenerate paths (optionals present, lists with two distinct elements, enums at a non-first
+  variant, non-empty strings, `i64` timestamps), and `fig-conformance` re-encodes each sample and
+  compares it against the pinned hex, so encoder regressions fail CI.
+- `fig-conformance` exposes its `sample_*` builders so the vector generator and the runner share
+  one definition rather than duplicating literals.
+
 ## 1.3.0
 
 ### Added
