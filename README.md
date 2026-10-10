@@ -125,6 +125,7 @@ Full sequences: [docs/PROTOCOL.md](docs/PROTOCOL.md).
 | **Public market data** | No token — subscribe on `marketdata/...` paths |
 | **Private paths** | `AUTH_TOKEN` extension on every frame; principal must match `{account}` in `ChannelPath` ([SPEC §9.3](SPEC.md)) |
 | **Your venue** | Issues, rotates, and revokes credentials (JWT/OAuth patterns in spec) — FIG only **verifies** |
+| **Token verification** | HS256 reference verifier, or **RS256 from a JWKS/PEM key set** (`FIG_JWT_JWKS`) with `kid`-based rotation and a KMS adapter — see [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) |
 | **Local dev** | Simulator accepts test token `fig-dev-{account}`; set `FIG_DEV_OPEN=1` on the server to skip auth (ignored when `FIG_PRODUCTION=1`) |
 
 ### Transport security
@@ -461,7 +462,8 @@ Index with “if you want to…” paths: **[docs/README.md](docs/README.md)**.
 | [docs/API.md](docs/API.md) | Crate and module index |
 | [TODO.md §0](TODO.md#0-active-backlog-fig-repo) | Active backlog (priority-ordered open work) |
 | [TODO.md §18](TODO.md#18-fig-10-release-criteria) | 1.0 release criteria + venue adoption (§19–21) |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA deployment and operations |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA deployment, TLS/PKI and environment configuration |
+| [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) | Rotating token signing keys with zero downtime |
 | [docs/PUBLISHING.md](docs/PUBLISHING.md) | Build and install SDKs |
 | [schemas/orders.fsl](schemas/orders.fsl) | Example FSL schema |
 | [TODO.md](TODO.md) | Implementation roadmap |

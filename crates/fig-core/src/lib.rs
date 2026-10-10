@@ -91,6 +91,7 @@ pub mod fragment;
 pub mod frame;
 pub mod generated;
 pub mod jwt;
+pub mod jwt_keys;
 pub mod messages;
 pub mod migration;
 pub mod oauth;

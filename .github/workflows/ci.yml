@@ -58,6 +58,10 @@ jobs:
         run: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test --workspace --all-features
       - name: Redis session round-trip
         run: cargo test -p fig-core --features session-redis round_trip_session -- --nocapture
+      - name: Redis shared replay cache
+        run: |
+          FIG_REPLAY_REDIS_URL=redis://127.0.0.1:6379 cargo test -p fig-core \
+            --features session-redis replay::tests::redis_replay_is_shared_across_instances -- --nocapture
       - name: Conformance vectors
         run: cargo run -p fig-conformance --bin fig-conformance
       - name: Python binding conformance

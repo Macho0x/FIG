@@ -12,6 +12,7 @@ Guides below are how-to: they must match the spec, not replace it.
 | Historical `REQUEST` / REST GET | [QUERY.md](QUERY.md) |
 | Keep FIX / REST / WebSocket clients | [GATEWAY.md](GATEWAY.md) |
 | Deploy a venue | [DEPLOYMENT.md](DEPLOYMENT.md) |
+| Rotate JWT signing keys | [JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md) |
 | Colo SBE order entry | [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md) |
 | Language bindings | [bindings/README.md](../bindings/README.md) · [PUBLISHING.md](PUBLISHING.md) |
 | Crate / module map | [API.md](API.md) |

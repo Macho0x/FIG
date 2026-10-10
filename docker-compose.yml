@@ -12,6 +12,8 @@ services:
       RUST_LOG: info
       # Demo compose only — never set FIG_DEV_OPEN in production.
       FIG_DEV_OPEN: "1"
+      # Shared replay cache so a 0-RTT token replayed to another node is rejected.
+      FIG_REPLAY_REDIS_URL: redis://redis:6379
     command:
       - fig-exchange-sim
       - --addr

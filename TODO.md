@@ -51,7 +51,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | SBE decoders bounds-checked; list allocations capped | both | `crates/fig-fsl/src/sbe_codegen.rs`; fuzz target `sbe_decode` |
 | ✅ | Frame size cap + `DoSGuard`/`ChannelRateLimiter` wired into the receive path | both | `frame::MAX_FRAME_SIZE`, `FigConnection` |
 | ✅ | Fuzz `frame_decode` in required CI | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| ⬜ | Shared `RedisReplayCache` for HA 0-RTT | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | Shared `RedisReplayCache` for HA 0-RTT | both | `fig_core::replay::RedisReplayCache`, `FIG_REPLAY_REDIS_URL` — [§18.2](#182-security) |
 | ✅ | 0-RTT replay on server accept path (criteria row) | both | `FigServer::accept_0rtt` + signed-token verification — [§18.2](#182-security) |
 
 ### 0.3 P2 — Reference client and SDK polish
@@ -65,7 +65,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
 | ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
-| 🔶 | JWT RS256/KMS reference + key rotation runbook | both | HS256 verifier is constant-time and enforces `alg`; RS256/KMS remains venue-owned |
+| ✅ | JWT RS256/JWKS verification + key rotation | both | `fig_core::jwt_keys` (`FIG_JWT_JWKS`, `RsaKeySet`, `JwtVerifier`/`FnVerifier`) · [JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) |
 | 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
 
 ### 0.4 P3 — Shared adoption (both tracks)
@@ -158,7 +158,7 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 | ✅ | Load / flood smoke test | Required | `fig-load` bin, CI `FIG_LOAD_SECS=3` |
 | ✅ | mTLS (CA-verified) + rate limits enforced | Required | `FIG_MTLS_CA`, `ChannelRateLimiter`, `DoSGuard` |
 | ⬜ | External penetration test | Optional | Manual — [SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) |
-| ⬜ | Shared Redis replay cache for HA | Post-1.1 | Per-node `MemoryReplayCache`; tokens are signed so replay is bounded per node |
+| ✅ | Shared Redis replay cache for HA | Post-1.1 | `RedisReplayCache` via `FIG_REPLAY_REDIS_URL` (`session-redis`); per-node `MemoryReplayCache` fallback |
 
 \*Post-1.0 items do not block 1.0 if accepted or ticketed in §18.7.
 

@@ -50,6 +50,9 @@ cargo doc --workspace --no-deps --open
 | [`control`](../crates/fig-core/src/control.rs) | CONTROL frame dispatcher (PING, AUTH_REFRESH, SEQ_RESET, …) |
 | [`auth`](../crates/fig-core/src/auth.rs) | Wire auth: token/mTLS types, constant-time verify, refresh hooks — not credential issuance |
 | [`jwt`](../crates/fig-core/src/jwt.rs) | JWT bearer decode/verify (HS256 for tests/conformance) |
+| [`jwt_keys`](../crates/fig-core/src/jwt_keys.rs) | RS256 verification from a JWKS/PEM key set, `kid` rotation, KMS adapter |
+| [`session_token`](../crates/fig-core/src/session_token.rs) | Server-signed (HMAC-SHA256) session resumption tokens |
+| [`replay`](../crates/fig-core/src/replay.rs) | Replay window: per-process or shared Redis cache |
 | [`oauth`](../crates/fig-core/src/oauth.rs) | OAuth2/OIDC dev introspection stub (venues wire real IdP) |
 | [`channel_auth`](../crates/fig-core/src/channel_auth.rs) | Per-channel permission policy |
 | [`rate_limit`](../crates/fig-core/src/rate_limit.rs) | Token-bucket rate limiter |

@@ -36,7 +36,7 @@ outside this checklist.
 - [x] Restored state prefers the server's authoritative session store over token payload
 - [x] Client-supplied `SESSION_ID` extensions are never used to select a session
 - [x] Replay window enforced (`fig_core::replay`, SPEC §10.1)
-- [ ] Shared replay cache for multi-node HA (per-node `MemoryReplayCache` by default)
+- [x] Shared Redis replay cache for multi-node HA (`FIG_REPLAY_REDIS_URL`)
 
 ## Input handling
 
@@ -59,7 +59,9 @@ outside this checklist.
 - [x] Session TTL and expiry
 - [x] Reserved header field validation
 - [x] Secret rotation guidance for the resumption key ([DEPLOYMENT.md](DEPLOYMENT.md))
-- [ ] Secret rotation runbook for venue JWT signing keys (venue-owned)
+- [x] JWT signing-key rotation runbook ([JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md))
+- [x] RS256 verification from a JWKS/PEM key set with `kid`-based rotation (`fig_core::jwt_keys`)
+- [x] KMS/HSM integration point (`JwtVerifier` trait + `FnVerifier`)
 
 ## Sign-off
 

@@ -56,7 +56,20 @@ streams still half-close after the response.
    ```
 
 3. **Gateway** — typically stateless when proxying to `--fig-backend`; use file or redis `fix-seq-store` for FIX sequence persistence across gateway restarts.
-4. **0-RTT replay cache** — default in-process `MemoryReplayCache` per node; for strict cluster-wide replay rejection, front with a shared cache (document venue policy in SPEC §security).
+4. **0-RTT replay cache** — default in-process `MemoryReplayCache` per node. For
+   strict cluster-wide replay rejection, point nodes at a shared Redis and build
+   with the `session-redis` feature:
+
+   ```bash
+   FIG_REPLAY_REDIS_URL=redis://redis:6379 \
+     cargo run -p fig-exchange-sim --features fig-core/session-redis
+   ```
+
+   The cache uses `SET key 1 NX PX <window>` so a token replayed to a *different*
+   node is rejected inside the replay window (SPEC §10.1). Embedders can also
+   install one explicitly with `fig_core::replay::set_default_replay_cache`.
+   If `FIG_REPLAY_REDIS_URL` is set without the feature, startup logs an error
+   and falls back to the per-node cache.
 
 ## Security
 
@@ -65,7 +78,7 @@ streams still half-close after the response.
 | TLS 1.3 | Mandatory on TREE (ALPN `fig/1`) |
 | Server certificate verification (clients) | On by default against the built-in WebPKI roots. Private PKI: `FIG_TLS_CA=/path/to/ca.pem` (or `client_config_from_ca_pem`). `client_config_insecure()` is for tests/dev only |
 | mTLS | `FIG_MTLS=1` **and** `FIG_MTLS_CA=/path/to/client-ca.pem` to verify client certificates. `FIG_MTLS=1` without `FIG_MTLS_CA` accepts any client certificate (logged warning, development only) |
-| Auth | Venue-issued `AUTH_TOKEN` on private paths ([SPEC §9.3](../SPEC.md)); token comparison is constant-time |
+| Auth | Venue-issued `AUTH_TOKEN` on private paths ([SPEC §9.3](../SPEC.md)); token comparison is constant-time. RS256 via `FIG_JWT_JWKS`; rotation: [JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md) |
 | Resumption tokens (0-RTT) | Server-signed HMAC-SHA256; set `FIG_RESUMPTION_KEY` to the **same** value on every node that must accept the same tokens. Servers reject unsigned/forged tokens ([SPEC §10.1](../SPEC.md)) |
 | DoS limits | `DoSGuard` (max channels, frame size, message rate) + per-channel `ChannelRateLimiter`, enforced on every connection |
 | Frame size | 1 MiB hard cap in `FrameDecoder` (`MAX_FRAME_SIZE`); oversize length prefixes are rejected before buffering |
@@ -109,6 +122,8 @@ Wire `tracing-subscriber` in your binary to export spans to OpenTelemetry.
 | `FIG_MTLS` | Enable mTLS on exchange-sim |
 | `FIG_MTLS_CA` | Server: client CA bundle to verify mTLS client certificates |
 | `FIG_RESUMPTION_KEY` | Shared HMAC key for session resumption tokens (HA) |
+| `FIG_REPLAY_REDIS_URL` | Shared Redis 0-RTT replay cache (requires `session-redis`) |
+| `FIG_JWT_JWKS` | RS256 public keys: inline JWKS JSON or a path to a JWKS file |
 | `REDIS_URL` | Redis session store when `--session-store redis` |
 | `RUST_LOG` | Log level (`info`, `debug`) |
 

@@ -55,6 +55,7 @@ base64 = "0.22"
 subtle = "2"
 rustls-pemfile = "2"
 webpki-roots = "0.26"
+ring = "0.17"
 # Internal crates
 fig-core = { path = "crates/fig-core" }
 fig-conformance = { path = "crates/fig-conformance" }
