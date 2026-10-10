@@ -54,7 +54,7 @@ fn run_codegen(check: bool) -> Result<()> {
 
     let sbe_targets = [
         (
-            root.join("bindings/go/fig/sbe_generated.go"),
+            root.join("bindings/go/fig/sbe/sbe_generated.go"),
             fig_fsl::SbeTargetLang::Go,
         ),
         (

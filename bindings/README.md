@@ -99,12 +99,24 @@ Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformanc
 
 **Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. The SBE hex parity checks for Go/C++/C# call the **FFI** encoders (`fig_sbe_encode_*`) against the §16.1 vectors — they do not exercise the per-language generated SBE files.
 
-**Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): experimental — does not
-compile yet.** `cargo run -p xtask -- codegen` emits them from FSL, but a 2026-10 audit
-found that **no target currently produces compilable code** (TypeScript is closest; Go,
-C++, Zig have known residual errors; C# is unverified in CI). They are not compiled or
-parity-verified by CI. Use the **FFI** wire codecs for production. The full defect list,
-the design decisions to follow, and the remaining work are recorded in
-[TODO.md §16.2](../TODO.md).
+**Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): new, partially verified.**
+
+`cargo run -p xtask -- codegen` emits native SBE encoders/decoders per language from FSL.
+Status after the 2026-10 audit:
+
+| Target | Compiles | Parity vs conformance vectors |
+|---|---|---|
+| Go (`go/fig/sbe/`) | ✅ CI | ✅ `go test ./sbe` — NewOrderSingle + OrderBookSnapshot byte-exact, plus round-trips |
+| C++ (`cpp/include/fig/sbe_generated.hpp`) | ✅ CI | ⬜ not yet |
+| TypeScript (`typescript/sbe_generated.ts`) | ✅ CI | ⬜ not yet |
+| Zig (`zig/sbe_generated.zig`) | ✅ CI | ⬜ not yet |
+| C# (`csharp/Fig/SbeGenerated.cs`) | ⬜ unverified | ⬜ not yet |
+
+The wire layout follows `crates/fig-core/src/generated/sbe_generated.rs` (the normative Rust
+encoder). CI steps `Generated SBE targets compile` and `Go binding (generated SBE parity + FFI
+conformance)` keep the artifacts honest. One gap is shared with Rust: scalar list items
+(`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) have no defined payload layout — both
+ends write a count and drop the items ([TODO.md §16.2](../TODO.md)). The **FFI** wire codecs
+remain the recommended path for production.
 
 Go smoke: `cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance`.

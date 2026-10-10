@@ -1252,17 +1252,6 @@ pub(crate) fn generate_encode_field(
 
 // ── SBE type mapping helpers ──────────────────────────────────
 
-/// Resolve the SBE wire type for a field (str, f64, i64, u8, …).
-pub(crate) fn sbe_field_wire_type(field: &Field) -> String {
-    match &field.field_type {
-        FieldType::Named(n) => sbe_named_type_to_wire_type(n),
-        FieldType::InlineBase(bt, _) => sbe_base_type_to_wire_type(bt),
-        FieldType::Enum(_) => "u8".to_string(),
-        FieldType::List(_) => "list".to_string(),
-        FieldType::InlineStruct(_) => "struct".to_string(),
-    }
-}
-
 /// Get the Rust type name for a field in SBE context
 pub(crate) fn sbe_field_type_name(ft: &FieldType) -> String {
     match ft {
@@ -1317,6 +1306,7 @@ pub(crate) fn sbe_named_type_to_wire_type(name: &str) -> String {
         "f64" => "f64".to_string(),
         "f32" => "f32".to_string(),
         "bool" => "u8".to_string(),
+        "u8" => "u8".to_string(),
         _ => "str".to_string(), // default to string for unknown named types
     }
 }

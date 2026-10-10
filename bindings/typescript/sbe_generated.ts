@@ -3,12 +3,19 @@
 
 export const SCHEMA_ID = 0x01 as const;
 
+function readU8(buf: Uint8Array, pos: { value: number }): number { return buf[pos.value++]; }
+function f32Bits(v: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setFloat32(0, v, false); return dv.getUint32(0, false); }
+function f32FromBits(bits: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, bits >>> 0, false); return dv.getFloat32(0, false); }
 function writeU16BE(buf: number[], v: number): void { buf.push((v >> 8) & 0xff, v & 0xff); }
 function writeU32BE(buf: number[], v: number): void { buf.push((v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff); }
 function writeU64BE(buf: number[], v: bigint): void { for (let i = 7; i >= 0; i--) buf.push(Number((v >> BigInt(i * 8)) & 0xffn)); }
 function writeF64BE(buf: number[], v: number): void { const dv = new DataView(new ArrayBuffer(8)); dv.setFloat64(0, v, false); for (let i = 0; i < 8; i++) buf.push(dv.getUint8(i)); }
 function writeI64BE(buf: number[], v: bigint): void { writeU64BE(buf, BigInt.asUintN(64, v)); }
 function writeString(buf: number[], s: string): void { const bytes = new TextEncoder().encode(s); writeU16BE(buf, bytes.length); for (const b of bytes) buf.push(b); }
+function readU8(buf: Uint8Array, pos: { value: number }): number { return buf[pos.value++]; }
+function f32Bits(v: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setFloat32(0, v, false); return dv.getUint32(0, false); }
+function f32FromBits(bits: number): number { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, bits >>> 0, false); return dv.getFloat32(0, false); }
+
 function readU16BE(buf: Uint8Array, pos: { value: number }): number { const v = (buf[pos.value] << 8) | buf[pos.value + 1]; pos.value += 2; return v; }
 function readU32BE(buf: Uint8Array, pos: { value: number }): number { const v = (buf[pos.value] << 24) | (buf[pos.value + 1] << 16) | (buf[pos.value + 2] << 8) | buf[pos.value + 3]; pos.value += 4; return v >>> 0; }
 function readU64BE(buf: Uint8Array, pos: { value: number }): bigint { let v = 0n; for (let i = 0; i < 8; i++) v = (v << 8n) | BigInt(buf[pos.value + i]); pos.value += 8; return v; }
@@ -395,42 +402,424 @@ export function CapabilityPathPatternFromValue(v: number): CapabilityPathPattern
 
 export function CapabilityPathPatternToValue(e: CapabilityPathPattern): number { return e; }
 
-/** SBE encoder for NewOrderSingle */
-export function NewOrderSingleEncoderEncode(cl_ord_id string, side NewOrderSingleSide, order_qty number, price number | null, stop_price number | null, symbol string, order_type NewOrderSingleOrderType, time_in_force NewOrderSingleTimeInForce, expire_time bigint | null, account string | null, strategy_id string | null, security_id string | null, id_source NewOrderSingleIdSource | null, security_exchange string | null, post_only number | null, reduce_only number | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 1);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 38);
-
-  // Fixed fields
-  writeString(buf, cl_ord_id);
-  buf.push(NewOrderSingleSideToValue(side));
-  writeF64BE(buf, order_qty);
-  writeF64BE(buf, price ?? 0);
-  buf.push(price != null ? 1 : 0);
-  writeF64BE(buf, stop_price ?? 0);
-  buf.push(stop_price != null ? 1 : 0);
-  writeString(buf, symbol);
-  buf.push(NewOrderSingleOrderTypeToValue(order_type));
-  buf.push(NewOrderSingleTimeInForceToValue(time_in_force));
-  if (expire_time != null) { buf.push(1); writeI64BE(buf, expire_time); } else { buf.push(0); }
-  if (account != null) { buf.push(1); writeString(buf, account); } else { buf.push(0); }
-  if (strategy_id != null) { buf.push(1); writeString(buf, strategy_id); } else { buf.push(0); }
-  if (security_id != null) { buf.push(1); writeString(buf, security_id); } else { buf.push(0); }
-  buf.push(id_source != null ? NewOrderSingleIdSourceToValue(id_source) : 0);
-  if (security_exchange != null) { buf.push(1); writeString(buf, security_exchange); } else { buf.push(0); }
-  buf.push(post_only ?? 0);
-  buf.push(post_only != null ? 1 : 0);
-  buf.push(reduce_only ?? 0);
-  buf.push(reduce_only != null ? 1 : 0);
-
-  return new Uint8Array(buf);
+/** SBE struct AggregateTrade */
+export interface AggregateTrade {
+  symbol: string;
+  agg_trade_id: string;
+  price: number;
+  qty: number;
+  side: AggregateTradeSide;
+  first_trade_id: string;
+  last_trade_id: string;
+  timestamp: bigint;
 }
 
-/** SBE decoder for NewOrderSingle */
-export interface NewOrderSingleDecoder {
+/** Encode AggregateTrade fields (no header). */
+export function AggregateTradeEncoderEncode(value: AggregateTrade, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.agg_trade_id);
+  writeF64BE(buf, value.price);
+  writeF64BE(buf, value.qty);
+  buf.push(AggregateTradeSideToValue(value.side));
+  writeString(buf, value.first_trade_id);
+  writeString(buf, value.last_trade_id);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** Decode AggregateTrade fields; advances `pos`. */
+export function AggregateTradeDecoderDecode(buf: Uint8Array, pos: { value: number }): AggregateTrade {
+  const symbol = readString(buf, pos);
+  const agg_trade_id = readString(buf, pos);
+  const price = readF64BE(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = AggregateTradeSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid AggregateTradeSide');
+  const first_trade_id = readString(buf, pos);
+  const last_trade_id = readString(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: AggregateTrade = {
+    symbol: symbol,
+    agg_trade_id: agg_trade_id,
+    price: price,
+    qty: qty,
+    side: side,
+    first_trade_id: first_trade_id,
+    last_trade_id: last_trade_id,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE struct LiquidationTrade */
+export interface LiquidationTrade {
+  symbol: string;
+  side: LiquidationTradeSide;
+  price: number;
+  qty: number;
+  timestamp: bigint;
+}
+
+/** Encode LiquidationTrade fields (no header). */
+export function LiquidationTradeEncoderEncode(value: LiquidationTrade, buf: number[]): void {
+  writeString(buf, value.symbol);
+  buf.push(LiquidationTradeSideToValue(value.side));
+  writeF64BE(buf, value.price);
+  writeF64BE(buf, value.qty);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** Decode LiquidationTrade fields; advances `pos`. */
+export function LiquidationTradeDecoderDecode(buf: Uint8Array, pos: { value: number }): LiquidationTrade {
+  const symbol = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = LiquidationTradeSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid LiquidationTradeSide');
+  const price = readF64BE(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: LiquidationTrade = {
+    symbol: symbol,
+    side: side,
+    price: price,
+    qty: qty,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE struct PriceLevel */
+export interface PriceLevel {
+  price: number;
+  qty: number;
+  order_count: number | null;
+}
+
+/** Encode PriceLevel fields (no header). */
+export function PriceLevelEncoderEncode(value: PriceLevel, buf: number[]): void {
+  writeF64BE(buf, value.price);
+  writeF64BE(buf, value.qty);
+  writeU32BE(buf, value.order_count ?? 0);
+  buf.push(value.order_count != null ? 1 : 0);
+}
+
+/** Decode PriceLevel fields; advances `pos`. */
+export function PriceLevelDecoderDecode(buf: Uint8Array, pos: { value: number }): PriceLevel {
+  const price = readF64BE(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const order_count_v = readU32BE(buf, pos);
+  const order_count = buf[pos.value++] === 1 ? order_count_v : null;
+  const value: PriceLevel = {
+    price: price,
+    qty: qty,
+    order_count: order_count,
+  };
+  return value;
+}
+
+/** SBE struct MarketDataUpdate */
+export interface MarketDataUpdate {
+  side: MarketDataUpdateSide;
+  action: MarketDataUpdateAction;
+  price: number;
+  qty: number;
+}
+
+/** Encode MarketDataUpdate fields (no header). */
+export function MarketDataUpdateEncoderEncode(value: MarketDataUpdate, buf: number[]): void {
+  buf.push(MarketDataUpdateSideToValue(value.side));
+  buf.push(MarketDataUpdateActionToValue(value.action));
+  writeF64BE(buf, value.price);
+  writeF64BE(buf, value.qty);
+}
+
+/** Decode MarketDataUpdate fields; advances `pos`. */
+export function MarketDataUpdateDecoderDecode(buf: Uint8Array, pos: { value: number }): MarketDataUpdate {
+  const sideRaw = readU8(buf, pos);
+  const side = MarketDataUpdateSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid MarketDataUpdateSide');
+  const actionRaw = readU8(buf, pos);
+  const action = MarketDataUpdateActionFromValue(actionRaw);
+  if (action == null) throw new Error('invalid MarketDataUpdateAction');
+  const price = readF64BE(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const value: MarketDataUpdate = {
+    side: side,
+    action: action,
+    price: price,
+    qty: qty,
+  };
+  return value;
+}
+
+/** SBE struct CandleBar */
+export interface CandleBar {
+  symbol: string;
+  interval: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  bar_start: bigint;
+  bar_end: bigint;
+  is_final: number;
+  is_snapshot: number | null;
+}
+
+/** Encode CandleBar fields (no header). */
+export function CandleBarEncoderEncode(value: CandleBar, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.interval);
+  writeF64BE(buf, value.open);
+  writeF64BE(buf, value.high);
+  writeF64BE(buf, value.low);
+  writeF64BE(buf, value.close);
+  writeF64BE(buf, value.volume);
+  writeU64BE(buf, BigInt.asUintN(64, value.bar_start));
+  writeU64BE(buf, BigInt.asUintN(64, value.bar_end));
+  buf.push(value.is_final);
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** Decode CandleBar fields; advances `pos`. */
+export function CandleBarDecoderDecode(buf: Uint8Array, pos: { value: number }): CandleBar {
+  const symbol = readString(buf, pos);
+  const interval = readString(buf, pos);
+  const open = readF64BE(buf, pos);
+  const high = readF64BE(buf, pos);
+  const low = readF64BE(buf, pos);
+  const close = readF64BE(buf, pos);
+  const volume = readF64BE(buf, pos);
+  const bar_start = BigInt.asIntN(64, readU64BE(buf, pos));
+  const bar_end = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_final = readU8(buf, pos);
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: CandleBar = {
+    symbol: symbol,
+    interval: interval,
+    open: open,
+    high: high,
+    low: low,
+    close: close,
+    volume: volume,
+    bar_start: bar_start,
+    bar_end: bar_end,
+    is_final: is_final,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE struct PublicTrade */
+export interface PublicTrade {
+  symbol: string;
+  trade_id: string;
+  price: number;
+  qty: number;
+  side: PublicTradeSide;
+  timestamp: bigint;
+}
+
+/** Encode PublicTrade fields (no header). */
+export function PublicTradeEncoderEncode(value: PublicTrade, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.trade_id);
+  writeF64BE(buf, value.price);
+  writeF64BE(buf, value.qty);
+  buf.push(PublicTradeSideToValue(value.side));
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** Decode PublicTrade fields; advances `pos`. */
+export function PublicTradeDecoderDecode(buf: Uint8Array, pos: { value: number }): PublicTrade {
+  const symbol = readString(buf, pos);
+  const trade_id = readString(buf, pos);
+  const price = readF64BE(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = PublicTradeSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid PublicTradeSide');
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: PublicTrade = {
+    symbol: symbol,
+    trade_id: trade_id,
+    price: price,
+    qty: qty,
+    side: side,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE struct InstrumentMetadata */
+export interface InstrumentMetadata {
+  instrument_id: string;
+  symbol: string;
+  product_kind: string;
+  margin_asset: string | null;
+  display_name: string | null;
+  tick_size: number | null;
+  lot_size: number | null;
+}
+
+/** Encode InstrumentMetadata fields (no header). */
+export function InstrumentMetadataEncoderEncode(value: InstrumentMetadata, buf: number[]): void {
+  writeString(buf, value.instrument_id);
+  writeString(buf, value.symbol);
+  writeString(buf, value.product_kind);
+  if (value.margin_asset != null) { buf.push(1); writeString(buf, value.margin_asset); } else { buf.push(0); }
+  if (value.display_name != null) { buf.push(1); writeString(buf, value.display_name); } else { buf.push(0); }
+  writeF64BE(buf, value.tick_size ?? 0);
+  buf.push(value.tick_size != null ? 1 : 0);
+  writeF64BE(buf, value.lot_size ?? 0);
+  buf.push(value.lot_size != null ? 1 : 0);
+}
+
+/** Decode InstrumentMetadata fields; advances `pos`. */
+export function InstrumentMetadataDecoderDecode(buf: Uint8Array, pos: { value: number }): InstrumentMetadata {
+  let margin_asset: string | null = null;
+  let display_name: string | null = null;
+  const instrument_id = readString(buf, pos);
+  const symbol = readString(buf, pos);
+  const product_kind = readString(buf, pos);
+  if (readU8(buf, pos) === 1) margin_asset = readString(buf, pos);
+  if (readU8(buf, pos) === 1) display_name = readString(buf, pos);
+  const tick_size_v = readF64BE(buf, pos);
+  const tick_size = buf[pos.value++] === 1 ? tick_size_v : null;
+  const lot_size_v = readF64BE(buf, pos);
+  const lot_size = buf[pos.value++] === 1 ? lot_size_v : null;
+  const value: InstrumentMetadata = {
+    instrument_id: instrument_id,
+    symbol: symbol,
+    product_kind: product_kind,
+    margin_asset: margin_asset,
+    display_name: display_name,
+    tick_size: tick_size,
+    lot_size: lot_size,
+  };
+  return value;
+}
+
+/** SBE struct BalanceEntry */
+export interface BalanceEntry {
+  asset: string;
+  total: number;
+  available: number;
+  hold: number;
+}
+
+/** Encode BalanceEntry fields (no header). */
+export function BalanceEntryEncoderEncode(value: BalanceEntry, buf: number[]): void {
+  writeString(buf, value.asset);
+  writeF64BE(buf, value.total);
+  writeF64BE(buf, value.available);
+  writeF64BE(buf, value.hold);
+}
+
+/** Decode BalanceEntry fields; advances `pos`. */
+export function BalanceEntryDecoderDecode(buf: Uint8Array, pos: { value: number }): BalanceEntry {
+  const asset = readString(buf, pos);
+  const total = readF64BE(buf, pos);
+  const available = readF64BE(buf, pos);
+  const hold = readF64BE(buf, pos);
+  const value: BalanceEntry = {
+    asset: asset,
+    total: total,
+    available: available,
+    hold: hold,
+  };
+  return value;
+}
+
+/** SBE struct PositionEntry */
+export interface PositionEntry {
+  symbol: string;
+  qty: number;
+  entry_price: number;
+  unrealized_pnl: number;
+}
+
+/** Encode PositionEntry fields (no header). */
+export function PositionEntryEncoderEncode(value: PositionEntry, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.qty);
+  writeF64BE(buf, value.entry_price);
+  writeF64BE(buf, value.unrealized_pnl);
+}
+
+/** Decode PositionEntry fields; advances `pos`. */
+export function PositionEntryDecoderDecode(buf: Uint8Array, pos: { value: number }): PositionEntry {
+  const symbol = readString(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const entry_price = readF64BE(buf, pos);
+  const unrealized_pnl = readF64BE(buf, pos);
+  const value: PositionEntry = {
+    symbol: symbol,
+    qty: qty,
+    entry_price: entry_price,
+    unrealized_pnl: unrealized_pnl,
+  };
+  return value;
+}
+
+/** SBE struct PageInfo */
+export interface PageInfo {
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** Encode PageInfo fields (no header). */
+export function PageInfoEncoderEncode(value: PageInfo, buf: number[]): void {
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** Decode PageInfo fields; advances `pos`. */
+export function PageInfoDecoderDecode(buf: Uint8Array, pos: { value: number }): PageInfo {
+  let next_cursor: string | null = null;
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: PageInfo = {
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE struct CapabilityPath */
+export interface CapabilityPath {
+  path: string;
+  pattern: CapabilityPathPattern;
+  auth_required: number;
+}
+
+/** Encode CapabilityPath fields (no header). */
+export function CapabilityPathEncoderEncode(value: CapabilityPath, buf: number[]): void {
+  writeString(buf, value.path);
+  buf.push(CapabilityPathPatternToValue(value.pattern));
+  buf.push(value.auth_required);
+}
+
+/** Decode CapabilityPath fields; advances `pos`. */
+export function CapabilityPathDecoderDecode(buf: Uint8Array, pos: { value: number }): CapabilityPath {
+  const path = readString(buf, pos);
+  const patternRaw = readU8(buf, pos);
+  const pattern = CapabilityPathPatternFromValue(patternRaw);
+  if (pattern == null) throw new Error('invalid CapabilityPathPattern');
+  const auth_required = readU8(buf, pos);
+  const value: CapabilityPath = {
+    path: path,
+    pattern: pattern,
+    auth_required: auth_required,
+  };
+  return value;
+}
+
+/** SBE message NewOrderSingle */
+export interface NewOrderSingle {
   cl_ord_id: string;
   side: NewOrderSingleSide;
   order_qty: number;
@@ -447,51 +836,74 @@ export interface NewOrderSingleDecoder {
   security_exchange: string | null;
   post_only: number | null;
   reduce_only: number | null;
-  encodedLen(): number;
 }
 
-export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingleDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 1) throw new Error('invalid template_id');
+/** SBE body encoder for NewOrderSingle (fields only, no header). */
+export function NewOrderSingleBodyEncoderEncode(value: NewOrderSingle, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  buf.push(NewOrderSingleSideToValue(value.side));
+  writeF64BE(buf, value.order_qty);
+  writeF64BE(buf, value.price ?? 0);
+  buf.push(value.price != null ? 1 : 0);
+  writeF64BE(buf, value.stop_price ?? 0);
+  buf.push(value.stop_price != null ? 1 : 0);
+  writeString(buf, value.symbol);
+  buf.push(NewOrderSingleOrderTypeToValue(value.order_type));
+  buf.push(NewOrderSingleTimeInForceToValue(value.time_in_force));
+  writeU64BE(buf, BigInt.asUintN(64, value.expire_time ?? 0n));
+  buf.push(value.expire_time != null ? 1 : 0);
+  if (value.account != null) { buf.push(1); writeString(buf, value.account); } else { buf.push(0); }
+  if (value.strategy_id != null) { buf.push(1); writeString(buf, value.strategy_id); } else { buf.push(0); }
+  if (value.security_id != null) { buf.push(1); writeString(buf, value.security_id); } else { buf.push(0); }
+  buf.push(value.id_source != null ? NewOrderSingleIdSourceToValue(value.id_source) : 0);
+  buf.push(value.id_source != null ? 1 : 0);
+  if (value.security_exchange != null) { buf.push(1); writeString(buf, value.security_exchange); } else { buf.push(0); }
+  buf.push(value.post_only ?? 0);
+  buf.push(value.post_only != null ? 1 : 0);
+  buf.push(value.reduce_only ?? 0);
+  buf.push(value.reduce_only != null ? 1 : 0);
+}
+
+/** SBE body decoder for NewOrderSingle: reads fields at `pos`. */
+export function NewOrderSingleBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): NewOrderSingle {
+  let account: string | null = null;
+  let strategy_id: string | null = null;
+  let security_id: string | null = null;
+  let security_exchange: string | null = null;
   const cl_ord_id = readString(buf, pos);
-  const sideRaw = buf[pos.value++];
+  const sideRaw = readU8(buf, pos);
   const side = NewOrderSingleSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid NewOrderSingleSide');
   const order_qty = readF64BE(buf, pos);
-  const priceRaw = readF64BE(buf, pos);
-  const price = buf[pos.value++] === 1 ? priceRaw : null;
-  const stop_priceRaw = readF64BE(buf, pos);
-  const stop_price = buf[pos.value++] === 1 ? stop_priceRaw : null;
+  const price_v = readF64BE(buf, pos);
+  const price = buf[pos.value++] === 1 ? price_v : null;
+  const stop_price_v = readF64BE(buf, pos);
+  const stop_price = buf[pos.value++] === 1 ? stop_price_v : null;
   const symbol = readString(buf, pos);
-  const order_typeRaw = buf[pos.value++];
+  const order_typeRaw = readU8(buf, pos);
   const order_type = NewOrderSingleOrderTypeFromValue(order_typeRaw);
   if (order_type == null) throw new Error('invalid NewOrderSingleOrderType');
-  const time_in_forceRaw = buf[pos.value++];
+  const time_in_forceRaw = readU8(buf, pos);
   const time_in_force = NewOrderSingleTimeInForceFromValue(time_in_forceRaw);
   if (time_in_force == null) throw new Error('invalid NewOrderSingleTimeInForce');
-  let expire_time: bigint | null = null;
-  if (buf[pos.value++] === 1) expire_time = readI64BE(buf, pos);
-  let account: string | null;
-  if (buf[pos.value++] === 1) account = readString(buf, pos); else account = null;
-  let strategy_id: string | null;
-  if (buf[pos.value++] === 1) strategy_id = readString(buf, pos); else strategy_id = null;
-  let security_id: string | null;
-  if (buf[pos.value++] === 1) security_id = readString(buf, pos); else security_id = null;
-  const id_sourceRaw = buf[pos.value++];
-  const id_source = NewOrderSingleIdSourceFromValue(id_sourceRaw);
-  if (id_source == null) throw new Error('invalid NewOrderSingleIdSource');
-  let security_exchange: string | null;
-  if (buf[pos.value++] === 1) security_exchange = readString(buf, pos); else security_exchange = null;
-  const v = buf[pos.value++];
-  const post_only = buf[pos.value++] === 1 ? v : null;
-  const v = buf[pos.value++];
-  const reduce_only = buf[pos.value++] === 1 ? v : null;
-  return {
+  const expire_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const expire_time = buf[pos.value++] === 1 ? expire_time_v : null;
+  if (readU8(buf, pos) === 1) account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) strategy_id = readString(buf, pos);
+  if (readU8(buf, pos) === 1) security_id = readString(buf, pos);
+  const id_sourceRaw = readU8(buf, pos);
+  let id_source: NewOrderSingleIdSource | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = NewOrderSingleIdSourceFromValue(id_sourceRaw);
+    if (v == null) throw new Error('invalid NewOrderSingleIdSource');
+    id_source = v;
+  }
+  if (readU8(buf, pos) === 1) security_exchange = readString(buf, pos);
+  const post_only_v = readU8(buf, pos);
+  const post_only = buf[pos.value++] === 1 ? post_only_v : null;
+  const reduce_only_v = readU8(buf, pos);
+  const reduce_only = buf[pos.value++] === 1 ? reduce_only_v : null;
+  const value: NewOrderSingle = {
     cl_ord_id: cl_ord_id,
     side: side,
     order_qty: order_qty,
@@ -508,76 +920,243 @@ export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingleDeco
     security_exchange: security_exchange,
     post_only: post_only,
     reduce_only: reduce_only,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CancelRequest */
-export function CancelRequestEncoderEncode(cl_ord_id string, orig_cl_ord_id string, symbol string, side CancelRequestSide, order_qty number | null): Uint8Array {
+/** SBE encoder for NewOrderSingle — returns the complete message. */
+export function NewOrderSingleEncoderEncode(cl_ord_id: string, side: NewOrderSingleSide, order_qty: number, price: number | null, stop_price: number | null, symbol: string, order_type: NewOrderSingleOrderType, time_in_force: NewOrderSingleTimeInForce, expire_time: bigint | null, account: string | null, strategy_id: string | null, security_id: string | null, id_source: NewOrderSingleIdSource | null, security_exchange: string | null, post_only: number | null, reduce_only: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 1);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 38);
+  writeString(buf, cl_ord_id);
+  buf.push(NewOrderSingleSideToValue(side));
+  writeF64BE(buf, order_qty);
+  writeF64BE(buf, price ?? 0);
+  buf.push(price != null ? 1 : 0);
+  writeF64BE(buf, stop_price ?? 0);
+  buf.push(stop_price != null ? 1 : 0);
+  writeString(buf, symbol);
+  buf.push(NewOrderSingleOrderTypeToValue(order_type));
+  buf.push(NewOrderSingleTimeInForceToValue(time_in_force));
+  writeU64BE(buf, BigInt.asUintN(64, expire_time ?? 0n));
+  buf.push(expire_time != null ? 1 : 0);
+  if (account != null) { buf.push(1); writeString(buf, account); } else { buf.push(0); }
+  if (strategy_id != null) { buf.push(1); writeString(buf, strategy_id); } else { buf.push(0); }
+  if (security_id != null) { buf.push(1); writeString(buf, security_id); } else { buf.push(0); }
+  buf.push(id_source != null ? NewOrderSingleIdSourceToValue(id_source) : 0);
+  buf.push(id_source != null ? 1 : 0);
+  if (security_exchange != null) { buf.push(1); writeString(buf, security_exchange); } else { buf.push(0); }
+  buf.push(post_only ?? 0);
+  buf.push(post_only != null ? 1 : 0);
+  buf.push(reduce_only ?? 0);
+  buf.push(reduce_only != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for NewOrderSingle: validates the header and reads the body. */
+export function NewOrderSingleDecoderDecode(buf: Uint8Array): NewOrderSingle {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 1) throw new Error("invalid template_id");
+  let account: string | null = null;
+  let strategy_id: string | null = null;
+  let security_id: string | null = null;
+  let security_exchange: string | null = null;
+  const cl_ord_id = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = NewOrderSingleSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid NewOrderSingleSide');
+  const order_qty = readF64BE(buf, pos);
+  const price_v = readF64BE(buf, pos);
+  const price = buf[pos.value++] === 1 ? price_v : null;
+  const stop_price_v = readF64BE(buf, pos);
+  const stop_price = buf[pos.value++] === 1 ? stop_price_v : null;
+  const symbol = readString(buf, pos);
+  const order_typeRaw = readU8(buf, pos);
+  const order_type = NewOrderSingleOrderTypeFromValue(order_typeRaw);
+  if (order_type == null) throw new Error('invalid NewOrderSingleOrderType');
+  const time_in_forceRaw = readU8(buf, pos);
+  const time_in_force = NewOrderSingleTimeInForceFromValue(time_in_forceRaw);
+  if (time_in_force == null) throw new Error('invalid NewOrderSingleTimeInForce');
+  const expire_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const expire_time = buf[pos.value++] === 1 ? expire_time_v : null;
+  if (readU8(buf, pos) === 1) account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) strategy_id = readString(buf, pos);
+  if (readU8(buf, pos) === 1) security_id = readString(buf, pos);
+  const id_sourceRaw = readU8(buf, pos);
+  let id_source: NewOrderSingleIdSource | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = NewOrderSingleIdSourceFromValue(id_sourceRaw);
+    if (v == null) throw new Error('invalid NewOrderSingleIdSource');
+    id_source = v;
+  }
+  if (readU8(buf, pos) === 1) security_exchange = readString(buf, pos);
+  const post_only_v = readU8(buf, pos);
+  const post_only = buf[pos.value++] === 1 ? post_only_v : null;
+  const reduce_only_v = readU8(buf, pos);
+  const reduce_only = buf[pos.value++] === 1 ? reduce_only_v : null;
+  const value: NewOrderSingle = {
+    cl_ord_id: cl_ord_id,
+    side: side,
+    order_qty: order_qty,
+    price: price,
+    stop_price: stop_price,
+    symbol: symbol,
+    order_type: order_type,
+    time_in_force: time_in_force,
+    expire_time: expire_time,
+    account: account,
+    strategy_id: strategy_id,
+    security_id: security_id,
+    id_source: id_source,
+    security_exchange: security_exchange,
+    post_only: post_only,
+    reduce_only: reduce_only,
+  };
+  return value;
+}
+
+/** SBE message CancelRequest */
+export interface CancelRequest {
+  cl_ord_id: string;
+  orig_cl_ord_id: string;
+  symbol: string;
+  side: CancelRequestSide;
+  order_qty: number | null;
+}
+
+/** SBE body encoder for CancelRequest (fields only, no header). */
+export function CancelRequestBodyEncoderEncode(value: CancelRequest, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.orig_cl_ord_id);
+  writeString(buf, value.symbol);
+  buf.push(CancelRequestSideToValue(value.side));
+  writeF64BE(buf, value.order_qty ?? 0);
+  buf.push(value.order_qty != null ? 1 : 0);
+}
+
+/** SBE body decoder for CancelRequest: reads fields at `pos`. */
+export function CancelRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CancelRequest {
+  const cl_ord_id = readString(buf, pos);
+  const orig_cl_ord_id = readString(buf, pos);
+  const symbol = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = CancelRequestSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid CancelRequestSide');
+  const order_qty_v = readF64BE(buf, pos);
+  const order_qty = buf[pos.value++] === 1 ? order_qty_v : null;
+  const value: CancelRequest = {
+    cl_ord_id: cl_ord_id,
+    orig_cl_ord_id: orig_cl_ord_id,
+    symbol: symbol,
+    side: side,
+    order_qty: order_qty,
+  };
+  return value;
+}
+
+/** SBE encoder for CancelRequest — returns the complete message. */
+export function CancelRequestEncoderEncode(cl_ord_id: string, orig_cl_ord_id: string, symbol: string, side: CancelRequestSide, order_qty: number | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 2);
   writeU16BE(buf, 0);
   writeU16BE(buf, 9);
-
-  // Fixed fields
   writeString(buf, cl_ord_id);
   writeString(buf, orig_cl_ord_id);
   writeString(buf, symbol);
   buf.push(CancelRequestSideToValue(side));
   writeF64BE(buf, order_qty ?? 0);
   buf.push(order_qty != null ? 1 : 0);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for CancelRequest */
-export interface CancelRequestDecoder {
-  cl_ord_id: string;
-  orig_cl_ord_id: string;
-  symbol: string;
-  side: CancelRequestSide;
-  order_qty: number | null;
-  encodedLen(): number;
-}
-
-export function CancelRequestDecoderDecode(buf: Uint8Array): CancelRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for CancelRequest: validates the header and reads the body. */
+export function CancelRequestDecoderDecode(buf: Uint8Array): CancelRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 2) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 2) throw new Error("invalid template_id");
   const cl_ord_id = readString(buf, pos);
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
-  const sideRaw = buf[pos.value++];
+  const sideRaw = readU8(buf, pos);
   const side = CancelRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelRequestSide');
-  const order_qtyRaw = readF64BE(buf, pos);
-  const order_qty = buf[pos.value++] === 1 ? order_qtyRaw : null;
-  return {
+  const order_qty_v = readF64BE(buf, pos);
+  const order_qty = buf[pos.value++] === 1 ? order_qty_v : null;
+  const value: CancelRequest = {
     cl_ord_id: cl_ord_id,
     orig_cl_ord_id: orig_cl_ord_id,
     symbol: symbol,
     side: side,
     order_qty: order_qty,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CancelReplaceRequest */
-export function CancelReplaceRequestEncoderEncode(cl_ord_id string, orig_cl_ord_id string, symbol string, side CancelReplaceRequestSide, order_qty number, price number | null): Uint8Array {
+/** SBE message CancelReplaceRequest */
+export interface CancelReplaceRequest {
+  cl_ord_id: string;
+  orig_cl_ord_id: string;
+  symbol: string;
+  side: CancelReplaceRequestSide;
+  order_qty: number;
+  price: number | null;
+}
+
+/** SBE body encoder for CancelReplaceRequest (fields only, no header). */
+export function CancelReplaceRequestBodyEncoderEncode(value: CancelReplaceRequest, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.orig_cl_ord_id);
+  writeString(buf, value.symbol);
+  buf.push(CancelReplaceRequestSideToValue(value.side));
+  writeF64BE(buf, value.order_qty);
+  writeF64BE(buf, value.price ?? 0);
+  buf.push(value.price != null ? 1 : 0);
+}
+
+/** SBE body decoder for CancelReplaceRequest: reads fields at `pos`. */
+export function CancelReplaceRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CancelReplaceRequest {
+  const cl_ord_id = readString(buf, pos);
+  const orig_cl_ord_id = readString(buf, pos);
+  const symbol = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  const side = CancelReplaceRequestSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid CancelReplaceRequestSide');
+  const order_qty = readF64BE(buf, pos);
+  const price_v = readF64BE(buf, pos);
+  const price = buf[pos.value++] === 1 ? price_v : null;
+  const value: CancelReplaceRequest = {
+    cl_ord_id: cl_ord_id,
+    orig_cl_ord_id: orig_cl_ord_id,
+    symbol: symbol,
+    side: side,
+    order_qty: order_qty,
+    price: price,
+  };
+  return value;
+}
+
+/** SBE encoder for CancelReplaceRequest — returns the complete message. */
+export function CancelReplaceRequestEncoderEncode(cl_ord_id: string, orig_cl_ord_id: string, symbol: string, side: CancelReplaceRequestSide, order_qty: number, price: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 3);
   writeU16BE(buf, 0);
   writeU16BE(buf, 17);
-
-  // Fixed fields
   writeString(buf, cl_ord_id);
   writeString(buf, orig_cl_ord_id);
   writeString(buf, symbol);
@@ -585,59 +1164,123 @@ export function CancelReplaceRequestEncoderEncode(cl_ord_id string, orig_cl_ord_
   writeF64BE(buf, order_qty);
   writeF64BE(buf, price ?? 0);
   buf.push(price != null ? 1 : 0);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for CancelReplaceRequest */
-export interface CancelReplaceRequestDecoder {
-  cl_ord_id: string;
-  orig_cl_ord_id: string;
-  symbol: string;
-  side: CancelReplaceRequestSide;
-  order_qty: number;
-  price: number | null;
-  encodedLen(): number;
-}
-
-export function CancelReplaceRequestDecoderDecode(buf: Uint8Array): CancelReplaceRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for CancelReplaceRequest: validates the header and reads the body. */
+export function CancelReplaceRequestDecoderDecode(buf: Uint8Array): CancelReplaceRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 3) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 3) throw new Error("invalid template_id");
   const cl_ord_id = readString(buf, pos);
   const orig_cl_ord_id = readString(buf, pos);
   const symbol = readString(buf, pos);
-  const sideRaw = buf[pos.value++];
+  const sideRaw = readU8(buf, pos);
   const side = CancelReplaceRequestSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid CancelReplaceRequestSide');
   const order_qty = readF64BE(buf, pos);
-  const priceRaw = readF64BE(buf, pos);
-  const price = buf[pos.value++] === 1 ? priceRaw : null;
-  return {
+  const price_v = readF64BE(buf, pos);
+  const price = buf[pos.value++] === 1 ? price_v : null;
+  const value: CancelReplaceRequest = {
     cl_ord_id: cl_ord_id,
     orig_cl_ord_id: orig_cl_ord_id,
     symbol: symbol,
     side: side,
     order_qty: order_qty,
     price: price,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for ExecutionReport */
-export function ExecutionReportEncoderEncode(cl_ord_id string, order_id string, exec_id string, exec_type ExecutionReportExecType, ord_status ExecutionReportOrdStatus, side ExecutionReportSide, last_qty number | null, last_price number | null, leaves_qty number, cum_qty number, avg_price number, symbol string, transact_time bigint): Uint8Array {
+/** SBE message ExecutionReport */
+export interface ExecutionReport {
+  cl_ord_id: string;
+  order_id: string;
+  exec_id: string;
+  exec_type: ExecutionReportExecType;
+  ord_status: ExecutionReportOrdStatus;
+  side: ExecutionReportSide;
+  last_qty: number | null;
+  last_price: number | null;
+  leaves_qty: number;
+  cum_qty: number;
+  avg_price: number;
+  symbol: string;
+  transact_time: bigint;
+}
+
+/** SBE body encoder for ExecutionReport (fields only, no header). */
+export function ExecutionReportBodyEncoderEncode(value: ExecutionReport, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.order_id);
+  writeString(buf, value.exec_id);
+  buf.push(ExecutionReportExecTypeToValue(value.exec_type));
+  buf.push(ExecutionReportOrdStatusToValue(value.ord_status));
+  buf.push(ExecutionReportSideToValue(value.side));
+  writeF64BE(buf, value.last_qty ?? 0);
+  buf.push(value.last_qty != null ? 1 : 0);
+  writeF64BE(buf, value.last_price ?? 0);
+  buf.push(value.last_price != null ? 1 : 0);
+  writeF64BE(buf, value.leaves_qty);
+  writeF64BE(buf, value.cum_qty);
+  writeF64BE(buf, value.avg_price);
+  writeString(buf, value.symbol);
+  writeU64BE(buf, BigInt.asUintN(64, value.transact_time));
+}
+
+/** SBE body decoder for ExecutionReport: reads fields at `pos`. */
+export function ExecutionReportBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): ExecutionReport {
+  const cl_ord_id = readString(buf, pos);
+  const order_id = readString(buf, pos);
+  const exec_id = readString(buf, pos);
+  const exec_typeRaw = readU8(buf, pos);
+  const exec_type = ExecutionReportExecTypeFromValue(exec_typeRaw);
+  if (exec_type == null) throw new Error('invalid ExecutionReportExecType');
+  const ord_statusRaw = readU8(buf, pos);
+  const ord_status = ExecutionReportOrdStatusFromValue(ord_statusRaw);
+  if (ord_status == null) throw new Error('invalid ExecutionReportOrdStatus');
+  const sideRaw = readU8(buf, pos);
+  const side = ExecutionReportSideFromValue(sideRaw);
+  if (side == null) throw new Error('invalid ExecutionReportSide');
+  const last_qty_v = readF64BE(buf, pos);
+  const last_qty = buf[pos.value++] === 1 ? last_qty_v : null;
+  const last_price_v = readF64BE(buf, pos);
+  const last_price = buf[pos.value++] === 1 ? last_price_v : null;
+  const leaves_qty = readF64BE(buf, pos);
+  const cum_qty = readF64BE(buf, pos);
+  const avg_price = readF64BE(buf, pos);
+  const symbol = readString(buf, pos);
+  const transact_time = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: ExecutionReport = {
+    cl_ord_id: cl_ord_id,
+    order_id: order_id,
+    exec_id: exec_id,
+    exec_type: exec_type,
+    ord_status: ord_status,
+    side: side,
+    last_qty: last_qty,
+    last_price: last_price,
+    leaves_qty: leaves_qty,
+    cum_qty: cum_qty,
+    avg_price: avg_price,
+    symbol: symbol,
+    transact_time: transact_time,
+  };
+  return value;
+}
+
+/** SBE encoder for ExecutionReport — returns the complete message. */
+export function ExecutionReportEncoderEncode(cl_ord_id: string, order_id: string, exec_id: string, exec_type: ExecutionReportExecType, ord_status: ExecutionReportOrdStatus, side: ExecutionReportSide, last_qty: number | null, last_price: number | null, leaves_qty: number, cum_qty: number, avg_price: number, symbol: string, transact_time: bigint): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 4);
   writeU16BE(buf, 0);
   writeU16BE(buf, 51);
-
-  // Fixed fields
   writeString(buf, cl_ord_id);
   writeString(buf, order_id);
   writeString(buf, exec_id);
@@ -652,59 +1295,42 @@ export function ExecutionReportEncoderEncode(cl_ord_id string, order_id string, 
   writeF64BE(buf, cum_qty);
   writeF64BE(buf, avg_price);
   writeString(buf, symbol);
-  writeI64BE(buf, transact_time);
-
+  writeU64BE(buf, BigInt.asUintN(64, transact_time));
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for ExecutionReport */
-export interface ExecutionReportDecoder {
-  cl_ord_id: string;
-  order_id: string;
-  exec_id: string;
-  exec_type: ExecutionReportExecType;
-  ord_status: ExecutionReportOrdStatus;
-  side: ExecutionReportSide;
-  last_qty: number | null;
-  last_price: number | null;
-  leaves_qty: number;
-  cum_qty: number;
-  avg_price: number;
-  symbol: string;
-  transact_time: bigint;
-  encodedLen(): number;
-}
-
-export function ExecutionReportDecoderDecode(buf: Uint8Array): ExecutionReportDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for ExecutionReport: validates the header and reads the body. */
+export function ExecutionReportDecoderDecode(buf: Uint8Array): ExecutionReport {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 4) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 4) throw new Error("invalid template_id");
   const cl_ord_id = readString(buf, pos);
   const order_id = readString(buf, pos);
   const exec_id = readString(buf, pos);
-  const exec_typeRaw = buf[pos.value++];
+  const exec_typeRaw = readU8(buf, pos);
   const exec_type = ExecutionReportExecTypeFromValue(exec_typeRaw);
   if (exec_type == null) throw new Error('invalid ExecutionReportExecType');
-  const ord_statusRaw = buf[pos.value++];
+  const ord_statusRaw = readU8(buf, pos);
   const ord_status = ExecutionReportOrdStatusFromValue(ord_statusRaw);
   if (ord_status == null) throw new Error('invalid ExecutionReportOrdStatus');
-  const sideRaw = buf[pos.value++];
+  const sideRaw = readU8(buf, pos);
   const side = ExecutionReportSideFromValue(sideRaw);
   if (side == null) throw new Error('invalid ExecutionReportSide');
-  const last_qtyRaw = readF64BE(buf, pos);
-  const last_qty = buf[pos.value++] === 1 ? last_qtyRaw : null;
-  const last_priceRaw = readF64BE(buf, pos);
-  const last_price = buf[pos.value++] === 1 ? last_priceRaw : null;
+  const last_qty_v = readF64BE(buf, pos);
+  const last_qty = buf[pos.value++] === 1 ? last_qty_v : null;
+  const last_price_v = readF64BE(buf, pos);
+  const last_price = buf[pos.value++] === 1 ? last_price_v : null;
   const leaves_qty = readF64BE(buf, pos);
   const cum_qty = readF64BE(buf, pos);
   const avg_price = readF64BE(buf, pos);
   const symbol = readString(buf, pos);
-  const transact_time = readI64BE(buf, pos);
-  return {
+  const transact_time = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: ExecutionReport = {
     cl_ord_id: cl_ord_id,
     order_id: order_id,
     exec_id: exec_id,
@@ -718,130 +1344,224 @@ export function ExecutionReportDecoderDecode(buf: Uint8Array): ExecutionReportDe
     avg_price: avg_price,
     symbol: symbol,
     transact_time: transact_time,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CancelReject */
-export function CancelRejectEncoderEncode(cl_ord_id string, orig_cl_ord_id string, reject_reason CancelRejectRejectReason, symbol string): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 5);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
-  writeString(buf, cl_ord_id);
-  writeString(buf, orig_cl_ord_id);
-  buf.push(CancelRejectRejectReasonToValue(reject_reason));
-  writeString(buf, symbol);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for CancelReject */
-export interface CancelRejectDecoder {
+/** SBE message CancelReject */
+export interface CancelReject {
   cl_ord_id: string;
   orig_cl_ord_id: string;
   reject_reason: CancelRejectRejectReason;
   symbol: string;
-  encodedLen(): number;
 }
 
-export function CancelRejectDecoderDecode(buf: Uint8Array): CancelRejectDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 5) throw new Error('invalid template_id');
+/** SBE body encoder for CancelReject (fields only, no header). */
+export function CancelRejectBodyEncoderEncode(value: CancelReject, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.orig_cl_ord_id);
+  buf.push(CancelRejectRejectReasonToValue(value.reject_reason));
+  writeString(buf, value.symbol);
+}
+
+/** SBE body decoder for CancelReject: reads fields at `pos`. */
+export function CancelRejectBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CancelReject {
   const cl_ord_id = readString(buf, pos);
   const orig_cl_ord_id = readString(buf, pos);
-  const reject_reasonRaw = buf[pos.value++];
+  const reject_reasonRaw = readU8(buf, pos);
   const reject_reason = CancelRejectRejectReasonFromValue(reject_reasonRaw);
   if (reject_reason == null) throw new Error('invalid CancelRejectRejectReason');
   const symbol = readString(buf, pos);
-  return {
+  const value: CancelReject = {
     cl_ord_id: cl_ord_id,
     orig_cl_ord_id: orig_cl_ord_id,
     reject_reason: reject_reason,
     symbol: symbol,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarketDataSnapshot */
-export function MarketDataSnapshotEncoderEncode(symbol string, exchange string, bids string[], asks string[], timestamp bigint, sequence bigint | null, is_snapshot number | null): Uint8Array {
+/** SBE encoder for CancelReject — returns the complete message. */
+export function CancelRejectEncoderEncode(cl_ord_id: string, orig_cl_ord_id: string, reject_reason: CancelRejectRejectReason, symbol: string): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 5);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, cl_ord_id);
+  writeString(buf, orig_cl_ord_id);
+  buf.push(CancelRejectRejectReasonToValue(reject_reason));
+  writeString(buf, symbol);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for CancelReject: validates the header and reads the body. */
+export function CancelRejectDecoderDecode(buf: Uint8Array): CancelReject {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 5) throw new Error("invalid template_id");
+  const cl_ord_id = readString(buf, pos);
+  const orig_cl_ord_id = readString(buf, pos);
+  const reject_reasonRaw = readU8(buf, pos);
+  const reject_reason = CancelRejectRejectReasonFromValue(reject_reasonRaw);
+  if (reject_reason == null) throw new Error('invalid CancelRejectRejectReason');
+  const symbol = readString(buf, pos);
+  const value: CancelReject = {
+    cl_ord_id: cl_ord_id,
+    orig_cl_ord_id: orig_cl_ord_id,
+    reject_reason: reject_reason,
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE message MarketDataSnapshot */
+export interface MarketDataSnapshot {
+  symbol: string;
+  exchange: string;
+  bids: PriceLevel[];
+  asks: PriceLevel[];
+  timestamp: bigint;
+  sequence: bigint | null;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for MarketDataSnapshot (fields only, no header). */
+export function MarketDataSnapshotBodyEncoderEncode(value: MarketDataSnapshot, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.exchange);
+  writeU32BE(buf, value.bids.length);
+  for (const item of value.bids) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU32BE(buf, value.asks.length);
+  for (const item of value.asks) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  writeU64BE(buf, value.sequence ?? 0n);
+  buf.push(value.sequence != null ? 1 : 0);
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for MarketDataSnapshot: reads fields at `pos`. */
+export function MarketDataSnapshotBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarketDataSnapshot {
+  const symbol = readString(buf, pos);
+  const exchange = readString(buf, pos);
+  const bidsCount = readU32BE(buf, pos);
+  const bids: PriceLevel[] = [];
+  for (let i = 0; i < bidsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    bids.push(item);
+  }
+  const asksCount = readU32BE(buf, pos);
+  const asks: PriceLevel[] = [];
+  for (let i = 0; i < asksCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    asks.push(item);
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarketDataSnapshot = {
+    symbol: symbol,
+    exchange: exchange,
+    bids: bids,
+    asks: asks,
+    timestamp: timestamp,
+    sequence: sequence,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for MarketDataSnapshot — returns the complete message. */
+export function MarketDataSnapshotEncoderEncode(symbol: string, exchange: string, bids: PriceLevel[], asks: PriceLevel[], timestamp: bigint, sequence: bigint | null, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 6);
   writeU16BE(buf, 0);
   writeU16BE(buf, 17);
-
-  // Fixed fields
   writeString(buf, symbol);
   writeString(buf, exchange);
   writeU32BE(buf, bids.length);
   for (const item of bids) {
-    PriceLevelEncode(item, buf);
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
   writeU32BE(buf, asks.length);
   for (const item of asks) {
-    PriceLevelEncode(item, buf);
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
-  writeI64BE(buf, timestamp);
-  if (sequence != null) { buf.push(1); writeI64BE(buf, sequence); } else { buf.push(0); }
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  writeU64BE(buf, sequence ?? 0n);
+  buf.push(sequence != null ? 1 : 0);
   buf.push(is_snapshot ?? 0);
   buf.push(is_snapshot != null ? 1 : 0);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MarketDataSnapshot */
-export interface MarketDataSnapshotDecoder {
-  symbol: string;
-  exchange: string;
-  bids: string[];
-  asks: string[];
-  timestamp: bigint;
-  sequence: bigint | null;
-  is_snapshot: number | null;
-  encodedLen(): number;
-}
-
-export function MarketDataSnapshotDecoderDecode(buf: Uint8Array): MarketDataSnapshotDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for MarketDataSnapshot: validates the header and reads the body. */
+export function MarketDataSnapshotDecoderDecode(buf: Uint8Array): MarketDataSnapshot {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 6) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 6) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
   const exchange = readString(buf, pos);
   const bidsCount = readU32BE(buf, pos);
   const bids: PriceLevel[] = [];
   for (let i = 0; i < bidsCount; i++) {
-    const item = PriceLevelDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     bids.push(item);
   }
   const asksCount = readU32BE(buf, pos);
   const asks: PriceLevel[] = [];
   for (let i = 0; i < asksCount; i++) {
-    const item = PriceLevelDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     asks.push(item);
   }
-  const timestamp = readI64BE(buf, pos);
-  let sequence: bigint | null = null;
-  if (buf[pos.value++] === 1) sequence = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarketDataSnapshot = {
     symbol: symbol,
     exchange: exchange,
     bids: bids,
@@ -849,183 +1569,243 @@ export function MarketDataSnapshotDecoderDecode(buf: Uint8Array): MarketDataSnap
     timestamp: timestamp,
     sequence: sequence,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarketDataIncrementalRefresh */
-export function MarketDataIncrementalRefreshEncoderEncode(symbol string, updates string[], timestamp bigint, sequence bigint | null): Uint8Array {
+/** SBE message MarketDataIncrementalRefresh */
+export interface MarketDataIncrementalRefresh {
+  symbol: string;
+  updates: MarketDataUpdate[];
+  timestamp: bigint;
+  sequence: bigint | null;
+}
+
+/** SBE body encoder for MarketDataIncrementalRefresh (fields only, no header). */
+export function MarketDataIncrementalRefreshBodyEncoderEncode(value: MarketDataIncrementalRefresh, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU32BE(buf, value.updates.length);
+  for (const item of value.updates) {
+    const itemBuf: number[] = [];
+    MarketDataUpdateEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  writeU64BE(buf, value.sequence ?? 0n);
+  buf.push(value.sequence != null ? 1 : 0);
+}
+
+/** SBE body decoder for MarketDataIncrementalRefresh: reads fields at `pos`. */
+export function MarketDataIncrementalRefreshBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarketDataIncrementalRefresh {
+  const symbol = readString(buf, pos);
+  const updatesCount = readU32BE(buf, pos);
+  const updates: MarketDataUpdate[] = [];
+  for (let i = 0; i < updatesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MarketDataUpdateDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    updates.push(item);
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const value: MarketDataIncrementalRefresh = {
+    symbol: symbol,
+    updates: updates,
+    timestamp: timestamp,
+    sequence: sequence,
+  };
+  return value;
+}
+
+/** SBE encoder for MarketDataIncrementalRefresh — returns the complete message. */
+export function MarketDataIncrementalRefreshEncoderEncode(symbol: string, updates: MarketDataUpdate[], timestamp: bigint, sequence: bigint | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 7);
   writeU16BE(buf, 0);
   writeU16BE(buf, 16);
-
-  // Fixed fields
   writeString(buf, symbol);
   writeU32BE(buf, updates.length);
   for (const item of updates) {
-    MarketDataUpdateEncode(item, buf);
+    const itemBuf: number[] = [];
+    MarketDataUpdateEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
-  writeI64BE(buf, timestamp);
-  if (sequence != null) { buf.push(1); writeI64BE(buf, sequence); } else { buf.push(0); }
-
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  writeU64BE(buf, sequence ?? 0n);
+  buf.push(sequence != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MarketDataIncrementalRefresh */
-export interface MarketDataIncrementalRefreshDecoder {
-  symbol: string;
-  updates: string[];
-  timestamp: bigint;
-  sequence: bigint | null;
-  encodedLen(): number;
-}
-
-export function MarketDataIncrementalRefreshDecoderDecode(buf: Uint8Array): MarketDataIncrementalRefreshDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body. */
+export function MarketDataIncrementalRefreshDecoderDecode(buf: Uint8Array): MarketDataIncrementalRefresh {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 7) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 7) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
   const updatesCount = readU32BE(buf, pos);
   const updates: MarketDataUpdate[] = [];
   for (let i = 0; i < updatesCount; i++) {
-    const item = MarketDataUpdateDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MarketDataUpdateDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     updates.push(item);
   }
-  const timestamp = readI64BE(buf, pos);
-  let sequence: bigint | null = null;
-  if (buf[pos.value++] === 1) sequence = readI64BE(buf, pos);
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const value: MarketDataIncrementalRefresh = {
     symbol: symbol,
     updates: updates,
     timestamp: timestamp,
     sequence: sequence,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderBookRequest */
-export function OrderBookRequestEncoderEncode(symbol string, depth u32 | null, at_time bigint | null): Uint8Array {
+/** SBE message OrderBookRequest */
+export interface OrderBookRequest {
+  symbol: string;
+  depth: number | null;
+  at_time: bigint | null;
+}
+
+/** SBE body encoder for OrderBookRequest (fields only, no header). */
+export function OrderBookRequestBodyEncoderEncode(value: OrderBookRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU32BE(buf, value.depth ?? 0);
+  buf.push(value.depth != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.at_time ?? 0n));
+  buf.push(value.at_time != null ? 1 : 0);
+}
+
+/** SBE body decoder for OrderBookRequest: reads fields at `pos`. */
+export function OrderBookRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderBookRequest {
+  const symbol = readString(buf, pos);
+  const depth_v = readU32BE(buf, pos);
+  const depth = buf[pos.value++] === 1 ? depth_v : null;
+  const at_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const at_time = buf[pos.value++] === 1 ? at_time_v : null;
+  const value: OrderBookRequest = {
+    symbol: symbol,
+    depth: depth,
+    at_time: at_time,
+  };
+  return value;
+}
+
+/** SBE encoder for OrderBookRequest — returns the complete message. */
+export function OrderBookRequestEncoderEncode(symbol: string, depth: number | null, at_time: bigint | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 8);
   writeU16BE(buf, 0);
   writeU16BE(buf, 12);
-
-  // Fixed fields
   writeString(buf, symbol);
-  // TODO: encode depth as u32
-  if (at_time != null) { buf.push(1); writeI64BE(buf, at_time); } else { buf.push(0); }
-
+  writeU32BE(buf, depth ?? 0);
+  buf.push(depth != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, at_time ?? 0n));
+  buf.push(at_time != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OrderBookRequest */
-export interface OrderBookRequestDecoder {
-  symbol: string;
-  depth: u32 | null;
-  at_time: bigint | null;
-  encodedLen(): number;
-}
-
-export function OrderBookRequestDecoderDecode(buf: Uint8Array): OrderBookRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for OrderBookRequest: validates the header and reads the body. */
+export function OrderBookRequestDecoderDecode(buf: Uint8Array): OrderBookRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 8) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 8) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
-        // TODO: decode depth
-  let at_time: bigint | null = null;
-  if (buf[pos.value++] === 1) at_time = readI64BE(buf, pos);
-  return {
+  const depth_v = readU32BE(buf, pos);
+  const depth = buf[pos.value++] === 1 ? depth_v : null;
+  const at_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const at_time = buf[pos.value++] === 1 ? at_time_v : null;
+  const value: OrderBookRequest = {
     symbol: symbol,
     depth: depth,
     at_time: at_time,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderBookSnapshot */
-export function OrderBookSnapshotEncoderEncode(symbol string, exchange string, bids string[], asks string[], timestamp bigint, sequence bigint | null, is_snapshot number | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 9);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 17);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  writeString(buf, exchange);
-  writeU32BE(buf, bids.length);
-  for (const item of bids) {
-    PriceLevelEncode(item, buf);
-  }
-  writeU32BE(buf, asks.length);
-  for (const item of asks) {
-    PriceLevelEncode(item, buf);
-  }
-  writeI64BE(buf, timestamp);
-  if (sequence != null) { buf.push(1); writeI64BE(buf, sequence); } else { buf.push(0); }
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for OrderBookSnapshot */
-export interface OrderBookSnapshotDecoder {
+/** SBE message OrderBookSnapshot */
+export interface OrderBookSnapshot {
   symbol: string;
   exchange: string;
-  bids: string[];
-  asks: string[];
+  bids: PriceLevel[];
+  asks: PriceLevel[];
   timestamp: bigint;
   sequence: bigint | null;
   is_snapshot: number | null;
-  encodedLen(): number;
 }
 
-export function OrderBookSnapshotDecoderDecode(buf: Uint8Array): OrderBookSnapshotDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 9) throw new Error('invalid template_id');
+/** SBE body encoder for OrderBookSnapshot (fields only, no header). */
+export function OrderBookSnapshotBodyEncoderEncode(value: OrderBookSnapshot, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.exchange);
+  writeU32BE(buf, value.bids.length);
+  for (const item of value.bids) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU32BE(buf, value.asks.length);
+  for (const item of value.asks) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  writeU64BE(buf, value.sequence ?? 0n);
+  buf.push(value.sequence != null ? 1 : 0);
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for OrderBookSnapshot: reads fields at `pos`. */
+export function OrderBookSnapshotBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderBookSnapshot {
   const symbol = readString(buf, pos);
   const exchange = readString(buf, pos);
   const bidsCount = readU32BE(buf, pos);
   const bids: PriceLevel[] = [];
   for (let i = 0; i < bidsCount; i++) {
-    const item = PriceLevelDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     bids.push(item);
   }
   const asksCount = readU32BE(buf, pos);
   const asks: PriceLevel[] = [];
   for (let i = 0; i < asksCount; i++) {
-    const item = PriceLevelDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     asks.push(item);
   }
-  const timestamp = readI64BE(buf, pos);
-  let sequence: bigint | null = null;
-  if (buf[pos.value++] === 1) sequence = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: OrderBookSnapshot = {
     symbol: symbol,
     exchange: exchange,
     bids: bids,
@@ -1033,799 +1813,1346 @@ export function OrderBookSnapshotDecoderDecode(buf: Uint8Array): OrderBookSnapsh
     timestamp: timestamp,
     sequence: sequence,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderBookDelta */
-export function OrderBookDeltaEncoderEncode(symbol string, updates string[], timestamp bigint, sequence bigint | null): Uint8Array {
+/** SBE encoder for OrderBookSnapshot — returns the complete message. */
+export function OrderBookSnapshotEncoderEncode(symbol: string, exchange: string, bids: PriceLevel[], asks: PriceLevel[], timestamp: bigint, sequence: bigint | null, is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 10);
+  writeU16BE(buf, 9);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 16);
-
-  // Fixed fields
+  writeU16BE(buf, 17);
   writeString(buf, symbol);
-  writeU32BE(buf, updates.length);
-  for (const item of updates) {
-    MarketDataUpdateEncode(item, buf);
+  writeString(buf, exchange);
+  writeU32BE(buf, bids.length);
+  for (const item of bids) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
-  writeI64BE(buf, timestamp);
-  if (sequence != null) { buf.push(1); writeI64BE(buf, sequence); } else { buf.push(0); }
-
+  writeU32BE(buf, asks.length);
+  for (const item of asks) {
+    const itemBuf: number[] = [];
+    PriceLevelEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  writeU64BE(buf, sequence ?? 0n);
+  buf.push(sequence != null ? 1 : 0);
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OrderBookDelta */
-export interface OrderBookDeltaDecoder {
-  symbol: string;
-  updates: string[];
-  timestamp: bigint;
-  sequence: bigint | null;
-  encodedLen(): number;
-}
-
-export function OrderBookDeltaDecoderDecode(buf: Uint8Array): OrderBookDeltaDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for OrderBookSnapshot: validates the header and reads the body. */
+export function OrderBookSnapshotDecoderDecode(buf: Uint8Array): OrderBookSnapshot {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 10) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 9) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const exchange = readString(buf, pos);
+  const bidsCount = readU32BE(buf, pos);
+  const bids: PriceLevel[] = [];
+  for (let i = 0; i < bidsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    bids.push(item);
+  }
+  const asksCount = readU32BE(buf, pos);
+  const asks: PriceLevel[] = [];
+  for (let i = 0; i < asksCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PriceLevelDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    asks.push(item);
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: OrderBookSnapshot = {
+    symbol: symbol,
+    exchange: exchange,
+    bids: bids,
+    asks: asks,
+    timestamp: timestamp,
+    sequence: sequence,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message OrderBookDelta */
+export interface OrderBookDelta {
+  symbol: string;
+  updates: MarketDataUpdate[];
+  timestamp: bigint;
+  sequence: bigint | null;
+}
+
+/** SBE body encoder for OrderBookDelta (fields only, no header). */
+export function OrderBookDeltaBodyEncoderEncode(value: OrderBookDelta, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU32BE(buf, value.updates.length);
+  for (const item of value.updates) {
+    const itemBuf: number[] = [];
+    MarketDataUpdateEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  writeU64BE(buf, value.sequence ?? 0n);
+  buf.push(value.sequence != null ? 1 : 0);
+}
+
+/** SBE body decoder for OrderBookDelta: reads fields at `pos`. */
+export function OrderBookDeltaBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderBookDelta {
   const symbol = readString(buf, pos);
   const updatesCount = readU32BE(buf, pos);
   const updates: MarketDataUpdate[] = [];
   for (let i = 0; i < updatesCount; i++) {
-    const item = MarketDataUpdateDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MarketDataUpdateDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     updates.push(item);
   }
-  const timestamp = readI64BE(buf, pos);
-  let sequence: bigint | null = null;
-  if (buf[pos.value++] === 1) sequence = readI64BE(buf, pos);
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const value: OrderBookDelta = {
     symbol: symbol,
     updates: updates,
     timestamp: timestamp,
     sequence: sequence,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for AggregateTradeEvent */
-export function AggregateTradeEventEncoderEncode(trade string): Uint8Array {
+/** SBE encoder for OrderBookDelta — returns the complete message. */
+export function OrderBookDeltaEncoderEncode(symbol: string, updates: MarketDataUpdate[], timestamp: bigint, sequence: bigint | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 10);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 16);
+  writeString(buf, symbol);
+  writeU32BE(buf, updates.length);
+  for (const item of updates) {
+    const itemBuf: number[] = [];
+    MarketDataUpdateEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  writeU64BE(buf, sequence ?? 0n);
+  buf.push(sequence != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for OrderBookDelta: validates the header and reads the body. */
+export function OrderBookDeltaDecoderDecode(buf: Uint8Array): OrderBookDelta {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 10) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const updatesCount = readU32BE(buf, pos);
+  const updates: MarketDataUpdate[] = [];
+  for (let i = 0; i < updatesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MarketDataUpdateDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    updates.push(item);
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const sequence_v = readU64BE(buf, pos);
+  const sequence = buf[pos.value++] === 1 ? sequence_v : null;
+  const value: OrderBookDelta = {
+    symbol: symbol,
+    updates: updates,
+    timestamp: timestamp,
+    sequence: sequence,
+  };
+  return value;
+}
+
+/** SBE message AggregateTradeEvent */
+export interface AggregateTradeEvent {
+  trade: AggregateTrade;
+}
+
+/** SBE body encoder for AggregateTradeEvent (fields only, no header). */
+export function AggregateTradeEventBodyEncoderEncode(value: AggregateTradeEvent, buf: number[]): void {
+  AggregateTradeEncoderEncode(value.trade, buf);
+}
+
+/** SBE body decoder for AggregateTradeEvent: reads fields at `pos`. */
+export function AggregateTradeEventBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AggregateTradeEvent {
+  const trade = AggregateTradeDecoderDecode(buf, pos);
+  const value: AggregateTradeEvent = {
+    trade: trade,
+  };
+  return value;
+}
+
+/** SBE encoder for AggregateTradeEvent — returns the complete message. */
+export function AggregateTradeEventEncoderEncode(trade: AggregateTrade): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 11);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-  writeString(buf, trade);
-
+  AggregateTradeEncoderEncode(trade, buf);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for AggregateTradeEvent */
-export interface AggregateTradeEventDecoder {
-  trade: string;
-  encodedLen(): number;
-}
-
-export function AggregateTradeEventDecoderDecode(buf: Uint8Array): AggregateTradeEventDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for AggregateTradeEvent: validates the header and reads the body. */
+export function AggregateTradeEventDecoderDecode(buf: Uint8Array): AggregateTradeEvent {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 11) throw new Error('invalid template_id');
-  const trade = readString(buf, pos);
-  return {
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 11) throw new Error("invalid template_id");
+  const trade = AggregateTradeDecoderDecode(buf, pos);
+  const value: AggregateTradeEvent = {
     trade: trade,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for AggregateTradeRequest */
-export function AggregateTradeRequestEncoderEncode(symbol string, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 12);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for AggregateTradeRequest */
-export interface AggregateTradeRequestDecoder {
+/** SBE message AggregateTradeRequest */
+export interface AggregateTradeRequest {
   symbol: string;
   start_time: bigint | null;
   end_time: bigint | null;
-  limit: u32 | null;
+  limit: number | null;
   cursor: string | null;
-  encodedLen(): number;
 }
 
-export function AggregateTradeRequestDecoderDecode(buf: Uint8Array): AggregateTradeRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 12) throw new Error('invalid template_id');
+/** SBE body encoder for AggregateTradeRequest (fields only, no header). */
+export function AggregateTradeRequestBodyEncoderEncode(value: AggregateTradeRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for AggregateTradeRequest: reads fields at `pos`. */
+export function AggregateTradeRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AggregateTradeRequest {
+  let cursor: string | null = null;
   const symbol = readString(buf, pos);
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: AggregateTradeRequest = {
     symbol: symbol,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for AggregateTradeBatch */
-export function AggregateTradeBatchEncoderEncode(symbol string, trades string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for AggregateTradeRequest — returns the complete message. */
+export function AggregateTradeRequestEncoderEncode(symbol: string, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 13);
+  writeU16BE(buf, 12);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, symbol);
-  writeU32BE(buf, trades.length);
-  for (const item of trades) {
-    AggregateTradeEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for AggregateTradeBatch */
-export interface AggregateTradeBatchDecoder {
-  symbol: string;
-  trades: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function AggregateTradeBatchDecoderDecode(buf: Uint8Array): AggregateTradeBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for AggregateTradeRequest: validates the header and reads the body. */
+export function AggregateTradeRequestDecoderDecode(buf: Uint8Array): AggregateTradeRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 13) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 12) throw new Error("invalid template_id");
+  let cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: AggregateTradeRequest = {
+    symbol: symbol,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message AggregateTradeBatch */
+export interface AggregateTradeBatch {
+  symbol: string;
+  trades: AggregateTrade[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for AggregateTradeBatch (fields only, no header). */
+export function AggregateTradeBatchBodyEncoderEncode(value: AggregateTradeBatch, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU32BE(buf, value.trades.length);
+  for (const item of value.trades) {
+    const itemBuf: number[] = [];
+    AggregateTradeEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for AggregateTradeBatch: reads fields at `pos`. */
+export function AggregateTradeBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AggregateTradeBatch {
+  let next_cursor: string | null = null;
   const symbol = readString(buf, pos);
   const tradesCount = readU32BE(buf, pos);
   const trades: AggregateTrade[] = [];
   for (let i = 0; i < tradesCount; i++) {
-    const item = AggregateTradeDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = AggregateTradeDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     trades.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: AggregateTradeBatch = {
     symbol: symbol,
     trades: trades,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MiniTicker */
-export function MiniTickerEncoderEncode(symbol string, last_price number, volume number, timestamp bigint, is_snapshot number | null): Uint8Array {
+/** SBE encoder for AggregateTradeBatch — returns the complete message. */
+export function AggregateTradeBatchEncoderEncode(symbol: string, trades: AggregateTrade[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 14);
+  writeU16BE(buf, 13);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 25);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, symbol);
-  writeF64BE(buf, last_price);
-  writeF64BE(buf, volume);
-  writeI64BE(buf, timestamp);
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
+  writeU32BE(buf, trades.length);
+  for (const item of trades) {
+    const itemBuf: number[] = [];
+    AggregateTradeEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MiniTicker */
-export interface MiniTickerDecoder {
+/** SBE decoder for AggregateTradeBatch: validates the header and reads the body. */
+export function AggregateTradeBatchDecoderDecode(buf: Uint8Array): AggregateTradeBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 13) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const tradesCount = readU32BE(buf, pos);
+  const trades: AggregateTrade[] = [];
+  for (let i = 0; i < tradesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = AggregateTradeDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    trades.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: AggregateTradeBatch = {
+    symbol: symbol,
+    trades: trades,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message MiniTicker */
+export interface MiniTicker {
   symbol: string;
   last_price: number;
   volume: number;
   timestamp: bigint;
   is_snapshot: number | null;
-  encodedLen(): number;
 }
 
-export function MiniTickerDecoderDecode(buf: Uint8Array): MiniTickerDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 14) throw new Error('invalid template_id');
+/** SBE body encoder for MiniTicker (fields only, no header). */
+export function MiniTickerBodyEncoderEncode(value: MiniTicker, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.last_price);
+  writeF64BE(buf, value.volume);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for MiniTicker: reads fields at `pos`. */
+export function MiniTickerBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MiniTicker {
   const symbol = readString(buf, pos);
   const last_price = readF64BE(buf, pos);
   const volume = readF64BE(buf, pos);
-  const timestamp = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MiniTicker = {
     symbol: symbol,
     last_price: last_price,
     volume: volume,
     timestamp: timestamp,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for AllMidsRequest */
+/** SBE encoder for MiniTicker — returns the complete message. */
+export function MiniTickerEncoderEncode(symbol: string, last_price: number, volume: number, timestamp: bigint, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 14);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 25);
+  writeString(buf, symbol);
+  writeF64BE(buf, last_price);
+  writeF64BE(buf, volume);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for MiniTicker: validates the header and reads the body. */
+export function MiniTickerDecoderDecode(buf: Uint8Array): MiniTicker {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 14) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const last_price = readF64BE(buf, pos);
+  const volume = readF64BE(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MiniTicker = {
+    symbol: symbol,
+    last_price: last_price,
+    volume: volume,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message AllMidsRequest */
+export interface AllMidsRequest {
+}
+
+/** SBE body encoder for AllMidsRequest (fields only, no header). */
+export function AllMidsRequestBodyEncoderEncode(value: AllMidsRequest, buf: number[]): void {
+}
+
+/** SBE body decoder for AllMidsRequest: reads fields at `pos`. */
+export function AllMidsRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AllMidsRequest {
+  const value: AllMidsRequest = {
+  };
+  return value;
+}
+
+/** SBE encoder for AllMidsRequest — returns the complete message. */
 export function AllMidsRequestEncoderEncode(): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 15);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for AllMidsRequest */
-export interface AllMidsRequestDecoder {
-  encodedLen(): number;
-}
-
-export function AllMidsRequestDecoderDecode(buf: Uint8Array): AllMidsRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for AllMidsRequest: validates the header and reads the body. */
+export function AllMidsRequestDecoderDecode(buf: Uint8Array): AllMidsRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 15) throw new Error('invalid template_id');
-  return {
-
-    encodedLen: () => 0,
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 15) throw new Error("invalid template_id");
+  const value: AllMidsRequest = {
   };
+  return value;
 }
 
-/** SBE encoder for AllMidsBatch */
-export function AllMidsBatchEncoderEncode(tickers string[]): Uint8Array {
+/** SBE message AllMidsBatch */
+export interface AllMidsBatch {
+  tickers: MiniTicker[];
+}
+
+/** SBE body encoder for AllMidsBatch (fields only, no header). */
+export function AllMidsBatchBodyEncoderEncode(value: AllMidsBatch, buf: number[]): void {
+  writeU32BE(buf, value.tickers.length);
+  for (const item of value.tickers) {
+    const itemBuf: number[] = [];
+    MiniTickerBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+}
+
+/** SBE body decoder for AllMidsBatch: reads fields at `pos`. */
+export function AllMidsBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AllMidsBatch {
+  const tickersCount = readU32BE(buf, pos);
+  const tickers: MiniTicker[] = [];
+  for (let i = 0; i < tickersCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MiniTickerBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    tickers.push(item);
+  }
+  const value: AllMidsBatch = {
+    tickers: tickers,
+  };
+  return value;
+}
+
+/** SBE encoder for AllMidsBatch — returns the complete message. */
+export function AllMidsBatchEncoderEncode(tickers: MiniTicker[]): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 16);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeU32BE(buf, tickers.length);
   for (const item of tickers) {
-    MiniTickerEncode(item, buf);
+    const itemBuf: number[] = [];
+    MiniTickerBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for AllMidsBatch */
-export interface AllMidsBatchDecoder {
-  tickers: string[];
-  encodedLen(): number;
-}
-
-export function AllMidsBatchDecoderDecode(buf: Uint8Array): AllMidsBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for AllMidsBatch: validates the header and reads the body. */
+export function AllMidsBatchDecoderDecode(buf: Uint8Array): AllMidsBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 16) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 16) throw new Error("invalid template_id");
   const tickersCount = readU32BE(buf, pos);
   const tickers: MiniTicker[] = [];
   for (let i = 0; i < tickersCount; i++) {
-    const item = MiniTickerDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = MiniTickerBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     tickers.push(item);
   }
-  return {
+  const value: AllMidsBatch = {
     tickers: tickers,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarkPriceUpdate */
-export function MarkPriceUpdateEncoderEncode(symbol string, mark_price number, index_price number | null, funding_rate number | null, timestamp bigint, is_snapshot number | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 17);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 33);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  writeF64BE(buf, mark_price);
-  writeF64BE(buf, index_price ?? 0);
-  buf.push(index_price != null ? 1 : 0);
-  writeF64BE(buf, funding_rate ?? 0);
-  buf.push(funding_rate != null ? 1 : 0);
-  writeI64BE(buf, timestamp);
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for MarkPriceUpdate */
-export interface MarkPriceUpdateDecoder {
+/** SBE message MarkPriceUpdate */
+export interface MarkPriceUpdate {
   symbol: string;
   mark_price: number;
   index_price: number | null;
   funding_rate: number | null;
   timestamp: bigint;
   is_snapshot: number | null;
-  encodedLen(): number;
 }
 
-export function MarkPriceUpdateDecoderDecode(buf: Uint8Array): MarkPriceUpdateDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 17) throw new Error('invalid template_id');
+/** SBE body encoder for MarkPriceUpdate (fields only, no header). */
+export function MarkPriceUpdateBodyEncoderEncode(value: MarkPriceUpdate, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.mark_price);
+  writeF64BE(buf, value.index_price ?? 0);
+  buf.push(value.index_price != null ? 1 : 0);
+  writeF64BE(buf, value.funding_rate ?? 0);
+  buf.push(value.funding_rate != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for MarkPriceUpdate: reads fields at `pos`. */
+export function MarkPriceUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarkPriceUpdate {
   const symbol = readString(buf, pos);
   const mark_price = readF64BE(buf, pos);
-  const index_priceRaw = readF64BE(buf, pos);
-  const index_price = buf[pos.value++] === 1 ? index_priceRaw : null;
-  const funding_rateRaw = readF64BE(buf, pos);
-  const funding_rate = buf[pos.value++] === 1 ? funding_rateRaw : null;
-  const timestamp = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const index_price_v = readF64BE(buf, pos);
+  const index_price = buf[pos.value++] === 1 ? index_price_v : null;
+  const funding_rate_v = readF64BE(buf, pos);
+  const funding_rate = buf[pos.value++] === 1 ? funding_rate_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarkPriceUpdate = {
     symbol: symbol,
     mark_price: mark_price,
     index_price: index_price,
     funding_rate: funding_rate,
     timestamp: timestamp,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarkPriceRequest */
-export function MarkPriceRequestEncoderEncode(symbol string): Uint8Array {
+/** SBE encoder for MarkPriceUpdate — returns the complete message. */
+export function MarkPriceUpdateEncoderEncode(symbol: string, mark_price: number, index_price: number | null, funding_rate: number | null, timestamp: bigint, is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 17);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 33);
+  writeString(buf, symbol);
+  writeF64BE(buf, mark_price);
+  writeF64BE(buf, index_price ?? 0);
+  buf.push(index_price != null ? 1 : 0);
+  writeF64BE(buf, funding_rate ?? 0);
+  buf.push(funding_rate != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for MarkPriceUpdate: validates the header and reads the body. */
+export function MarkPriceUpdateDecoderDecode(buf: Uint8Array): MarkPriceUpdate {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 17) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const mark_price = readF64BE(buf, pos);
+  const index_price_v = readF64BE(buf, pos);
+  const index_price = buf[pos.value++] === 1 ? index_price_v : null;
+  const funding_rate_v = readF64BE(buf, pos);
+  const funding_rate = buf[pos.value++] === 1 ? funding_rate_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarkPriceUpdate = {
+    symbol: symbol,
+    mark_price: mark_price,
+    index_price: index_price,
+    funding_rate: funding_rate,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message MarkPriceRequest */
+export interface MarkPriceRequest {
+  symbol: string;
+}
+
+/** SBE body encoder for MarkPriceRequest (fields only, no header). */
+export function MarkPriceRequestBodyEncoderEncode(value: MarkPriceRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+}
+
+/** SBE body decoder for MarkPriceRequest: reads fields at `pos`. */
+export function MarkPriceRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarkPriceRequest {
+  const symbol = readString(buf, pos);
+  const value: MarkPriceRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for MarkPriceRequest — returns the complete message. */
+export function MarkPriceRequestEncoderEncode(symbol: string): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 18);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeString(buf, symbol);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MarkPriceRequest */
-export interface MarkPriceRequestDecoder {
-  symbol: string;
-  encodedLen(): number;
-}
-
-export function MarkPriceRequestDecoderDecode(buf: Uint8Array): MarkPriceRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for MarkPriceRequest: validates the header and reads the body. */
+export function MarkPriceRequestDecoderDecode(buf: Uint8Array): MarkPriceRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 18) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 18) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
-  return {
+  const value: MarkPriceRequest = {
     symbol: symbol,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for LiquidationTradeEvent */
-export function LiquidationTradeEventEncoderEncode(trade string): Uint8Array {
+/** SBE message LiquidationTradeEvent */
+export interface LiquidationTradeEvent {
+  trade: LiquidationTrade;
+}
+
+/** SBE body encoder for LiquidationTradeEvent (fields only, no header). */
+export function LiquidationTradeEventBodyEncoderEncode(value: LiquidationTradeEvent, buf: number[]): void {
+  LiquidationTradeEncoderEncode(value.trade, buf);
+}
+
+/** SBE body decoder for LiquidationTradeEvent: reads fields at `pos`. */
+export function LiquidationTradeEventBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): LiquidationTradeEvent {
+  const trade = LiquidationTradeDecoderDecode(buf, pos);
+  const value: LiquidationTradeEvent = {
+    trade: trade,
+  };
+  return value;
+}
+
+/** SBE encoder for LiquidationTradeEvent — returns the complete message. */
+export function LiquidationTradeEventEncoderEncode(trade: LiquidationTrade): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 19);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-  writeString(buf, trade);
-
+  LiquidationTradeEncoderEncode(trade, buf);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for LiquidationTradeEvent */
-export interface LiquidationTradeEventDecoder {
-  trade: string;
-  encodedLen(): number;
-}
-
-export function LiquidationTradeEventDecoderDecode(buf: Uint8Array): LiquidationTradeEventDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for LiquidationTradeEvent: validates the header and reads the body. */
+export function LiquidationTradeEventDecoderDecode(buf: Uint8Array): LiquidationTradeEvent {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 19) throw new Error('invalid template_id');
-  const trade = readString(buf, pos);
-  return {
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 19) throw new Error("invalid template_id");
+  const trade = LiquidationTradeDecoderDecode(buf, pos);
+  const value: LiquidationTradeEvent = {
     trade: trade,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CandleBarEvent */
-export function CandleBarEventEncoderEncode(bar string): Uint8Array {
+/** SBE message CandleBarEvent */
+export interface CandleBarEvent {
+  bar: CandleBar;
+}
+
+/** SBE body encoder for CandleBarEvent (fields only, no header). */
+export function CandleBarEventBodyEncoderEncode(value: CandleBarEvent, buf: number[]): void {
+  CandleBarEncoderEncode(value.bar, buf);
+}
+
+/** SBE body decoder for CandleBarEvent: reads fields at `pos`. */
+export function CandleBarEventBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CandleBarEvent {
+  const bar = CandleBarDecoderDecode(buf, pos);
+  const value: CandleBarEvent = {
+    bar: bar,
+  };
+  return value;
+}
+
+/** SBE encoder for CandleBarEvent — returns the complete message. */
+export function CandleBarEventEncoderEncode(bar: CandleBar): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 20);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-  writeString(buf, bar);
-
+  CandleBarEncoderEncode(bar, buf);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for CandleBarEvent */
-export interface CandleBarEventDecoder {
-  bar: string;
-  encodedLen(): number;
-}
-
-export function CandleBarEventDecoderDecode(buf: Uint8Array): CandleBarEventDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for CandleBarEvent: validates the header and reads the body. */
+export function CandleBarEventDecoderDecode(buf: Uint8Array): CandleBarEvent {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 20) throw new Error('invalid template_id');
-  const bar = readString(buf, pos);
-  return {
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 20) throw new Error("invalid template_id");
+  const bar = CandleBarDecoderDecode(buf, pos);
+  const value: CandleBarEvent = {
     bar: bar,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CandleBarRequest */
-export function CandleBarRequestEncoderEncode(symbol string, interval string, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 21);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  writeString(buf, interval);
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for CandleBarRequest */
-export interface CandleBarRequestDecoder {
+/** SBE message CandleBarRequest */
+export interface CandleBarRequest {
   symbol: string;
   interval: string;
   start_time: bigint | null;
   end_time: bigint | null;
-  limit: u32 | null;
+  limit: number | null;
   cursor: string | null;
-  encodedLen(): number;
 }
 
-export function CandleBarRequestDecoderDecode(buf: Uint8Array): CandleBarRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 21) throw new Error('invalid template_id');
+/** SBE body encoder for CandleBarRequest (fields only, no header). */
+export function CandleBarRequestBodyEncoderEncode(value: CandleBarRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.interval);
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for CandleBarRequest: reads fields at `pos`. */
+export function CandleBarRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CandleBarRequest {
+  let cursor: string | null = null;
   const symbol = readString(buf, pos);
   const interval = readString(buf, pos);
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: CandleBarRequest = {
     symbol: symbol,
     interval: interval,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CandleBarBatch */
-export function CandleBarBatchEncoderEncode(symbol string, interval string, bars string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for CandleBarRequest — returns the complete message. */
+export function CandleBarRequestEncoderEncode(symbol: string, interval: string, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 22);
+  writeU16BE(buf, 21);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, symbol);
   writeString(buf, interval);
-  writeU32BE(buf, bars.length);
-  for (const item of bars) {
-    CandleBarEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for CandleBarBatch */
-export interface CandleBarBatchDecoder {
-  symbol: string;
-  interval: string;
-  bars: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function CandleBarBatchDecoderDecode(buf: Uint8Array): CandleBarBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for CandleBarRequest: validates the header and reads the body. */
+export function CandleBarRequestDecoderDecode(buf: Uint8Array): CandleBarRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 22) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 21) throw new Error("invalid template_id");
+  let cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const interval = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: CandleBarRequest = {
+    symbol: symbol,
+    interval: interval,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message CandleBarBatch */
+export interface CandleBarBatch {
+  symbol: string;
+  interval: string;
+  bars: CandleBar[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for CandleBarBatch (fields only, no header). */
+export function CandleBarBatchBodyEncoderEncode(value: CandleBarBatch, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeString(buf, value.interval);
+  writeU32BE(buf, value.bars.length);
+  for (const item of value.bars) {
+    const itemBuf: number[] = [];
+    CandleBarEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for CandleBarBatch: reads fields at `pos`. */
+export function CandleBarBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CandleBarBatch {
+  let next_cursor: string | null = null;
   const symbol = readString(buf, pos);
   const interval = readString(buf, pos);
   const barsCount = readU32BE(buf, pos);
   const bars: CandleBar[] = [];
   for (let i = 0; i < barsCount; i++) {
-    const item = CandleBarDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = CandleBarDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     bars.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: CandleBarBatch = {
     symbol: symbol,
     interval: interval,
     bars: bars,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for PublicTradeEvent */
-export function PublicTradeEventEncoderEncode(trade string): Uint8Array {
+/** SBE encoder for CandleBarBatch — returns the complete message. */
+export function CandleBarBatchEncoderEncode(symbol: string, interval: string, bars: CandleBar[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 22);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, symbol);
+  writeString(buf, interval);
+  writeU32BE(buf, bars.length);
+  for (const item of bars) {
+    const itemBuf: number[] = [];
+    CandleBarEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for CandleBarBatch: validates the header and reads the body. */
+export function CandleBarBatchDecoderDecode(buf: Uint8Array): CandleBarBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 22) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const interval = readString(buf, pos);
+  const barsCount = readU32BE(buf, pos);
+  const bars: CandleBar[] = [];
+  for (let i = 0; i < barsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = CandleBarDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    bars.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: CandleBarBatch = {
+    symbol: symbol,
+    interval: interval,
+    bars: bars,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message PublicTradeEvent */
+export interface PublicTradeEvent {
+  trade: PublicTrade;
+}
+
+/** SBE body encoder for PublicTradeEvent (fields only, no header). */
+export function PublicTradeEventBodyEncoderEncode(value: PublicTradeEvent, buf: number[]): void {
+  PublicTradeEncoderEncode(value.trade, buf);
+}
+
+/** SBE body decoder for PublicTradeEvent: reads fields at `pos`. */
+export function PublicTradeEventBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PublicTradeEvent {
+  const trade = PublicTradeDecoderDecode(buf, pos);
+  const value: PublicTradeEvent = {
+    trade: trade,
+  };
+  return value;
+}
+
+/** SBE encoder for PublicTradeEvent — returns the complete message. */
+export function PublicTradeEventEncoderEncode(trade: PublicTrade): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 23);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-  writeString(buf, trade);
-
+  PublicTradeEncoderEncode(trade, buf);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for PublicTradeEvent */
-export interface PublicTradeEventDecoder {
-  trade: string;
-  encodedLen(): number;
-}
-
-export function PublicTradeEventDecoderDecode(buf: Uint8Array): PublicTradeEventDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for PublicTradeEvent: validates the header and reads the body. */
+export function PublicTradeEventDecoderDecode(buf: Uint8Array): PublicTradeEvent {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 23) throw new Error('invalid template_id');
-  const trade = readString(buf, pos);
-  return {
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 23) throw new Error("invalid template_id");
+  const trade = PublicTradeDecoderDecode(buf, pos);
+  const value: PublicTradeEvent = {
     trade: trade,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for TradeHistoryRequest */
-export function TradeHistoryRequestEncoderEncode(symbol string, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 24);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for TradeHistoryRequest */
-export interface TradeHistoryRequestDecoder {
+/** SBE message TradeHistoryRequest */
+export interface TradeHistoryRequest {
   symbol: string;
   start_time: bigint | null;
   end_time: bigint | null;
-  limit: u32 | null;
+  limit: number | null;
   cursor: string | null;
-  encodedLen(): number;
 }
 
-export function TradeHistoryRequestDecoderDecode(buf: Uint8Array): TradeHistoryRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 24) throw new Error('invalid template_id');
+/** SBE body encoder for TradeHistoryRequest (fields only, no header). */
+export function TradeHistoryRequestBodyEncoderEncode(value: TradeHistoryRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for TradeHistoryRequest: reads fields at `pos`. */
+export function TradeHistoryRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): TradeHistoryRequest {
+  let cursor: string | null = null;
   const symbol = readString(buf, pos);
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: TradeHistoryRequest = {
     symbol: symbol,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for PublicTradeBatch */
-export function PublicTradeBatchEncoderEncode(symbol string, trades string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for TradeHistoryRequest — returns the complete message. */
+export function TradeHistoryRequestEncoderEncode(symbol: string, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 25);
+  writeU16BE(buf, 24);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, symbol);
-  writeU32BE(buf, trades.length);
-  for (const item of trades) {
-    PublicTradeEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for PublicTradeBatch */
-export interface PublicTradeBatchDecoder {
-  symbol: string;
-  trades: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function PublicTradeBatchDecoderDecode(buf: Uint8Array): PublicTradeBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for TradeHistoryRequest: validates the header and reads the body. */
+export function TradeHistoryRequestDecoderDecode(buf: Uint8Array): TradeHistoryRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 25) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 24) throw new Error("invalid template_id");
+  let cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: TradeHistoryRequest = {
+    symbol: symbol,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message PublicTradeBatch */
+export interface PublicTradeBatch {
+  symbol: string;
+  trades: PublicTrade[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for PublicTradeBatch (fields only, no header). */
+export function PublicTradeBatchBodyEncoderEncode(value: PublicTradeBatch, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeU32BE(buf, value.trades.length);
+  for (const item of value.trades) {
+    const itemBuf: number[] = [];
+    PublicTradeEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for PublicTradeBatch: reads fields at `pos`. */
+export function PublicTradeBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PublicTradeBatch {
+  let next_cursor: string | null = null;
   const symbol = readString(buf, pos);
   const tradesCount = readU32BE(buf, pos);
   const trades: PublicTrade[] = [];
   for (let i = 0; i < tradesCount; i++) {
-    const item = PublicTradeDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PublicTradeDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     trades.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: PublicTradeBatch = {
     symbol: symbol,
     trades: trades,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for BestBidOffer */
-export function BestBidOfferEncoderEncode(symbol string, bid_price number | null, bid_qty number | null, ask_price number | null, ask_qty number | null, timestamp bigint, is_snapshot number | null): Uint8Array {
+/** SBE encoder for PublicTradeBatch — returns the complete message. */
+export function PublicTradeBatchEncoderEncode(symbol: string, trades: PublicTrade[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 25);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, symbol);
+  writeU32BE(buf, trades.length);
+  for (const item of trades) {
+    const itemBuf: number[] = [];
+    PublicTradeEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for PublicTradeBatch: validates the header and reads the body. */
+export function PublicTradeBatchDecoderDecode(buf: Uint8Array): PublicTradeBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 25) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const symbol = readString(buf, pos);
+  const tradesCount = readU32BE(buf, pos);
+  const trades: PublicTrade[] = [];
+  for (let i = 0; i < tradesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PublicTradeDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    trades.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: PublicTradeBatch = {
+    symbol: symbol,
+    trades: trades,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message BestBidOffer */
+export interface BestBidOffer {
+  symbol: string;
+  bid_price: number | null;
+  bid_qty: number | null;
+  ask_price: number | null;
+  ask_qty: number | null;
+  timestamp: bigint;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for BestBidOffer (fields only, no header). */
+export function BestBidOfferBodyEncoderEncode(value: BestBidOffer, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.bid_price ?? 0);
+  buf.push(value.bid_price != null ? 1 : 0);
+  writeF64BE(buf, value.bid_qty ?? 0);
+  buf.push(value.bid_qty != null ? 1 : 0);
+  writeF64BE(buf, value.ask_price ?? 0);
+  buf.push(value.ask_price != null ? 1 : 0);
+  writeF64BE(buf, value.ask_qty ?? 0);
+  buf.push(value.ask_qty != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for BestBidOffer: reads fields at `pos`. */
+export function BestBidOfferBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): BestBidOffer {
+  const symbol = readString(buf, pos);
+  const bid_price_v = readF64BE(buf, pos);
+  const bid_price = buf[pos.value++] === 1 ? bid_price_v : null;
+  const bid_qty_v = readF64BE(buf, pos);
+  const bid_qty = buf[pos.value++] === 1 ? bid_qty_v : null;
+  const ask_price_v = readF64BE(buf, pos);
+  const ask_price = buf[pos.value++] === 1 ? ask_price_v : null;
+  const ask_qty_v = readF64BE(buf, pos);
+  const ask_qty = buf[pos.value++] === 1 ? ask_qty_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: BestBidOffer = {
+    symbol: symbol,
+    bid_price: bid_price,
+    bid_qty: bid_qty,
+    ask_price: ask_price,
+    ask_qty: ask_qty,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for BestBidOffer — returns the complete message. */
+export function BestBidOfferEncoderEncode(symbol: string, bid_price: number | null, bid_qty: number | null, ask_price: number | null, ask_qty: number | null, timestamp: bigint, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 26);
   writeU16BE(buf, 0);
   writeU16BE(buf, 41);
-
-  // Fixed fields
   writeString(buf, symbol);
   writeF64BE(buf, bid_price ?? 0);
   buf.push(bid_price != null ? 1 : 0);
@@ -1835,46 +3162,35 @@ export function BestBidOfferEncoderEncode(symbol string, bid_price number | null
   buf.push(ask_price != null ? 1 : 0);
   writeF64BE(buf, ask_qty ?? 0);
   buf.push(ask_qty != null ? 1 : 0);
-  writeI64BE(buf, timestamp);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
   buf.push(is_snapshot ?? 0);
   buf.push(is_snapshot != null ? 1 : 0);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for BestBidOffer */
-export interface BestBidOfferDecoder {
-  symbol: string;
-  bid_price: number | null;
-  bid_qty: number | null;
-  ask_price: number | null;
-  ask_qty: number | null;
-  timestamp: bigint;
-  is_snapshot: number | null;
-  encodedLen(): number;
-}
-
-export function BestBidOfferDecoderDecode(buf: Uint8Array): BestBidOfferDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for BestBidOffer: validates the header and reads the body. */
+export function BestBidOfferDecoderDecode(buf: Uint8Array): BestBidOffer {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 26) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 26) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
-  const bid_priceRaw = readF64BE(buf, pos);
-  const bid_price = buf[pos.value++] === 1 ? bid_priceRaw : null;
-  const bid_qtyRaw = readF64BE(buf, pos);
-  const bid_qty = buf[pos.value++] === 1 ? bid_qtyRaw : null;
-  const ask_priceRaw = readF64BE(buf, pos);
-  const ask_price = buf[pos.value++] === 1 ? ask_priceRaw : null;
-  const ask_qtyRaw = readF64BE(buf, pos);
-  const ask_qty = buf[pos.value++] === 1 ? ask_qtyRaw : null;
-  const timestamp = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const bid_price_v = readF64BE(buf, pos);
+  const bid_price = buf[pos.value++] === 1 ? bid_price_v : null;
+  const bid_qty_v = readF64BE(buf, pos);
+  const bid_qty = buf[pos.value++] === 1 ? bid_qty_v : null;
+  const ask_price_v = readF64BE(buf, pos);
+  const ask_price = buf[pos.value++] === 1 ? ask_price_v : null;
+  const ask_qty_v = readF64BE(buf, pos);
+  const ask_qty = buf[pos.value++] === 1 ? ask_qty_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: BestBidOffer = {
     symbol: symbol,
     bid_price: bid_price,
     bid_qty: bid_qty,
@@ -1882,37 +3198,12 @@ export function BestBidOfferDecoderDecode(buf: Uint8Array): BestBidOfferDecoder 
     ask_qty: ask_qty,
     timestamp: timestamp,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for SymbolTicker */
-export function SymbolTickerEncoderEncode(symbol string, last_price number, price_change number, price_change_pct number, volume number, high number, low number, open number, timestamp bigint, is_snapshot number | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 27);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 65);
-
-  // Fixed fields
-  writeString(buf, symbol);
-  writeF64BE(buf, last_price);
-  writeF64BE(buf, price_change);
-  writeF64BE(buf, price_change_pct);
-  writeF64BE(buf, volume);
-  writeF64BE(buf, high);
-  writeF64BE(buf, low);
-  writeF64BE(buf, open);
-  writeI64BE(buf, timestamp);
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for SymbolTicker */
-export interface SymbolTickerDecoder {
+/** SBE message SymbolTicker */
+export interface SymbolTicker {
   symbol: string;
   last_price: number;
   price_change: number;
@@ -1923,17 +3214,25 @@ export interface SymbolTickerDecoder {
   open: number;
   timestamp: bigint;
   is_snapshot: number | null;
-  encodedLen(): number;
 }
 
-export function SymbolTickerDecoderDecode(buf: Uint8Array): SymbolTickerDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 27) throw new Error('invalid template_id');
+/** SBE body encoder for SymbolTicker (fields only, no header). */
+export function SymbolTickerBodyEncoderEncode(value: SymbolTicker, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.last_price);
+  writeF64BE(buf, value.price_change);
+  writeF64BE(buf, value.price_change_pct);
+  writeF64BE(buf, value.volume);
+  writeF64BE(buf, value.high);
+  writeF64BE(buf, value.low);
+  writeF64BE(buf, value.open);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for SymbolTicker: reads fields at `pos`. */
+export function SymbolTickerBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): SymbolTicker {
   const symbol = readString(buf, pos);
   const last_price = readF64BE(buf, pos);
   const price_change = readF64BE(buf, pos);
@@ -1942,10 +3241,10 @@ export function SymbolTickerDecoderDecode(buf: Uint8Array): SymbolTickerDecoder 
   const high = readF64BE(buf, pos);
   const low = readF64BE(buf, pos);
   const open = readF64BE(buf, pos);
-  const timestamp = readI64BE(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: SymbolTicker = {
     symbol: symbol,
     last_price: last_price,
     price_change: price_change,
@@ -1956,195 +3255,299 @@ export function SymbolTickerDecoderDecode(buf: Uint8Array): SymbolTickerDecoder 
     open: open,
     timestamp: timestamp,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for TickerRequest */
-export function TickerRequestEncoderEncode(symbol string): Uint8Array {
+/** SBE encoder for SymbolTicker — returns the complete message. */
+export function SymbolTickerEncoderEncode(symbol: string, last_price: number, price_change: number, price_change_pct: number, volume: number, high: number, low: number, open: number, timestamp: bigint, is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 27);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 65);
+  writeString(buf, symbol);
+  writeF64BE(buf, last_price);
+  writeF64BE(buf, price_change);
+  writeF64BE(buf, price_change_pct);
+  writeF64BE(buf, volume);
+  writeF64BE(buf, high);
+  writeF64BE(buf, low);
+  writeF64BE(buf, open);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for SymbolTicker: validates the header and reads the body. */
+export function SymbolTickerDecoderDecode(buf: Uint8Array): SymbolTicker {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 27) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const last_price = readF64BE(buf, pos);
+  const price_change = readF64BE(buf, pos);
+  const price_change_pct = readF64BE(buf, pos);
+  const volume = readF64BE(buf, pos);
+  const high = readF64BE(buf, pos);
+  const low = readF64BE(buf, pos);
+  const open = readF64BE(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: SymbolTicker = {
+    symbol: symbol,
+    last_price: last_price,
+    price_change: price_change,
+    price_change_pct: price_change_pct,
+    volume: volume,
+    high: high,
+    low: low,
+    open: open,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message TickerRequest */
+export interface TickerRequest {
+  symbol: string;
+}
+
+/** SBE body encoder for TickerRequest (fields only, no header). */
+export function TickerRequestBodyEncoderEncode(value: TickerRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+}
+
+/** SBE body decoder for TickerRequest: reads fields at `pos`. */
+export function TickerRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): TickerRequest {
+  const symbol = readString(buf, pos);
+  const value: TickerRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for TickerRequest — returns the complete message. */
+export function TickerRequestEncoderEncode(symbol: string): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 28);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeString(buf, symbol);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for TickerRequest */
-export interface TickerRequestDecoder {
-  symbol: string;
-  encodedLen(): number;
-}
-
-export function TickerRequestDecoderDecode(buf: Uint8Array): TickerRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for TickerRequest: validates the header and reads the body. */
+export function TickerRequestDecoderDecode(buf: Uint8Array): TickerRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 28) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 28) throw new Error("invalid template_id");
   const symbol = readString(buf, pos);
-  return {
+  const value: TickerRequest = {
     symbol: symbol,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for InstrumentCatalogRequest */
+/** SBE message InstrumentCatalogRequest */
+export interface InstrumentCatalogRequest {
+}
+
+/** SBE body encoder for InstrumentCatalogRequest (fields only, no header). */
+export function InstrumentCatalogRequestBodyEncoderEncode(value: InstrumentCatalogRequest, buf: number[]): void {
+}
+
+/** SBE body decoder for InstrumentCatalogRequest: reads fields at `pos`. */
+export function InstrumentCatalogRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): InstrumentCatalogRequest {
+  const value: InstrumentCatalogRequest = {
+  };
+  return value;
+}
+
+/** SBE encoder for InstrumentCatalogRequest — returns the complete message. */
 export function InstrumentCatalogRequestEncoderEncode(): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 29);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for InstrumentCatalogRequest */
-export interface InstrumentCatalogRequestDecoder {
-  encodedLen(): number;
-}
-
-export function InstrumentCatalogRequestDecoderDecode(buf: Uint8Array): InstrumentCatalogRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for InstrumentCatalogRequest: validates the header and reads the body. */
+export function InstrumentCatalogRequestDecoderDecode(buf: Uint8Array): InstrumentCatalogRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 29) throw new Error('invalid template_id');
-  return {
-
-    encodedLen: () => 0,
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 29) throw new Error("invalid template_id");
+  const value: InstrumentCatalogRequest = {
   };
+  return value;
 }
 
-/** SBE encoder for InstrumentCatalogResponse */
-export function InstrumentCatalogResponseEncoderEncode(instruments string[]): Uint8Array {
+/** SBE message InstrumentCatalogResponse */
+export interface InstrumentCatalogResponse {
+  instruments: InstrumentMetadata[];
+}
+
+/** SBE body encoder for InstrumentCatalogResponse (fields only, no header). */
+export function InstrumentCatalogResponseBodyEncoderEncode(value: InstrumentCatalogResponse, buf: number[]): void {
+  writeU32BE(buf, value.instruments.length);
+  for (const item of value.instruments) {
+    const itemBuf: number[] = [];
+    InstrumentMetadataEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+}
+
+/** SBE body decoder for InstrumentCatalogResponse: reads fields at `pos`. */
+export function InstrumentCatalogResponseBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): InstrumentCatalogResponse {
+  const instrumentsCount = readU32BE(buf, pos);
+  const instruments: InstrumentMetadata[] = [];
+  for (let i = 0; i < instrumentsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = InstrumentMetadataDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    instruments.push(item);
+  }
+  const value: InstrumentCatalogResponse = {
+    instruments: instruments,
+  };
+  return value;
+}
+
+/** SBE encoder for InstrumentCatalogResponse — returns the complete message. */
+export function InstrumentCatalogResponseEncoderEncode(instruments: InstrumentMetadata[]): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 30);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeU32BE(buf, instruments.length);
   for (const item of instruments) {
-    InstrumentMetadataEncode(item, buf);
+    const itemBuf: number[] = [];
+    InstrumentMetadataEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for InstrumentCatalogResponse */
-export interface InstrumentCatalogResponseDecoder {
-  instruments: string[];
-  encodedLen(): number;
-}
-
-export function InstrumentCatalogResponseDecoderDecode(buf: Uint8Array): InstrumentCatalogResponseDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for InstrumentCatalogResponse: validates the header and reads the body. */
+export function InstrumentCatalogResponseDecoderDecode(buf: Uint8Array): InstrumentCatalogResponse {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 30) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 30) throw new Error("invalid template_id");
   const instrumentsCount = readU32BE(buf, pos);
   const instruments: InstrumentMetadata[] = [];
   for (let i = 0; i < instrumentsCount; i++) {
-    const item = InstrumentMetadataDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = InstrumentMetadataDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     instruments.push(item);
   }
-  return {
+  const value: InstrumentCatalogResponse = {
     instruments: instruments,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for AccountSummary */
-export function AccountSummaryEncoderEncode(account string, balance number, buying_power number, currency string): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 31);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 16);
-
-  // Fixed fields
-  writeString(buf, account);
-  writeF64BE(buf, balance);
-  writeF64BE(buf, buying_power);
-  writeString(buf, currency);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for AccountSummary */
-export interface AccountSummaryDecoder {
+/** SBE message AccountSummary */
+export interface AccountSummary {
   account: string;
   balance: number;
   buying_power: number;
   currency: string;
-  encodedLen(): number;
 }
 
-export function AccountSummaryDecoderDecode(buf: Uint8Array): AccountSummaryDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 31) throw new Error('invalid template_id');
+/** SBE body encoder for AccountSummary (fields only, no header). */
+export function AccountSummaryBodyEncoderEncode(value: AccountSummary, buf: number[]): void {
+  writeString(buf, value.account);
+  writeF64BE(buf, value.balance);
+  writeF64BE(buf, value.buying_power);
+  writeString(buf, value.currency);
+}
+
+/** SBE body decoder for AccountSummary: reads fields at `pos`. */
+export function AccountSummaryBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): AccountSummary {
   const account = readString(buf, pos);
   const balance = readF64BE(buf, pos);
   const buying_power = readF64BE(buf, pos);
   const currency = readString(buf, pos);
-  return {
+  const value: AccountSummary = {
     account: account,
     balance: balance,
     buying_power: buying_power,
     currency: currency,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarginSummary */
-export function MarginSummaryEncoderEncode(account string, balance number, buying_power number, equity number, margin_used number, available number, currency string): Uint8Array {
+/** SBE encoder for AccountSummary — returns the complete message. */
+export function AccountSummaryEncoderEncode(account: string, balance: number, buying_power: number, currency: string): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 32);
+  writeU16BE(buf, 31);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 40);
-
-  // Fixed fields
+  writeU16BE(buf, 16);
   writeString(buf, account);
   writeF64BE(buf, balance);
   writeF64BE(buf, buying_power);
-  writeF64BE(buf, equity);
-  writeF64BE(buf, margin_used);
-  writeF64BE(buf, available);
   writeString(buf, currency);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MarginSummary */
-export interface MarginSummaryDecoder {
+/** SBE decoder for AccountSummary: validates the header and reads the body. */
+export function AccountSummaryDecoderDecode(buf: Uint8Array): AccountSummary {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 31) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const balance = readF64BE(buf, pos);
+  const buying_power = readF64BE(buf, pos);
+  const currency = readString(buf, pos);
+  const value: AccountSummary = {
+    account: account,
+    balance: balance,
+    buying_power: buying_power,
+    currency: currency,
+  };
+  return value;
+}
+
+/** SBE message MarginSummary */
+export interface MarginSummary {
   account: string;
   balance: number;
   buying_power: number;
@@ -2152,17 +3555,21 @@ export interface MarginSummaryDecoder {
   margin_used: number;
   available: number;
   currency: string;
-  encodedLen(): number;
 }
 
-export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummaryDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 32) throw new Error('invalid template_id');
+/** SBE body encoder for MarginSummary (fields only, no header). */
+export function MarginSummaryBodyEncoderEncode(value: MarginSummary, buf: number[]): void {
+  writeString(buf, value.account);
+  writeF64BE(buf, value.balance);
+  writeF64BE(buf, value.buying_power);
+  writeF64BE(buf, value.equity);
+  writeF64BE(buf, value.margin_used);
+  writeF64BE(buf, value.available);
+  writeString(buf, value.currency);
+}
+
+/** SBE body decoder for MarginSummary: reads fields at `pos`. */
+export function MarginSummaryBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarginSummary {
   const account = readString(buf, pos);
   const balance = readF64BE(buf, pos);
   const buying_power = readF64BE(buf, pos);
@@ -2170,7 +3577,7 @@ export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummaryDecode
   const margin_used = readF64BE(buf, pos);
   const available = readF64BE(buf, pos);
   const currency = readString(buf, pos);
-  return {
+  const value: MarginSummary = {
     account: account,
     balance: balance,
     buying_power: buying_power,
@@ -2178,1199 +3585,1883 @@ export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummaryDecode
     margin_used: margin_used,
     available: available,
     currency: currency,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for BalanceSnapshot */
-export function BalanceSnapshotEncoderEncode(account string, balances string[], is_snapshot number | null): Uint8Array {
+/** SBE encoder for MarginSummary — returns the complete message. */
+export function MarginSummaryEncoderEncode(account: string, balance: number, buying_power: number, equity: number, margin_used: number, available: number, currency: string): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 33);
+  writeU16BE(buf, 32);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 40);
   writeString(buf, account);
-  writeU32BE(buf, balances.length);
-  for (const item of balances) {
-    BalanceEntryEncode(item, buf);
-  }
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
+  writeF64BE(buf, balance);
+  writeF64BE(buf, buying_power);
+  writeF64BE(buf, equity);
+  writeF64BE(buf, margin_used);
+  writeF64BE(buf, available);
+  writeString(buf, currency);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for BalanceSnapshot */
-export interface BalanceSnapshotDecoder {
-  account: string;
-  balances: string[];
-  is_snapshot: number | null;
-  encodedLen(): number;
-}
-
-export function BalanceSnapshotDecoderDecode(buf: Uint8Array): BalanceSnapshotDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for MarginSummary: validates the header and reads the body. */
+export function MarginSummaryDecoderDecode(buf: Uint8Array): MarginSummary {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 33) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 32) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const balance = readF64BE(buf, pos);
+  const buying_power = readF64BE(buf, pos);
+  const equity = readF64BE(buf, pos);
+  const margin_used = readF64BE(buf, pos);
+  const available = readF64BE(buf, pos);
+  const currency = readString(buf, pos);
+  const value: MarginSummary = {
+    account: account,
+    balance: balance,
+    buying_power: buying_power,
+    equity: equity,
+    margin_used: margin_used,
+    available: available,
+    currency: currency,
+  };
+  return value;
+}
+
+/** SBE message BalanceSnapshot */
+export interface BalanceSnapshot {
+  account: string;
+  balances: BalanceEntry[];
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for BalanceSnapshot (fields only, no header). */
+export function BalanceSnapshotBodyEncoderEncode(value: BalanceSnapshot, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.balances.length);
+  for (const item of value.balances) {
+    const itemBuf: number[] = [];
+    BalanceEntryEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for BalanceSnapshot: reads fields at `pos`. */
+export function BalanceSnapshotBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): BalanceSnapshot {
   const account = readString(buf, pos);
   const balancesCount = readU32BE(buf, pos);
   const balances: BalanceEntry[] = [];
   for (let i = 0; i < balancesCount; i++) {
-    const item = BalanceEntryDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = BalanceEntryDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     balances.push(item);
   }
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: BalanceSnapshot = {
     account: account,
     balances: balances,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for BalanceUpdate */
-export function BalanceUpdateEncoderEncode(account string, asset string, delta number, total number, available number, reason BalanceUpdateReason): Uint8Array {
+/** SBE encoder for BalanceSnapshot — returns the complete message. */
+export function BalanceSnapshotEncoderEncode(account: string, balances: BalanceEntry[], is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 34);
+  writeU16BE(buf, 33);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 25);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
-  writeString(buf, asset);
-  writeF64BE(buf, delta);
-  writeF64BE(buf, total);
-  writeF64BE(buf, available);
-  buf.push(BalanceUpdateReasonToValue(reason));
-
+  writeU32BE(buf, balances.length);
+  for (const item of balances) {
+    const itemBuf: number[] = [];
+    BalanceEntryEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for BalanceUpdate */
-export interface BalanceUpdateDecoder {
+/** SBE decoder for BalanceSnapshot: validates the header and reads the body. */
+export function BalanceSnapshotDecoderDecode(buf: Uint8Array): BalanceSnapshot {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 33) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const balancesCount = readU32BE(buf, pos);
+  const balances: BalanceEntry[] = [];
+  for (let i = 0; i < balancesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = BalanceEntryDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    balances.push(item);
+  }
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: BalanceSnapshot = {
+    account: account,
+    balances: balances,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message BalanceUpdate */
+export interface BalanceUpdate {
   account: string;
   asset: string;
   delta: number;
   total: number;
   available: number;
   reason: BalanceUpdateReason;
-  encodedLen(): number;
 }
 
-export function BalanceUpdateDecoderDecode(buf: Uint8Array): BalanceUpdateDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 34) throw new Error('invalid template_id');
+/** SBE body encoder for BalanceUpdate (fields only, no header). */
+export function BalanceUpdateBodyEncoderEncode(value: BalanceUpdate, buf: number[]): void {
+  writeString(buf, value.account);
+  writeString(buf, value.asset);
+  writeF64BE(buf, value.delta);
+  writeF64BE(buf, value.total);
+  writeF64BE(buf, value.available);
+  buf.push(BalanceUpdateReasonToValue(value.reason));
+}
+
+/** SBE body decoder for BalanceUpdate: reads fields at `pos`. */
+export function BalanceUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): BalanceUpdate {
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
   const total = readF64BE(buf, pos);
   const available = readF64BE(buf, pos);
-  const reasonRaw = buf[pos.value++];
+  const reasonRaw = readU8(buf, pos);
   const reason = BalanceUpdateReasonFromValue(reasonRaw);
   if (reason == null) throw new Error('invalid BalanceUpdateReason');
-  return {
+  const value: BalanceUpdate = {
     account: account,
     asset: asset,
     delta: delta,
     total: total,
     available: available,
     reason: reason,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for PositionSnapshot */
-export function PositionSnapshotEncoderEncode(account string, positions string[], is_snapshot number | null): Uint8Array {
+/** SBE encoder for BalanceUpdate — returns the complete message. */
+export function BalanceUpdateEncoderEncode(account: string, asset: string, delta: number, total: number, available: number, reason: BalanceUpdateReason): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 35);
+  writeU16BE(buf, 34);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 25);
   writeString(buf, account);
-  writeU32BE(buf, positions.length);
-  for (const item of positions) {
-    PositionEntryEncode(item, buf);
-  }
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
+  writeString(buf, asset);
+  writeF64BE(buf, delta);
+  writeF64BE(buf, total);
+  writeF64BE(buf, available);
+  buf.push(BalanceUpdateReasonToValue(reason));
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for PositionSnapshot */
-export interface PositionSnapshotDecoder {
-  account: string;
-  positions: string[];
-  is_snapshot: number | null;
-  encodedLen(): number;
-}
-
-export function PositionSnapshotDecoderDecode(buf: Uint8Array): PositionSnapshotDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for BalanceUpdate: validates the header and reads the body. */
+export function BalanceUpdateDecoderDecode(buf: Uint8Array): BalanceUpdate {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 35) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 34) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const asset = readString(buf, pos);
+  const delta = readF64BE(buf, pos);
+  const total = readF64BE(buf, pos);
+  const available = readF64BE(buf, pos);
+  const reasonRaw = readU8(buf, pos);
+  const reason = BalanceUpdateReasonFromValue(reasonRaw);
+  if (reason == null) throw new Error('invalid BalanceUpdateReason');
+  const value: BalanceUpdate = {
+    account: account,
+    asset: asset,
+    delta: delta,
+    total: total,
+    available: available,
+    reason: reason,
+  };
+  return value;
+}
+
+/** SBE message PositionSnapshot */
+export interface PositionSnapshot {
+  account: string;
+  positions: PositionEntry[];
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for PositionSnapshot (fields only, no header). */
+export function PositionSnapshotBodyEncoderEncode(value: PositionSnapshot, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.positions.length);
+  for (const item of value.positions) {
+    const itemBuf: number[] = [];
+    PositionEntryEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for PositionSnapshot: reads fields at `pos`. */
+export function PositionSnapshotBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PositionSnapshot {
   const account = readString(buf, pos);
   const positionsCount = readU32BE(buf, pos);
   const positions: PositionEntry[] = [];
   for (let i = 0; i < positionsCount; i++) {
-    const item = PositionEntryDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PositionEntryDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     positions.push(item);
   }
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: PositionSnapshot = {
     account: account,
     positions: positions,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for PositionUpdate */
-export function PositionUpdateEncoderEncode(account string, symbol string, qty number, entry_price number, unrealized_pnl number): Uint8Array {
+/** SBE encoder for PositionSnapshot — returns the complete message. */
+export function PositionSnapshotEncoderEncode(account: string, positions: PositionEntry[], is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 36);
+  writeU16BE(buf, 35);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 24);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
-  writeString(buf, symbol);
-  writeF64BE(buf, qty);
-  writeF64BE(buf, entry_price);
-  writeF64BE(buf, unrealized_pnl);
-
+  writeU32BE(buf, positions.length);
+  for (const item of positions) {
+    const itemBuf: number[] = [];
+    PositionEntryEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for PositionUpdate */
-export interface PositionUpdateDecoder {
+/** SBE decoder for PositionSnapshot: validates the header and reads the body. */
+export function PositionSnapshotDecoderDecode(buf: Uint8Array): PositionSnapshot {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 35) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const positionsCount = readU32BE(buf, pos);
+  const positions: PositionEntry[] = [];
+  for (let i = 0; i < positionsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = PositionEntryDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    positions.push(item);
+  }
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: PositionSnapshot = {
+    account: account,
+    positions: positions,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message PositionUpdate */
+export interface PositionUpdate {
   account: string;
   symbol: string;
   qty: number;
   entry_price: number;
   unrealized_pnl: number;
-  encodedLen(): number;
 }
 
-export function PositionUpdateDecoderDecode(buf: Uint8Array): PositionUpdateDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 36) throw new Error('invalid template_id');
+/** SBE body encoder for PositionUpdate (fields only, no header). */
+export function PositionUpdateBodyEncoderEncode(value: PositionUpdate, buf: number[]): void {
+  writeString(buf, value.account);
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.qty);
+  writeF64BE(buf, value.entry_price);
+  writeF64BE(buf, value.unrealized_pnl);
+}
+
+/** SBE body decoder for PositionUpdate: reads fields at `pos`. */
+export function PositionUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PositionUpdate {
   const account = readString(buf, pos);
   const symbol = readString(buf, pos);
   const qty = readF64BE(buf, pos);
   const entry_price = readF64BE(buf, pos);
   const unrealized_pnl = readF64BE(buf, pos);
-  return {
+  const value: PositionUpdate = {
     account: account,
     symbol: symbol,
     qty: qty,
     entry_price: entry_price,
     unrealized_pnl: unrealized_pnl,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for MarginUpdate */
-export function MarginUpdateEncoderEncode(account string, summary string, is_snapshot number | null): Uint8Array {
+/** SBE encoder for PositionUpdate — returns the complete message. */
+export function PositionUpdateEncoderEncode(account: string, symbol: string, qty: number, entry_price: number, unrealized_pnl: number): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 36);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 24);
+  writeString(buf, account);
+  writeString(buf, symbol);
+  writeF64BE(buf, qty);
+  writeF64BE(buf, entry_price);
+  writeF64BE(buf, unrealized_pnl);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for PositionUpdate: validates the header and reads the body. */
+export function PositionUpdateDecoderDecode(buf: Uint8Array): PositionUpdate {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 36) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const symbol = readString(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const entry_price = readF64BE(buf, pos);
+  const unrealized_pnl = readF64BE(buf, pos);
+  const value: PositionUpdate = {
+    account: account,
+    symbol: symbol,
+    qty: qty,
+    entry_price: entry_price,
+    unrealized_pnl: unrealized_pnl,
+  };
+  return value;
+}
+
+/** SBE message MarginUpdate */
+export interface MarginUpdate {
+  account: string;
+  summary: MarginSummary;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for MarginUpdate (fields only, no header). */
+export function MarginUpdateBodyEncoderEncode(value: MarginUpdate, buf: number[]): void {
+  writeString(buf, value.account);
+  MarginSummaryBodyEncoderEncode(value.summary, buf);
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for MarginUpdate: reads fields at `pos`. */
+export function MarginUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MarginUpdate {
+  const account = readString(buf, pos);
+  const summary = MarginSummaryBodyDecoderDecode(buf, pos);
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarginUpdate = {
+    account: account,
+    summary: summary,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for MarginUpdate — returns the complete message. */
+export function MarginUpdateEncoderEncode(account: string, summary: MarginSummary, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 37);
   writeU16BE(buf, 0);
   writeU16BE(buf, 1);
-
-  // Fixed fields
   writeString(buf, account);
-  writeString(buf, summary);
+  MarginSummaryBodyEncoderEncode(summary, buf);
   buf.push(is_snapshot ?? 0);
   buf.push(is_snapshot != null ? 1 : 0);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for MarginUpdate */
-export interface MarginUpdateDecoder {
-  account: string;
-  summary: string;
-  is_snapshot: number | null;
-  encodedLen(): number;
-}
-
-export function MarginUpdateDecoderDecode(buf: Uint8Array): MarginUpdateDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for MarginUpdate: validates the header and reads the body. */
+export function MarginUpdateDecoderDecode(buf: Uint8Array): MarginUpdate {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 37) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 37) throw new Error("invalid template_id");
   const account = readString(buf, pos);
-  const summary = readString(buf, pos);
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const summary = MarginSummaryBodyDecoderDecode(buf, pos);
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: MarginUpdate = {
     account: account,
     summary: summary,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for UserLiquidation */
-export function UserLiquidationEncoderEncode(account string, symbol string, qty number, price number, timestamp bigint): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 38);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 24);
-
-  // Fixed fields
-  writeString(buf, account);
-  writeString(buf, symbol);
-  writeF64BE(buf, qty);
-  writeF64BE(buf, price);
-  writeI64BE(buf, timestamp);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for UserLiquidation */
-export interface UserLiquidationDecoder {
+/** SBE message UserLiquidation */
+export interface UserLiquidation {
   account: string;
   symbol: string;
   qty: number;
   price: number;
   timestamp: bigint;
-  encodedLen(): number;
 }
 
-export function UserLiquidationDecoderDecode(buf: Uint8Array): UserLiquidationDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 38) throw new Error('invalid template_id');
+/** SBE body encoder for UserLiquidation (fields only, no header). */
+export function UserLiquidationBodyEncoderEncode(value: UserLiquidation, buf: number[]): void {
+  writeString(buf, value.account);
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.qty);
+  writeF64BE(buf, value.price);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** SBE body decoder for UserLiquidation: reads fields at `pos`. */
+export function UserLiquidationBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): UserLiquidation {
   const account = readString(buf, pos);
   const symbol = readString(buf, pos);
   const qty = readF64BE(buf, pos);
   const price = readF64BE(buf, pos);
-  const timestamp = readI64BE(buf, pos);
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: UserLiquidation = {
     account: account,
     symbol: symbol,
     qty: qty,
     price: price,
     timestamp: timestamp,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderListStatus */
-export function OrderListStatusEncoderEncode(account string, list_id string, status OrderListStatusStatus, symbol string | null): Uint8Array {
+/** SBE encoder for UserLiquidation — returns the complete message. */
+export function UserLiquidationEncoderEncode(account: string, symbol: string, qty: number, price: number, timestamp: bigint): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 39);
+  writeU16BE(buf, 38);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 24);
   writeString(buf, account);
-  writeString(buf, list_id);
-  buf.push(OrderListStatusStatusToValue(status));
-  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-
+  writeString(buf, symbol);
+  writeF64BE(buf, qty);
+  writeF64BE(buf, price);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OrderListStatus */
-export interface OrderListStatusDecoder {
+/** SBE decoder for UserLiquidation: validates the header and reads the body. */
+export function UserLiquidationDecoderDecode(buf: Uint8Array): UserLiquidation {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 38) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const symbol = readString(buf, pos);
+  const qty = readF64BE(buf, pos);
+  const price = readF64BE(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: UserLiquidation = {
+    account: account,
+    symbol: symbol,
+    qty: qty,
+    price: price,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE message OrderListStatus */
+export interface OrderListStatus {
   account: string;
   list_id: string;
   status: OrderListStatusStatus;
   symbol: string | null;
-  encodedLen(): number;
 }
 
-export function OrderListStatusDecoderDecode(buf: Uint8Array): OrderListStatusDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 39) throw new Error('invalid template_id');
+/** SBE body encoder for OrderListStatus (fields only, no header). */
+export function OrderListStatusBodyEncoderEncode(value: OrderListStatus, buf: number[]): void {
+  writeString(buf, value.account);
+  writeString(buf, value.list_id);
+  buf.push(OrderListStatusStatusToValue(value.status));
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+}
+
+/** SBE body decoder for OrderListStatus: reads fields at `pos`. */
+export function OrderListStatusBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderListStatus {
+  let symbol: string | null = null;
   const account = readString(buf, pos);
   const list_id = readString(buf, pos);
-  const statusRaw = buf[pos.value++];
+  const statusRaw = readU8(buf, pos);
   const status = OrderListStatusStatusFromValue(statusRaw);
   if (status == null) throw new Error('invalid OrderListStatusStatus');
-  let symbol: string | null;
-  if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
-  return {
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: OrderListStatus = {
     account: account,
     list_id: list_id,
     status: status,
     symbol: symbol,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for FillHistoryRequest */
-export function FillHistoryRequestEncoderEncode(account string, symbol string | null, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
+/** SBE encoder for OrderListStatus — returns the complete message. */
+export function OrderListStatusEncoderEncode(account: string, list_id: string, status: OrderListStatusStatus, symbol: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 40);
+  writeU16BE(buf, 39);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
+  writeString(buf, list_id);
+  buf.push(OrderListStatusStatusToValue(status));
   if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for FillHistoryRequest */
-export interface FillHistoryRequestDecoder {
+/** SBE decoder for OrderListStatus: validates the header and reads the body. */
+export function OrderListStatusDecoderDecode(buf: Uint8Array): OrderListStatus {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 39) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  const account = readString(buf, pos);
+  const list_id = readString(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = OrderListStatusStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid OrderListStatusStatus');
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: OrderListStatus = {
+    account: account,
+    list_id: list_id,
+    status: status,
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE message FillHistoryRequest */
+export interface FillHistoryRequest {
   account: string;
   symbol: string | null;
   start_time: bigint | null;
   end_time: bigint | null;
-  limit: u32 | null;
+  limit: number | null;
   cursor: string | null;
-  encodedLen(): number;
 }
 
-export function FillHistoryRequestDecoderDecode(buf: Uint8Array): FillHistoryRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 40) throw new Error('invalid template_id');
+/** SBE body encoder for FillHistoryRequest (fields only, no header). */
+export function FillHistoryRequestBodyEncoderEncode(value: FillHistoryRequest, buf: number[]): void {
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for FillHistoryRequest: reads fields at `pos`. */
+export function FillHistoryRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): FillHistoryRequest {
+  let symbol: string | null = null;
+  let cursor: string | null = null;
   const account = readString(buf, pos);
-  let symbol: string | null;
-  if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: FillHistoryRequest = {
     account: account,
     symbol: symbol,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for FillHistoryBatch */
-export function FillHistoryBatchEncoderEncode(account string, fills string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for FillHistoryRequest — returns the complete message. */
+export function FillHistoryRequestEncoderEncode(account: string, symbol: string | null, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 41);
+  writeU16BE(buf, 40);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, account);
-  writeU32BE(buf, fills.length);
-  for (const item of fills) {
-    ExecutionReportEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for FillHistoryBatch */
-export interface FillHistoryBatchDecoder {
-  account: string;
-  fills: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function FillHistoryBatchDecoderDecode(buf: Uint8Array): FillHistoryBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for FillHistoryRequest: validates the header and reads the body. */
+export function FillHistoryRequestDecoderDecode(buf: Uint8Array): FillHistoryRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 41) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 40) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  let cursor: string | null = null;
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: FillHistoryRequest = {
+    account: account,
+    symbol: symbol,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message FillHistoryBatch */
+export interface FillHistoryBatch {
+  account: string;
+  fills: ExecutionReport[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for FillHistoryBatch (fields only, no header). */
+export function FillHistoryBatchBodyEncoderEncode(value: FillHistoryBatch, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.fills.length);
+  for (const item of value.fills) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for FillHistoryBatch: reads fields at `pos`. */
+export function FillHistoryBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): FillHistoryBatch {
+  let next_cursor: string | null = null;
   const account = readString(buf, pos);
   const fillsCount = readU32BE(buf, pos);
   const fills: ExecutionReport[] = [];
   for (let i = 0; i < fillsCount; i++) {
-    const item = ExecutionReportDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     fills.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: FillHistoryBatch = {
     account: account,
     fills: fills,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for FundingPayment */
-export function FundingPaymentEncoderEncode(account string, symbol string | null, amount number, rate number, timestamp bigint): Uint8Array {
+/** SBE encoder for FillHistoryBatch — returns the complete message. */
+export function FillHistoryBatchEncoderEncode(account: string, fills: ExecutionReport[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 42);
+  writeU16BE(buf, 41);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 24);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
-  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-  writeF64BE(buf, amount);
-  writeF64BE(buf, rate);
-  writeI64BE(buf, timestamp);
-
+  writeU32BE(buf, fills.length);
+  for (const item of fills) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for FundingPayment */
-export interface FundingPaymentDecoder {
+/** SBE decoder for FillHistoryBatch: validates the header and reads the body. */
+export function FillHistoryBatchDecoderDecode(buf: Uint8Array): FillHistoryBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 41) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const account = readString(buf, pos);
+  const fillsCount = readU32BE(buf, pos);
+  const fills: ExecutionReport[] = [];
+  for (let i = 0; i < fillsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    fills.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: FillHistoryBatch = {
+    account: account,
+    fills: fills,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message FundingPayment */
+export interface FundingPayment {
   account: string;
   symbol: string | null;
   amount: number;
   rate: number;
   timestamp: bigint;
-  encodedLen(): number;
 }
 
-export function FundingPaymentDecoderDecode(buf: Uint8Array): FundingPaymentDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 42) throw new Error('invalid template_id');
+/** SBE body encoder for FundingPayment (fields only, no header). */
+export function FundingPaymentBodyEncoderEncode(value: FundingPayment, buf: number[]): void {
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  writeF64BE(buf, value.amount);
+  writeF64BE(buf, value.rate);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** SBE body decoder for FundingPayment: reads fields at `pos`. */
+export function FundingPaymentBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): FundingPayment {
+  let symbol: string | null = null;
   const account = readString(buf, pos);
-  let symbol: string | null;
-  if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
   const amount = readF64BE(buf, pos);
   const rate = readF64BE(buf, pos);
-  const timestamp = readI64BE(buf, pos);
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: FundingPayment = {
     account: account,
     symbol: symbol,
     amount: amount,
     rate: rate,
     timestamp: timestamp,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for FundingHistoryRequest */
-export function FundingHistoryRequestEncoderEncode(account string, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
+/** SBE encoder for FundingPayment — returns the complete message. */
+export function FundingPaymentEncoderEncode(account: string, symbol: string | null, amount: number, rate: number, timestamp: bigint): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 43);
+  writeU16BE(buf, 42);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
+  writeU16BE(buf, 24);
   writeString(buf, account);
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  writeF64BE(buf, amount);
+  writeF64BE(buf, rate);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for FundingHistoryRequest */
-export interface FundingHistoryRequestDecoder {
-  account: string;
-  start_time: bigint | null;
-  end_time: bigint | null;
-  limit: u32 | null;
-  cursor: string | null;
-  encodedLen(): number;
-}
-
-export function FundingHistoryRequestDecoderDecode(buf: Uint8Array): FundingHistoryRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for FundingPayment: validates the header and reads the body. */
+export function FundingPaymentDecoderDecode(buf: Uint8Array): FundingPayment {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 43) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 42) throw new Error("invalid template_id");
+  let symbol: string | null = null;
   const account = readString(buf, pos);
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const amount = readF64BE(buf, pos);
+  const rate = readF64BE(buf, pos);
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: FundingPayment = {
+    account: account,
+    symbol: symbol,
+    amount: amount,
+    rate: rate,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE message FundingHistoryRequest */
+export interface FundingHistoryRequest {
+  account: string;
+  start_time: bigint | null;
+  end_time: bigint | null;
+  limit: number | null;
+  cursor: string | null;
+}
+
+/** SBE body encoder for FundingHistoryRequest (fields only, no header). */
+export function FundingHistoryRequestBodyEncoderEncode(value: FundingHistoryRequest, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for FundingHistoryRequest: reads fields at `pos`. */
+export function FundingHistoryRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): FundingHistoryRequest {
+  let cursor: string | null = null;
+  const account = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: FundingHistoryRequest = {
     account: account,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for FundingHistoryBatch */
-export function FundingHistoryBatchEncoderEncode(account string, payments string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for FundingHistoryRequest — returns the complete message. */
+export function FundingHistoryRequestEncoderEncode(account: string, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 44);
+  writeU16BE(buf, 43);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, account);
-  writeU32BE(buf, payments.length);
-  for (const item of payments) {
-    FundingPaymentEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for FundingHistoryBatch */
-export interface FundingHistoryBatchDecoder {
-  account: string;
-  payments: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function FundingHistoryBatchDecoderDecode(buf: Uint8Array): FundingHistoryBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for FundingHistoryRequest: validates the header and reads the body. */
+export function FundingHistoryRequestDecoderDecode(buf: Uint8Array): FundingHistoryRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 44) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 43) throw new Error("invalid template_id");
+  let cursor: string | null = null;
+  const account = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: FundingHistoryRequest = {
+    account: account,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message FundingHistoryBatch */
+export interface FundingHistoryBatch {
+  account: string;
+  payments: FundingPayment[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for FundingHistoryBatch (fields only, no header). */
+export function FundingHistoryBatchBodyEncoderEncode(value: FundingHistoryBatch, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.payments.length);
+  for (const item of value.payments) {
+    const itemBuf: number[] = [];
+    FundingPaymentBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for FundingHistoryBatch: reads fields at `pos`. */
+export function FundingHistoryBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): FundingHistoryBatch {
+  let next_cursor: string | null = null;
   const account = readString(buf, pos);
   const paymentsCount = readU32BE(buf, pos);
   const payments: FundingPayment[] = [];
   for (let i = 0; i < paymentsCount; i++) {
-    const item = FundingPaymentDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = FundingPaymentBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     payments.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: FundingHistoryBatch = {
     account: account,
     payments: payments,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for LedgerUpdate */
-export function LedgerUpdateEncoderEncode(account string, asset string, delta number, kind LedgerUpdateKind, timestamp bigint, reference_id string | null): Uint8Array {
+/** SBE encoder for FundingHistoryBatch — returns the complete message. */
+export function FundingHistoryBatchEncoderEncode(account: string, payments: FundingPayment[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 45);
+  writeU16BE(buf, 44);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 17);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
-  writeString(buf, asset);
-  writeF64BE(buf, delta);
-  buf.push(LedgerUpdateKindToValue(kind));
-  writeI64BE(buf, timestamp);
-  if (reference_id != null) { buf.push(1); writeString(buf, reference_id); } else { buf.push(0); }
-
+  writeU32BE(buf, payments.length);
+  for (const item of payments) {
+    const itemBuf: number[] = [];
+    FundingPaymentBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for LedgerUpdate */
-export interface LedgerUpdateDecoder {
+/** SBE decoder for FundingHistoryBatch: validates the header and reads the body. */
+export function FundingHistoryBatchDecoderDecode(buf: Uint8Array): FundingHistoryBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 44) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const account = readString(buf, pos);
+  const paymentsCount = readU32BE(buf, pos);
+  const payments: FundingPayment[] = [];
+  for (let i = 0; i < paymentsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = FundingPaymentBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    payments.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: FundingHistoryBatch = {
+    account: account,
+    payments: payments,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message LedgerUpdate */
+export interface LedgerUpdate {
   account: string;
   asset: string;
   delta: number;
   kind: LedgerUpdateKind;
   timestamp: bigint;
   reference_id: string | null;
-  encodedLen(): number;
 }
 
-export function LedgerUpdateDecoderDecode(buf: Uint8Array): LedgerUpdateDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 45) throw new Error('invalid template_id');
+/** SBE body encoder for LedgerUpdate (fields only, no header). */
+export function LedgerUpdateBodyEncoderEncode(value: LedgerUpdate, buf: number[]): void {
+  writeString(buf, value.account);
+  writeString(buf, value.asset);
+  writeF64BE(buf, value.delta);
+  buf.push(LedgerUpdateKindToValue(value.kind));
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  if (value.reference_id != null) { buf.push(1); writeString(buf, value.reference_id); } else { buf.push(0); }
+}
+
+/** SBE body decoder for LedgerUpdate: reads fields at `pos`. */
+export function LedgerUpdateBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): LedgerUpdate {
+  let reference_id: string | null = null;
   const account = readString(buf, pos);
   const asset = readString(buf, pos);
   const delta = readF64BE(buf, pos);
-  const kindRaw = buf[pos.value++];
+  const kindRaw = readU8(buf, pos);
   const kind = LedgerUpdateKindFromValue(kindRaw);
   if (kind == null) throw new Error('invalid LedgerUpdateKind');
-  const timestamp = readI64BE(buf, pos);
-  let reference_id: string | null;
-  if (buf[pos.value++] === 1) reference_id = readString(buf, pos); else reference_id = null;
-  return {
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  if (readU8(buf, pos) === 1) reference_id = readString(buf, pos);
+  const value: LedgerUpdate = {
     account: account,
     asset: asset,
     delta: delta,
     kind: kind,
     timestamp: timestamp,
     reference_id: reference_id,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for LedgerHistoryRequest */
-export function LedgerHistoryRequestEncoderEncode(account string, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
+/** SBE encoder for LedgerUpdate — returns the complete message. */
+export function LedgerUpdateEncoderEncode(account: string, asset: string, delta: number, kind: LedgerUpdateKind, timestamp: bigint, reference_id: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 45);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 17);
+  writeString(buf, account);
+  writeString(buf, asset);
+  writeF64BE(buf, delta);
+  buf.push(LedgerUpdateKindToValue(kind));
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  if (reference_id != null) { buf.push(1); writeString(buf, reference_id); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for LedgerUpdate: validates the header and reads the body. */
+export function LedgerUpdateDecoderDecode(buf: Uint8Array): LedgerUpdate {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 45) throw new Error("invalid template_id");
+  let reference_id: string | null = null;
+  const account = readString(buf, pos);
+  const asset = readString(buf, pos);
+  const delta = readF64BE(buf, pos);
+  const kindRaw = readU8(buf, pos);
+  const kind = LedgerUpdateKindFromValue(kindRaw);
+  if (kind == null) throw new Error('invalid LedgerUpdateKind');
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  if (readU8(buf, pos) === 1) reference_id = readString(buf, pos);
+  const value: LedgerUpdate = {
+    account: account,
+    asset: asset,
+    delta: delta,
+    kind: kind,
+    timestamp: timestamp,
+    reference_id: reference_id,
+  };
+  return value;
+}
+
+/** SBE message LedgerHistoryRequest */
+export interface LedgerHistoryRequest {
+  account: string;
+  start_time: bigint | null;
+  end_time: bigint | null;
+  limit: number | null;
+  cursor: string | null;
+}
+
+/** SBE body encoder for LedgerHistoryRequest (fields only, no header). */
+export function LedgerHistoryRequestBodyEncoderEncode(value: LedgerHistoryRequest, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for LedgerHistoryRequest: reads fields at `pos`. */
+export function LedgerHistoryRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): LedgerHistoryRequest {
+  let cursor: string | null = null;
+  const account = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: LedgerHistoryRequest = {
+    account: account,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE encoder for LedgerHistoryRequest — returns the complete message. */
+export function LedgerHistoryRequestEncoderEncode(account: string, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 46);
   writeU16BE(buf, 0);
   writeU16BE(buf, 20);
-
-  // Fixed fields
   writeString(buf, account);
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
   if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for LedgerHistoryRequest */
-export interface LedgerHistoryRequestDecoder {
-  account: string;
-  start_time: bigint | null;
-  end_time: bigint | null;
-  limit: u32 | null;
-  cursor: string | null;
-  encodedLen(): number;
-}
-
-export function LedgerHistoryRequestDecoderDecode(buf: Uint8Array): LedgerHistoryRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for LedgerHistoryRequest: validates the header and reads the body. */
+export function LedgerHistoryRequestDecoderDecode(buf: Uint8Array): LedgerHistoryRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 46) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 46) throw new Error("invalid template_id");
+  let cursor: string | null = null;
   const account = readString(buf, pos);
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: LedgerHistoryRequest = {
     account: account,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for LedgerHistoryBatch */
-export function LedgerHistoryBatchEncoderEncode(account string, entries string[], has_more number, next_cursor string | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 47);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
-  writeString(buf, account);
-  writeU32BE(buf, entries.length);
-  for (const item of entries) {
-    LedgerUpdateEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for LedgerHistoryBatch */
-export interface LedgerHistoryBatchDecoder {
+/** SBE message LedgerHistoryBatch */
+export interface LedgerHistoryBatch {
   account: string;
-  entries: string[];
+  entries: LedgerUpdate[];
   has_more: number;
   next_cursor: string | null;
-  encodedLen(): number;
 }
 
-export function LedgerHistoryBatchDecoderDecode(buf: Uint8Array): LedgerHistoryBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 47) throw new Error('invalid template_id');
+/** SBE body encoder for LedgerHistoryBatch (fields only, no header). */
+export function LedgerHistoryBatchBodyEncoderEncode(value: LedgerHistoryBatch, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.entries.length);
+  for (const item of value.entries) {
+    const itemBuf: number[] = [];
+    LedgerUpdateBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for LedgerHistoryBatch: reads fields at `pos`. */
+export function LedgerHistoryBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): LedgerHistoryBatch {
+  let next_cursor: string | null = null;
   const account = readString(buf, pos);
   const entriesCount = readU32BE(buf, pos);
   const entries: LedgerUpdate[] = [];
   for (let i = 0; i < entriesCount; i++) {
-    const item = LedgerUpdateDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = LedgerUpdateBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     entries.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: LedgerHistoryBatch = {
     account: account,
     entries: entries,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OpenOrdersRequest */
-export function OpenOrdersRequestEncoderEncode(account string, symbol string | null): Uint8Array {
+/** SBE encoder for LedgerHistoryBatch — returns the complete message. */
+export function LedgerHistoryBatchEncoderEncode(account: string, entries: LedgerUpdate[], has_more: number, next_cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 47);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, account);
+  writeU32BE(buf, entries.length);
+  for (const item of entries) {
+    const itemBuf: number[] = [];
+    LedgerUpdateBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for LedgerHistoryBatch: validates the header and reads the body. */
+export function LedgerHistoryBatchDecoderDecode(buf: Uint8Array): LedgerHistoryBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 47) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const account = readString(buf, pos);
+  const entriesCount = readU32BE(buf, pos);
+  const entries: LedgerUpdate[] = [];
+  for (let i = 0; i < entriesCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = LedgerUpdateBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    entries.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: LedgerHistoryBatch = {
+    account: account,
+    entries: entries,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message OpenOrdersRequest */
+export interface OpenOrdersRequest {
+  account: string;
+  symbol: string | null;
+}
+
+/** SBE body encoder for OpenOrdersRequest (fields only, no header). */
+export function OpenOrdersRequestBodyEncoderEncode(value: OpenOrdersRequest, buf: number[]): void {
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+}
+
+/** SBE body decoder for OpenOrdersRequest: reads fields at `pos`. */
+export function OpenOrdersRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OpenOrdersRequest {
+  let symbol: string | null = null;
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: OpenOrdersRequest = {
+    account: account,
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for OpenOrdersRequest — returns the complete message. */
+export function OpenOrdersRequestEncoderEncode(account: string, symbol: string | null): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 48);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeString(buf, account);
   if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OpenOrdersRequest */
-export interface OpenOrdersRequestDecoder {
-  account: string;
-  symbol: string | null;
-  encodedLen(): number;
-}
-
-export function OpenOrdersRequestDecoderDecode(buf: Uint8Array): OpenOrdersRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for OpenOrdersRequest: validates the header and reads the body. */
+export function OpenOrdersRequestDecoderDecode(buf: Uint8Array): OpenOrdersRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 48) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 48) throw new Error("invalid template_id");
+  let symbol: string | null = null;
   const account = readString(buf, pos);
-  let symbol: string | null;
-  if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
-  return {
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: OpenOrdersRequest = {
     account: account,
     symbol: symbol,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OpenOrdersSnapshot */
-export function OpenOrdersSnapshotEncoderEncode(account string, orders string[], is_snapshot number | null): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 49);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
-  writeString(buf, account);
-  writeU32BE(buf, orders.length);
-  for (const item of orders) {
-    ExecutionReportEncode(item, buf);
-  }
-  buf.push(is_snapshot ?? 0);
-  buf.push(is_snapshot != null ? 1 : 0);
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for OpenOrdersSnapshot */
-export interface OpenOrdersSnapshotDecoder {
+/** SBE message OpenOrdersSnapshot */
+export interface OpenOrdersSnapshot {
   account: string;
-  orders: string[];
+  orders: ExecutionReport[];
   is_snapshot: number | null;
-  encodedLen(): number;
 }
 
-export function OpenOrdersSnapshotDecoderDecode(buf: Uint8Array): OpenOrdersSnapshotDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 49) throw new Error('invalid template_id');
+/** SBE body encoder for OpenOrdersSnapshot (fields only, no header). */
+export function OpenOrdersSnapshotBodyEncoderEncode(value: OpenOrdersSnapshot, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.orders.length);
+  for (const item of value.orders) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for OpenOrdersSnapshot: reads fields at `pos`. */
+export function OpenOrdersSnapshotBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OpenOrdersSnapshot {
   const account = readString(buf, pos);
   const ordersCount = readU32BE(buf, pos);
   const orders: ExecutionReport[] = [];
   for (let i = 0; i < ordersCount; i++) {
-    const item = ExecutionReportDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     orders.push(item);
   }
-  const v = buf[pos.value++];
-  const is_snapshot = buf[pos.value++] === 1 ? v : null;
-  return {
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: OpenOrdersSnapshot = {
     account: account,
     orders: orders,
     is_snapshot: is_snapshot,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderHistoryRequest */
-export function OrderHistoryRequestEncoderEncode(account string, symbol string | null, start_time bigint | null, end_time bigint | null, limit u32 | null, cursor string | null): Uint8Array {
+/** SBE encoder for OpenOrdersSnapshot — returns the complete message. */
+export function OpenOrdersSnapshotEncoderEncode(account: string, orders: ExecutionReport[], is_snapshot: number | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 50);
+  writeU16BE(buf, 49);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 20);
-
-  // Fixed fields
+  writeU16BE(buf, 1);
   writeString(buf, account);
-  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
-  if (start_time != null) { buf.push(1); writeI64BE(buf, start_time); } else { buf.push(0); }
-  if (end_time != null) { buf.push(1); writeI64BE(buf, end_time); } else { buf.push(0); }
-  // TODO: encode limit as u32
-  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
-
+  writeU32BE(buf, orders.length);
+  for (const item of orders) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OrderHistoryRequest */
-export interface OrderHistoryRequestDecoder {
+/** SBE decoder for OpenOrdersSnapshot: validates the header and reads the body. */
+export function OpenOrdersSnapshotDecoderDecode(buf: Uint8Array): OpenOrdersSnapshot {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 49) throw new Error("invalid template_id");
+  const account = readString(buf, pos);
+  const ordersCount = readU32BE(buf, pos);
+  const orders: ExecutionReport[] = [];
+  for (let i = 0; i < ordersCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    orders.push(item);
+  }
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: OpenOrdersSnapshot = {
+    account: account,
+    orders: orders,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message OrderHistoryRequest */
+export interface OrderHistoryRequest {
   account: string;
   symbol: string | null;
   start_time: bigint | null;
   end_time: bigint | null;
-  limit: u32 | null;
+  limit: number | null;
   cursor: string | null;
-  encodedLen(): number;
 }
 
-export function OrderHistoryRequestDecoderDecode(buf: Uint8Array): OrderHistoryRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 50) throw new Error('invalid template_id');
+/** SBE body encoder for OrderHistoryRequest (fields only, no header). */
+export function OrderHistoryRequestBodyEncoderEncode(value: OrderHistoryRequest, buf: number[]): void {
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  writeU64BE(buf, BigInt.asUintN(64, value.start_time ?? 0n));
+  buf.push(value.start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.end_time ?? 0n));
+  buf.push(value.end_time != null ? 1 : 0);
+  writeU32BE(buf, value.limit ?? 0);
+  buf.push(value.limit != null ? 1 : 0);
+  if (value.cursor != null) { buf.push(1); writeString(buf, value.cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for OrderHistoryRequest: reads fields at `pos`. */
+export function OrderHistoryRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderHistoryRequest {
+  let symbol: string | null = null;
+  let cursor: string | null = null;
   const account = readString(buf, pos);
-  let symbol: string | null;
-  if (buf[pos.value++] === 1) symbol = readString(buf, pos); else symbol = null;
-  let start_time: bigint | null = null;
-  if (buf[pos.value++] === 1) start_time = readI64BE(buf, pos);
-  let end_time: bigint | null = null;
-  if (buf[pos.value++] === 1) end_time = readI64BE(buf, pos);
-        // TODO: decode limit
-  let cursor: string | null;
-  if (buf[pos.value++] === 1) cursor = readString(buf, pos); else cursor = null;
-  return {
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: OrderHistoryRequest = {
     account: account,
     symbol: symbol,
     start_time: start_time,
     end_time: end_time,
     limit: limit,
     cursor: cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for OrderHistoryBatch */
-export function OrderHistoryBatchEncoderEncode(account string, orders string[], has_more number, next_cursor string | null): Uint8Array {
+/** SBE encoder for OrderHistoryRequest — returns the complete message. */
+export function OrderHistoryRequestEncoderEncode(account: string, symbol: string | null, start_time: bigint | null, end_time: bigint | null, limit: number | null, cursor: string | null): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 51);
+  writeU16BE(buf, 50);
   writeU16BE(buf, 0);
-  writeU16BE(buf, 1);
-
-  // Fixed fields
+  writeU16BE(buf, 20);
   writeString(buf, account);
-  writeU32BE(buf, orders.length);
-  for (const item of orders) {
-    ExecutionReportEncode(item, buf);
-  }
-  buf.push(has_more);
-  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
-
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  writeU64BE(buf, BigInt.asUintN(64, start_time ?? 0n));
+  buf.push(start_time != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, end_time ?? 0n));
+  buf.push(end_time != null ? 1 : 0);
+  writeU32BE(buf, limit ?? 0);
+  buf.push(limit != null ? 1 : 0);
+  if (cursor != null) { buf.push(1); writeString(buf, cursor); } else { buf.push(0); }
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for OrderHistoryBatch */
-export interface OrderHistoryBatchDecoder {
-  account: string;
-  orders: string[];
-  has_more: number;
-  next_cursor: string | null;
-  encodedLen(): number;
-}
-
-export function OrderHistoryBatchDecoderDecode(buf: Uint8Array): OrderHistoryBatchDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for OrderHistoryRequest: validates the header and reads the body. */
+export function OrderHistoryRequestDecoderDecode(buf: Uint8Array): OrderHistoryRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 51) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 50) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  let cursor: string | null = null;
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const start_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const start_time = buf[pos.value++] === 1 ? start_time_v : null;
+  const end_time_v = BigInt.asIntN(64, readU64BE(buf, pos));
+  const end_time = buf[pos.value++] === 1 ? end_time_v : null;
+  const limit_v = readU32BE(buf, pos);
+  const limit = buf[pos.value++] === 1 ? limit_v : null;
+  if (readU8(buf, pos) === 1) cursor = readString(buf, pos);
+  const value: OrderHistoryRequest = {
+    account: account,
+    symbol: symbol,
+    start_time: start_time,
+    end_time: end_time,
+    limit: limit,
+    cursor: cursor,
+  };
+  return value;
+}
+
+/** SBE message OrderHistoryBatch */
+export interface OrderHistoryBatch {
+  account: string;
+  orders: ExecutionReport[];
+  has_more: number;
+  next_cursor: string | null;
+}
+
+/** SBE body encoder for OrderHistoryBatch (fields only, no header). */
+export function OrderHistoryBatchBodyEncoderEncode(value: OrderHistoryBatch, buf: number[]): void {
+  writeString(buf, value.account);
+  writeU32BE(buf, value.orders.length);
+  for (const item of value.orders) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(value.has_more);
+  if (value.next_cursor != null) { buf.push(1); writeString(buf, value.next_cursor); } else { buf.push(0); }
+}
+
+/** SBE body decoder for OrderHistoryBatch: reads fields at `pos`. */
+export function OrderHistoryBatchBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): OrderHistoryBatch {
+  let next_cursor: string | null = null;
   const account = readString(buf, pos);
   const ordersCount = readU32BE(buf, pos);
   const orders: ExecutionReport[] = [];
   for (let i = 0; i < ordersCount; i++) {
-    const item = ExecutionReportDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     orders.push(item);
   }
-  const has_more = buf[pos.value++];
-  let next_cursor: string | null;
-  if (buf[pos.value++] === 1) next_cursor = readString(buf, pos); else next_cursor = null;
-  return {
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: OrderHistoryBatch = {
     account: account,
     orders: orders,
     has_more: has_more,
     next_cursor: next_cursor,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for CapabilitiesRequest */
+/** SBE encoder for OrderHistoryBatch — returns the complete message. */
+export function OrderHistoryBatchEncoderEncode(account: string, orders: ExecutionReport[], has_more: number, next_cursor: string | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 51);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, account);
+  writeU32BE(buf, orders.length);
+  for (const item of orders) {
+    const itemBuf: number[] = [];
+    ExecutionReportBodyEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  buf.push(has_more);
+  if (next_cursor != null) { buf.push(1); writeString(buf, next_cursor); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for OrderHistoryBatch: validates the header and reads the body. */
+export function OrderHistoryBatchDecoderDecode(buf: Uint8Array): OrderHistoryBatch {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 51) throw new Error("invalid template_id");
+  let next_cursor: string | null = null;
+  const account = readString(buf, pos);
+  const ordersCount = readU32BE(buf, pos);
+  const orders: ExecutionReport[] = [];
+  for (let i = 0; i < ordersCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = ExecutionReportBodyDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    orders.push(item);
+  }
+  const has_more = readU8(buf, pos);
+  if (readU8(buf, pos) === 1) next_cursor = readString(buf, pos);
+  const value: OrderHistoryBatch = {
+    account: account,
+    orders: orders,
+    has_more: has_more,
+    next_cursor: next_cursor,
+  };
+  return value;
+}
+
+/** SBE message CapabilitiesRequest */
+export interface CapabilitiesRequest {
+}
+
+/** SBE body encoder for CapabilitiesRequest (fields only, no header). */
+export function CapabilitiesRequestBodyEncoderEncode(value: CapabilitiesRequest, buf: number[]): void {
+}
+
+/** SBE body decoder for CapabilitiesRequest: reads fields at `pos`. */
+export function CapabilitiesRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CapabilitiesRequest {
+  const value: CapabilitiesRequest = {
+  };
+  return value;
+}
+
+/** SBE encoder for CapabilitiesRequest — returns the complete message. */
 export function CapabilitiesRequestEncoderEncode(): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 52);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for CapabilitiesRequest */
-export interface CapabilitiesRequestDecoder {
-  encodedLen(): number;
-}
-
-export function CapabilitiesRequestDecoderDecode(buf: Uint8Array): CapabilitiesRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for CapabilitiesRequest: validates the header and reads the body. */
+export function CapabilitiesRequestDecoderDecode(buf: Uint8Array): CapabilitiesRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 52) throw new Error('invalid template_id');
-  return {
-
-    encodedLen: () => 0,
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 52) throw new Error("invalid template_id");
+  const value: CapabilitiesRequest = {
   };
+  return value;
 }
 
-/** SBE encoder for CapabilitiesResponse */
-export function CapabilitiesResponseEncoderEncode(schema_ids string[], paths string[], symbols string[], intervals string[]): Uint8Array {
-  const buf: number[] = [];
-  // SBE Message Header (8 bytes)
-  writeU16BE(buf, SCHEMA_ID);
-  writeU16BE(buf, 53);
-  writeU16BE(buf, 0);
-  writeU16BE(buf, 0);
-
-  // Fixed fields
-  writeU32BE(buf, schema_ids.length);
-  for (const item of schema_ids) {
-    u8Encode(item, buf);
-  }
-  writeU32BE(buf, paths.length);
-  for (const item of paths) {
-    CapabilityPathEncode(item, buf);
-  }
-  writeU32BE(buf, symbols.length);
-  for (const item of symbols) {
-    SymbolEncode(item, buf);
-  }
-  writeU32BE(buf, intervals.length);
-  for (const item of intervals) {
-    CandleIntervalEncode(item, buf);
-  }
-
-  return new Uint8Array(buf);
-}
-
-/** SBE decoder for CapabilitiesResponse */
-export interface CapabilitiesResponseDecoder {
-  schema_ids: string[];
-  paths: string[];
+/** SBE message CapabilitiesResponse */
+export interface CapabilitiesResponse {
+  schema_ids: number[];
+  paths: CapabilityPath[];
   symbols: string[];
   intervals: string[];
-  encodedLen(): number;
 }
 
-export function CapabilitiesResponseDecoderDecode(buf: Uint8Array): CapabilitiesResponseDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
-  const pos = { value: 0 };
-  const schemaId = readU16BE(buf, pos);
-  const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 53) throw new Error('invalid template_id');
-  const schema_idsCount = readU32BE(buf, pos);
-  const schema_ids: u8[] = [];
-  for (let i = 0; i < schema_idsCount; i++) {
-    const item = u8DecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
-    schema_ids.push(item);
+/** SBE body encoder for CapabilitiesResponse (fields only, no header). */
+export function CapabilitiesResponseBodyEncoderEncode(value: CapabilitiesResponse, buf: number[]): void {
+  writeU32BE(buf, value.schema_ids.length);
+  writeU32BE(buf, value.paths.length);
+  for (const item of value.paths) {
+    const itemBuf: number[] = [];
+    CapabilityPathEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
   }
+  writeU32BE(buf, value.symbols.length);
+  writeU32BE(buf, value.intervals.length);
+}
+
+/** SBE body decoder for CapabilitiesResponse: reads fields at `pos`. */
+export function CapabilitiesResponseBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): CapabilitiesResponse {
+  const schema_idsCount = readU32BE(buf, pos);
+  const schema_ids: number[] = [];
   const pathsCount = readU32BE(buf, pos);
   const paths: CapabilityPath[] = [];
   for (let i = 0; i < pathsCount; i++) {
-    const item = CapabilityPathDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = CapabilityPathDecoderDecode(buf, pos);
+    pos.value = itemEnd;
     paths.push(item);
   }
   const symbolsCount = readU32BE(buf, pos);
-  const symbols: Symbol[] = [];
-  for (let i = 0; i < symbolsCount; i++) {
-    const item = SymbolDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
-    symbols.push(item);
-  }
+  const symbols: string[] = [];
   const intervalsCount = readU32BE(buf, pos);
-  const intervals: CandleInterval[] = [];
-  for (let i = 0; i < intervalsCount; i++) {
-    const item = CandleIntervalDecoderDecode(buf.subarray(pos.value));
-    pos.value += item.encodedLen();
-    intervals.push(item);
-  }
-  return {
+  const intervals: string[] = [];
+  const value: CapabilitiesResponse = {
     schema_ids: schema_ids,
     paths: paths,
     symbols: symbols,
     intervals: intervals,
-    encodedLen: () => 0,
   };
+  return value;
 }
 
-/** SBE encoder for PositionRequest */
-export function PositionRequestEncoderEncode(account string): Uint8Array {
+/** SBE encoder for CapabilitiesResponse — returns the complete message. */
+export function CapabilitiesResponseEncoderEncode(schema_ids: number[], paths: CapabilityPath[], symbols: string[], intervals: string[]): Uint8Array {
   const buf: number[] = [];
-  // SBE Message Header (8 bytes)
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 53);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+  writeU32BE(buf, schema_ids.length);
+  writeU32BE(buf, paths.length);
+  for (const item of paths) {
+    const itemBuf: number[] = [];
+    CapabilityPathEncoderEncode(item, itemBuf);
+    writeU32BE(buf, itemBuf.length);
+    for (const b of itemBuf) buf.push(b);
+  }
+  writeU32BE(buf, symbols.length);
+  writeU32BE(buf, intervals.length);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for CapabilitiesResponse: validates the header and reads the body. */
+export function CapabilitiesResponseDecoderDecode(buf: Uint8Array): CapabilitiesResponse {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 53) throw new Error("invalid template_id");
+  const schema_idsCount = readU32BE(buf, pos);
+  const schema_ids: number[] = [];
+  const pathsCount = readU32BE(buf, pos);
+  const paths: CapabilityPath[] = [];
+  for (let i = 0; i < pathsCount; i++) {
+    const itemLen = readU32BE(buf, pos);
+    const itemEnd = pos.value + itemLen;
+    const item = CapabilityPathDecoderDecode(buf, pos);
+    pos.value = itemEnd;
+    paths.push(item);
+  }
+  const symbolsCount = readU32BE(buf, pos);
+  const symbols: string[] = [];
+  const intervalsCount = readU32BE(buf, pos);
+  const intervals: string[] = [];
+  const value: CapabilitiesResponse = {
+    schema_ids: schema_ids,
+    paths: paths,
+    symbols: symbols,
+    intervals: intervals,
+  };
+  return value;
+}
+
+/** SBE message PositionRequest */
+export interface PositionRequest {
+  account: string;
+}
+
+/** SBE body encoder for PositionRequest (fields only, no header). */
+export function PositionRequestBodyEncoderEncode(value: PositionRequest, buf: number[]): void {
+  writeString(buf, value.account);
+}
+
+/** SBE body decoder for PositionRequest: reads fields at `pos`. */
+export function PositionRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PositionRequest {
+  const account = readString(buf, pos);
+  const value: PositionRequest = {
+    account: account,
+  };
+  return value;
+}
+
+/** SBE encoder for PositionRequest — returns the complete message. */
+export function PositionRequestEncoderEncode(account: string): Uint8Array {
+  const buf: number[] = [];
   writeU16BE(buf, SCHEMA_ID);
   writeU16BE(buf, 54);
   writeU16BE(buf, 0);
   writeU16BE(buf, 0);
-
-  // Fixed fields
   writeString(buf, account);
-
   return new Uint8Array(buf);
 }
 
-/** SBE decoder for PositionRequest */
-export interface PositionRequestDecoder {
-  account: string;
-  encodedLen(): number;
-}
-
-export function PositionRequestDecoderDecode(buf: Uint8Array): PositionRequestDecoder {
-  if (buf.length < 8) throw new Error('buffer too short for SBE header');
+/** SBE decoder for PositionRequest: validates the header and reads the body. */
+export function PositionRequestDecoderDecode(buf: Uint8Array): PositionRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
   const pos = { value: 0 };
   const schemaId = readU16BE(buf, pos);
   const tmplId = readU16BE(buf, pos);
-  readU16BE(buf, pos); readU16BE(buf, pos);
-  if (schemaId !== SCHEMA_ID) throw new Error('invalid schema_id');
-  if (tmplId !== 54) throw new Error('invalid template_id');
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 54) throw new Error("invalid template_id");
   const account = readString(buf, pos);
-  return {
+  const value: PositionRequest = {
     account: account,
-    encodedLen: () => 0,
   };
+  return value;
 }
 

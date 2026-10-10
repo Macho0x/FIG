@@ -74,11 +74,17 @@ jobs:
           mkdir -p "$RUNNER_TEMP/fig-py"
           cp target/debug/libfig_python.so "$RUNNER_TEMP/fig-py/fig.so"
           PYTHONPATH="$RUNNER_TEMP/fig-py" python3 -c "import fig; v = fig.version(); print('fig-python', v); assert v"
-      - name: Go wrapper builds without the WIP generated target
+      - name: Go binding (generated SBE parity + FFI conformance)
         run: |
           cargo build -p fig-ffi
           export LD_LIBRARY_PATH="$PWD/target/debug:${LD_LIBRARY_PATH:-}"
-          (cd bindings/go/fig && go build ./... && go vet ./... && go test -tags=conformance)
+          (cd bindings/go/fig && go build ./... && go vet ./... && go test ./... && go test -tags=conformance)
+      - name: Generated SBE targets compile (C++ / TypeScript / Zig)
+        run: |
+          printf '#include "fig/sbe_generated.hpp"\nint main(){return 0;}\n' > "$RUNNER_TEMP/sbe.cpp"
+          g++ -std=c++20 -fsyntax-only -I bindings/cpp/include "$RUNNER_TEMP/sbe.cpp"
+          bun build bindings/typescript/sbe_generated.ts --target=bun --outfile "$RUNNER_TEMP/sbe.ts.js"
+          zig build-obj bindings/zig/sbe_generated.zig -femit-bin="$RUNNER_TEMP/sbe.zig.o"
       - name: FFI binding conformance
         run: cargo test -p fig-ffi binding_conformance
       - name: FFI stream merge handles

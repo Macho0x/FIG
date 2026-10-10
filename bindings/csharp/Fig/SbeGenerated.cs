@@ -9,6 +9,8 @@ namespace Fig.Sbe
 {
     public const ushort SCHEMA_ID = 0x01;
 
+
+        public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
     internal static class Wire
     {
         public static void WriteU16BE(List<byte> buf, ushort v) { buf.Add((byte)(v >> 8)); buf.Add((byte)v); }
@@ -23,6 +25,8 @@ namespace Fig.Sbe
         public static void WriteString(List<byte> buf, string s) {
             var bytes = Encoding.UTF8.GetBytes(s); WriteU16BE(buf, (ushort)bytes.Length); buf.AddRange(bytes);
         }
+        public static byte TakeU8(byte[] buf, ref int pos) => buf[pos++];
+
         public static ushort ReadU16BE(byte[] buf, ref int pos) {
             ushort v = (ushort)((buf[pos] << 8) | buf[pos + 1]); pos += 2; return v;
         }
@@ -400,121 +404,723 @@ namespace Fig.Sbe
 
     public static byte CapabilityPathPatternToValue(CapabilityPathPattern e) => (byte)e;
 
+    // SBE struct AggregateTrade
+    public struct AggregateTrade
+    {
+        public string Symbol;
+        public string AggTradeId;
+        public double Price;
+        public double Qty;
+        public AggregateTradeSide Side;
+        public string FirstTradeId;
+        public string LastTradeId;
+        public long Timestamp;
+    }
+
+public static class AggregateTradeEncoder
+    {
+        public static void Encode(AggregateTrade value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.AggTradeId);
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteF64BE(buf, value.Qty);
+            buf.Add(AggregateTradeSideToValue(value.Side));
+            Wire.WriteString(buf, value.FirstTradeId);
+            Wire.WriteString(buf, value.LastTradeId);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+public static class AggregateTradeDecoder
+    {
+        public static (AggregateTrade Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AggregateTrade();
+            string symbol = Wire.ReadString(buf, ref pos);
+            string agg_trade_id = Wire.ReadString(buf, ref pos);
+            double price = Wire.ReadF64BE(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            var side = AggregateTradeSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid AggregateTradeSide");
+            string first_trade_id = Wire.ReadString(buf, ref pos);
+            string last_trade_id = Wire.ReadString(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Symbol = symbol;
+            value.AggTradeId = agg_trade_id;
+            value.Price = price;
+            value.Qty = qty;
+            value.Side = side;
+            value.FirstTradeId = first_trade_id;
+            value.LastTradeId = last_trade_id;
+            value.Timestamp = timestamp;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct LiquidationTrade
+    public struct LiquidationTrade
+    {
+        public string Symbol;
+        public LiquidationTradeSide Side;
+        public double Price;
+        public double Qty;
+        public long Timestamp;
+    }
+
+public static class LiquidationTradeEncoder
+    {
+        public static void Encode(LiquidationTrade value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            buf.Add(LiquidationTradeSideToValue(value.Side));
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteF64BE(buf, value.Qty);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+public static class LiquidationTradeDecoder
+    {
+        public static (LiquidationTrade Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new LiquidationTrade();
+            string symbol = Wire.ReadString(buf, ref pos);
+            var side = LiquidationTradeSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid LiquidationTradeSide");
+            double price = Wire.ReadF64BE(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Symbol = symbol;
+            value.Side = side;
+            value.Price = price;
+            value.Qty = qty;
+            value.Timestamp = timestamp;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct PriceLevel
+    public struct PriceLevel
+    {
+        public double Price;
+        public double Qty;
+        public uint? OrderCount;
+    }
+
+public static class PriceLevelEncoder
+    {
+        public static void Encode(PriceLevel value, List<byte> buf)
+        {
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteF64BE(buf, value.Qty);
+            Wire.WriteU32BE(buf, value.OrderCount ?? (uint)0);
+            buf.Add((byte)(value.OrderCount.HasValue ? 1 : 0));
+        }
+    }
+
+public static class PriceLevelDecoder
+    {
+        public static (PriceLevel Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PriceLevel();
+            double price = Wire.ReadF64BE(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            uint order_count_v = Wire.ReadU32BE(buf, ref pos);
+            uint? order_count = buf[pos++] == 1 ? order_count_v : null;
+            value.Price = price;
+            value.Qty = qty;
+            value.OrderCount = order_count;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct MarketDataUpdate
+    public struct MarketDataUpdate
+    {
+        public MarketDataUpdateSide Side;
+        public MarketDataUpdateAction Action;
+        public double Price;
+        public double Qty;
+    }
+
+public static class MarketDataUpdateEncoder
+    {
+        public static void Encode(MarketDataUpdate value, List<byte> buf)
+        {
+            buf.Add(MarketDataUpdateSideToValue(value.Side));
+            buf.Add(MarketDataUpdateActionToValue(value.Action));
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteF64BE(buf, value.Qty);
+        }
+    }
+
+public static class MarketDataUpdateDecoder
+    {
+        public static (MarketDataUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarketDataUpdate();
+            var side = MarketDataUpdateSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid MarketDataUpdateSide");
+            var action = MarketDataUpdateActionFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid MarketDataUpdateAction");
+            double price = Wire.ReadF64BE(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            value.Side = side;
+            value.Action = action;
+            value.Price = price;
+            value.Qty = qty;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct CandleBar
+    public struct CandleBar
+    {
+        public string Symbol;
+        public string Interval;
+        public double Open;
+        public double High;
+        public double Low;
+        public double Close;
+        public double Volume;
+        public long BarStart;
+        public long BarEnd;
+        public byte IsFinal;
+        public byte? IsSnapshot;
+    }
+
+public static class CandleBarEncoder
+    {
+        public static void Encode(CandleBar value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.Interval);
+            Wire.WriteF64BE(buf, value.Open);
+            Wire.WriteF64BE(buf, value.High);
+            Wire.WriteF64BE(buf, value.Low);
+            Wire.WriteF64BE(buf, value.Close);
+            Wire.WriteF64BE(buf, value.Volume);
+            Wire.WriteU64BE(buf, (ulong)(value.BarStart));
+            Wire.WriteU64BE(buf, (ulong)(value.BarEnd));
+            buf.Add(value.IsFinal);
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+public static class CandleBarDecoder
+    {
+        public static (CandleBar Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CandleBar();
+            string symbol = Wire.ReadString(buf, ref pos);
+            string interval = Wire.ReadString(buf, ref pos);
+            double open = Wire.ReadF64BE(buf, ref pos);
+            double high = Wire.ReadF64BE(buf, ref pos);
+            double low = Wire.ReadF64BE(buf, ref pos);
+            double close = Wire.ReadF64BE(buf, ref pos);
+            double volume = Wire.ReadF64BE(buf, ref pos);
+            long bar_start = (long)Wire.ReadU64BE(buf, ref pos);
+            long bar_end = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_final = TakeU8(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Interval = interval;
+            value.Open = open;
+            value.High = high;
+            value.Low = low;
+            value.Close = close;
+            value.Volume = volume;
+            value.BarStart = bar_start;
+            value.BarEnd = bar_end;
+            value.IsFinal = is_final;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct PublicTrade
+    public struct PublicTrade
+    {
+        public string Symbol;
+        public string TradeId;
+        public double Price;
+        public double Qty;
+        public PublicTradeSide Side;
+        public long Timestamp;
+    }
+
+public static class PublicTradeEncoder
+    {
+        public static void Encode(PublicTrade value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.TradeId);
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteF64BE(buf, value.Qty);
+            buf.Add(PublicTradeSideToValue(value.Side));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+public static class PublicTradeDecoder
+    {
+        public static (PublicTrade Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PublicTrade();
+            string symbol = Wire.ReadString(buf, ref pos);
+            string trade_id = Wire.ReadString(buf, ref pos);
+            double price = Wire.ReadF64BE(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            var side = PublicTradeSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid PublicTradeSide");
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Symbol = symbol;
+            value.TradeId = trade_id;
+            value.Price = price;
+            value.Qty = qty;
+            value.Side = side;
+            value.Timestamp = timestamp;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct InstrumentMetadata
+    public struct InstrumentMetadata
+    {
+        public string InstrumentId;
+        public string Symbol;
+        public string ProductKind;
+        public string? MarginAsset;
+        public string? DisplayName;
+        public double? TickSize;
+        public double? LotSize;
+    }
+
+public static class InstrumentMetadataEncoder
+    {
+        public static void Encode(InstrumentMetadata value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.InstrumentId);
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.ProductKind);
+            if (value.MarginAsset.HasValue) { buf.Add(1); Wire.WriteString(buf, value.MarginAsset.Value); } else { buf.Add(0); }
+            if (value.DisplayName.HasValue) { buf.Add(1); Wire.WriteString(buf, value.DisplayName.Value); } else { buf.Add(0); }
+            Wire.WriteF64BE(buf, value.TickSize ?? 0.0);
+            buf.Add((byte)(value.TickSize.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.LotSize ?? 0.0);
+            buf.Add((byte)(value.LotSize.HasValue ? 1 : 0));
+        }
+    }
+
+public static class InstrumentMetadataDecoder
+    {
+        public static (InstrumentMetadata Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new InstrumentMetadata();
+            string? margin_asset;
+            string? display_name;
+            string instrument_id = Wire.ReadString(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            string product_kind = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) margin_asset = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) display_name = Wire.ReadString(buf, ref pos);
+            double tick_size_v = Wire.ReadF64BE(buf, ref pos);
+            double? tick_size = buf[pos++] == 1 ? tick_size_v : null;
+            double lot_size_v = Wire.ReadF64BE(buf, ref pos);
+            double? lot_size = buf[pos++] == 1 ? lot_size_v : null;
+            value.InstrumentId = instrument_id;
+            value.Symbol = symbol;
+            value.ProductKind = product_kind;
+            value.MarginAsset = margin_asset;
+            value.DisplayName = display_name;
+            value.TickSize = tick_size;
+            value.LotSize = lot_size;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct BalanceEntry
+    public struct BalanceEntry
+    {
+        public string Asset;
+        public double Total;
+        public double Available;
+        public double Hold;
+    }
+
+public static class BalanceEntryEncoder
+    {
+        public static void Encode(BalanceEntry value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Asset);
+            Wire.WriteF64BE(buf, value.Total);
+            Wire.WriteF64BE(buf, value.Available);
+            Wire.WriteF64BE(buf, value.Hold);
+        }
+    }
+
+public static class BalanceEntryDecoder
+    {
+        public static (BalanceEntry Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new BalanceEntry();
+            string asset = Wire.ReadString(buf, ref pos);
+            double total = Wire.ReadF64BE(buf, ref pos);
+            double available = Wire.ReadF64BE(buf, ref pos);
+            double hold = Wire.ReadF64BE(buf, ref pos);
+            value.Asset = asset;
+            value.Total = total;
+            value.Available = available;
+            value.Hold = hold;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct PositionEntry
+    public struct PositionEntry
+    {
+        public string Symbol;
+        public double Qty;
+        public double EntryPrice;
+        public double UnrealizedPnl;
+    }
+
+public static class PositionEntryEncoder
+    {
+        public static void Encode(PositionEntry value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.Qty);
+            Wire.WriteF64BE(buf, value.EntryPrice);
+            Wire.WriteF64BE(buf, value.UnrealizedPnl);
+        }
+    }
+
+public static class PositionEntryDecoder
+    {
+        public static (PositionEntry Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PositionEntry();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            double entry_price = Wire.ReadF64BE(buf, ref pos);
+            double unrealized_pnl = Wire.ReadF64BE(buf, ref pos);
+            value.Symbol = symbol;
+            value.Qty = qty;
+            value.EntryPrice = entry_price;
+            value.UnrealizedPnl = unrealized_pnl;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct PageInfo
+    public struct PageInfo
+    {
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+public static class PageInfoEncoder
+    {
+        public static void Encode(PageInfo value, List<byte> buf)
+        {
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+public static class PageInfoDecoder
+    {
+        public static (PageInfo Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PageInfo();
+            string? next_cursor;
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
+        }
+    }
+
+    // SBE struct CapabilityPath
+    public struct CapabilityPath
+    {
+        public string Path;
+        public CapabilityPathPattern Pattern;
+        public byte AuthRequired;
+    }
+
+public static class CapabilityPathEncoder
+    {
+        public static void Encode(CapabilityPath value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Path);
+            buf.Add(CapabilityPathPatternToValue(value.Pattern));
+            buf.Add(value.AuthRequired);
+        }
+    }
+
+public static class CapabilityPathDecoder
+    {
+        public static (CapabilityPath Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CapabilityPath();
+            string path = Wire.ReadString(buf, ref pos);
+            var pattern = CapabilityPathPatternFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CapabilityPathPattern");
+            byte auth_required = TakeU8(buf, ref pos);
+            value.Path = path;
+            value.Pattern = pattern;
+            value.AuthRequired = auth_required;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE message NewOrderSingle</summary>
+    public class NewOrderSingle
+    {
+        public string ClOrdId;
+        public NewOrderSingleSide Side;
+        public double OrderQty;
+        public double? Price;
+        public double? StopPrice;
+        public string Symbol;
+        public NewOrderSingleOrderType OrderType;
+        public NewOrderSingleTimeInForce TimeInForce;
+        public long? ExpireTime;
+        public string? Account;
+        public string? StrategyId;
+        public string? SecurityId;
+        public NewOrderSingleIdSource? IdSource;
+        public string? SecurityExchange;
+        public byte? PostOnly;
+        public byte? ReduceOnly;
+    }
+
+    /// <summary>SBE body encoder for NewOrderSingle (fields only, no header).</summary>
+    public static class NewOrderSingleBodyEncoder
+    {
+        public static void Encode(NewOrderSingle value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            buf.Add(NewOrderSingleSideToValue(value.Side));
+            Wire.WriteF64BE(buf, value.OrderQty);
+            Wire.WriteF64BE(buf, value.Price ?? 0.0);
+            buf.Add((byte)(value.Price.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.StopPrice ?? 0.0);
+            buf.Add((byte)(value.StopPrice.HasValue ? 1 : 0));
+            Wire.WriteString(buf, value.Symbol);
+            buf.Add(NewOrderSingleOrderTypeToValue(value.OrderType));
+            buf.Add(NewOrderSingleTimeInForceToValue(value.TimeInForce));
+            Wire.WriteU64BE(buf, (ulong)(value.ExpireTime ?? (long)0));
+            buf.Add((byte)(value.ExpireTime.HasValue ? 1 : 0));
+            if (value.Account.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Account.Value); } else { buf.Add(0); }
+            if (value.StrategyId.HasValue) { buf.Add(1); Wire.WriteString(buf, value.StrategyId.Value); } else { buf.Add(0); }
+            if (value.SecurityId.HasValue) { buf.Add(1); Wire.WriteString(buf, value.SecurityId.Value); } else { buf.Add(0); }
+            buf.Add(value.IdSource.HasValue ? NewOrderSingleIdSourceToValue(value.IdSource.Value) : (byte)0);
+            buf.Add((byte)(value.IdSource.HasValue ? 1 : 0));
+            if (value.SecurityExchange.HasValue) { buf.Add(1); Wire.WriteString(buf, value.SecurityExchange.Value); } else { buf.Add(0); }
+            buf.Add(value.PostOnly ?? (byte)0);
+            buf.Add((byte)(value.PostOnly.HasValue ? 1 : 0));
+            buf.Add(value.ReduceOnly ?? (byte)0);
+            buf.Add((byte)(value.ReduceOnly.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for NewOrderSingle: reads fields at pos.</summary>
+    public static class NewOrderSingleBodyDecoder
+    {
+        public static (NewOrderSingle Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new NewOrderSingle();
+            string? account;
+            string? strategy_id;
+            string? security_id;
+            string? security_exchange;
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            var side = NewOrderSingleSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleSide");
+            double order_qty = Wire.ReadF64BE(buf, ref pos);
+            double price_v = Wire.ReadF64BE(buf, ref pos);
+            double? price = buf[pos++] == 1 ? price_v : null;
+            double stop_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? stop_price = buf[pos++] == 1 ? stop_price_v : null;
+            string symbol = Wire.ReadString(buf, ref pos);
+            var order_type = NewOrderSingleOrderTypeFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleOrderType");
+            var time_in_force = NewOrderSingleTimeInForceFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleTimeInForce");
+            long expire_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? expire_time = buf[pos++] == 1 ? expire_time_v : null;
+            if (TakeU8(buf, ref pos) == 1) account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) strategy_id = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) security_id = Wire.ReadString(buf, ref pos);
+            var id_sourceRaw = TakeU8(buf, ref pos);
+            NewOrderSingleIdSource? id_source = null;
+            if (buf[pos++] == 1) {
+                id_source = NewOrderSingleIdSourceFromValue(id_sourceRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleIdSource");
+            }
+            if (TakeU8(buf, ref pos) == 1) security_exchange = Wire.ReadString(buf, ref pos);
+            byte post_only_v = TakeU8(buf, ref pos);
+            byte? post_only = buf[pos++] == 1 ? post_only_v : null;
+            byte reduce_only_v = TakeU8(buf, ref pos);
+            byte? reduce_only = buf[pos++] == 1 ? reduce_only_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            value.Price = price;
+            value.StopPrice = stop_price;
+            value.Symbol = symbol;
+            value.OrderType = order_type;
+            value.TimeInForce = time_in_force;
+            value.ExpireTime = expire_time;
+            value.Account = account;
+            value.StrategyId = strategy_id;
+            value.SecurityId = security_id;
+            value.IdSource = id_source;
+            value.SecurityExchange = security_exchange;
+            value.PostOnly = post_only;
+            value.ReduceOnly = reduce_only;
+            return (value, pos);
+        }
+    }
+
     /// <summary>SBE encoder for NewOrderSingle</summary>
     public static class NewOrderSingleEncoder
     {
         public static byte[] Encode(ClOrdId string, Side NewOrderSingleSide, OrderQty double, Price double?, StopPrice double?, Symbol string, OrderType NewOrderSingleOrderType, TimeInForce NewOrderSingleTimeInForce, ExpireTime long?, Account string?, StrategyId string?, SecurityId string?, IdSource NewOrderSingleIdSource?, SecurityExchange string?, PostOnly byte?, ReduceOnly byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 1);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 38);
-
-            // Fixed fields
-                Wire.WriteString(buf, ClOrdId);
-                buf.Add(NewOrderSingleSideToValue(Side));
-                Wire.WriteF64BE(buf, OrderQty);
-                Wire.WriteF64BE(buf, Price ?? 0.0);
-                buf.Add((byte)(Price.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, StopPrice ?? 0.0);
-                buf.Add((byte)(StopPrice.HasValue ? 1 : 0));
-                Wire.WriteString(buf, Symbol);
-                buf.Add(NewOrderSingleOrderTypeToValue(OrderType));
-                buf.Add(NewOrderSingleTimeInForceToValue(TimeInForce));
-                if (ExpireTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, ExpireTime.Value); } else { buf.Add(0); }
-                if (Account.HasValue) { buf.Add(1); Wire.WriteString(buf, Account.Value); } else { buf.Add(0); }
-                if (StrategyId.HasValue) { buf.Add(1); Wire.WriteString(buf, StrategyId.Value); } else { buf.Add(0); }
-                if (SecurityId.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityId.Value); } else { buf.Add(0); }
-                buf.Add(IdSource.HasValue ? NewOrderSingleIdSourceToValue(IdSource.Value) : (byte)0);
-                if (SecurityExchange.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityExchange.Value); } else { buf.Add(0); }
-                buf.Add(PostOnly ?? 0);
-                buf.Add((byte)(PostOnly.HasValue ? 1 : 0));
-                buf.Add(ReduceOnly ?? 0);
-                buf.Add((byte)(ReduceOnly.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 38);
+            Wire.WriteString(buf, ClOrdId);
+            buf.Add(NewOrderSingleSideToValue(Side));
+            Wire.WriteF64BE(buf, OrderQty);
+            Wire.WriteF64BE(buf, Price ?? 0.0);
+            buf.Add((byte)(Price.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, StopPrice ?? 0.0);
+            buf.Add((byte)(StopPrice.HasValue ? 1 : 0));
+            Wire.WriteString(buf, Symbol);
+            buf.Add(NewOrderSingleOrderTypeToValue(OrderType));
+            buf.Add(NewOrderSingleTimeInForceToValue(TimeInForce));
+            Wire.WriteU64BE(buf, (ulong)(ExpireTime ?? (long)0));
+            buf.Add((byte)(ExpireTime.HasValue ? 1 : 0));
+            if (Account.HasValue) { buf.Add(1); Wire.WriteString(buf, Account.Value); } else { buf.Add(0); }
+            if (StrategyId.HasValue) { buf.Add(1); Wire.WriteString(buf, StrategyId.Value); } else { buf.Add(0); }
+            if (SecurityId.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityId.Value); } else { buf.Add(0); }
+            buf.Add(IdSource.HasValue ? NewOrderSingleIdSourceToValue(IdSource.Value) : (byte)0);
+            buf.Add((byte)(IdSource.HasValue ? 1 : 0));
+            if (SecurityExchange.HasValue) { buf.Add(1); Wire.WriteString(buf, SecurityExchange.Value); } else { buf.Add(0); }
+            buf.Add(PostOnly ?? (byte)0);
+            buf.Add((byte)(PostOnly.HasValue ? 1 : 0));
+            buf.Add(ReduceOnly ?? (byte)0);
+            buf.Add((byte)(ReduceOnly.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for NewOrderSingle</summary>
-    public class NewOrderSingleDecoder
+    /// <summary>SBE decoder for NewOrderSingle: validates the header and reads the body.</summary>
+    public static class NewOrderSingleDecoder
     {
-        public string ClOrdId { get; set; }
-        public NewOrderSingleSide Side { get; set; }
-        public double OrderQty { get; set; }
-        public double? Price { get; set; }
-        public double? StopPrice { get; set; }
-        public string Symbol { get; set; }
-        public NewOrderSingleOrderType OrderType { get; set; }
-        public NewOrderSingleTimeInForce TimeInForce { get; set; }
-        public long? ExpireTime { get; set; }
-        public string? Account { get; set; }
-        public string? StrategyId { get; set; }
-        public string? SecurityId { get; set; }
-        public NewOrderSingleIdSource? IdSource { get; set; }
-        public string? SecurityExchange { get; set; }
-        public byte? PostOnly { get; set; }
-        public byte? ReduceOnly { get; set; }
-        public int EncodedLen() => 0;
-
-        public static NewOrderSingleDecoder Decode(byte[] buf)
+        public static NewOrderSingle Decode(byte[] buf)
         {
+            var value = new NewOrderSingle();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 1) throw new InvalidOperationException("invalid template_id");
-            string cl_ord_id = Wire.ReadString(buf, ref pos);
-            byte sideRaw = buf[pos++];
-            var side = NewOrderSingleSideFromValue(sideRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleSide");
-            double order_qty = Wire.ReadF64BE(buf, ref pos);
-            double priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? price = buf[pos++] == 1 ? priceRaw : null;
-            double stop_priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? stop_price = buf[pos++] == 1 ? stop_priceRaw : null;
-            string symbol = Wire.ReadString(buf, ref pos);
-            byte order_typeRaw = buf[pos++];
-            var order_type = NewOrderSingleOrderTypeFromValue(order_typeRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleOrderType");
-            byte time_in_forceRaw = buf[pos++];
-            var time_in_force = NewOrderSingleTimeInForceFromValue(time_in_forceRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleTimeInForce");
-            long? expire_time;
-            if (buf[pos++] == 1) expire_time = Wire.ReadI64BE(buf, ref pos);
             string? account;
-            if (buf[pos++] == 1) account = Wire.ReadString(buf, ref pos);
             string? strategy_id;
-            if (buf[pos++] == 1) strategy_id = Wire.ReadString(buf, ref pos);
             string? security_id;
-            if (buf[pos++] == 1) security_id = Wire.ReadString(buf, ref pos);
-            byte id_sourceRaw = buf[pos++];
-            var id_source = NewOrderSingleIdSourceFromValue(id_sourceRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleIdSource");
             string? security_exchange;
-            if (buf[pos++] == 1) security_exchange = Wire.ReadString(buf, ref pos);
-            byte v = buf[pos++];
-            byte? post_only = buf[pos++] == 1 ? v : null;
-            byte v = buf[pos++];
-            byte? reduce_only = buf[pos++] == 1 ? v : null;
-            return new NewOrderSingleDecoder
-            {
-                ClOrdId = cl_ord_id,
-                Side = side,
-                OrderQty = order_qty,
-                Price = price,
-                StopPrice = stop_price,
-                Symbol = symbol,
-                OrderType = order_type,
-                TimeInForce = time_in_force,
-                ExpireTime = expire_time,
-                Account = account,
-                StrategyId = strategy_id,
-                SecurityId = security_id,
-                IdSource = id_source,
-                SecurityExchange = security_exchange,
-                PostOnly = post_only,
-                ReduceOnly = reduce_only,
-            };
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            var side = NewOrderSingleSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleSide");
+            double order_qty = Wire.ReadF64BE(buf, ref pos);
+            double price_v = Wire.ReadF64BE(buf, ref pos);
+            double? price = buf[pos++] == 1 ? price_v : null;
+            double stop_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? stop_price = buf[pos++] == 1 ? stop_price_v : null;
+            string symbol = Wire.ReadString(buf, ref pos);
+            var order_type = NewOrderSingleOrderTypeFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleOrderType");
+            var time_in_force = NewOrderSingleTimeInForceFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid NewOrderSingleTimeInForce");
+            long expire_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? expire_time = buf[pos++] == 1 ? expire_time_v : null;
+            if (TakeU8(buf, ref pos) == 1) account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) strategy_id = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) security_id = Wire.ReadString(buf, ref pos);
+            var id_sourceRaw = TakeU8(buf, ref pos);
+            NewOrderSingleIdSource? id_source = null;
+            if (buf[pos++] == 1) {
+                id_source = NewOrderSingleIdSourceFromValue(id_sourceRaw) ?? throw new InvalidOperationException("invalid NewOrderSingleIdSource");
+            }
+            if (TakeU8(buf, ref pos) == 1) security_exchange = Wire.ReadString(buf, ref pos);
+            byte post_only_v = TakeU8(buf, ref pos);
+            byte? post_only = buf[pos++] == 1 ? post_only_v : null;
+            byte reduce_only_v = TakeU8(buf, ref pos);
+            byte? reduce_only = buf[pos++] == 1 ? reduce_only_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            value.Price = price;
+            value.StopPrice = stop_price;
+            value.Symbol = symbol;
+            value.OrderType = order_type;
+            value.TimeInForce = time_in_force;
+            value.ExpireTime = expire_time;
+            value.Account = account;
+            value.StrategyId = strategy_id;
+            value.SecurityId = security_id;
+            value.IdSource = id_source;
+            value.SecurityExchange = security_exchange;
+            value.PostOnly = post_only;
+            value.ReduceOnly = reduce_only;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CancelRequest</summary>
+    public class CancelRequest
+    {
+        public string ClOrdId;
+        public string OrigClOrdId;
+        public string Symbol;
+        public CancelRequestSide Side;
+        public double? OrderQty;
+    }
+
+    /// <summary>SBE body encoder for CancelRequest (fields only, no header).</summary>
+    public static class CancelRequestBodyEncoder
+    {
+        public static void Encode(CancelRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.OrigClOrdId);
+            Wire.WriteString(buf, value.Symbol);
+            buf.Add(CancelRequestSideToValue(value.Side));
+            Wire.WriteF64BE(buf, value.OrderQty ?? 0.0);
+            buf.Add((byte)(value.OrderQty.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for CancelRequest: reads fields at pos.</summary>
+    public static class CancelRequestBodyDecoder
+    {
+        public static (CancelRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CancelRequest();
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            var side = CancelRequestSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelRequestSide");
+            double order_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? order_qty = buf[pos++] == 1 ? order_qty_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.Symbol = symbol;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            return (value, pos);
         }
     }
 
@@ -524,57 +1130,95 @@ namespace Fig.Sbe
         public static byte[] Encode(ClOrdId string, OrigClOrdId string, Symbol string, Side CancelRequestSide, OrderQty double?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 2);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 9);
-
-            // Fixed fields
-                Wire.WriteString(buf, ClOrdId);
-                Wire.WriteString(buf, OrigClOrdId);
-                Wire.WriteString(buf, Symbol);
-                buf.Add(CancelRequestSideToValue(Side));
-                Wire.WriteF64BE(buf, OrderQty ?? 0.0);
-                buf.Add((byte)(OrderQty.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 2);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 9);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, OrigClOrdId);
+            Wire.WriteString(buf, Symbol);
+            buf.Add(CancelRequestSideToValue(Side));
+            Wire.WriteF64BE(buf, OrderQty ?? 0.0);
+            buf.Add((byte)(OrderQty.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CancelRequest</summary>
-    public class CancelRequestDecoder
+    /// <summary>SBE decoder for CancelRequest: validates the header and reads the body.</summary>
+    public static class CancelRequestDecoder
     {
-        public string ClOrdId { get; set; }
-        public string OrigClOrdId { get; set; }
-        public string Symbol { get; set; }
-        public CancelRequestSide Side { get; set; }
-        public double? OrderQty { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CancelRequestDecoder Decode(byte[] buf)
+        public static CancelRequest Decode(byte[] buf)
         {
+            var value = new CancelRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 2) throw new InvalidOperationException("invalid template_id");
             string cl_ord_id = Wire.ReadString(buf, ref pos);
             string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
-            byte sideRaw = buf[pos++];
-            var side = CancelRequestSideFromValue(sideRaw) ?? throw new InvalidOperationException("invalid CancelRequestSide");
-            double order_qtyRaw = Wire.ReadF64BE(buf, ref pos);
-            double? order_qty = buf[pos++] == 1 ? order_qtyRaw : null;
-            return new CancelRequestDecoder
-            {
-                ClOrdId = cl_ord_id,
-                OrigClOrdId = orig_cl_ord_id,
-                Symbol = symbol,
-                Side = side,
-                OrderQty = order_qty,
-            };
+            var side = CancelRequestSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelRequestSide");
+            double order_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? order_qty = buf[pos++] == 1 ? order_qty_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.Symbol = symbol;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CancelReplaceRequest</summary>
+    public class CancelReplaceRequest
+    {
+        public string ClOrdId;
+        public string OrigClOrdId;
+        public string Symbol;
+        public CancelReplaceRequestSide Side;
+        public double OrderQty;
+        public double? Price;
+    }
+
+    /// <summary>SBE body encoder for CancelReplaceRequest (fields only, no header).</summary>
+    public static class CancelReplaceRequestBodyEncoder
+    {
+        public static void Encode(CancelReplaceRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.OrigClOrdId);
+            Wire.WriteString(buf, value.Symbol);
+            buf.Add(CancelReplaceRequestSideToValue(value.Side));
+            Wire.WriteF64BE(buf, value.OrderQty);
+            Wire.WriteF64BE(buf, value.Price ?? 0.0);
+            buf.Add((byte)(value.Price.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for CancelReplaceRequest: reads fields at pos.</summary>
+    public static class CancelReplaceRequestBodyDecoder
+    {
+        public static (CancelReplaceRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CancelReplaceRequest();
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            var side = CancelReplaceRequestSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelReplaceRequestSide");
+            double order_qty = Wire.ReadF64BE(buf, ref pos);
+            double price_v = Wire.ReadF64BE(buf, ref pos);
+            double? price = buf[pos++] == 1 ? price_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.Symbol = symbol;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            value.Price = price;
+            return (value, pos);
         }
     }
 
@@ -584,61 +1228,128 @@ namespace Fig.Sbe
         public static byte[] Encode(ClOrdId string, OrigClOrdId string, Symbol string, Side CancelReplaceRequestSide, OrderQty double, Price double?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 3);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 17);
-
-            // Fixed fields
-                Wire.WriteString(buf, ClOrdId);
-                Wire.WriteString(buf, OrigClOrdId);
-                Wire.WriteString(buf, Symbol);
-                buf.Add(CancelReplaceRequestSideToValue(Side));
-                Wire.WriteF64BE(buf, OrderQty);
-                Wire.WriteF64BE(buf, Price ?? 0.0);
-                buf.Add((byte)(Price.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 3);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 17);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, OrigClOrdId);
+            Wire.WriteString(buf, Symbol);
+            buf.Add(CancelReplaceRequestSideToValue(Side));
+            Wire.WriteF64BE(buf, OrderQty);
+            Wire.WriteF64BE(buf, Price ?? 0.0);
+            buf.Add((byte)(Price.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CancelReplaceRequest</summary>
-    public class CancelReplaceRequestDecoder
+    /// <summary>SBE decoder for CancelReplaceRequest: validates the header and reads the body.</summary>
+    public static class CancelReplaceRequestDecoder
     {
-        public string ClOrdId { get; set; }
-        public string OrigClOrdId { get; set; }
-        public string Symbol { get; set; }
-        public CancelReplaceRequestSide Side { get; set; }
-        public double OrderQty { get; set; }
-        public double? Price { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CancelReplaceRequestDecoder Decode(byte[] buf)
+        public static CancelReplaceRequest Decode(byte[] buf)
         {
+            var value = new CancelReplaceRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 3) throw new InvalidOperationException("invalid template_id");
             string cl_ord_id = Wire.ReadString(buf, ref pos);
             string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
-            byte sideRaw = buf[pos++];
-            var side = CancelReplaceRequestSideFromValue(sideRaw) ?? throw new InvalidOperationException("invalid CancelReplaceRequestSide");
+            var side = CancelReplaceRequestSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelReplaceRequestSide");
             double order_qty = Wire.ReadF64BE(buf, ref pos);
-            double priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? price = buf[pos++] == 1 ? priceRaw : null;
-            return new CancelReplaceRequestDecoder
-            {
-                ClOrdId = cl_ord_id,
-                OrigClOrdId = orig_cl_ord_id,
-                Symbol = symbol,
-                Side = side,
-                OrderQty = order_qty,
-                Price = price,
-            };
+            double price_v = Wire.ReadF64BE(buf, ref pos);
+            double? price = buf[pos++] == 1 ? price_v : null;
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.Symbol = symbol;
+            value.Side = side;
+            value.OrderQty = order_qty;
+            value.Price = price;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message ExecutionReport</summary>
+    public class ExecutionReport
+    {
+        public string ClOrdId;
+        public string OrderId;
+        public string ExecId;
+        public ExecutionReportExecType ExecType;
+        public ExecutionReportOrdStatus OrdStatus;
+        public ExecutionReportSide Side;
+        public double? LastQty;
+        public double? LastPrice;
+        public double LeavesQty;
+        public double CumQty;
+        public double AvgPrice;
+        public string Symbol;
+        public long TransactTime;
+    }
+
+    /// <summary>SBE body encoder for ExecutionReport (fields only, no header).</summary>
+    public static class ExecutionReportBodyEncoder
+    {
+        public static void Encode(ExecutionReport value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.OrderId);
+            Wire.WriteString(buf, value.ExecId);
+            buf.Add(ExecutionReportExecTypeToValue(value.ExecType));
+            buf.Add(ExecutionReportOrdStatusToValue(value.OrdStatus));
+            buf.Add(ExecutionReportSideToValue(value.Side));
+            Wire.WriteF64BE(buf, value.LastQty ?? 0.0);
+            buf.Add((byte)(value.LastQty.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.LastPrice ?? 0.0);
+            buf.Add((byte)(value.LastPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.LeavesQty);
+            Wire.WriteF64BE(buf, value.CumQty);
+            Wire.WriteF64BE(buf, value.AvgPrice);
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU64BE(buf, (ulong)(value.TransactTime));
+        }
+    }
+
+    /// <summary>SBE body decoder for ExecutionReport: reads fields at pos.</summary>
+    public static class ExecutionReportBodyDecoder
+    {
+        public static (ExecutionReport Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new ExecutionReport();
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string order_id = Wire.ReadString(buf, ref pos);
+            string exec_id = Wire.ReadString(buf, ref pos);
+            var exec_type = ExecutionReportExecTypeFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportExecType");
+            var ord_status = ExecutionReportOrdStatusFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportOrdStatus");
+            var side = ExecutionReportSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportSide");
+            double last_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? last_qty = buf[pos++] == 1 ? last_qty_v : null;
+            double last_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? last_price = buf[pos++] == 1 ? last_price_v : null;
+            double leaves_qty = Wire.ReadF64BE(buf, ref pos);
+            double cum_qty = Wire.ReadF64BE(buf, ref pos);
+            double avg_price = Wire.ReadF64BE(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            long transact_time = (long)Wire.ReadU64BE(buf, ref pos);
+            value.ClOrdId = cl_ord_id;
+            value.OrderId = order_id;
+            value.ExecId = exec_id;
+            value.ExecType = exec_type;
+            value.OrdStatus = ord_status;
+            value.Side = side;
+            value.LastQty = last_qty;
+            value.LastPrice = last_price;
+            value.LeavesQty = leaves_qty;
+            value.CumQty = cum_qty;
+            value.AvgPrice = avg_price;
+            value.Symbol = symbol;
+            value.TransactTime = transact_time;
+            return (value, pos);
         }
     }
 
@@ -648,93 +1359,111 @@ namespace Fig.Sbe
         public static byte[] Encode(ClOrdId string, OrderId string, ExecId string, ExecType ExecutionReportExecType, OrdStatus ExecutionReportOrdStatus, Side ExecutionReportSide, LastQty double?, LastPrice double?, LeavesQty double, CumQty double, AvgPrice double, Symbol string, TransactTime long)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 4);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 51);
-
-            // Fixed fields
-                Wire.WriteString(buf, ClOrdId);
-                Wire.WriteString(buf, OrderId);
-                Wire.WriteString(buf, ExecId);
-                buf.Add(ExecutionReportExecTypeToValue(ExecType));
-                buf.Add(ExecutionReportOrdStatusToValue(OrdStatus));
-                buf.Add(ExecutionReportSideToValue(Side));
-                Wire.WriteF64BE(buf, LastQty ?? 0.0);
-                buf.Add((byte)(LastQty.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, LastPrice ?? 0.0);
-                buf.Add((byte)(LastPrice.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, LeavesQty);
-                Wire.WriteF64BE(buf, CumQty);
-                Wire.WriteF64BE(buf, AvgPrice);
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteI64BE(buf, TransactTime);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 4);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 51);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, OrderId);
+            Wire.WriteString(buf, ExecId);
+            buf.Add(ExecutionReportExecTypeToValue(ExecType));
+            buf.Add(ExecutionReportOrdStatusToValue(OrdStatus));
+            buf.Add(ExecutionReportSideToValue(Side));
+            Wire.WriteF64BE(buf, LastQty ?? 0.0);
+            buf.Add((byte)(LastQty.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, LastPrice ?? 0.0);
+            buf.Add((byte)(LastPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, LeavesQty);
+            Wire.WriteF64BE(buf, CumQty);
+            Wire.WriteF64BE(buf, AvgPrice);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU64BE(buf, (ulong)(TransactTime));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for ExecutionReport</summary>
-    public class ExecutionReportDecoder
+    /// <summary>SBE decoder for ExecutionReport: validates the header and reads the body.</summary>
+    public static class ExecutionReportDecoder
     {
-        public string ClOrdId { get; set; }
-        public string OrderId { get; set; }
-        public string ExecId { get; set; }
-        public ExecutionReportExecType ExecType { get; set; }
-        public ExecutionReportOrdStatus OrdStatus { get; set; }
-        public ExecutionReportSide Side { get; set; }
-        public double? LastQty { get; set; }
-        public double? LastPrice { get; set; }
-        public double LeavesQty { get; set; }
-        public double CumQty { get; set; }
-        public double AvgPrice { get; set; }
-        public string Symbol { get; set; }
-        public long TransactTime { get; set; }
-        public int EncodedLen() => 0;
-
-        public static ExecutionReportDecoder Decode(byte[] buf)
+        public static ExecutionReport Decode(byte[] buf)
         {
+            var value = new ExecutionReport();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 4) throw new InvalidOperationException("invalid template_id");
             string cl_ord_id = Wire.ReadString(buf, ref pos);
             string order_id = Wire.ReadString(buf, ref pos);
             string exec_id = Wire.ReadString(buf, ref pos);
-            byte exec_typeRaw = buf[pos++];
-            var exec_type = ExecutionReportExecTypeFromValue(exec_typeRaw) ?? throw new InvalidOperationException("invalid ExecutionReportExecType");
-            byte ord_statusRaw = buf[pos++];
-            var ord_status = ExecutionReportOrdStatusFromValue(ord_statusRaw) ?? throw new InvalidOperationException("invalid ExecutionReportOrdStatus");
-            byte sideRaw = buf[pos++];
-            var side = ExecutionReportSideFromValue(sideRaw) ?? throw new InvalidOperationException("invalid ExecutionReportSide");
-            double last_qtyRaw = Wire.ReadF64BE(buf, ref pos);
-            double? last_qty = buf[pos++] == 1 ? last_qtyRaw : null;
-            double last_priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? last_price = buf[pos++] == 1 ? last_priceRaw : null;
+            var exec_type = ExecutionReportExecTypeFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportExecType");
+            var ord_status = ExecutionReportOrdStatusFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportOrdStatus");
+            var side = ExecutionReportSideFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid ExecutionReportSide");
+            double last_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? last_qty = buf[pos++] == 1 ? last_qty_v : null;
+            double last_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? last_price = buf[pos++] == 1 ? last_price_v : null;
             double leaves_qty = Wire.ReadF64BE(buf, ref pos);
             double cum_qty = Wire.ReadF64BE(buf, ref pos);
             double avg_price = Wire.ReadF64BE(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
-            long transact_time = Wire.ReadI64BE(buf, ref pos);
-            return new ExecutionReportDecoder
-            {
-                ClOrdId = cl_ord_id,
-                OrderId = order_id,
-                ExecId = exec_id,
-                ExecType = exec_type,
-                OrdStatus = ord_status,
-                Side = side,
-                LastQty = last_qty,
-                LastPrice = last_price,
-                LeavesQty = leaves_qty,
-                CumQty = cum_qty,
-                AvgPrice = avg_price,
-                Symbol = symbol,
-                TransactTime = transact_time,
-            };
+            long transact_time = (long)Wire.ReadU64BE(buf, ref pos);
+            value.ClOrdId = cl_ord_id;
+            value.OrderId = order_id;
+            value.ExecId = exec_id;
+            value.ExecType = exec_type;
+            value.OrdStatus = ord_status;
+            value.Side = side;
+            value.LastQty = last_qty;
+            value.LastPrice = last_price;
+            value.LeavesQty = leaves_qty;
+            value.CumQty = cum_qty;
+            value.AvgPrice = avg_price;
+            value.Symbol = symbol;
+            value.TransactTime = transact_time;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CancelReject</summary>
+    public class CancelReject
+    {
+        public string ClOrdId;
+        public string OrigClOrdId;
+        public CancelRejectRejectReason RejectReason;
+        public string Symbol;
+    }
+
+    /// <summary>SBE body encoder for CancelReject (fields only, no header).</summary>
+    public static class CancelRejectBodyEncoder
+    {
+        public static void Encode(CancelReject value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.OrigClOrdId);
+            buf.Add(CancelRejectRejectReasonToValue(value.RejectReason));
+            Wire.WriteString(buf, value.Symbol);
+        }
+    }
+
+    /// <summary>SBE body decoder for CancelReject: reads fields at pos.</summary>
+    public static class CancelRejectBodyDecoder
+    {
+        public static (CancelReject Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CancelReject();
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
+            var reject_reason = CancelRejectRejectReasonFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelRejectRejectReason");
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.RejectReason = reject_reason;
+            value.Symbol = symbol;
+            return (value, pos);
         }
     }
 
@@ -744,563 +1473,1045 @@ namespace Fig.Sbe
         public static byte[] Encode(ClOrdId string, OrigClOrdId string, RejectReason CancelRejectRejectReason, Symbol string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 5);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, ClOrdId);
-                Wire.WriteString(buf, OrigClOrdId);
-                buf.Add(CancelRejectRejectReasonToValue(RejectReason));
-                Wire.WriteString(buf, Symbol);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 5);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, OrigClOrdId);
+            buf.Add(CancelRejectRejectReasonToValue(RejectReason));
+            Wire.WriteString(buf, Symbol);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CancelReject</summary>
-    public class CancelRejectDecoder
+    /// <summary>SBE decoder for CancelReject: validates the header and reads the body.</summary>
+    public static class CancelRejectDecoder
     {
-        public string ClOrdId { get; set; }
-        public string OrigClOrdId { get; set; }
-        public CancelRejectRejectReason RejectReason { get; set; }
-        public string Symbol { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CancelRejectDecoder Decode(byte[] buf)
+        public static CancelReject Decode(byte[] buf)
         {
+            var value = new CancelReject();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 5) throw new InvalidOperationException("invalid template_id");
             string cl_ord_id = Wire.ReadString(buf, ref pos);
             string orig_cl_ord_id = Wire.ReadString(buf, ref pos);
-            byte reject_reasonRaw = buf[pos++];
-            var reject_reason = CancelRejectRejectReasonFromValue(reject_reasonRaw) ?? throw new InvalidOperationException("invalid CancelRejectRejectReason");
+            var reject_reason = CancelRejectRejectReasonFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid CancelRejectRejectReason");
             string symbol = Wire.ReadString(buf, ref pos);
-            return new CancelRejectDecoder
+            value.ClOrdId = cl_ord_id;
+            value.OrigClOrdId = orig_cl_ord_id;
+            value.RejectReason = reject_reason;
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarketDataSnapshot</summary>
+    public class MarketDataSnapshot
+    {
+        public string Symbol;
+        public string Exchange;
+        public List<PriceLevel> Bids;
+        public List<PriceLevel> Asks;
+        public long Timestamp;
+        public ulong? Sequence;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for MarketDataSnapshot (fields only, no header).</summary>
+    public static class MarketDataSnapshotBodyEncoder
+    {
+        public static void Encode(MarketDataSnapshot value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.Exchange);
+            Wire.WriteU32BE(buf, (uint)value.Bids.Count);
+            foreach (var item in value.Bids)
             {
-                ClOrdId = cl_ord_id,
-                OrigClOrdId = orig_cl_ord_id,
-                RejectReason = reject_reason,
-                Symbol = symbol,
-            };
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)value.Asks.Count);
+            foreach (var item in value.Asks)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            Wire.WriteU64BE(buf, value.Sequence ?? (ulong)0);
+            buf.Add((byte)(value.Sequence.HasValue ? 1 : 0));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MarketDataSnapshot: reads fields at pos.</summary>
+    public static class MarketDataSnapshotBodyDecoder
+    {
+        public static (MarketDataSnapshot Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarketDataSnapshot();
+            string symbol = Wire.ReadString(buf, ref pos);
+            string exchange = Wire.ReadString(buf, ref pos);
+            uint bidsCount = Wire.ReadU32BE(buf, ref pos);
+            var bids = new List<PriceLevel>((int)bidsCount);
+            for (int i = 0; i < (int)bidsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                bids.Add(item);
+            }
+            uint asksCount = Wire.ReadU32BE(buf, ref pos);
+            var asks = new List<PriceLevel>((int)asksCount);
+            for (int i = 0; i < (int)asksCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                asks.Add(item);
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Exchange = exchange;
+            value.Bids = bids;
+            value.Asks = asks;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for MarketDataSnapshot</summary>
     public static class MarketDataSnapshotEncoder
     {
-        public static byte[] Encode(Symbol string, Exchange string, Bids List<string>, Asks List<string>, Timestamp long, Sequence long?, IsSnapshot byte?)
+        public static byte[] Encode(Symbol string, Exchange string, Bids List<PriceLevel>, Asks List<PriceLevel>, Timestamp long, Sequence ulong?, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 6);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 17);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteString(buf, Exchange);
-                Wire.WriteU32BE(buf, (uint)Bids.Count);
-                foreach (var item in Bids) {
-                        PriceLevelEncoder.Encode(item, buf);
-                }
-                Wire.WriteU32BE(buf, (uint)Asks.Count);
-                foreach (var item in Asks) {
-                        PriceLevelEncoder.Encode(item, buf);
-                }
-                Wire.WriteI64BE(buf, Timestamp);
-                if (Sequence.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, Sequence.Value); } else { buf.Add(0); }
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 6);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 17);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteString(buf, Exchange);
+            Wire.WriteU32BE(buf, (uint)Bids.Count);
+            foreach (var item in Bids)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)Asks.Count);
+            foreach (var item in Asks)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            Wire.WriteU64BE(buf, Sequence ?? (ulong)0);
+            buf.Add((byte)(Sequence.HasValue ? 1 : 0));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarketDataSnapshot</summary>
-    public class MarketDataSnapshotDecoder
+    /// <summary>SBE decoder for MarketDataSnapshot: validates the header and reads the body.</summary>
+    public static class MarketDataSnapshotDecoder
     {
-        public string Symbol { get; set; }
-        public string Exchange { get; set; }
-        public List<string> Bids { get; set; }
-        public List<string> Asks { get; set; }
-        public long Timestamp { get; set; }
-        public long? Sequence { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarketDataSnapshotDecoder Decode(byte[] buf)
+        public static MarketDataSnapshot Decode(byte[] buf)
         {
+            var value = new MarketDataSnapshot();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 6) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
             string exchange = Wire.ReadString(buf, ref pos);
-            int bidsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var bids = new List<PriceLevel>(bidsCount);
-            for (int i = 0; i < bidsCount; i++) {
-                var item = PriceLevelDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint bidsCount = Wire.ReadU32BE(buf, ref pos);
+            var bids = new List<PriceLevel>((int)bidsCount);
+            for (int i = 0; i < (int)bidsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 bids.Add(item);
             }
-            int asksCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var asks = new List<PriceLevel>(asksCount);
-            for (int i = 0; i < asksCount; i++) {
-                var item = PriceLevelDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint asksCount = Wire.ReadU32BE(buf, ref pos);
+            var asks = new List<PriceLevel>((int)asksCount);
+            for (int i = 0; i < (int)asksCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 asks.Add(item);
             }
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            long? sequence;
-            if (buf[pos++] == 1) sequence = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new MarketDataSnapshotDecoder
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Exchange = exchange;
+            value.Bids = bids;
+            value.Asks = asks;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarketDataIncrementalRefresh</summary>
+    public class MarketDataIncrementalRefresh
+    {
+        public string Symbol;
+        public List<MarketDataUpdate> Updates;
+        public long Timestamp;
+        public ulong? Sequence;
+    }
+
+    /// <summary>SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).</summary>
+    public static class MarketDataIncrementalRefreshBodyEncoder
+    {
+        public static void Encode(MarketDataIncrementalRefresh value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU32BE(buf, (uint)value.Updates.Count);
+            foreach (var item in value.Updates)
             {
-                Symbol = symbol,
-                Exchange = exchange,
-                Bids = bids,
-                Asks = asks,
-                Timestamp = timestamp,
-                Sequence = sequence,
-                IsSnapshot = is_snapshot,
-            };
+                var itemBuf = new List<byte>();
+                MarketDataUpdateEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            Wire.WriteU64BE(buf, value.Sequence ?? (ulong)0);
+            buf.Add((byte)(value.Sequence.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MarketDataIncrementalRefresh: reads fields at pos.</summary>
+    public static class MarketDataIncrementalRefreshBodyDecoder
+    {
+        public static (MarketDataIncrementalRefresh Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarketDataIncrementalRefresh();
+            string symbol = Wire.ReadString(buf, ref pos);
+            uint updatesCount = Wire.ReadU32BE(buf, ref pos);
+            var updates = new List<MarketDataUpdate>((int)updatesCount);
+            for (int i = 0; i < (int)updatesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MarketDataUpdateDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                updates.Add(item);
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            value.Symbol = symbol;
+            value.Updates = updates;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for MarketDataIncrementalRefresh</summary>
     public static class MarketDataIncrementalRefreshEncoder
     {
-        public static byte[] Encode(Symbol string, Updates List<string>, Timestamp long, Sequence long?)
+        public static byte[] Encode(Symbol string, Updates List<MarketDataUpdate>, Timestamp long, Sequence ulong?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 7);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 16);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteU32BE(buf, (uint)Updates.Count);
-                foreach (var item in Updates) {
-                        MarketDataUpdateEncoder.Encode(item, buf);
-                }
-                Wire.WriteI64BE(buf, Timestamp);
-                if (Sequence.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, Sequence.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 7);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 16);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU32BE(buf, (uint)Updates.Count);
+            foreach (var item in Updates)
+            {
+                var itemBuf = new List<byte>();
+                MarketDataUpdateEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            Wire.WriteU64BE(buf, Sequence ?? (ulong)0);
+            buf.Add((byte)(Sequence.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarketDataIncrementalRefresh</summary>
-    public class MarketDataIncrementalRefreshDecoder
+    /// <summary>SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.</summary>
+    public static class MarketDataIncrementalRefreshDecoder
     {
-        public string Symbol { get; set; }
-        public List<string> Updates { get; set; }
-        public long Timestamp { get; set; }
-        public long? Sequence { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarketDataIncrementalRefreshDecoder Decode(byte[] buf)
+        public static MarketDataIncrementalRefresh Decode(byte[] buf)
         {
+            var value = new MarketDataIncrementalRefresh();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 7) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-            int updatesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var updates = new List<MarketDataUpdate>(updatesCount);
-            for (int i = 0; i < updatesCount; i++) {
-                var item = MarketDataUpdateDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint updatesCount = Wire.ReadU32BE(buf, ref pos);
+            var updates = new List<MarketDataUpdate>((int)updatesCount);
+            for (int i = 0; i < (int)updatesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MarketDataUpdateDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 updates.Add(item);
             }
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            long? sequence;
-            if (buf[pos++] == 1) sequence = Wire.ReadI64BE(buf, ref pos);
-            return new MarketDataIncrementalRefreshDecoder
-            {
-                Symbol = symbol,
-                Updates = updates,
-                Timestamp = timestamp,
-                Sequence = sequence,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            value.Symbol = symbol;
+            value.Updates = updates;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderBookRequest</summary>
+    public class OrderBookRequest
+    {
+        public string Symbol;
+        public uint? Depth;
+        public long? AtTime;
+    }
+
+    /// <summary>SBE body encoder for OrderBookRequest (fields only, no header).</summary>
+    public static class OrderBookRequestBodyEncoder
+    {
+        public static void Encode(OrderBookRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU32BE(buf, value.Depth ?? (uint)0);
+            buf.Add((byte)(value.Depth.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.AtTime ?? (long)0));
+            buf.Add((byte)(value.AtTime.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderBookRequest: reads fields at pos.</summary>
+    public static class OrderBookRequestBodyDecoder
+    {
+        public static (OrderBookRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderBookRequest();
+            string symbol = Wire.ReadString(buf, ref pos);
+            uint depth_v = Wire.ReadU32BE(buf, ref pos);
+            uint? depth = buf[pos++] == 1 ? depth_v : null;
+            long at_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? at_time = buf[pos++] == 1 ? at_time_v : null;
+            value.Symbol = symbol;
+            value.Depth = depth;
+            value.AtTime = at_time;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OrderBookRequest</summary>
     public static class OrderBookRequestEncoder
     {
-        public static byte[] Encode(Symbol string, Depth u32?, AtTime long?)
+        public static byte[] Encode(Symbol string, Depth uint?, AtTime long?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 8);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 12);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-            // TODO: encode depth as u32
-                if (AtTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, AtTime.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 8);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 12);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU32BE(buf, Depth ?? (uint)0);
+            buf.Add((byte)(Depth.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(AtTime ?? (long)0));
+            buf.Add((byte)(AtTime.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderBookRequest</summary>
-    public class OrderBookRequestDecoder
+    /// <summary>SBE decoder for OrderBookRequest: validates the header and reads the body.</summary>
+    public static class OrderBookRequestDecoder
     {
-        public string Symbol { get; set; }
-        public u32? Depth { get; set; }
-        public long? AtTime { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderBookRequestDecoder Decode(byte[] buf)
+        public static OrderBookRequest Decode(byte[] buf)
         {
+            var value = new OrderBookRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 8) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-        // TODO: decode depth
-            long? at_time;
-            if (buf[pos++] == 1) at_time = Wire.ReadI64BE(buf, ref pos);
-            return new OrderBookRequestDecoder
+            uint depth_v = Wire.ReadU32BE(buf, ref pos);
+            uint? depth = buf[pos++] == 1 ? depth_v : null;
+            long at_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? at_time = buf[pos++] == 1 ? at_time_v : null;
+            value.Symbol = symbol;
+            value.Depth = depth;
+            value.AtTime = at_time;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderBookSnapshot</summary>
+    public class OrderBookSnapshot
+    {
+        public string Symbol;
+        public string Exchange;
+        public List<PriceLevel> Bids;
+        public List<PriceLevel> Asks;
+        public long Timestamp;
+        public ulong? Sequence;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for OrderBookSnapshot (fields only, no header).</summary>
+    public static class OrderBookSnapshotBodyEncoder
+    {
+        public static void Encode(OrderBookSnapshot value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.Exchange);
+            Wire.WriteU32BE(buf, (uint)value.Bids.Count);
+            foreach (var item in value.Bids)
             {
-                Symbol = symbol,
-                Depth = depth,
-                AtTime = at_time,
-            };
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)value.Asks.Count);
+            foreach (var item in value.Asks)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            Wire.WriteU64BE(buf, value.Sequence ?? (ulong)0);
+            buf.Add((byte)(value.Sequence.HasValue ? 1 : 0));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderBookSnapshot: reads fields at pos.</summary>
+    public static class OrderBookSnapshotBodyDecoder
+    {
+        public static (OrderBookSnapshot Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderBookSnapshot();
+            string symbol = Wire.ReadString(buf, ref pos);
+            string exchange = Wire.ReadString(buf, ref pos);
+            uint bidsCount = Wire.ReadU32BE(buf, ref pos);
+            var bids = new List<PriceLevel>((int)bidsCount);
+            for (int i = 0; i < (int)bidsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                bids.Add(item);
+            }
+            uint asksCount = Wire.ReadU32BE(buf, ref pos);
+            var asks = new List<PriceLevel>((int)asksCount);
+            for (int i = 0; i < (int)asksCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                asks.Add(item);
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Exchange = exchange;
+            value.Bids = bids;
+            value.Asks = asks;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OrderBookSnapshot</summary>
     public static class OrderBookSnapshotEncoder
     {
-        public static byte[] Encode(Symbol string, Exchange string, Bids List<string>, Asks List<string>, Timestamp long, Sequence long?, IsSnapshot byte?)
+        public static byte[] Encode(Symbol string, Exchange string, Bids List<PriceLevel>, Asks List<PriceLevel>, Timestamp long, Sequence ulong?, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 9);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 17);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteString(buf, Exchange);
-                Wire.WriteU32BE(buf, (uint)Bids.Count);
-                foreach (var item in Bids) {
-                        PriceLevelEncoder.Encode(item, buf);
-                }
-                Wire.WriteU32BE(buf, (uint)Asks.Count);
-                foreach (var item in Asks) {
-                        PriceLevelEncoder.Encode(item, buf);
-                }
-                Wire.WriteI64BE(buf, Timestamp);
-                if (Sequence.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, Sequence.Value); } else { buf.Add(0); }
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 9);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 17);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteString(buf, Exchange);
+            Wire.WriteU32BE(buf, (uint)Bids.Count);
+            foreach (var item in Bids)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)Asks.Count);
+            foreach (var item in Asks)
+            {
+                var itemBuf = new List<byte>();
+                PriceLevelEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            Wire.WriteU64BE(buf, Sequence ?? (ulong)0);
+            buf.Add((byte)(Sequence.HasValue ? 1 : 0));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderBookSnapshot</summary>
-    public class OrderBookSnapshotDecoder
+    /// <summary>SBE decoder for OrderBookSnapshot: validates the header and reads the body.</summary>
+    public static class OrderBookSnapshotDecoder
     {
-        public string Symbol { get; set; }
-        public string Exchange { get; set; }
-        public List<string> Bids { get; set; }
-        public List<string> Asks { get; set; }
-        public long Timestamp { get; set; }
-        public long? Sequence { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderBookSnapshotDecoder Decode(byte[] buf)
+        public static OrderBookSnapshot Decode(byte[] buf)
         {
+            var value = new OrderBookSnapshot();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 9) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
             string exchange = Wire.ReadString(buf, ref pos);
-            int bidsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var bids = new List<PriceLevel>(bidsCount);
-            for (int i = 0; i < bidsCount; i++) {
-                var item = PriceLevelDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint bidsCount = Wire.ReadU32BE(buf, ref pos);
+            var bids = new List<PriceLevel>((int)bidsCount);
+            for (int i = 0; i < (int)bidsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 bids.Add(item);
             }
-            int asksCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var asks = new List<PriceLevel>(asksCount);
-            for (int i = 0; i < asksCount; i++) {
-                var item = PriceLevelDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint asksCount = Wire.ReadU32BE(buf, ref pos);
+            var asks = new List<PriceLevel>((int)asksCount);
+            for (int i = 0; i < (int)asksCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PriceLevelDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 asks.Add(item);
             }
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            long? sequence;
-            if (buf[pos++] == 1) sequence = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new OrderBookSnapshotDecoder
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Exchange = exchange;
+            value.Bids = bids;
+            value.Asks = asks;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderBookDelta</summary>
+    public class OrderBookDelta
+    {
+        public string Symbol;
+        public List<MarketDataUpdate> Updates;
+        public long Timestamp;
+        public ulong? Sequence;
+    }
+
+    /// <summary>SBE body encoder for OrderBookDelta (fields only, no header).</summary>
+    public static class OrderBookDeltaBodyEncoder
+    {
+        public static void Encode(OrderBookDelta value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU32BE(buf, (uint)value.Updates.Count);
+            foreach (var item in value.Updates)
             {
-                Symbol = symbol,
-                Exchange = exchange,
-                Bids = bids,
-                Asks = asks,
-                Timestamp = timestamp,
-                Sequence = sequence,
-                IsSnapshot = is_snapshot,
-            };
+                var itemBuf = new List<byte>();
+                MarketDataUpdateEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            Wire.WriteU64BE(buf, value.Sequence ?? (ulong)0);
+            buf.Add((byte)(value.Sequence.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderBookDelta: reads fields at pos.</summary>
+    public static class OrderBookDeltaBodyDecoder
+    {
+        public static (OrderBookDelta Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderBookDelta();
+            string symbol = Wire.ReadString(buf, ref pos);
+            uint updatesCount = Wire.ReadU32BE(buf, ref pos);
+            var updates = new List<MarketDataUpdate>((int)updatesCount);
+            for (int i = 0; i < (int)updatesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MarketDataUpdateDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                updates.Add(item);
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            value.Symbol = symbol;
+            value.Updates = updates;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OrderBookDelta</summary>
     public static class OrderBookDeltaEncoder
     {
-        public static byte[] Encode(Symbol string, Updates List<string>, Timestamp long, Sequence long?)
+        public static byte[] Encode(Symbol string, Updates List<MarketDataUpdate>, Timestamp long, Sequence ulong?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 10);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 16);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteU32BE(buf, (uint)Updates.Count);
-                foreach (var item in Updates) {
-                        MarketDataUpdateEncoder.Encode(item, buf);
-                }
-                Wire.WriteI64BE(buf, Timestamp);
-                if (Sequence.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, Sequence.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 10);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 16);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU32BE(buf, (uint)Updates.Count);
+            foreach (var item in Updates)
+            {
+                var itemBuf = new List<byte>();
+                MarketDataUpdateEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            Wire.WriteU64BE(buf, Sequence ?? (ulong)0);
+            buf.Add((byte)(Sequence.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderBookDelta</summary>
-    public class OrderBookDeltaDecoder
+    /// <summary>SBE decoder for OrderBookDelta: validates the header and reads the body.</summary>
+    public static class OrderBookDeltaDecoder
     {
-        public string Symbol { get; set; }
-        public List<string> Updates { get; set; }
-        public long Timestamp { get; set; }
-        public long? Sequence { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderBookDeltaDecoder Decode(byte[] buf)
+        public static OrderBookDelta Decode(byte[] buf)
         {
+            var value = new OrderBookDelta();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 10) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-            int updatesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var updates = new List<MarketDataUpdate>(updatesCount);
-            for (int i = 0; i < updatesCount; i++) {
-                var item = MarketDataUpdateDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint updatesCount = Wire.ReadU32BE(buf, ref pos);
+            var updates = new List<MarketDataUpdate>((int)updatesCount);
+            for (int i = 0; i < (int)updatesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MarketDataUpdateDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 updates.Add(item);
             }
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            long? sequence;
-            if (buf[pos++] == 1) sequence = Wire.ReadI64BE(buf, ref pos);
-            return new OrderBookDeltaDecoder
-            {
-                Symbol = symbol,
-                Updates = updates,
-                Timestamp = timestamp,
-                Sequence = sequence,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            ulong sequence_v = Wire.ReadU64BE(buf, ref pos);
+            ulong? sequence = buf[pos++] == 1 ? sequence_v : null;
+            value.Symbol = symbol;
+            value.Updates = updates;
+            value.Timestamp = timestamp;
+            value.Sequence = sequence;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message AggregateTradeEvent</summary>
+    public class AggregateTradeEvent
+    {
+        public AggregateTrade Trade;
+    }
+
+    /// <summary>SBE body encoder for AggregateTradeEvent (fields only, no header).</summary>
+    public static class AggregateTradeEventBodyEncoder
+    {
+        public static void Encode(AggregateTradeEvent value, List<byte> buf)
+        {
+            AggregateTradeEncoder.Encode(value.Trade, buf);
+        }
+    }
+
+    /// <summary>SBE body decoder for AggregateTradeEvent: reads fields at pos.</summary>
+    public static class AggregateTradeEventBodyDecoder
+    {
+        public static (AggregateTradeEvent Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AggregateTradeEvent();
+            var (trade, tradePos) = AggregateTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for AggregateTradeEvent</summary>
     public static class AggregateTradeEventEncoder
     {
-        public static byte[] Encode(Trade string)
+        public static byte[] Encode(Trade AggregateTrade)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 11);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Trade);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 11);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            AggregateTradeEncoder.Encode(Trade, buf);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AggregateTradeEvent</summary>
-    public class AggregateTradeEventDecoder
+    /// <summary>SBE decoder for AggregateTradeEvent: validates the header and reads the body.</summary>
+    public static class AggregateTradeEventDecoder
     {
-        public string Trade { get; set; }
-        public int EncodedLen() => 0;
-
-        public static AggregateTradeEventDecoder Decode(byte[] buf)
+        public static AggregateTradeEvent Decode(byte[] buf)
         {
+            var value = new AggregateTradeEvent();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 11) throw new InvalidOperationException("invalid template_id");
-            string trade = Wire.ReadString(buf, ref pos);
-            return new AggregateTradeEventDecoder
-            {
-                Trade = trade,
-            };
+            var (trade, tradePos) = AggregateTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message AggregateTradeRequest</summary>
+    public class AggregateTradeRequest
+    {
+        public string Symbol;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for AggregateTradeRequest (fields only, no header).</summary>
+    public static class AggregateTradeRequestBodyEncoder
+    {
+        public static void Encode(AggregateTradeRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for AggregateTradeRequest: reads fields at pos.</summary>
+    public static class AggregateTradeRequestBodyDecoder
+    {
+        public static (AggregateTradeRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AggregateTradeRequest();
+            string? cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for AggregateTradeRequest</summary>
     public static class AggregateTradeRequestEncoder
     {
-        public static byte[] Encode(Symbol string, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Symbol string, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 12);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 12);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AggregateTradeRequest</summary>
-    public class AggregateTradeRequestDecoder
+    /// <summary>SBE decoder for AggregateTradeRequest: validates the header and reads the body.</summary>
+    public static class AggregateTradeRequestDecoder
     {
-        public string Symbol { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static AggregateTradeRequestDecoder Decode(byte[] buf)
+        public static AggregateTradeRequest Decode(byte[] buf)
         {
+            var value = new AggregateTradeRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 12) throw new InvalidOperationException("invalid template_id");
-            string symbol = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new AggregateTradeRequestDecoder
+            string symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message AggregateTradeBatch</summary>
+    public class AggregateTradeBatch
+    {
+        public string Symbol;
+        public List<AggregateTrade> Trades;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for AggregateTradeBatch (fields only, no header).</summary>
+    public static class AggregateTradeBatchBodyEncoder
+    {
+        public static void Encode(AggregateTradeBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU32BE(buf, (uint)value.Trades.Count);
+            foreach (var item in value.Trades)
             {
-                Symbol = symbol,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                AggregateTradeEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for AggregateTradeBatch: reads fields at pos.</summary>
+    public static class AggregateTradeBatchBodyDecoder
+    {
+        public static (AggregateTradeBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AggregateTradeBatch();
+            string? next_cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            uint tradesCount = Wire.ReadU32BE(buf, ref pos);
+            var trades = new List<AggregateTrade>((int)tradesCount);
+            for (int i = 0; i < (int)tradesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = AggregateTradeDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                trades.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Trades = trades;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for AggregateTradeBatch</summary>
     public static class AggregateTradeBatchEncoder
     {
-        public static byte[] Encode(Symbol string, Trades List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Symbol string, Trades List<AggregateTrade>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 13);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteU32BE(buf, (uint)Trades.Count);
-                foreach (var item in Trades) {
-                        AggregateTradeEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 13);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU32BE(buf, (uint)Trades.Count);
+            foreach (var item in Trades)
+            {
+                var itemBuf = new List<byte>();
+                AggregateTradeEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AggregateTradeBatch</summary>
-    public class AggregateTradeBatchDecoder
+    /// <summary>SBE decoder for AggregateTradeBatch: validates the header and reads the body.</summary>
+    public static class AggregateTradeBatchDecoder
     {
-        public string Symbol { get; set; }
-        public List<string> Trades { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static AggregateTradeBatchDecoder Decode(byte[] buf)
+        public static AggregateTradeBatch Decode(byte[] buf)
         {
+            var value = new AggregateTradeBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 13) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string symbol = Wire.ReadString(buf, ref pos);
-            int tradesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var trades = new List<AggregateTrade>(tradesCount);
-            for (int i = 0; i < tradesCount; i++) {
-                var item = AggregateTradeDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint tradesCount = Wire.ReadU32BE(buf, ref pos);
+            var trades = new List<AggregateTrade>((int)tradesCount);
+            for (int i = 0; i < (int)tradesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = AggregateTradeDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 trades.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new AggregateTradeBatchDecoder
-            {
-                Symbol = symbol,
-                Trades = trades,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Trades = trades;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MiniTicker</summary>
+    public class MiniTicker
+    {
+        public string Symbol;
+        public double LastPrice;
+        public double Volume;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for MiniTicker (fields only, no header).</summary>
+    public static class MiniTickerBodyEncoder
+    {
+        public static void Encode(MiniTicker value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.LastPrice);
+            Wire.WriteF64BE(buf, value.Volume);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MiniTicker: reads fields at pos.</summary>
+    public static class MiniTickerBodyDecoder
+    {
+        public static (MiniTicker Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MiniTicker();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double last_price = Wire.ReadF64BE(buf, ref pos);
+            double volume = Wire.ReadF64BE(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LastPrice = last_price;
+            value.Volume = volume;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
@@ -1310,56 +2521,69 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string, LastPrice double, Volume double, Timestamp long, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 14);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 25);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, LastPrice);
-                Wire.WriteF64BE(buf, Volume);
-                Wire.WriteI64BE(buf, Timestamp);
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 14);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 25);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, LastPrice);
+            Wire.WriteF64BE(buf, Volume);
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MiniTicker</summary>
-    public class MiniTickerDecoder
+    /// <summary>SBE decoder for MiniTicker: validates the header and reads the body.</summary>
+    public static class MiniTickerDecoder
     {
-        public string Symbol { get; set; }
-        public double LastPrice { get; set; }
-        public double Volume { get; set; }
-        public long Timestamp { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MiniTickerDecoder Decode(byte[] buf)
+        public static MiniTicker Decode(byte[] buf)
         {
+            var value = new MiniTicker();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 14) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
             double last_price = Wire.ReadF64BE(buf, ref pos);
             double volume = Wire.ReadF64BE(buf, ref pos);
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new MiniTickerDecoder
-            {
-                Symbol = symbol,
-                LastPrice = last_price,
-                Volume = volume,
-                Timestamp = timestamp,
-                IsSnapshot = is_snapshot,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LastPrice = last_price;
+            value.Volume = volume;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message AllMidsRequest</summary>
+    public class AllMidsRequest
+    {
+    }
+
+    /// <summary>SBE body encoder for AllMidsRequest (fields only, no header).</summary>
+    public static class AllMidsRequestBodyEncoder
+    {
+        public static void Encode(AllMidsRequest value, List<byte> buf)
+        {
+        }
+    }
+
+    /// <summary>SBE body decoder for AllMidsRequest: reads fields at pos.</summary>
+    public static class AllMidsRequestBodyDecoder
+    {
+        public static (AllMidsRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AllMidsRequest();
+            return (value, pos);
         }
     }
 
@@ -1369,85 +2593,176 @@ namespace Fig.Sbe
         public static byte[] Encode()
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 15);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 15);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AllMidsRequest</summary>
-    public class AllMidsRequestDecoder
+    /// <summary>SBE decoder for AllMidsRequest: validates the header and reads the body.</summary>
+    public static class AllMidsRequestDecoder
     {
-        public int EncodedLen() => 0;
-
-        public static AllMidsRequestDecoder Decode(byte[] buf)
+        public static AllMidsRequest Decode(byte[] buf)
         {
+            var value = new AllMidsRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 15) throw new InvalidOperationException("invalid template_id");
-            return new AllMidsRequestDecoder
-            {
+            return value;
+        }
+    }
 
-            };
+    /// <summary>SBE message AllMidsBatch</summary>
+    public class AllMidsBatch
+    {
+        public List<MiniTicker> Tickers;
+    }
+
+    /// <summary>SBE body encoder for AllMidsBatch (fields only, no header).</summary>
+    public static class AllMidsBatchBodyEncoder
+    {
+        public static void Encode(AllMidsBatch value, List<byte> buf)
+        {
+            Wire.WriteU32BE(buf, (uint)value.Tickers.Count);
+            foreach (var item in value.Tickers)
+            {
+                var itemBuf = new List<byte>();
+                MiniTickerBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+        }
+    }
+
+    /// <summary>SBE body decoder for AllMidsBatch: reads fields at pos.</summary>
+    public static class AllMidsBatchBodyDecoder
+    {
+        public static (AllMidsBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AllMidsBatch();
+            uint tickersCount = Wire.ReadU32BE(buf, ref pos);
+            var tickers = new List<MiniTicker>((int)tickersCount);
+            for (int i = 0; i < (int)tickersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MiniTickerBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                tickers.Add(item);
+            }
+            value.Tickers = tickers;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for AllMidsBatch</summary>
     public static class AllMidsBatchEncoder
     {
-        public static byte[] Encode(Tickers List<string>)
+        public static byte[] Encode(Tickers List<MiniTicker>)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 16);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteU32BE(buf, (uint)Tickers.Count);
-                foreach (var item in Tickers) {
-                        MiniTickerEncoder.Encode(item, buf);
-                }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 16);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU32BE(buf, (uint)Tickers.Count);
+            foreach (var item in Tickers)
+            {
+                var itemBuf = new List<byte>();
+                MiniTickerBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AllMidsBatch</summary>
-    public class AllMidsBatchDecoder
+    /// <summary>SBE decoder for AllMidsBatch: validates the header and reads the body.</summary>
+    public static class AllMidsBatchDecoder
     {
-        public List<string> Tickers { get; set; }
-        public int EncodedLen() => 0;
-
-        public static AllMidsBatchDecoder Decode(byte[] buf)
+        public static AllMidsBatch Decode(byte[] buf)
         {
+            var value = new AllMidsBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 16) throw new InvalidOperationException("invalid template_id");
-            int tickersCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var tickers = new List<MiniTicker>(tickersCount);
-            for (int i = 0; i < tickersCount; i++) {
-                var item = MiniTickerDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint tickersCount = Wire.ReadU32BE(buf, ref pos);
+            var tickers = new List<MiniTicker>((int)tickersCount);
+            for (int i = 0; i < (int)tickersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = MiniTickerBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 tickers.Add(item);
             }
-            return new AllMidsBatchDecoder
-            {
-                Tickers = tickers,
-            };
+            value.Tickers = tickers;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarkPriceUpdate</summary>
+    public class MarkPriceUpdate
+    {
+        public string Symbol;
+        public double MarkPrice;
+        public double? IndexPrice;
+        public double? FundingRate;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for MarkPriceUpdate (fields only, no header).</summary>
+    public static class MarkPriceUpdateBodyEncoder
+    {
+        public static void Encode(MarkPriceUpdate value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.MarkPrice);
+            Wire.WriteF64BE(buf, value.IndexPrice ?? 0.0);
+            buf.Add((byte)(value.IndexPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.FundingRate ?? 0.0);
+            buf.Add((byte)(value.FundingRate.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MarkPriceUpdate: reads fields at pos.</summary>
+    public static class MarkPriceUpdateBodyDecoder
+    {
+        public static (MarkPriceUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarkPriceUpdate();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double mark_price = Wire.ReadF64BE(buf, ref pos);
+            double index_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? index_price = buf[pos++] == 1 ? index_price_v : null;
+            double funding_rate_v = Wire.ReadF64BE(buf, ref pos);
+            double? funding_rate = buf[pos++] == 1 ? funding_rate_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.MarkPrice = mark_price;
+            value.IndexPrice = index_price;
+            value.FundingRate = funding_rate;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
@@ -1457,64 +2772,80 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string, MarkPrice double, IndexPrice double?, FundingRate double?, Timestamp long, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 17);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 33);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, MarkPrice);
-                Wire.WriteF64BE(buf, IndexPrice ?? 0.0);
-                buf.Add((byte)(IndexPrice.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, FundingRate ?? 0.0);
-                buf.Add((byte)(FundingRate.HasValue ? 1 : 0));
-                Wire.WriteI64BE(buf, Timestamp);
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 17);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 33);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, MarkPrice);
+            Wire.WriteF64BE(buf, IndexPrice ?? 0.0);
+            buf.Add((byte)(IndexPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, FundingRate ?? 0.0);
+            buf.Add((byte)(FundingRate.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarkPriceUpdate</summary>
-    public class MarkPriceUpdateDecoder
+    /// <summary>SBE decoder for MarkPriceUpdate: validates the header and reads the body.</summary>
+    public static class MarkPriceUpdateDecoder
     {
-        public string Symbol { get; set; }
-        public double MarkPrice { get; set; }
-        public double? IndexPrice { get; set; }
-        public double? FundingRate { get; set; }
-        public long Timestamp { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarkPriceUpdateDecoder Decode(byte[] buf)
+        public static MarkPriceUpdate Decode(byte[] buf)
         {
+            var value = new MarkPriceUpdate();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 17) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
             double mark_price = Wire.ReadF64BE(buf, ref pos);
-            double index_priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? index_price = buf[pos++] == 1 ? index_priceRaw : null;
-            double funding_rateRaw = Wire.ReadF64BE(buf, ref pos);
-            double? funding_rate = buf[pos++] == 1 ? funding_rateRaw : null;
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new MarkPriceUpdateDecoder
-            {
-                Symbol = symbol,
-                MarkPrice = mark_price,
-                IndexPrice = index_price,
-                FundingRate = funding_rate,
-                Timestamp = timestamp,
-                IsSnapshot = is_snapshot,
-            };
+            double index_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? index_price = buf[pos++] == 1 ? index_price_v : null;
+            double funding_rate_v = Wire.ReadF64BE(buf, ref pos);
+            double? funding_rate = buf[pos++] == 1 ? funding_rate_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.MarkPrice = mark_price;
+            value.IndexPrice = index_price;
+            value.FundingRate = funding_rate;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarkPriceRequest</summary>
+    public class MarkPriceRequest
+    {
+        public string Symbol;
+    }
+
+    /// <summary>SBE body encoder for MarkPriceRequest (fields only, no header).</summary>
+    public static class MarkPriceRequestBodyEncoder
+    {
+        public static void Encode(MarkPriceRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+        }
+    }
+
+    /// <summary>SBE body decoder for MarkPriceRequest: reads fields at pos.</summary>
+    public static class MarkPriceRequestBodyDecoder
+    {
+        public static (MarkPriceRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarkPriceRequest();
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return (value, pos);
         }
     }
 
@@ -1524,415 +2855,741 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 18);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 18);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Symbol);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarkPriceRequest</summary>
-    public class MarkPriceRequestDecoder
+    /// <summary>SBE decoder for MarkPriceRequest: validates the header and reads the body.</summary>
+    public static class MarkPriceRequestDecoder
     {
-        public string Symbol { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarkPriceRequestDecoder Decode(byte[] buf)
+        public static MarkPriceRequest Decode(byte[] buf)
         {
+            var value = new MarkPriceRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 18) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-            return new MarkPriceRequestDecoder
-            {
-                Symbol = symbol,
-            };
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message LiquidationTradeEvent</summary>
+    public class LiquidationTradeEvent
+    {
+        public LiquidationTrade Trade;
+    }
+
+    /// <summary>SBE body encoder for LiquidationTradeEvent (fields only, no header).</summary>
+    public static class LiquidationTradeEventBodyEncoder
+    {
+        public static void Encode(LiquidationTradeEvent value, List<byte> buf)
+        {
+            LiquidationTradeEncoder.Encode(value.Trade, buf);
+        }
+    }
+
+    /// <summary>SBE body decoder for LiquidationTradeEvent: reads fields at pos.</summary>
+    public static class LiquidationTradeEventBodyDecoder
+    {
+        public static (LiquidationTradeEvent Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new LiquidationTradeEvent();
+            var (trade, tradePos) = LiquidationTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for LiquidationTradeEvent</summary>
     public static class LiquidationTradeEventEncoder
     {
-        public static byte[] Encode(Trade string)
+        public static byte[] Encode(Trade LiquidationTrade)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 19);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Trade);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 19);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            LiquidationTradeEncoder.Encode(Trade, buf);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for LiquidationTradeEvent</summary>
-    public class LiquidationTradeEventDecoder
+    /// <summary>SBE decoder for LiquidationTradeEvent: validates the header and reads the body.</summary>
+    public static class LiquidationTradeEventDecoder
     {
-        public string Trade { get; set; }
-        public int EncodedLen() => 0;
-
-        public static LiquidationTradeEventDecoder Decode(byte[] buf)
+        public static LiquidationTradeEvent Decode(byte[] buf)
         {
+            var value = new LiquidationTradeEvent();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 19) throw new InvalidOperationException("invalid template_id");
-            string trade = Wire.ReadString(buf, ref pos);
-            return new LiquidationTradeEventDecoder
-            {
-                Trade = trade,
-            };
+            var (trade, tradePos) = LiquidationTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CandleBarEvent</summary>
+    public class CandleBarEvent
+    {
+        public CandleBar Bar;
+    }
+
+    /// <summary>SBE body encoder for CandleBarEvent (fields only, no header).</summary>
+    public static class CandleBarEventBodyEncoder
+    {
+        public static void Encode(CandleBarEvent value, List<byte> buf)
+        {
+            CandleBarEncoder.Encode(value.Bar, buf);
+        }
+    }
+
+    /// <summary>SBE body decoder for CandleBarEvent: reads fields at pos.</summary>
+    public static class CandleBarEventBodyDecoder
+    {
+        public static (CandleBarEvent Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CandleBarEvent();
+            var (bar, barPos) = CandleBarDecoder.Decode(buf, pos);
+            pos = barPos;
+            value.Bar = bar;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for CandleBarEvent</summary>
     public static class CandleBarEventEncoder
     {
-        public static byte[] Encode(Bar string)
+        public static byte[] Encode(Bar CandleBar)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 20);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Bar);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            CandleBarEncoder.Encode(Bar, buf);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CandleBarEvent</summary>
-    public class CandleBarEventDecoder
+    /// <summary>SBE decoder for CandleBarEvent: validates the header and reads the body.</summary>
+    public static class CandleBarEventDecoder
     {
-        public string Bar { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CandleBarEventDecoder Decode(byte[] buf)
+        public static CandleBarEvent Decode(byte[] buf)
         {
+            var value = new CandleBarEvent();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 20) throw new InvalidOperationException("invalid template_id");
-            string bar = Wire.ReadString(buf, ref pos);
-            return new CandleBarEventDecoder
-            {
-                Bar = bar,
-            };
+            var (bar, barPos) = CandleBarDecoder.Decode(buf, pos);
+            pos = barPos;
+            value.Bar = bar;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CandleBarRequest</summary>
+    public class CandleBarRequest
+    {
+        public string Symbol;
+        public string Interval;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for CandleBarRequest (fields only, no header).</summary>
+    public static class CandleBarRequestBodyEncoder
+    {
+        public static void Encode(CandleBarRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.Interval);
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for CandleBarRequest: reads fields at pos.</summary>
+    public static class CandleBarRequestBodyDecoder
+    {
+        public static (CandleBarRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CandleBarRequest();
+            string? cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            string interval = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Interval = interval;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for CandleBarRequest</summary>
     public static class CandleBarRequestEncoder
     {
-        public static byte[] Encode(Symbol string, Interval string, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Symbol string, Interval string, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 21);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteString(buf, Interval);
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 21);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteString(buf, Interval);
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CandleBarRequest</summary>
-    public class CandleBarRequestDecoder
+    /// <summary>SBE decoder for CandleBarRequest: validates the header and reads the body.</summary>
+    public static class CandleBarRequestDecoder
     {
-        public string Symbol { get; set; }
-        public string Interval { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CandleBarRequestDecoder Decode(byte[] buf)
+        public static CandleBarRequest Decode(byte[] buf)
         {
+            var value = new CandleBarRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 21) throw new InvalidOperationException("invalid template_id");
+            string? cursor;
             string symbol = Wire.ReadString(buf, ref pos);
             string interval = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
-            string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new CandleBarRequestDecoder
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Interval = interval;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CandleBarBatch</summary>
+    public class CandleBarBatch
+    {
+        public string Symbol;
+        public string Interval;
+        public List<CandleBar> Bars;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for CandleBarBatch (fields only, no header).</summary>
+    public static class CandleBarBatchBodyEncoder
+    {
+        public static void Encode(CandleBarBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteString(buf, value.Interval);
+            Wire.WriteU32BE(buf, (uint)value.Bars.Count);
+            foreach (var item in value.Bars)
             {
-                Symbol = symbol,
-                Interval = interval,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                CandleBarEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for CandleBarBatch: reads fields at pos.</summary>
+    public static class CandleBarBatchBodyDecoder
+    {
+        public static (CandleBarBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CandleBarBatch();
+            string? next_cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            string interval = Wire.ReadString(buf, ref pos);
+            uint barsCount = Wire.ReadU32BE(buf, ref pos);
+            var bars = new List<CandleBar>((int)barsCount);
+            for (int i = 0; i < (int)barsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = CandleBarDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                bars.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Interval = interval;
+            value.Bars = bars;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for CandleBarBatch</summary>
     public static class CandleBarBatchEncoder
     {
-        public static byte[] Encode(Symbol string, Interval string, Bars List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Symbol string, Interval string, Bars List<CandleBar>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 22);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteString(buf, Interval);
-                Wire.WriteU32BE(buf, (uint)Bars.Count);
-                foreach (var item in Bars) {
-                        CandleBarEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 22);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteString(buf, Interval);
+            Wire.WriteU32BE(buf, (uint)Bars.Count);
+            foreach (var item in Bars)
+            {
+                var itemBuf = new List<byte>();
+                CandleBarEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CandleBarBatch</summary>
-    public class CandleBarBatchDecoder
+    /// <summary>SBE decoder for CandleBarBatch: validates the header and reads the body.</summary>
+    public static class CandleBarBatchDecoder
     {
-        public string Symbol { get; set; }
-        public string Interval { get; set; }
-        public List<string> Bars { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CandleBarBatchDecoder Decode(byte[] buf)
+        public static CandleBarBatch Decode(byte[] buf)
         {
+            var value = new CandleBarBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 22) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string symbol = Wire.ReadString(buf, ref pos);
             string interval = Wire.ReadString(buf, ref pos);
-            int barsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var bars = new List<CandleBar>(barsCount);
-            for (int i = 0; i < barsCount; i++) {
-                var item = CandleBarDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint barsCount = Wire.ReadU32BE(buf, ref pos);
+            var bars = new List<CandleBar>((int)barsCount);
+            for (int i = 0; i < (int)barsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = CandleBarDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 bars.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new CandleBarBatchDecoder
-            {
-                Symbol = symbol,
-                Interval = interval,
-                Bars = bars,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Interval = interval;
+            value.Bars = bars;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PublicTradeEvent</summary>
+    public class PublicTradeEvent
+    {
+        public PublicTrade Trade;
+    }
+
+    /// <summary>SBE body encoder for PublicTradeEvent (fields only, no header).</summary>
+    public static class PublicTradeEventBodyEncoder
+    {
+        public static void Encode(PublicTradeEvent value, List<byte> buf)
+        {
+            PublicTradeEncoder.Encode(value.Trade, buf);
+        }
+    }
+
+    /// <summary>SBE body decoder for PublicTradeEvent: reads fields at pos.</summary>
+    public static class PublicTradeEventBodyDecoder
+    {
+        public static (PublicTradeEvent Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PublicTradeEvent();
+            var (trade, tradePos) = PublicTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for PublicTradeEvent</summary>
     public static class PublicTradeEventEncoder
     {
-        public static byte[] Encode(Trade string)
+        public static byte[] Encode(Trade PublicTrade)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 23);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Trade);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 23);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            PublicTradeEncoder.Encode(Trade, buf);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for PublicTradeEvent</summary>
-    public class PublicTradeEventDecoder
+    /// <summary>SBE decoder for PublicTradeEvent: validates the header and reads the body.</summary>
+    public static class PublicTradeEventDecoder
     {
-        public string Trade { get; set; }
-        public int EncodedLen() => 0;
-
-        public static PublicTradeEventDecoder Decode(byte[] buf)
+        public static PublicTradeEvent Decode(byte[] buf)
         {
+            var value = new PublicTradeEvent();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 23) throw new InvalidOperationException("invalid template_id");
-            string trade = Wire.ReadString(buf, ref pos);
-            return new PublicTradeEventDecoder
-            {
-                Trade = trade,
-            };
+            var (trade, tradePos) = PublicTradeDecoder.Decode(buf, pos);
+            pos = tradePos;
+            value.Trade = trade;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message TradeHistoryRequest</summary>
+    public class TradeHistoryRequest
+    {
+        public string Symbol;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for TradeHistoryRequest (fields only, no header).</summary>
+    public static class TradeHistoryRequestBodyEncoder
+    {
+        public static void Encode(TradeHistoryRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for TradeHistoryRequest: reads fields at pos.</summary>
+    public static class TradeHistoryRequestBodyDecoder
+    {
+        public static (TradeHistoryRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new TradeHistoryRequest();
+            string? cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for TradeHistoryRequest</summary>
     public static class TradeHistoryRequestEncoder
     {
-        public static byte[] Encode(Symbol string, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Symbol string, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 24);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 24);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for TradeHistoryRequest</summary>
-    public class TradeHistoryRequestDecoder
+    /// <summary>SBE decoder for TradeHistoryRequest: validates the header and reads the body.</summary>
+    public static class TradeHistoryRequestDecoder
     {
-        public string Symbol { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static TradeHistoryRequestDecoder Decode(byte[] buf)
+        public static TradeHistoryRequest Decode(byte[] buf)
         {
+            var value = new TradeHistoryRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 24) throw new InvalidOperationException("invalid template_id");
-            string symbol = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new TradeHistoryRequestDecoder
+            string symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PublicTradeBatch</summary>
+    public class PublicTradeBatch
+    {
+        public string Symbol;
+        public List<PublicTrade> Trades;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for PublicTradeBatch (fields only, no header).</summary>
+    public static class PublicTradeBatchBodyEncoder
+    {
+        public static void Encode(PublicTradeBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteU32BE(buf, (uint)value.Trades.Count);
+            foreach (var item in value.Trades)
             {
-                Symbol = symbol,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                PublicTradeEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for PublicTradeBatch: reads fields at pos.</summary>
+    public static class PublicTradeBatchBodyDecoder
+    {
+        public static (PublicTradeBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PublicTradeBatch();
+            string? next_cursor;
+            string symbol = Wire.ReadString(buf, ref pos);
+            uint tradesCount = Wire.ReadU32BE(buf, ref pos);
+            var trades = new List<PublicTrade>((int)tradesCount);
+            for (int i = 0; i < (int)tradesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PublicTradeDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                trades.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Trades = trades;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for PublicTradeBatch</summary>
     public static class PublicTradeBatchEncoder
     {
-        public static byte[] Encode(Symbol string, Trades List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Symbol string, Trades List<PublicTrade>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 25);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteU32BE(buf, (uint)Trades.Count);
-                foreach (var item in Trades) {
-                        PublicTradeEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 25);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteU32BE(buf, (uint)Trades.Count);
+            foreach (var item in Trades)
+            {
+                var itemBuf = new List<byte>();
+                PublicTradeEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for PublicTradeBatch</summary>
-    public class PublicTradeBatchDecoder
+    /// <summary>SBE decoder for PublicTradeBatch: validates the header and reads the body.</summary>
+    public static class PublicTradeBatchDecoder
     {
-        public string Symbol { get; set; }
-        public List<string> Trades { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static PublicTradeBatchDecoder Decode(byte[] buf)
+        public static PublicTradeBatch Decode(byte[] buf)
         {
+            var value = new PublicTradeBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 25) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string symbol = Wire.ReadString(buf, ref pos);
-            int tradesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var trades = new List<PublicTrade>(tradesCount);
-            for (int i = 0; i < tradesCount; i++) {
-                var item = PublicTradeDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint tradesCount = Wire.ReadU32BE(buf, ref pos);
+            var trades = new List<PublicTrade>((int)tradesCount);
+            for (int i = 0; i < (int)tradesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PublicTradeDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 trades.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new PublicTradeBatchDecoder
-            {
-                Symbol = symbol,
-                Trades = trades,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            value.Trades = trades;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message BestBidOffer</summary>
+    public class BestBidOffer
+    {
+        public string Symbol;
+        public double? BidPrice;
+        public double? BidQty;
+        public double? AskPrice;
+        public double? AskQty;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for BestBidOffer (fields only, no header).</summary>
+    public static class BestBidOfferBodyEncoder
+    {
+        public static void Encode(BestBidOffer value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.BidPrice ?? 0.0);
+            buf.Add((byte)(value.BidPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.BidQty ?? 0.0);
+            buf.Add((byte)(value.BidQty.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.AskPrice ?? 0.0);
+            buf.Add((byte)(value.AskPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.AskQty ?? 0.0);
+            buf.Add((byte)(value.AskQty.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for BestBidOffer: reads fields at pos.</summary>
+    public static class BestBidOfferBodyDecoder
+    {
+        public static (BestBidOffer Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new BestBidOffer();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double bid_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? bid_price = buf[pos++] == 1 ? bid_price_v : null;
+            double bid_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? bid_qty = buf[pos++] == 1 ? bid_qty_v : null;
+            double ask_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? ask_price = buf[pos++] == 1 ? ask_price_v : null;
+            double ask_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? ask_qty = buf[pos++] == 1 ? ask_qty_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.BidPrice = bid_price;
+            value.BidQty = bid_qty;
+            value.AskPrice = ask_price;
+            value.AskQty = ask_qty;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
@@ -1942,72 +3599,125 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string, BidPrice double?, BidQty double?, AskPrice double?, AskQty double?, Timestamp long, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 26);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 41);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, BidPrice ?? 0.0);
-                buf.Add((byte)(BidPrice.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, BidQty ?? 0.0);
-                buf.Add((byte)(BidQty.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, AskPrice ?? 0.0);
-                buf.Add((byte)(AskPrice.HasValue ? 1 : 0));
-                Wire.WriteF64BE(buf, AskQty ?? 0.0);
-                buf.Add((byte)(AskQty.HasValue ? 1 : 0));
-                Wire.WriteI64BE(buf, Timestamp);
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 26);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 41);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, BidPrice ?? 0.0);
+            buf.Add((byte)(BidPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, BidQty ?? 0.0);
+            buf.Add((byte)(BidQty.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, AskPrice ?? 0.0);
+            buf.Add((byte)(AskPrice.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, AskQty ?? 0.0);
+            buf.Add((byte)(AskQty.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for BestBidOffer</summary>
-    public class BestBidOfferDecoder
+    /// <summary>SBE decoder for BestBidOffer: validates the header and reads the body.</summary>
+    public static class BestBidOfferDecoder
     {
-        public string Symbol { get; set; }
-        public double? BidPrice { get; set; }
-        public double? BidQty { get; set; }
-        public double? AskPrice { get; set; }
-        public double? AskQty { get; set; }
-        public long Timestamp { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static BestBidOfferDecoder Decode(byte[] buf)
+        public static BestBidOffer Decode(byte[] buf)
         {
+            var value = new BestBidOffer();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 26) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-            double bid_priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? bid_price = buf[pos++] == 1 ? bid_priceRaw : null;
-            double bid_qtyRaw = Wire.ReadF64BE(buf, ref pos);
-            double? bid_qty = buf[pos++] == 1 ? bid_qtyRaw : null;
-            double ask_priceRaw = Wire.ReadF64BE(buf, ref pos);
-            double? ask_price = buf[pos++] == 1 ? ask_priceRaw : null;
-            double ask_qtyRaw = Wire.ReadF64BE(buf, ref pos);
-            double? ask_qty = buf[pos++] == 1 ? ask_qtyRaw : null;
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new BestBidOfferDecoder
-            {
-                Symbol = symbol,
-                BidPrice = bid_price,
-                BidQty = bid_qty,
-                AskPrice = ask_price,
-                AskQty = ask_qty,
-                Timestamp = timestamp,
-                IsSnapshot = is_snapshot,
-            };
+            double bid_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? bid_price = buf[pos++] == 1 ? bid_price_v : null;
+            double bid_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? bid_qty = buf[pos++] == 1 ? bid_qty_v : null;
+            double ask_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? ask_price = buf[pos++] == 1 ? ask_price_v : null;
+            double ask_qty_v = Wire.ReadF64BE(buf, ref pos);
+            double? ask_qty = buf[pos++] == 1 ? ask_qty_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.BidPrice = bid_price;
+            value.BidQty = bid_qty;
+            value.AskPrice = ask_price;
+            value.AskQty = ask_qty;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message SymbolTicker</summary>
+    public class SymbolTicker
+    {
+        public string Symbol;
+        public double LastPrice;
+        public double PriceChange;
+        public double PriceChangePct;
+        public double Volume;
+        public double High;
+        public double Low;
+        public double Open;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for SymbolTicker (fields only, no header).</summary>
+    public static class SymbolTickerBodyEncoder
+    {
+        public static void Encode(SymbolTicker value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.LastPrice);
+            Wire.WriteF64BE(buf, value.PriceChange);
+            Wire.WriteF64BE(buf, value.PriceChangePct);
+            Wire.WriteF64BE(buf, value.Volume);
+            Wire.WriteF64BE(buf, value.High);
+            Wire.WriteF64BE(buf, value.Low);
+            Wire.WriteF64BE(buf, value.Open);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for SymbolTicker: reads fields at pos.</summary>
+    public static class SymbolTickerBodyDecoder
+    {
+        public static (SymbolTicker Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new SymbolTicker();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double last_price = Wire.ReadF64BE(buf, ref pos);
+            double price_change = Wire.ReadF64BE(buf, ref pos);
+            double price_change_pct = Wire.ReadF64BE(buf, ref pos);
+            double volume = Wire.ReadF64BE(buf, ref pos);
+            double high = Wire.ReadF64BE(buf, ref pos);
+            double low = Wire.ReadF64BE(buf, ref pos);
+            double open = Wire.ReadF64BE(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LastPrice = last_price;
+            value.PriceChange = price_change;
+            value.PriceChangePct = price_change_pct;
+            value.Volume = volume;
+            value.High = high;
+            value.Low = low;
+            value.Open = open;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
@@ -2017,50 +3727,37 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string, LastPrice double, PriceChange double, PriceChangePct double, Volume double, High double, Low double, Open double, Timestamp long, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 27);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 65);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, LastPrice);
-                Wire.WriteF64BE(buf, PriceChange);
-                Wire.WriteF64BE(buf, PriceChangePct);
-                Wire.WriteF64BE(buf, Volume);
-                Wire.WriteF64BE(buf, High);
-                Wire.WriteF64BE(buf, Low);
-                Wire.WriteF64BE(buf, Open);
-                Wire.WriteI64BE(buf, Timestamp);
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 27);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 65);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, LastPrice);
+            Wire.WriteF64BE(buf, PriceChange);
+            Wire.WriteF64BE(buf, PriceChangePct);
+            Wire.WriteF64BE(buf, Volume);
+            Wire.WriteF64BE(buf, High);
+            Wire.WriteF64BE(buf, Low);
+            Wire.WriteF64BE(buf, Open);
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for SymbolTicker</summary>
-    public class SymbolTickerDecoder
+    /// <summary>SBE decoder for SymbolTicker: validates the header and reads the body.</summary>
+    public static class SymbolTickerDecoder
     {
-        public string Symbol { get; set; }
-        public double LastPrice { get; set; }
-        public double PriceChange { get; set; }
-        public double PriceChangePct { get; set; }
-        public double Volume { get; set; }
-        public double High { get; set; }
-        public double Low { get; set; }
-        public double Open { get; set; }
-        public long Timestamp { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static SymbolTickerDecoder Decode(byte[] buf)
+        public static SymbolTicker Decode(byte[] buf)
         {
+            var value = new SymbolTicker();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 27) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
@@ -2071,22 +3768,47 @@ namespace Fig.Sbe
             double high = Wire.ReadF64BE(buf, ref pos);
             double low = Wire.ReadF64BE(buf, ref pos);
             double open = Wire.ReadF64BE(buf, ref pos);
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new SymbolTickerDecoder
-            {
-                Symbol = symbol,
-                LastPrice = last_price,
-                PriceChange = price_change,
-                PriceChangePct = price_change_pct,
-                Volume = volume,
-                High = high,
-                Low = low,
-                Open = open,
-                Timestamp = timestamp,
-                IsSnapshot = is_snapshot,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LastPrice = last_price;
+            value.PriceChange = price_change;
+            value.PriceChangePct = price_change_pct;
+            value.Volume = volume;
+            value.High = high;
+            value.Low = low;
+            value.Open = open;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message TickerRequest</summary>
+    public class TickerRequest
+    {
+        public string Symbol;
+    }
+
+    /// <summary>SBE body encoder for TickerRequest (fields only, no header).</summary>
+    public static class TickerRequestBodyEncoder
+    {
+        public static void Encode(TickerRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+        }
+    }
+
+    /// <summary>SBE body decoder for TickerRequest: reads fields at pos.</summary>
+    public static class TickerRequestBodyDecoder
+    {
+        public static (TickerRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new TickerRequest();
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return (value, pos);
         }
     }
 
@@ -2096,38 +3818,55 @@ namespace Fig.Sbe
         public static byte[] Encode(Symbol string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 28);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Symbol);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 28);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Symbol);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for TickerRequest</summary>
-    public class TickerRequestDecoder
+    /// <summary>SBE decoder for TickerRequest: validates the header and reads the body.</summary>
+    public static class TickerRequestDecoder
     {
-        public string Symbol { get; set; }
-        public int EncodedLen() => 0;
-
-        public static TickerRequestDecoder Decode(byte[] buf)
+        public static TickerRequest Decode(byte[] buf)
         {
+            var value = new TickerRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 28) throw new InvalidOperationException("invalid template_id");
             string symbol = Wire.ReadString(buf, ref pos);
-            return new TickerRequestDecoder
-            {
-                Symbol = symbol,
-            };
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message InstrumentCatalogRequest</summary>
+    public class InstrumentCatalogRequest
+    {
+    }
+
+    /// <summary>SBE body encoder for InstrumentCatalogRequest (fields only, no header).</summary>
+    public static class InstrumentCatalogRequestBodyEncoder
+    {
+        public static void Encode(InstrumentCatalogRequest value, List<byte> buf)
+        {
+        }
+    }
+
+    /// <summary>SBE body decoder for InstrumentCatalogRequest: reads fields at pos.</summary>
+    public static class InstrumentCatalogRequestBodyDecoder
+    {
+        public static (InstrumentCatalogRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new InstrumentCatalogRequest();
+            return (value, pos);
         }
     }
 
@@ -2137,85 +3876,162 @@ namespace Fig.Sbe
         public static byte[] Encode()
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 29);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 29);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for InstrumentCatalogRequest</summary>
-    public class InstrumentCatalogRequestDecoder
+    /// <summary>SBE decoder for InstrumentCatalogRequest: validates the header and reads the body.</summary>
+    public static class InstrumentCatalogRequestDecoder
     {
-        public int EncodedLen() => 0;
-
-        public static InstrumentCatalogRequestDecoder Decode(byte[] buf)
+        public static InstrumentCatalogRequest Decode(byte[] buf)
         {
+            var value = new InstrumentCatalogRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 29) throw new InvalidOperationException("invalid template_id");
-            return new InstrumentCatalogRequestDecoder
-            {
+            return value;
+        }
+    }
 
-            };
+    /// <summary>SBE message InstrumentCatalogResponse</summary>
+    public class InstrumentCatalogResponse
+    {
+        public List<InstrumentMetadata> Instruments;
+    }
+
+    /// <summary>SBE body encoder for InstrumentCatalogResponse (fields only, no header).</summary>
+    public static class InstrumentCatalogResponseBodyEncoder
+    {
+        public static void Encode(InstrumentCatalogResponse value, List<byte> buf)
+        {
+            Wire.WriteU32BE(buf, (uint)value.Instruments.Count);
+            foreach (var item in value.Instruments)
+            {
+                var itemBuf = new List<byte>();
+                InstrumentMetadataEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+        }
+    }
+
+    /// <summary>SBE body decoder for InstrumentCatalogResponse: reads fields at pos.</summary>
+    public static class InstrumentCatalogResponseBodyDecoder
+    {
+        public static (InstrumentCatalogResponse Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new InstrumentCatalogResponse();
+            uint instrumentsCount = Wire.ReadU32BE(buf, ref pos);
+            var instruments = new List<InstrumentMetadata>((int)instrumentsCount);
+            for (int i = 0; i < (int)instrumentsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = InstrumentMetadataDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                instruments.Add(item);
+            }
+            value.Instruments = instruments;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for InstrumentCatalogResponse</summary>
     public static class InstrumentCatalogResponseEncoder
     {
-        public static byte[] Encode(Instruments List<string>)
+        public static byte[] Encode(Instruments List<InstrumentMetadata>)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 30);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteU32BE(buf, (uint)Instruments.Count);
-                foreach (var item in Instruments) {
-                        InstrumentMetadataEncoder.Encode(item, buf);
-                }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 30);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU32BE(buf, (uint)Instruments.Count);
+            foreach (var item in Instruments)
+            {
+                var itemBuf = new List<byte>();
+                InstrumentMetadataEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for InstrumentCatalogResponse</summary>
-    public class InstrumentCatalogResponseDecoder
+    /// <summary>SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.</summary>
+    public static class InstrumentCatalogResponseDecoder
     {
-        public List<string> Instruments { get; set; }
-        public int EncodedLen() => 0;
-
-        public static InstrumentCatalogResponseDecoder Decode(byte[] buf)
+        public static InstrumentCatalogResponse Decode(byte[] buf)
         {
+            var value = new InstrumentCatalogResponse();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 30) throw new InvalidOperationException("invalid template_id");
-            int instrumentsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var instruments = new List<InstrumentMetadata>(instrumentsCount);
-            for (int i = 0; i < instrumentsCount; i++) {
-                var item = InstrumentMetadataDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint instrumentsCount = Wire.ReadU32BE(buf, ref pos);
+            var instruments = new List<InstrumentMetadata>((int)instrumentsCount);
+            for (int i = 0; i < (int)instrumentsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = InstrumentMetadataDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 instruments.Add(item);
             }
-            return new InstrumentCatalogResponseDecoder
-            {
-                Instruments = instruments,
-            };
+            value.Instruments = instruments;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message AccountSummary</summary>
+    public class AccountSummary
+    {
+        public string Account;
+        public double Balance;
+        public double BuyingPower;
+        public string Currency;
+    }
+
+    /// <summary>SBE body encoder for AccountSummary (fields only, no header).</summary>
+    public static class AccountSummaryBodyEncoder
+    {
+        public static void Encode(AccountSummary value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteF64BE(buf, value.Balance);
+            Wire.WriteF64BE(buf, value.BuyingPower);
+            Wire.WriteString(buf, value.Currency);
+        }
+    }
+
+    /// <summary>SBE body decoder for AccountSummary: reads fields at pos.</summary>
+    public static class AccountSummaryBodyDecoder
+    {
+        public static (AccountSummary Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new AccountSummary();
+            string account = Wire.ReadString(buf, ref pos);
+            double balance = Wire.ReadF64BE(buf, ref pos);
+            double buying_power = Wire.ReadF64BE(buf, ref pos);
+            string currency = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Balance = balance;
+            value.BuyingPower = buying_power;
+            value.Currency = currency;
+            return (value, pos);
         }
     }
 
@@ -2225,50 +4041,92 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Balance double, BuyingPower double, Currency string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 31);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 16);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteF64BE(buf, Balance);
-                Wire.WriteF64BE(buf, BuyingPower);
-                Wire.WriteString(buf, Currency);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 31);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 16);
+            Wire.WriteString(buf, Account);
+            Wire.WriteF64BE(buf, Balance);
+            Wire.WriteF64BE(buf, BuyingPower);
+            Wire.WriteString(buf, Currency);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for AccountSummary</summary>
-    public class AccountSummaryDecoder
+    /// <summary>SBE decoder for AccountSummary: validates the header and reads the body.</summary>
+    public static class AccountSummaryDecoder
     {
-        public string Account { get; set; }
-        public double Balance { get; set; }
-        public double BuyingPower { get; set; }
-        public string Currency { get; set; }
-        public int EncodedLen() => 0;
-
-        public static AccountSummaryDecoder Decode(byte[] buf)
+        public static AccountSummary Decode(byte[] buf)
         {
+            var value = new AccountSummary();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 31) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             double balance = Wire.ReadF64BE(buf, ref pos);
             double buying_power = Wire.ReadF64BE(buf, ref pos);
             string currency = Wire.ReadString(buf, ref pos);
-            return new AccountSummaryDecoder
-            {
-                Account = account,
-                Balance = balance,
-                BuyingPower = buying_power,
-                Currency = currency,
-            };
+            value.Account = account;
+            value.Balance = balance;
+            value.BuyingPower = buying_power;
+            value.Currency = currency;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarginSummary</summary>
+    public class MarginSummary
+    {
+        public string Account;
+        public double Balance;
+        public double BuyingPower;
+        public double Equity;
+        public double MarginUsed;
+        public double Available;
+        public string Currency;
+    }
+
+    /// <summary>SBE body encoder for MarginSummary (fields only, no header).</summary>
+    public static class MarginSummaryBodyEncoder
+    {
+        public static void Encode(MarginSummary value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteF64BE(buf, value.Balance);
+            Wire.WriteF64BE(buf, value.BuyingPower);
+            Wire.WriteF64BE(buf, value.Equity);
+            Wire.WriteF64BE(buf, value.MarginUsed);
+            Wire.WriteF64BE(buf, value.Available);
+            Wire.WriteString(buf, value.Currency);
+        }
+    }
+
+    /// <summary>SBE body decoder for MarginSummary: reads fields at pos.</summary>
+    public static class MarginSummaryBodyDecoder
+    {
+        public static (MarginSummary Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarginSummary();
+            string account = Wire.ReadString(buf, ref pos);
+            double balance = Wire.ReadF64BE(buf, ref pos);
+            double buying_power = Wire.ReadF64BE(buf, ref pos);
+            double equity = Wire.ReadF64BE(buf, ref pos);
+            double margin_used = Wire.ReadF64BE(buf, ref pos);
+            double available = Wire.ReadF64BE(buf, ref pos);
+            string currency = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Balance = balance;
+            value.BuyingPower = buying_power;
+            value.Equity = equity;
+            value.MarginUsed = margin_used;
+            value.Available = available;
+            value.Currency = currency;
+            return (value, pos);
         }
     }
 
@@ -2278,43 +4136,33 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Balance double, BuyingPower double, Equity double, MarginUsed double, Available double, Currency string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 32);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 40);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteF64BE(buf, Balance);
-                Wire.WriteF64BE(buf, BuyingPower);
-                Wire.WriteF64BE(buf, Equity);
-                Wire.WriteF64BE(buf, MarginUsed);
-                Wire.WriteF64BE(buf, Available);
-                Wire.WriteString(buf, Currency);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 32);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 40);
+            Wire.WriteString(buf, Account);
+            Wire.WriteF64BE(buf, Balance);
+            Wire.WriteF64BE(buf, BuyingPower);
+            Wire.WriteF64BE(buf, Equity);
+            Wire.WriteF64BE(buf, MarginUsed);
+            Wire.WriteF64BE(buf, Available);
+            Wire.WriteString(buf, Currency);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarginSummary</summary>
-    public class MarginSummaryDecoder
+    /// <summary>SBE decoder for MarginSummary: validates the header and reads the body.</summary>
+    public static class MarginSummaryDecoder
     {
-        public string Account { get; set; }
-        public double Balance { get; set; }
-        public double BuyingPower { get; set; }
-        public double Equity { get; set; }
-        public double MarginUsed { get; set; }
-        public double Available { get; set; }
-        public string Currency { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarginSummaryDecoder Decode(byte[] buf)
+        public static MarginSummary Decode(byte[] buf)
         {
+            var value = new MarginSummary();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 32) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
@@ -2324,76 +4172,173 @@ namespace Fig.Sbe
             double margin_used = Wire.ReadF64BE(buf, ref pos);
             double available = Wire.ReadF64BE(buf, ref pos);
             string currency = Wire.ReadString(buf, ref pos);
-            return new MarginSummaryDecoder
+            value.Account = account;
+            value.Balance = balance;
+            value.BuyingPower = buying_power;
+            value.Equity = equity;
+            value.MarginUsed = margin_used;
+            value.Available = available;
+            value.Currency = currency;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message BalanceSnapshot</summary>
+    public class BalanceSnapshot
+    {
+        public string Account;
+        public List<BalanceEntry> Balances;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for BalanceSnapshot (fields only, no header).</summary>
+    public static class BalanceSnapshotBodyEncoder
+    {
+        public static void Encode(BalanceSnapshot value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Balances.Count);
+            foreach (var item in value.Balances)
             {
-                Account = account,
-                Balance = balance,
-                BuyingPower = buying_power,
-                Equity = equity,
-                MarginUsed = margin_used,
-                Available = available,
-                Currency = currency,
-            };
+                var itemBuf = new List<byte>();
+                BalanceEntryEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for BalanceSnapshot: reads fields at pos.</summary>
+    public static class BalanceSnapshotBodyDecoder
+    {
+        public static (BalanceSnapshot Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new BalanceSnapshot();
+            string account = Wire.ReadString(buf, ref pos);
+            uint balancesCount = Wire.ReadU32BE(buf, ref pos);
+            var balances = new List<BalanceEntry>((int)balancesCount);
+            for (int i = 0; i < (int)balancesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = BalanceEntryDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                balances.Add(item);
+            }
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Balances = balances;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for BalanceSnapshot</summary>
     public static class BalanceSnapshotEncoder
     {
-        public static byte[] Encode(Account string, Balances List<string>, IsSnapshot byte?)
+        public static byte[] Encode(Account string, Balances List<BalanceEntry>, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 33);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Balances.Count);
-                foreach (var item in Balances) {
-                        BalanceEntryEncoder.Encode(item, buf);
-                }
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 33);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Balances.Count);
+            foreach (var item in Balances)
+            {
+                var itemBuf = new List<byte>();
+                BalanceEntryEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for BalanceSnapshot</summary>
-    public class BalanceSnapshotDecoder
+    /// <summary>SBE decoder for BalanceSnapshot: validates the header and reads the body.</summary>
+    public static class BalanceSnapshotDecoder
     {
-        public string Account { get; set; }
-        public List<string> Balances { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static BalanceSnapshotDecoder Decode(byte[] buf)
+        public static BalanceSnapshot Decode(byte[] buf)
         {
+            var value = new BalanceSnapshot();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 33) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            int balancesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var balances = new List<BalanceEntry>(balancesCount);
-            for (int i = 0; i < balancesCount; i++) {
-                var item = BalanceEntryDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint balancesCount = Wire.ReadU32BE(buf, ref pos);
+            var balances = new List<BalanceEntry>((int)balancesCount);
+            for (int i = 0; i < (int)balancesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = BalanceEntryDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 balances.Add(item);
             }
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new BalanceSnapshotDecoder
-            {
-                Account = account,
-                Balances = balances,
-                IsSnapshot = is_snapshot,
-            };
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Balances = balances;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message BalanceUpdate</summary>
+    public class BalanceUpdate
+    {
+        public string Account;
+        public string Asset;
+        public double Delta;
+        public double Total;
+        public double Available;
+        public BalanceUpdateReason Reason;
+    }
+
+    /// <summary>SBE body encoder for BalanceUpdate (fields only, no header).</summary>
+    public static class BalanceUpdateBodyEncoder
+    {
+        public static void Encode(BalanceUpdate value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteString(buf, value.Asset);
+            Wire.WriteF64BE(buf, value.Delta);
+            Wire.WriteF64BE(buf, value.Total);
+            Wire.WriteF64BE(buf, value.Available);
+            buf.Add(BalanceUpdateReasonToValue(value.Reason));
+        }
+    }
+
+    /// <summary>SBE body decoder for BalanceUpdate: reads fields at pos.</summary>
+    public static class BalanceUpdateBodyDecoder
+    {
+        public static (BalanceUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new BalanceUpdate();
+            string account = Wire.ReadString(buf, ref pos);
+            string asset = Wire.ReadString(buf, ref pos);
+            double delta = Wire.ReadF64BE(buf, ref pos);
+            double total = Wire.ReadF64BE(buf, ref pos);
+            double available = Wire.ReadF64BE(buf, ref pos);
+            var reason = BalanceUpdateReasonFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid BalanceUpdateReason");
+            value.Account = account;
+            value.Asset = asset;
+            value.Delta = delta;
+            value.Total = total;
+            value.Available = available;
+            value.Reason = reason;
+            return (value, pos);
         }
     }
 
@@ -2403,41 +4348,32 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Asset string, Delta double, Total double, Available double, Reason BalanceUpdateReason)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 34);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 25);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, Asset);
-                Wire.WriteF64BE(buf, Delta);
-                Wire.WriteF64BE(buf, Total);
-                Wire.WriteF64BE(buf, Available);
-                buf.Add(BalanceUpdateReasonToValue(Reason));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 34);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 25);
+            Wire.WriteString(buf, Account);
+            Wire.WriteString(buf, Asset);
+            Wire.WriteF64BE(buf, Delta);
+            Wire.WriteF64BE(buf, Total);
+            Wire.WriteF64BE(buf, Available);
+            buf.Add(BalanceUpdateReasonToValue(Reason));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for BalanceUpdate</summary>
-    public class BalanceUpdateDecoder
+    /// <summary>SBE decoder for BalanceUpdate: validates the header and reads the body.</summary>
+    public static class BalanceUpdateDecoder
     {
-        public string Account { get; set; }
-        public string Asset { get; set; }
-        public double Delta { get; set; }
-        public double Total { get; set; }
-        public double Available { get; set; }
-        public BalanceUpdateReason Reason { get; set; }
-        public int EncodedLen() => 0;
-
-        public static BalanceUpdateDecoder Decode(byte[] buf)
+        public static BalanceUpdate Decode(byte[] buf)
         {
+            var value = new BalanceUpdate();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 34) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
@@ -2445,77 +4381,169 @@ namespace Fig.Sbe
             double delta = Wire.ReadF64BE(buf, ref pos);
             double total = Wire.ReadF64BE(buf, ref pos);
             double available = Wire.ReadF64BE(buf, ref pos);
-            byte reasonRaw = buf[pos++];
-            var reason = BalanceUpdateReasonFromValue(reasonRaw) ?? throw new InvalidOperationException("invalid BalanceUpdateReason");
-            return new BalanceUpdateDecoder
+            var reason = BalanceUpdateReasonFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid BalanceUpdateReason");
+            value.Account = account;
+            value.Asset = asset;
+            value.Delta = delta;
+            value.Total = total;
+            value.Available = available;
+            value.Reason = reason;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PositionSnapshot</summary>
+    public class PositionSnapshot
+    {
+        public string Account;
+        public List<PositionEntry> Positions;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for PositionSnapshot (fields only, no header).</summary>
+    public static class PositionSnapshotBodyEncoder
+    {
+        public static void Encode(PositionSnapshot value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Positions.Count);
+            foreach (var item in value.Positions)
             {
-                Account = account,
-                Asset = asset,
-                Delta = delta,
-                Total = total,
-                Available = available,
-                Reason = reason,
-            };
+                var itemBuf = new List<byte>();
+                PositionEntryEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for PositionSnapshot: reads fields at pos.</summary>
+    public static class PositionSnapshotBodyDecoder
+    {
+        public static (PositionSnapshot Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PositionSnapshot();
+            string account = Wire.ReadString(buf, ref pos);
+            uint positionsCount = Wire.ReadU32BE(buf, ref pos);
+            var positions = new List<PositionEntry>((int)positionsCount);
+            for (int i = 0; i < (int)positionsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PositionEntryDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                positions.Add(item);
+            }
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Positions = positions;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for PositionSnapshot</summary>
     public static class PositionSnapshotEncoder
     {
-        public static byte[] Encode(Account string, Positions List<string>, IsSnapshot byte?)
+        public static byte[] Encode(Account string, Positions List<PositionEntry>, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 35);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Positions.Count);
-                foreach (var item in Positions) {
-                        PositionEntryEncoder.Encode(item, buf);
-                }
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 35);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Positions.Count);
+            foreach (var item in Positions)
+            {
+                var itemBuf = new List<byte>();
+                PositionEntryEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for PositionSnapshot</summary>
-    public class PositionSnapshotDecoder
+    /// <summary>SBE decoder for PositionSnapshot: validates the header and reads the body.</summary>
+    public static class PositionSnapshotDecoder
     {
-        public string Account { get; set; }
-        public List<string> Positions { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static PositionSnapshotDecoder Decode(byte[] buf)
+        public static PositionSnapshot Decode(byte[] buf)
         {
+            var value = new PositionSnapshot();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 35) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            int positionsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var positions = new List<PositionEntry>(positionsCount);
-            for (int i = 0; i < positionsCount; i++) {
-                var item = PositionEntryDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint positionsCount = Wire.ReadU32BE(buf, ref pos);
+            var positions = new List<PositionEntry>((int)positionsCount);
+            for (int i = 0; i < (int)positionsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = PositionEntryDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 positions.Add(item);
             }
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new PositionSnapshotDecoder
-            {
-                Account = account,
-                Positions = positions,
-                IsSnapshot = is_snapshot,
-            };
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Positions = positions;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PositionUpdate</summary>
+    public class PositionUpdate
+    {
+        public string Account;
+        public string Symbol;
+        public double Qty;
+        public double EntryPrice;
+        public double UnrealizedPnl;
+    }
+
+    /// <summary>SBE body encoder for PositionUpdate (fields only, no header).</summary>
+    public static class PositionUpdateBodyEncoder
+    {
+        public static void Encode(PositionUpdate value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.Qty);
+            Wire.WriteF64BE(buf, value.EntryPrice);
+            Wire.WriteF64BE(buf, value.UnrealizedPnl);
+        }
+    }
+
+    /// <summary>SBE body decoder for PositionUpdate: reads fields at pos.</summary>
+    public static class PositionUpdateBodyDecoder
+    {
+        public static (PositionUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PositionUpdate();
+            string account = Wire.ReadString(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            double entry_price = Wire.ReadF64BE(buf, ref pos);
+            double unrealized_pnl = Wire.ReadF64BE(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Qty = qty;
+            value.EntryPrice = entry_price;
+            value.UnrealizedPnl = unrealized_pnl;
+            return (value, pos);
         }
     }
 
@@ -2525,39 +4553,31 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Symbol string, Qty double, EntryPrice double, UnrealizedPnl double)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 36);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 24);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, Qty);
-                Wire.WriteF64BE(buf, EntryPrice);
-                Wire.WriteF64BE(buf, UnrealizedPnl);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 36);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 24);
+            Wire.WriteString(buf, Account);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, Qty);
+            Wire.WriteF64BE(buf, EntryPrice);
+            Wire.WriteF64BE(buf, UnrealizedPnl);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for PositionUpdate</summary>
-    public class PositionUpdateDecoder
+    /// <summary>SBE decoder for PositionUpdate: validates the header and reads the body.</summary>
+    public static class PositionUpdateDecoder
     {
-        public string Account { get; set; }
-        public string Symbol { get; set; }
-        public double Qty { get; set; }
-        public double EntryPrice { get; set; }
-        public double UnrealizedPnl { get; set; }
-        public int EncodedLen() => 0;
-
-        public static PositionUpdateDecoder Decode(byte[] buf)
+        public static PositionUpdate Decode(byte[] buf)
         {
+            var value = new PositionUpdate();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 36) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
@@ -2565,65 +4585,137 @@ namespace Fig.Sbe
             double qty = Wire.ReadF64BE(buf, ref pos);
             double entry_price = Wire.ReadF64BE(buf, ref pos);
             double unrealized_pnl = Wire.ReadF64BE(buf, ref pos);
-            return new PositionUpdateDecoder
-            {
-                Account = account,
-                Symbol = symbol,
-                Qty = qty,
-                EntryPrice = entry_price,
-                UnrealizedPnl = unrealized_pnl,
-            };
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Qty = qty;
+            value.EntryPrice = entry_price;
+            value.UnrealizedPnl = unrealized_pnl;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MarginUpdate</summary>
+    public class MarginUpdate
+    {
+        public string Account;
+        public MarginSummary Summary;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for MarginUpdate (fields only, no header).</summary>
+    public static class MarginUpdateBodyEncoder
+    {
+        public static void Encode(MarginUpdate value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            MarginSummaryBodyEncoder.Encode(value.Summary, buf);
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MarginUpdate: reads fields at pos.</summary>
+    public static class MarginUpdateBodyDecoder
+    {
+        public static (MarginUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MarginUpdate();
+            string account = Wire.ReadString(buf, ref pos);
+            var (summary, summaryPos) = MarginSummaryBodyDecoder.Decode(buf, pos);
+            pos = summaryPos;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Summary = summary;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for MarginUpdate</summary>
     public static class MarginUpdateEncoder
     {
-        public static byte[] Encode(Account string, Summary string, IsSnapshot byte?)
+        public static byte[] Encode(Account string, Summary MarginSummary, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 37);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, Summary);
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 37);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            MarginSummaryBodyEncoder.Encode(Summary, buf);
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for MarginUpdate</summary>
-    public class MarginUpdateDecoder
+    /// <summary>SBE decoder for MarginUpdate: validates the header and reads the body.</summary>
+    public static class MarginUpdateDecoder
     {
-        public string Account { get; set; }
-        public string Summary { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static MarginUpdateDecoder Decode(byte[] buf)
+        public static MarginUpdate Decode(byte[] buf)
         {
+            var value = new MarginUpdate();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 37) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            string summary = Wire.ReadString(buf, ref pos);
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new MarginUpdateDecoder
-            {
-                Account = account,
-                Summary = summary,
-                IsSnapshot = is_snapshot,
-            };
+            var (summary, summaryPos) = MarginSummaryBodyDecoder.Decode(buf, pos);
+            pos = summaryPos;
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Summary = summary;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message UserLiquidation</summary>
+    public class UserLiquidation
+    {
+        public string Account;
+        public string Symbol;
+        public double Qty;
+        public double Price;
+        public long Timestamp;
+    }
+
+    /// <summary>SBE body encoder for UserLiquidation (fields only, no header).</summary>
+    public static class UserLiquidationBodyEncoder
+    {
+        public static void Encode(UserLiquidation value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.Qty);
+            Wire.WriteF64BE(buf, value.Price);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+    /// <summary>SBE body decoder for UserLiquidation: reads fields at pos.</summary>
+    public static class UserLiquidationBodyDecoder
+    {
+        public static (UserLiquidation Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new UserLiquidation();
+            string account = Wire.ReadString(buf, ref pos);
+            string symbol = Wire.ReadString(buf, ref pos);
+            double qty = Wire.ReadF64BE(buf, ref pos);
+            double price = Wire.ReadF64BE(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Qty = qty;
+            value.Price = price;
+            value.Timestamp = timestamp;
+            return (value, pos);
         }
     }
 
@@ -2633,54 +4725,84 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Symbol string, Qty double, Price double, Timestamp long)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 38);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 24);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, Symbol);
-                Wire.WriteF64BE(buf, Qty);
-                Wire.WriteF64BE(buf, Price);
-                Wire.WriteI64BE(buf, Timestamp);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 38);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 24);
+            Wire.WriteString(buf, Account);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, Qty);
+            Wire.WriteF64BE(buf, Price);
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for UserLiquidation</summary>
-    public class UserLiquidationDecoder
+    /// <summary>SBE decoder for UserLiquidation: validates the header and reads the body.</summary>
+    public static class UserLiquidationDecoder
     {
-        public string Account { get; set; }
-        public string Symbol { get; set; }
-        public double Qty { get; set; }
-        public double Price { get; set; }
-        public long Timestamp { get; set; }
-        public int EncodedLen() => 0;
-
-        public static UserLiquidationDecoder Decode(byte[] buf)
+        public static UserLiquidation Decode(byte[] buf)
         {
+            var value = new UserLiquidation();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 38) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             string symbol = Wire.ReadString(buf, ref pos);
             double qty = Wire.ReadF64BE(buf, ref pos);
             double price = Wire.ReadF64BE(buf, ref pos);
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            return new UserLiquidationDecoder
-            {
-                Account = account,
-                Symbol = symbol,
-                Qty = qty,
-                Price = price,
-                Timestamp = timestamp,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Qty = qty;
+            value.Price = price;
+            value.Timestamp = timestamp;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderListStatus</summary>
+    public class OrderListStatus
+    {
+        public string Account;
+        public string ListId;
+        public OrderListStatusStatus Status;
+        public string? Symbol;
+    }
+
+    /// <summary>SBE body encoder for OrderListStatus (fields only, no header).</summary>
+    public static class OrderListStatusBodyEncoder
+    {
+        public static void Encode(OrderListStatus value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteString(buf, value.ListId);
+            buf.Add(OrderListStatusStatusToValue(value.Status));
+            if (value.Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Symbol.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderListStatus: reads fields at pos.</summary>
+    public static class OrderListStatusBodyDecoder
+    {
+        public static (OrderListStatus Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderListStatus();
+            string? symbol;
+            string account = Wire.ReadString(buf, ref pos);
+            string list_id = Wire.ReadString(buf, ref pos);
+            var status = OrderListStatusStatusFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid OrderListStatusStatus");
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.ListId = list_id;
+            value.Status = status;
+            value.Symbol = symbol;
+            return (value, pos);
         }
     }
 
@@ -2690,180 +4812,316 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, ListId string, Status OrderListStatusStatus, Symbol string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 39);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, ListId);
-                buf.Add(OrderListStatusStatusToValue(Status));
-                if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 39);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteString(buf, ListId);
+            buf.Add(OrderListStatusStatusToValue(Status));
+            if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderListStatus</summary>
-    public class OrderListStatusDecoder
+    /// <summary>SBE decoder for OrderListStatus: validates the header and reads the body.</summary>
+    public static class OrderListStatusDecoder
     {
-        public string Account { get; set; }
-        public string ListId { get; set; }
-        public OrderListStatusStatus Status { get; set; }
-        public string? Symbol { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderListStatusDecoder Decode(byte[] buf)
+        public static OrderListStatus Decode(byte[] buf)
         {
+            var value = new OrderListStatus();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 39) throw new InvalidOperationException("invalid template_id");
+            string? symbol;
             string account = Wire.ReadString(buf, ref pos);
             string list_id = Wire.ReadString(buf, ref pos);
-            byte statusRaw = buf[pos++];
-            var status = OrderListStatusStatusFromValue(statusRaw) ?? throw new InvalidOperationException("invalid OrderListStatusStatus");
+            var status = OrderListStatusStatusFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid OrderListStatusStatus");
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.ListId = list_id;
+            value.Status = status;
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message FillHistoryRequest</summary>
+    public class FillHistoryRequest
+    {
+        public string Account;
+        public string? Symbol;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for FillHistoryRequest (fields only, no header).</summary>
+    public static class FillHistoryRequestBodyEncoder
+    {
+        public static void Encode(FillHistoryRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for FillHistoryRequest: reads fields at pos.</summary>
+    public static class FillHistoryRequestBodyDecoder
+    {
+        public static (FillHistoryRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new FillHistoryRequest();
             string? symbol;
-            if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
-            return new OrderListStatusDecoder
-            {
-                Account = account,
-                ListId = list_id,
-                Status = status,
-                Symbol = symbol,
-            };
+            string? cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for FillHistoryRequest</summary>
     public static class FillHistoryRequestEncoder
     {
-        public static byte[] Encode(Account string, Symbol string?, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Account string, Symbol string?, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 40);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 40);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Account);
+            if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for FillHistoryRequest</summary>
-    public class FillHistoryRequestDecoder
+    /// <summary>SBE decoder for FillHistoryRequest: validates the header and reads the body.</summary>
+    public static class FillHistoryRequestDecoder
     {
-        public string Account { get; set; }
-        public string? Symbol { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static FillHistoryRequestDecoder Decode(byte[] buf)
+        public static FillHistoryRequest Decode(byte[] buf)
         {
+            var value = new FillHistoryRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 40) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
             string? symbol;
-            if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new FillHistoryRequestDecoder
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message FillHistoryBatch</summary>
+    public class FillHistoryBatch
+    {
+        public string Account;
+        public List<ExecutionReport> Fills;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for FillHistoryBatch (fields only, no header).</summary>
+    public static class FillHistoryBatchBodyEncoder
+    {
+        public static void Encode(FillHistoryBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Fills.Count);
+            foreach (var item in value.Fills)
             {
-                Account = account,
-                Symbol = symbol,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for FillHistoryBatch: reads fields at pos.</summary>
+    public static class FillHistoryBatchBodyDecoder
+    {
+        public static (FillHistoryBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new FillHistoryBatch();
+            string? next_cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            uint fillsCount = Wire.ReadU32BE(buf, ref pos);
+            var fills = new List<ExecutionReport>((int)fillsCount);
+            for (int i = 0; i < (int)fillsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                fills.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Fills = fills;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for FillHistoryBatch</summary>
     public static class FillHistoryBatchEncoder
     {
-        public static byte[] Encode(Account string, Fills List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Account string, Fills List<ExecutionReport>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 41);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Fills.Count);
-                foreach (var item in Fills) {
-                        ExecutionReportEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 41);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Fills.Count);
+            foreach (var item in Fills)
+            {
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for FillHistoryBatch</summary>
-    public class FillHistoryBatchDecoder
+    /// <summary>SBE decoder for FillHistoryBatch: validates the header and reads the body.</summary>
+    public static class FillHistoryBatchDecoder
     {
-        public string Account { get; set; }
-        public List<string> Fills { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static FillHistoryBatchDecoder Decode(byte[] buf)
+        public static FillHistoryBatch Decode(byte[] buf)
         {
+            var value = new FillHistoryBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 41) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string account = Wire.ReadString(buf, ref pos);
-            int fillsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var fills = new List<ExecutionReport>(fillsCount);
-            for (int i = 0; i < fillsCount; i++) {
-                var item = ExecutionReportDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint fillsCount = Wire.ReadU32BE(buf, ref pos);
+            var fills = new List<ExecutionReport>((int)fillsCount);
+            for (int i = 0; i < (int)fillsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 fills.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new FillHistoryBatchDecoder
-            {
-                Account = account,
-                Fills = fills,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Fills = fills;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message FundingPayment</summary>
+    public class FundingPayment
+    {
+        public string Account;
+        public string? Symbol;
+        public double Amount;
+        public double Rate;
+        public long Timestamp;
+    }
+
+    /// <summary>SBE body encoder for FundingPayment (fields only, no header).</summary>
+    public static class FundingPaymentBodyEncoder
+    {
+        public static void Encode(FundingPayment value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteF64BE(buf, value.Amount);
+            Wire.WriteF64BE(buf, value.Rate);
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+    /// <summary>SBE body decoder for FundingPayment: reads fields at pos.</summary>
+    public static class FundingPaymentBodyDecoder
+    {
+        public static (FundingPayment Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new FundingPayment();
+            string? symbol;
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            double amount = Wire.ReadF64BE(buf, ref pos);
+            double rate = Wire.ReadF64BE(buf, ref pos);
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Amount = amount;
+            value.Rate = rate;
+            value.Timestamp = timestamp;
+            return (value, pos);
         }
     }
 
@@ -2873,178 +5131,314 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Symbol string?, Amount double, Rate double, Timestamp long)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 42);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 24);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
-                Wire.WriteF64BE(buf, Amount);
-                Wire.WriteF64BE(buf, Rate);
-                Wire.WriteI64BE(buf, Timestamp);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 42);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 24);
+            Wire.WriteString(buf, Account);
+            if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteF64BE(buf, Amount);
+            Wire.WriteF64BE(buf, Rate);
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for FundingPayment</summary>
-    public class FundingPaymentDecoder
+    /// <summary>SBE decoder for FundingPayment: validates the header and reads the body.</summary>
+    public static class FundingPaymentDecoder
     {
-        public string Account { get; set; }
-        public string? Symbol { get; set; }
-        public double Amount { get; set; }
-        public double Rate { get; set; }
-        public long Timestamp { get; set; }
-        public int EncodedLen() => 0;
-
-        public static FundingPaymentDecoder Decode(byte[] buf)
+        public static FundingPayment Decode(byte[] buf)
         {
+            var value = new FundingPayment();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 42) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
             string? symbol;
-            if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
             double amount = Wire.ReadF64BE(buf, ref pos);
             double rate = Wire.ReadF64BE(buf, ref pos);
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            return new FundingPaymentDecoder
-            {
-                Account = account,
-                Symbol = symbol,
-                Amount = amount,
-                Rate = rate,
-                Timestamp = timestamp,
-            };
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Amount = amount;
+            value.Rate = rate;
+            value.Timestamp = timestamp;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message FundingHistoryRequest</summary>
+    public class FundingHistoryRequest
+    {
+        public string Account;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for FundingHistoryRequest (fields only, no header).</summary>
+    public static class FundingHistoryRequestBodyEncoder
+    {
+        public static void Encode(FundingHistoryRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for FundingHistoryRequest: reads fields at pos.</summary>
+    public static class FundingHistoryRequestBodyDecoder
+    {
+        public static (FundingHistoryRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new FundingHistoryRequest();
+            string? cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for FundingHistoryRequest</summary>
     public static class FundingHistoryRequestEncoder
     {
-        public static byte[] Encode(Account string, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Account string, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 43);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 43);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for FundingHistoryRequest</summary>
-    public class FundingHistoryRequestDecoder
+    /// <summary>SBE decoder for FundingHistoryRequest: validates the header and reads the body.</summary>
+    public static class FundingHistoryRequestDecoder
     {
-        public string Account { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static FundingHistoryRequestDecoder Decode(byte[] buf)
+        public static FundingHistoryRequest Decode(byte[] buf)
         {
+            var value = new FundingHistoryRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 43) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new FundingHistoryRequestDecoder
+            string account = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message FundingHistoryBatch</summary>
+    public class FundingHistoryBatch
+    {
+        public string Account;
+        public List<FundingPayment> Payments;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for FundingHistoryBatch (fields only, no header).</summary>
+    public static class FundingHistoryBatchBodyEncoder
+    {
+        public static void Encode(FundingHistoryBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Payments.Count);
+            foreach (var item in value.Payments)
             {
-                Account = account,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                FundingPaymentBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for FundingHistoryBatch: reads fields at pos.</summary>
+    public static class FundingHistoryBatchBodyDecoder
+    {
+        public static (FundingHistoryBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new FundingHistoryBatch();
+            string? next_cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            uint paymentsCount = Wire.ReadU32BE(buf, ref pos);
+            var payments = new List<FundingPayment>((int)paymentsCount);
+            for (int i = 0; i < (int)paymentsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = FundingPaymentBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                payments.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Payments = payments;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for FundingHistoryBatch</summary>
     public static class FundingHistoryBatchEncoder
     {
-        public static byte[] Encode(Account string, Payments List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Account string, Payments List<FundingPayment>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 44);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Payments.Count);
-                foreach (var item in Payments) {
-                        FundingPaymentEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 44);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Payments.Count);
+            foreach (var item in Payments)
+            {
+                var itemBuf = new List<byte>();
+                FundingPaymentBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for FundingHistoryBatch</summary>
-    public class FundingHistoryBatchDecoder
+    /// <summary>SBE decoder for FundingHistoryBatch: validates the header and reads the body.</summary>
+    public static class FundingHistoryBatchDecoder
     {
-        public string Account { get; set; }
-        public List<string> Payments { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static FundingHistoryBatchDecoder Decode(byte[] buf)
+        public static FundingHistoryBatch Decode(byte[] buf)
         {
+            var value = new FundingHistoryBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 44) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string account = Wire.ReadString(buf, ref pos);
-            int paymentsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var payments = new List<FundingPayment>(paymentsCount);
-            for (int i = 0; i < paymentsCount; i++) {
-                var item = FundingPaymentDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint paymentsCount = Wire.ReadU32BE(buf, ref pos);
+            var payments = new List<FundingPayment>((int)paymentsCount);
+            for (int i = 0; i < (int)paymentsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = FundingPaymentBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 payments.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new FundingHistoryBatchDecoder
-            {
-                Account = account,
-                Payments = payments,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Payments = payments;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message LedgerUpdate</summary>
+    public class LedgerUpdate
+    {
+        public string Account;
+        public string Asset;
+        public double Delta;
+        public LedgerUpdateKind Kind;
+        public long Timestamp;
+        public string? ReferenceId;
+    }
+
+    /// <summary>SBE body encoder for LedgerUpdate (fields only, no header).</summary>
+    public static class LedgerUpdateBodyEncoder
+    {
+        public static void Encode(LedgerUpdate value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteString(buf, value.Asset);
+            Wire.WriteF64BE(buf, value.Delta);
+            buf.Add(LedgerUpdateKindToValue(value.Kind));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            if (value.ReferenceId.HasValue) { buf.Add(1); Wire.WriteString(buf, value.ReferenceId.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for LedgerUpdate: reads fields at pos.</summary>
+    public static class LedgerUpdateBodyDecoder
+    {
+        public static (LedgerUpdate Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new LedgerUpdate();
+            string? reference_id;
+            string account = Wire.ReadString(buf, ref pos);
+            string asset = Wire.ReadString(buf, ref pos);
+            double delta = Wire.ReadF64BE(buf, ref pos);
+            var kind = LedgerUpdateKindFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid LedgerUpdateKind");
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) reference_id = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Asset = asset;
+            value.Delta = delta;
+            value.Kind = kind;
+            value.Timestamp = timestamp;
+            value.ReferenceId = reference_id;
+            return (value, pos);
         }
     }
 
@@ -3054,183 +5448,301 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Asset string, Delta double, Kind LedgerUpdateKind, Timestamp long, ReferenceId string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 45);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 17);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteString(buf, Asset);
-                Wire.WriteF64BE(buf, Delta);
-                buf.Add(LedgerUpdateKindToValue(Kind));
-                Wire.WriteI64BE(buf, Timestamp);
-                if (ReferenceId.HasValue) { buf.Add(1); Wire.WriteString(buf, ReferenceId.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 45);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 17);
+            Wire.WriteString(buf, Account);
+            Wire.WriteString(buf, Asset);
+            Wire.WriteF64BE(buf, Delta);
+            buf.Add(LedgerUpdateKindToValue(Kind));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            if (ReferenceId.HasValue) { buf.Add(1); Wire.WriteString(buf, ReferenceId.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for LedgerUpdate</summary>
-    public class LedgerUpdateDecoder
+    /// <summary>SBE decoder for LedgerUpdate: validates the header and reads the body.</summary>
+    public static class LedgerUpdateDecoder
     {
-        public string Account { get; set; }
-        public string Asset { get; set; }
-        public double Delta { get; set; }
-        public LedgerUpdateKind Kind { get; set; }
-        public long Timestamp { get; set; }
-        public string? ReferenceId { get; set; }
-        public int EncodedLen() => 0;
-
-        public static LedgerUpdateDecoder Decode(byte[] buf)
+        public static LedgerUpdate Decode(byte[] buf)
         {
+            var value = new LedgerUpdate();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 45) throw new InvalidOperationException("invalid template_id");
+            string? reference_id;
             string account = Wire.ReadString(buf, ref pos);
             string asset = Wire.ReadString(buf, ref pos);
             double delta = Wire.ReadF64BE(buf, ref pos);
-            byte kindRaw = buf[pos++];
-            var kind = LedgerUpdateKindFromValue(kindRaw) ?? throw new InvalidOperationException("invalid LedgerUpdateKind");
-            long timestamp = Wire.ReadI64BE(buf, ref pos);
-            string? reference_id;
-            if (buf[pos++] == 1) reference_id = Wire.ReadString(buf, ref pos);
-            return new LedgerUpdateDecoder
-            {
-                Account = account,
-                Asset = asset,
-                Delta = delta,
-                Kind = kind,
-                Timestamp = timestamp,
-                ReferenceId = reference_id,
-            };
+            var kind = LedgerUpdateKindFromValue(TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid LedgerUpdateKind");
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) reference_id = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Asset = asset;
+            value.Delta = delta;
+            value.Kind = kind;
+            value.Timestamp = timestamp;
+            value.ReferenceId = reference_id;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message LedgerHistoryRequest</summary>
+    public class LedgerHistoryRequest
+    {
+        public string Account;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for LedgerHistoryRequest (fields only, no header).</summary>
+    public static class LedgerHistoryRequestBodyEncoder
+    {
+        public static void Encode(LedgerHistoryRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for LedgerHistoryRequest: reads fields at pos.</summary>
+    public static class LedgerHistoryRequestBodyDecoder
+    {
+        public static (LedgerHistoryRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new LedgerHistoryRequest();
+            string? cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for LedgerHistoryRequest</summary>
     public static class LedgerHistoryRequestEncoder
     {
-        public static byte[] Encode(Account string, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Account string, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 46);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 46);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for LedgerHistoryRequest</summary>
-    public class LedgerHistoryRequestDecoder
+    /// <summary>SBE decoder for LedgerHistoryRequest: validates the header and reads the body.</summary>
+    public static class LedgerHistoryRequestDecoder
     {
-        public string Account { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static LedgerHistoryRequestDecoder Decode(byte[] buf)
+        public static LedgerHistoryRequest Decode(byte[] buf)
         {
+            var value = new LedgerHistoryRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 46) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new LedgerHistoryRequestDecoder
+            string account = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message LedgerHistoryBatch</summary>
+    public class LedgerHistoryBatch
+    {
+        public string Account;
+        public List<LedgerUpdate> Entries;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for LedgerHistoryBatch (fields only, no header).</summary>
+    public static class LedgerHistoryBatchBodyEncoder
+    {
+        public static void Encode(LedgerHistoryBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Entries.Count);
+            foreach (var item in value.Entries)
             {
-                Account = account,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                LedgerUpdateBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for LedgerHistoryBatch: reads fields at pos.</summary>
+    public static class LedgerHistoryBatchBodyDecoder
+    {
+        public static (LedgerHistoryBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new LedgerHistoryBatch();
+            string? next_cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            uint entriesCount = Wire.ReadU32BE(buf, ref pos);
+            var entries = new List<LedgerUpdate>((int)entriesCount);
+            for (int i = 0; i < (int)entriesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = LedgerUpdateBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                entries.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Entries = entries;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for LedgerHistoryBatch</summary>
     public static class LedgerHistoryBatchEncoder
     {
-        public static byte[] Encode(Account string, Entries List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Account string, Entries List<LedgerUpdate>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 47);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Entries.Count);
-                foreach (var item in Entries) {
-                        LedgerUpdateEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 47);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Entries.Count);
+            foreach (var item in Entries)
+            {
+                var itemBuf = new List<byte>();
+                LedgerUpdateBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for LedgerHistoryBatch</summary>
-    public class LedgerHistoryBatchDecoder
+    /// <summary>SBE decoder for LedgerHistoryBatch: validates the header and reads the body.</summary>
+    public static class LedgerHistoryBatchDecoder
     {
-        public string Account { get; set; }
-        public List<string> Entries { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static LedgerHistoryBatchDecoder Decode(byte[] buf)
+        public static LedgerHistoryBatch Decode(byte[] buf)
         {
+            var value = new LedgerHistoryBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 47) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string account = Wire.ReadString(buf, ref pos);
-            int entriesCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var entries = new List<LedgerUpdate>(entriesCount);
-            for (int i = 0; i < entriesCount; i++) {
-                var item = LedgerUpdateDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint entriesCount = Wire.ReadU32BE(buf, ref pos);
+            var entries = new List<LedgerUpdate>((int)entriesCount);
+            for (int i = 0; i < (int)entriesCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = LedgerUpdateBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 entries.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new LedgerHistoryBatchDecoder
-            {
-                Account = account,
-                Entries = entries,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Entries = entries;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OpenOrdersRequest</summary>
+    public class OpenOrdersRequest
+    {
+        public string Account;
+        public string? Symbol;
+    }
+
+    /// <summary>SBE body encoder for OpenOrdersRequest (fields only, no header).</summary>
+    public static class OpenOrdersRequestBodyEncoder
+    {
+        public static void Encode(OpenOrdersRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Symbol.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for OpenOrdersRequest: reads fields at pos.</summary>
+    public static class OpenOrdersRequestBodyDecoder
+    {
+        public static (OpenOrdersRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OpenOrdersRequest();
+            string? symbol;
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            return (value, pos);
         }
     }
 
@@ -3240,231 +5752,401 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string, Symbol string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 48);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 48);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Account);
+            if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OpenOrdersRequest</summary>
-    public class OpenOrdersRequestDecoder
+    /// <summary>SBE decoder for OpenOrdersRequest: validates the header and reads the body.</summary>
+    public static class OpenOrdersRequestDecoder
     {
-        public string Account { get; set; }
-        public string? Symbol { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OpenOrdersRequestDecoder Decode(byte[] buf)
+        public static OpenOrdersRequest Decode(byte[] buf)
         {
+            var value = new OpenOrdersRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 48) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
             string? symbol;
-            if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
-            return new OpenOrdersRequestDecoder
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OpenOrdersSnapshot</summary>
+    public class OpenOrdersSnapshot
+    {
+        public string Account;
+        public List<ExecutionReport> Orders;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for OpenOrdersSnapshot (fields only, no header).</summary>
+    public static class OpenOrdersSnapshotBodyEncoder
+    {
+        public static void Encode(OpenOrdersSnapshot value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Orders.Count);
+            foreach (var item in value.Orders)
             {
-                Account = account,
-                Symbol = symbol,
-            };
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for OpenOrdersSnapshot: reads fields at pos.</summary>
+    public static class OpenOrdersSnapshotBodyDecoder
+    {
+        public static (OpenOrdersSnapshot Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OpenOrdersSnapshot();
+            string account = Wire.ReadString(buf, ref pos);
+            uint ordersCount = Wire.ReadU32BE(buf, ref pos);
+            var orders = new List<ExecutionReport>((int)ordersCount);
+            for (int i = 0; i < (int)ordersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                orders.Add(item);
+            }
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Orders = orders;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OpenOrdersSnapshot</summary>
     public static class OpenOrdersSnapshotEncoder
     {
-        public static byte[] Encode(Account string, Orders List<string>, IsSnapshot byte?)
+        public static byte[] Encode(Account string, Orders List<ExecutionReport>, IsSnapshot byte?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 49);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Orders.Count);
-                foreach (var item in Orders) {
-                        ExecutionReportEncoder.Encode(item, buf);
-                }
-                buf.Add(IsSnapshot ?? 0);
-                buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 49);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Orders.Count);
+            foreach (var item in Orders)
+            {
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OpenOrdersSnapshot</summary>
-    public class OpenOrdersSnapshotDecoder
+    /// <summary>SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.</summary>
+    public static class OpenOrdersSnapshotDecoder
     {
-        public string Account { get; set; }
-        public List<string> Orders { get; set; }
-        public byte? IsSnapshot { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OpenOrdersSnapshotDecoder Decode(byte[] buf)
+        public static OpenOrdersSnapshot Decode(byte[] buf)
         {
+            var value = new OpenOrdersSnapshot();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 49) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            int ordersCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var orders = new List<ExecutionReport>(ordersCount);
-            for (int i = 0; i < ordersCount; i++) {
-                var item = ExecutionReportDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint ordersCount = Wire.ReadU32BE(buf, ref pos);
+            var orders = new List<ExecutionReport>((int)ordersCount);
+            for (int i = 0; i < (int)ordersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 orders.Add(item);
             }
-            byte v = buf[pos++];
-            byte? is_snapshot = buf[pos++] == 1 ? v : null;
-            return new OpenOrdersSnapshotDecoder
-            {
-                Account = account,
-                Orders = orders,
-                IsSnapshot = is_snapshot,
-            };
+            byte is_snapshot_v = TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Account = account;
+            value.Orders = orders;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderHistoryRequest</summary>
+    public class OrderHistoryRequest
+    {
+        public string Account;
+        public string? Symbol;
+        public long? StartTime;
+        public long? EndTime;
+        public uint? Limit;
+        public string? Cursor;
+    }
+
+    /// <summary>SBE body encoder for OrderHistoryRequest (fields only, no header).</summary>
+    public static class OrderHistoryRequestBodyEncoder
+    {
+        public static void Encode(OrderHistoryRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU64BE(buf, (ulong)(value.StartTime ?? (long)0));
+            buf.Add((byte)(value.StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.EndTime ?? (long)0));
+            buf.Add((byte)(value.EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, value.Limit ?? (uint)0);
+            buf.Add((byte)(value.Limit.HasValue ? 1 : 0));
+            if (value.Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.Cursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderHistoryRequest: reads fields at pos.</summary>
+    public static class OrderHistoryRequestBodyDecoder
+    {
+        public static (OrderHistoryRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderHistoryRequest();
+            string? symbol;
+            string? cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OrderHistoryRequest</summary>
     public static class OrderHistoryRequestEncoder
     {
-        public static byte[] Encode(Account string, Symbol string?, StartTime long?, EndTime long?, Limit u32?, Cursor string?)
+        public static byte[] Encode(Account string, Symbol string?, StartTime long?, EndTime long?, Limit uint?, Cursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 50);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 20);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
-                if (StartTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, StartTime.Value); } else { buf.Add(0); }
-                if (EndTime.HasValue) { buf.Add(1); Wire.WriteI64BE(buf, EndTime.Value); } else { buf.Add(0); }
-            // TODO: encode limit as u32
-                if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 50);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 20);
+            Wire.WriteString(buf, Account);
+            if (Symbol.HasValue) { buf.Add(1); Wire.WriteString(buf, Symbol.Value); } else { buf.Add(0); }
+            Wire.WriteU64BE(buf, (ulong)(StartTime ?? (long)0));
+            buf.Add((byte)(StartTime.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(EndTime ?? (long)0));
+            buf.Add((byte)(EndTime.HasValue ? 1 : 0));
+            Wire.WriteU32BE(buf, Limit ?? (uint)0);
+            buf.Add((byte)(Limit.HasValue ? 1 : 0));
+            if (Cursor.HasValue) { buf.Add(1); Wire.WriteString(buf, Cursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderHistoryRequest</summary>
-    public class OrderHistoryRequestDecoder
+    /// <summary>SBE decoder for OrderHistoryRequest: validates the header and reads the body.</summary>
+    public static class OrderHistoryRequestDecoder
     {
-        public string Account { get; set; }
-        public string? Symbol { get; set; }
-        public long? StartTime { get; set; }
-        public long? EndTime { get; set; }
-        public u32? Limit { get; set; }
-        public string? Cursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderHistoryRequestDecoder Decode(byte[] buf)
+        public static OrderHistoryRequest Decode(byte[] buf)
         {
+            var value = new OrderHistoryRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 50) throw new InvalidOperationException("invalid template_id");
-            string account = Wire.ReadString(buf, ref pos);
             string? symbol;
-            if (buf[pos++] == 1) symbol = Wire.ReadString(buf, ref pos);
-            long? start_time;
-            if (buf[pos++] == 1) start_time = Wire.ReadI64BE(buf, ref pos);
-            long? end_time;
-            if (buf[pos++] == 1) end_time = Wire.ReadI64BE(buf, ref pos);
-        // TODO: decode limit
             string? cursor;
-            if (buf[pos++] == 1) cursor = Wire.ReadString(buf, ref pos);
-            return new OrderHistoryRequestDecoder
+            string account = Wire.ReadString(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            long start_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? start_time = buf[pos++] == 1 ? start_time_v : null;
+            long end_time_v = (long)Wire.ReadU64BE(buf, ref pos);
+            long? end_time = buf[pos++] == 1 ? end_time_v : null;
+            uint limit_v = Wire.ReadU32BE(buf, ref pos);
+            uint? limit = buf[pos++] == 1 ? limit_v : null;
+            if (TakeU8(buf, ref pos) == 1) cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Symbol = symbol;
+            value.StartTime = start_time;
+            value.EndTime = end_time;
+            value.Limit = limit;
+            value.Cursor = cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message OrderHistoryBatch</summary>
+    public class OrderHistoryBatch
+    {
+        public string Account;
+        public List<ExecutionReport> Orders;
+        public byte HasMore;
+        public string? NextCursor;
+    }
+
+    /// <summary>SBE body encoder for OrderHistoryBatch (fields only, no header).</summary>
+    public static class OrderHistoryBatchBodyEncoder
+    {
+        public static void Encode(OrderHistoryBatch value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+            Wire.WriteU32BE(buf, (uint)value.Orders.Count);
+            foreach (var item in value.Orders)
             {
-                Account = account,
-                Symbol = symbol,
-                StartTime = start_time,
-                EndTime = end_time,
-                Limit = limit,
-                Cursor = cursor,
-            };
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(value.HasMore);
+            if (value.NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, value.NextCursor.Value); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for OrderHistoryBatch: reads fields at pos.</summary>
+    public static class OrderHistoryBatchBodyDecoder
+    {
+        public static (OrderHistoryBatch Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new OrderHistoryBatch();
+            string? next_cursor;
+            string account = Wire.ReadString(buf, ref pos);
+            uint ordersCount = Wire.ReadU32BE(buf, ref pos);
+            var orders = new List<ExecutionReport>((int)ordersCount);
+            for (int i = 0; i < (int)ordersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                orders.Add(item);
+            }
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Orders = orders;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for OrderHistoryBatch</summary>
     public static class OrderHistoryBatchEncoder
     {
-        public static byte[] Encode(Account string, Orders List<string>, HasMore byte, NextCursor string?)
+        public static byte[] Encode(Account string, Orders List<ExecutionReport>, HasMore byte, NextCursor string?)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 51);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 1);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
-                Wire.WriteU32BE(buf, (uint)Orders.Count);
-                foreach (var item in Orders) {
-                        ExecutionReportEncoder.Encode(item, buf);
-                }
-                buf.Add(HasMore);
-                if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 51);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, Account);
+            Wire.WriteU32BE(buf, (uint)Orders.Count);
+            foreach (var item in Orders)
+            {
+                var itemBuf = new List<byte>();
+                ExecutionReportBodyEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            buf.Add(HasMore);
+            if (NextCursor.HasValue) { buf.Add(1); Wire.WriteString(buf, NextCursor.Value); } else { buf.Add(0); }
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for OrderHistoryBatch</summary>
-    public class OrderHistoryBatchDecoder
+    /// <summary>SBE decoder for OrderHistoryBatch: validates the header and reads the body.</summary>
+    public static class OrderHistoryBatchDecoder
     {
-        public string Account { get; set; }
-        public List<string> Orders { get; set; }
-        public byte HasMore { get; set; }
-        public string? NextCursor { get; set; }
-        public int EncodedLen() => 0;
-
-        public static OrderHistoryBatchDecoder Decode(byte[] buf)
+        public static OrderHistoryBatch Decode(byte[] buf)
         {
+            var value = new OrderHistoryBatch();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 51) throw new InvalidOperationException("invalid template_id");
+            string? next_cursor;
             string account = Wire.ReadString(buf, ref pos);
-            int ordersCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var orders = new List<ExecutionReport>(ordersCount);
-            for (int i = 0; i < ordersCount; i++) {
-                var item = ExecutionReportDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint ordersCount = Wire.ReadU32BE(buf, ref pos);
+            var orders = new List<ExecutionReport>((int)ordersCount);
+            for (int i = 0; i < (int)ordersCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = ExecutionReportBodyDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 orders.Add(item);
             }
-            byte has_more = buf[pos++];
-            string? next_cursor;
-            if (buf[pos++] == 1) next_cursor = Wire.ReadString(buf, ref pos);
-            return new OrderHistoryBatchDecoder
-            {
-                Account = account,
-                Orders = orders,
-                HasMore = has_more,
-                NextCursor = next_cursor,
-            };
+            byte has_more = TakeU8(buf, ref pos);
+            if (TakeU8(buf, ref pos) == 1) next_cursor = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            value.Orders = orders;
+            value.HasMore = has_more;
+            value.NextCursor = next_cursor;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message CapabilitiesRequest</summary>
+    public class CapabilitiesRequest
+    {
+    }
+
+    /// <summary>SBE body encoder for CapabilitiesRequest (fields only, no header).</summary>
+    public static class CapabilitiesRequestBodyEncoder
+    {
+        public static void Encode(CapabilitiesRequest value, List<byte> buf)
+        {
+        }
+    }
+
+    /// <summary>SBE body decoder for CapabilitiesRequest: reads fields at pos.</summary>
+    public static class CapabilitiesRequestBodyDecoder
+    {
+        public static (CapabilitiesRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CapabilitiesRequest();
+            return (value, pos);
         }
     }
 
@@ -3474,124 +6156,183 @@ namespace Fig.Sbe
         public static byte[] Encode()
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 52);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 52);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CapabilitiesRequest</summary>
-    public class CapabilitiesRequestDecoder
+    /// <summary>SBE decoder for CapabilitiesRequest: validates the header and reads the body.</summary>
+    public static class CapabilitiesRequestDecoder
     {
-        public int EncodedLen() => 0;
-
-        public static CapabilitiesRequestDecoder Decode(byte[] buf)
+        public static CapabilitiesRequest Decode(byte[] buf)
         {
+            var value = new CapabilitiesRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 52) throw new InvalidOperationException("invalid template_id");
-            return new CapabilitiesRequestDecoder
-            {
+            return value;
+        }
+    }
 
-            };
+    /// <summary>SBE message CapabilitiesResponse</summary>
+    public class CapabilitiesResponse
+    {
+        public List<byte> SchemaIds;
+        public List<CapabilityPath> Paths;
+        public List<string> Symbols;
+        public List<string> Intervals;
+    }
+
+    /// <summary>SBE body encoder for CapabilitiesResponse (fields only, no header).</summary>
+    public static class CapabilitiesResponseBodyEncoder
+    {
+        public static void Encode(CapabilitiesResponse value, List<byte> buf)
+        {
+            Wire.WriteU32BE(buf, (uint)value.SchemaIds.Count);
+            Wire.WriteU32BE(buf, (uint)value.Paths.Count);
+            foreach (var item in value.Paths)
+            {
+                var itemBuf = new List<byte>();
+                CapabilityPathEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)value.Symbols.Count);
+            Wire.WriteU32BE(buf, (uint)value.Intervals.Count);
+        }
+    }
+
+    /// <summary>SBE body decoder for CapabilitiesResponse: reads fields at pos.</summary>
+    public static class CapabilitiesResponseBodyDecoder
+    {
+        public static (CapabilitiesResponse Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new CapabilitiesResponse();
+            uint schema_idsCount = Wire.ReadU32BE(buf, ref pos);
+            var schema_ids = new List<byte>();
+            _ = schema_idsCount;
+            uint pathsCount = Wire.ReadU32BE(buf, ref pos);
+            var paths = new List<CapabilityPath>((int)pathsCount);
+            for (int i = 0; i < (int)pathsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = CapabilityPathDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
+                paths.Add(item);
+            }
+            uint symbolsCount = Wire.ReadU32BE(buf, ref pos);
+            var symbols = new List<string>();
+            _ = symbolsCount;
+            uint intervalsCount = Wire.ReadU32BE(buf, ref pos);
+            var intervals = new List<string>();
+            _ = intervalsCount;
+            value.SchemaIds = schema_ids;
+            value.Paths = paths;
+            value.Symbols = symbols;
+            value.Intervals = intervals;
+            return (value, pos);
         }
     }
 
     /// <summary>SBE encoder for CapabilitiesResponse</summary>
     public static class CapabilitiesResponseEncoder
     {
-        public static byte[] Encode(SchemaIds List<string>, Paths List<string>, Symbols List<string>, Intervals List<string>)
+        public static byte[] Encode(SchemaIds List<byte>, Paths List<CapabilityPath>, Symbols List<string>, Intervals List<string>)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 53);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteU32BE(buf, (uint)SchemaIds.Count);
-                foreach (var item in SchemaIds) {
-                        u8Encoder.Encode(item, buf);
-                }
-                Wire.WriteU32BE(buf, (uint)Paths.Count);
-                foreach (var item in Paths) {
-                        CapabilityPathEncoder.Encode(item, buf);
-                }
-                Wire.WriteU32BE(buf, (uint)Symbols.Count);
-                foreach (var item in Symbols) {
-                        SymbolEncoder.Encode(item, buf);
-                }
-                Wire.WriteU32BE(buf, (uint)Intervals.Count);
-                foreach (var item in Intervals) {
-                        CandleIntervalEncoder.Encode(item, buf);
-                }
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 53);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU32BE(buf, (uint)SchemaIds.Count);
+            Wire.WriteU32BE(buf, (uint)Paths.Count);
+            foreach (var item in Paths)
+            {
+                var itemBuf = new List<byte>();
+                CapabilityPathEncoder.Encode(item, itemBuf);
+                Wire.WriteU32BE(buf, (uint)itemBuf.Count);
+                buf.AddRange(itemBuf);
+            }
+            Wire.WriteU32BE(buf, (uint)Symbols.Count);
+            Wire.WriteU32BE(buf, (uint)Intervals.Count);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for CapabilitiesResponse</summary>
-    public class CapabilitiesResponseDecoder
+    /// <summary>SBE decoder for CapabilitiesResponse: validates the header and reads the body.</summary>
+    public static class CapabilitiesResponseDecoder
     {
-        public List<string> SchemaIds { get; set; }
-        public List<string> Paths { get; set; }
-        public List<string> Symbols { get; set; }
-        public List<string> Intervals { get; set; }
-        public int EncodedLen() => 0;
-
-        public static CapabilitiesResponseDecoder Decode(byte[] buf)
+        public static CapabilitiesResponse Decode(byte[] buf)
         {
+            var value = new CapabilitiesResponse();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 53) throw new InvalidOperationException("invalid template_id");
-            int schema_idsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var schema_ids = new List<u8>(schema_idsCount);
-            for (int i = 0; i < schema_idsCount; i++) {
-                var item = u8Decoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
-                schema_ids.Add(item);
-            }
-            int pathsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var paths = new List<CapabilityPath>(pathsCount);
-            for (int i = 0; i < pathsCount; i++) {
-                var item = CapabilityPathDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
+            uint schema_idsCount = Wire.ReadU32BE(buf, ref pos);
+            var schema_ids = new List<byte>();
+            _ = schema_idsCount;
+            uint pathsCount = Wire.ReadU32BE(buf, ref pos);
+            var paths = new List<CapabilityPath>((int)pathsCount);
+            for (int i = 0; i < (int)pathsCount; i++)
+            {
+                uint itemLen = Wire.ReadU32BE(buf, ref pos);
+                int itemEnd = pos + (int)itemLen;
+                var item = CapabilityPathDecoder.Decode(buf, pos).Value;
+                pos = itemEnd;
                 paths.Add(item);
             }
-            int symbolsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var symbols = new List<Symbol>(symbolsCount);
-            for (int i = 0; i < symbolsCount; i++) {
-                var item = SymbolDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
-                symbols.Add(item);
-            }
-            int intervalsCount = (int)Wire.ReadU32BE(buf, ref pos);
-            var intervals = new List<CandleInterval>(intervalsCount);
-            for (int i = 0; i < intervalsCount; i++) {
-                var item = CandleIntervalDecoder.Decode(buf[pos..]);
-                pos += item.EncodedLen();
-                intervals.Add(item);
-            }
-            return new CapabilitiesResponseDecoder
-            {
-                SchemaIds = schema_ids,
-                Paths = paths,
-                Symbols = symbols,
-                Intervals = intervals,
-            };
+            uint symbolsCount = Wire.ReadU32BE(buf, ref pos);
+            var symbols = new List<string>();
+            _ = symbolsCount;
+            uint intervalsCount = Wire.ReadU32BE(buf, ref pos);
+            var intervals = new List<string>();
+            _ = intervalsCount;
+            value.SchemaIds = schema_ids;
+            value.Paths = paths;
+            value.Symbols = symbols;
+            value.Intervals = intervals;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PositionRequest</summary>
+    public class PositionRequest
+    {
+        public string Account;
+    }
+
+    /// <summary>SBE body encoder for PositionRequest (fields only, no header).</summary>
+    public static class PositionRequestBodyEncoder
+    {
+        public static void Encode(PositionRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Account);
+        }
+    }
+
+    /// <summary>SBE body decoder for PositionRequest: reads fields at pos.</summary>
+    public static class PositionRequestBodyDecoder
+    {
+        public static (PositionRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PositionRequest();
+            string account = Wire.ReadString(buf, ref pos);
+            value.Account = account;
+            return (value, pos);
         }
     }
 
@@ -3601,38 +6342,32 @@ namespace Fig.Sbe
         public static byte[] Encode(Account string)
         {
             var buf = new List<byte>();
-            // SBE Message Header (8 bytes)
-                Wire.WriteU16BE(buf, SCHEMA_ID);
-                Wire.WriteU16BE(buf, 54);
-                Wire.WriteU16BE(buf, 0);
-                Wire.WriteU16BE(buf, 0);
-
-            // Fixed fields
-                Wire.WriteString(buf, Account);
+            Wire.WriteU16BE(buf, SCHEMA_ID);
+            Wire.WriteU16BE(buf, 54);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Account);
             return buf.ToArray();
         }
     }
 
-    /// <summary>SBE decoder for PositionRequest</summary>
-    public class PositionRequestDecoder
+    /// <summary>SBE decoder for PositionRequest: validates the header and reads the body.</summary>
+    public static class PositionRequestDecoder
     {
-        public string Account { get; set; }
-        public int EncodedLen() => 0;
-
-        public static PositionRequestDecoder Decode(byte[] buf)
+        public static PositionRequest Decode(byte[] buf)
         {
+            var value = new PositionRequest();
             if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
             int pos = 0;
             ushort schemaId = Wire.ReadU16BE(buf, ref pos);
             ushort tmplId = Wire.ReadU16BE(buf, ref pos);
-            Wire.ReadU16BE(buf, ref pos); Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
             if (schemaId != SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
             if (tmplId != 54) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
-            return new PositionRequestDecoder
-            {
-                Account = account,
-            };
+            value.Account = account;
+            return value;
         }
     }
 

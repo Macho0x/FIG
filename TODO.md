@@ -533,57 +533,29 @@ integration tests are the reference behavior.
 
 ### 16.2 FSL Codegen Parity (Track A)
 
-> **Native SBE codecs per language (`sbe_codegen.rs` → `sbe_target_codegen.rs`): not usable yet.**
-> A 2026-10 audit built every target and compiled the output: **no target produces compilable
-> code today.** TypeScript is closest (fixes known), Go/C++/Zig have known residual errors,
-> C# is unverified (no local SDK). The generated files are therefore documented as
-> experimental in [bindings/README.md](bindings/README.md) and [docs/PUBLISHING.md](docs/PUBLISHING.md);
-> use the `fig-ffi` SBE codecs (parity-tested in CI) instead.
+> **Native SBE codecs per language (`sbe_codegen.rs` → `sbe_target_codegen.rs`): partially delivered.**
+> After the 2026-10 audit the emission layer was rewritten: per-language type maps for every
+> wire token, per-language parameter syntax, the normative field layout (strings
+> presence-then-`u16 len`; numerics/enums value-then-presence), `{Name}Encoder`/`{Name}Decoder`
+> for structs, `{Name}BodyEncoder`/`{Name}BodyDecoder` for message nesting, and `(buf, pos)`
+> decoders with no `EncodedLen`.
 >
-> **Defects found (all reproducible by compiling `bindings/*/sbe_generated.*`):**
-> 1. Parameter declarations were emitted as `name Type` for every language — valid only in Go;
->    C++/C# need `Type name`, TypeScript/Zig need `name: Type`.
-> 2. Wire tokens leaked into type positions (`u32` in Go/C++/C#/TS) because
->    `map_named_type` did not cover every token and `sbe_named_type_to_wire_type("u8")`
->    fell through to `"str"`.
-> 3. Struct/message-typed fields resolved through the wire-type map, so `list<PriceLevel>`
->    became `[]string` (element types must resolve to the referenced type name).
-> 4. Temporaries were named `v` at function scope, colliding across fields
->    ("v already declared", "redeclaration of 'uint8_t v'").
-> 5. Optional locals were never declared in Go decoders (`undefined: account`).
-> 6. Optional-layout divergence from the normative Rust encoder: optional `i64` was written
->    presence-first (Rust writes value-then-presence) and optional enums omitted the presence
->    byte entirely.
-> 7. Go encoders received `*[]byte` but the emitted writes passed `&buf` (double pointer).
-> 8. `EncodedLen()`/`encodedLen()` returned a hard-coded `0` while list decoding advanced by it.
-> 9. No encoder/decoder was emitted for named struct type-defs (`undefined: PriceLevelEncoder`)
->    and none for message *bodies* (needed for message-typed fields and lists).
-> 10. Lists used the wrong layout: Rust writes `u32 count` then per item `u32 len + body`;
->     the targets wrote the count and then the body with no length prefix.
-> 11. Zig-specific: `*pos++` and untyped `@bitCast`, unused/discarded parameters,
->     `var` where `const` is required, and the decoder namespace is the struct itself
->     (no separate `{Name}Decoder` symbol).
-> 12. Scalar list items (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) have **no
->     defined payload layout in the Rust generator either** — `sbe_codegen.rs` emits a count
->     and then a `// TODO` comment, so `CapabilitiesResponse.schema_ids/symbols/intervals`
->     are silently dropped on the wire by *both* sides. Fixing this is a wire-format decision
->     (suggested: `u32 count` + `u32 len + body` per variable-length item, raw big-endian for
->     fixed-width items) and needs a conformance vector.
+> **Verified now:** Go, C++, TypeScript and Zig compile in CI; the Go target is byte-for-byte
+> identical to the shared conformance vectors for `NewOrderSingle` and `OrderBookSnapshot`
+> (lists + optionals) and round-trips. Tests: `bindings/go/fig/sbe/parity_test.go`.
 >
-> **Design decisions established during the audit** (use these when resuming):
-> - Encoders take the target's growable buffer; Go uses a `*[]byte` parameter with a
->   `local := *buf` … `*buf = local` convention so one emission template works everywhere.
-> - Decoders take `(buf, pos)` and advance `pos` (no `EncodedLen`), mirroring Rust's
->   `(value, consumed)`.
-> - Named structs emit `{Name}Encoder`/`{Name}Decoder`; messages additionally emit
->   `{Name}BodyEncoder`/`{Name}BodyDecoder` (header-less) for nesting, and
->   `{Name}Encoder`/`{Name}Decoder` wrap them with the 8-byte header.
-> - Field layout must be copied verbatim from `sbe_codegen.rs::generate_encode_field`
->   (strings: presence-then-`u16 len`; numerics/enums: value-then-presence).
-> - Verification: compile every target in CI **and** compare per-language encoder output
->   against `tests/conformance/vectors/v1.json` (today only 6 of 54 SBE messages have
->   vectors, so vector coverage must be widened first).
-
+> **Outstanding:**
+> 1. C# compiles — unverified locally (no .NET SDK); add `SbeGenerated.cs` to
+>    `bindings/csharp/smoke/FigSmoke.csproj` once it is known to build.
+> 2. Parity drivers for C++/TypeScript/Zig: encode with the *generated* code and compare with
+>    `tests/conformance/vectors/v1.json` (Go is done).
+> 3. Scalar list items (`list<uint8>`, `list<Symbol>`, `list<CandleInterval>`) still have **no
+>    payload layout in the Rust generator either** — `sbe_codegen.rs` writes a count plus a
+>    `// TODO`, so `CapabilitiesResponse.schema_ids/symbols/intervals` are dropped by *both*
+>    ends. Defining it is a wire-format decision (suggested: `u32 count` + `u32 len + body` per
+>    variable-length item, raw big-endian for fixed-width items) and needs a conformance vector.
+> 4. Widen the vectors (6 of 54 SBE messages today) so per-language parity is meaningful.
+> 5. Remove the "experimental" caveats from `bindings/README.md` / `docs/PUBLISHING.md`.
 
 Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 
