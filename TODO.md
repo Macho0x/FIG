@@ -120,7 +120,7 @@ TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chai
 | ✅ | Redis session round-trip in CI service container | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | crates.io / npm publish automation | both | [§18.7](#187-post-10-outstanding-fig-project) |
 | ⬜ | External penetration test | both | [§18.2](#182-security) (optional for 1.0) |
-| ⬜ | Per-language generated SBE hex CI (optional criterion) | both | [§18.3](#183-client-sdk) |
+| ✅ | Per-language generated SBE hex CI (optional criterion) | both | [§18.3](#183-client-sdk) — Go/C++/C#/TypeScript/Zig |
 | 🔶 | FSL codegen: per-lang native CBOR serializers (§16.2) | both | [§16.2](#162-fsl-codegen-parity-track-a) |
 
 ### 0.8 Adopter checklist (not FIG repo — 🏛 venue-owned)
@@ -169,7 +169,7 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 | ✅ | `fig-client` merge helpers (book, candles, account, mids, bbo, trades, mark, orders) | Required | `crates/fig-client` tests |
 | ✅ | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `run_demos` via `FigSdkClient` — `cli_demos_complete_successfully` |
 | ✅ | Python + FFI exposure | Required | `PyOrderBookState`, `PyMidsState`, … + `fig_*` FFI |
-| ⬜ | Per-language generated SBE hex CI | Optional | FFI SBE hex parity is in CI (§0.4); the *generated* per-language codecs are not compiled or parity-verified — see §16.2 |
+| ✅ | Per-language generated SBE hex CI | Optional | All five generated targets compile and are hex-parity-checked in CI (`Generated SBE targets compile` / `Generated SBE parity` steps); see §16.2 |
 
 ### 18.4 Operations
 
@@ -202,7 +202,7 @@ items do not block the SPEC version bump if accepted or ticketed in §18.7.
 | **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
 | **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
 | **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
-| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers + SBE hex | Native TREE per language; full per-lang generated SBE hex matrix |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers; per-language generated SBE compiled + hex-parity-checked | Native TREE per language; conformance vectors for the remaining SBE messages |
 | **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
 | **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
 | **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |

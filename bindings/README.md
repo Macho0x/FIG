@@ -97,7 +97,10 @@ Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformanc
 
 **Live subscribe:** `fig_client_subscribe` / `fig_client_sub_next` (C), `FigPyClient.subscribe_live` (Python), and the Go/C++/C#/Java/TS/OCaml/Zig wrappers. `fig_client_request_and_recv` is REQUEST only. Test: `cargo test -p fig-ffi --test client_integration`.
 
-**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. The SBE hex parity checks for Go/C++/C# call the **FFI** encoders (`fig_sbe_encode_*`) against the §16.1 vectors — they do not exercise the per-language generated SBE files.
+**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. The
+generated-code hex parity layers on top of that: the Go/C++/C# smoke scripts start with the FFI
+encoders (`fig_sbe_encode_*`) checked against the §16.1 vectors and then encode the same messages
+with the **per-language generated** code and compare the bytes.
 
 **Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): compiling and parity-checked.**
 
