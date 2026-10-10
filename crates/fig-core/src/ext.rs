@@ -17,7 +17,7 @@ pub const CONTENT_TYPE_JSON: &str = "application/json";
 /// Well-known extension tags for FIG frames.
 ///
 /// Each tag identifies the type of metadata carried in the extension.
-/// Tags 0x0001–0x001D are defined by this specification.
+/// Tags 0x0001–0x001E are defined by this specification.
 /// Tags 0x8000–0xFFFF are reserved for private/custom use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExtensionTag {

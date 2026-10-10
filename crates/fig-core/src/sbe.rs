@@ -263,7 +263,7 @@ pub fn encode_order_book_snapshot(snap: &OrderBookSnapshot) -> Vec<u8> {
     )
 }
 
-/// Encode a `BalanceSnapshot` SBE message (template 31).
+/// Encode a `BalanceSnapshot` SBE message (template 33).
 pub fn encode_balance_snapshot(snap: &BalanceSnapshot) -> Vec<u8> {
     BalanceSnapshotEncoder::encode(
         snap.account.clone(),

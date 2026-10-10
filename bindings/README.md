@@ -3,6 +3,13 @@
 Thin wrappers over the stable C ABI in `crates/fig-ffi/include/fig.h`.
 Build `fig-ffi` first (`cargo build -p fig-ffi`) and link `libfig_ffi`.
 
+**TLS:** the FFI client verifies the server certificate by default
+(`client_config_from_env()`). Connecting to the self-signed development simulator
+therefore requires `FIG_TLS_CA=<pem>` — export it with
+`fig-exchange-sim --print-ca .fig/dev-ca.pem` — or the development-only bypass
+`FIG_TLS_INSECURE=1`. Production uses the WebPKI roots or `FIG_TLS_CA` with your
+own CA ([DEPLOYMENT.md](../docs/DEPLOYMENT.md)).
+
 ## Layout
 
 | Path | Language | Notes |
@@ -18,6 +25,7 @@ Build `fig-ffi` first (`cargo build -p fig-ffi`) and link `libfig_ffi`.
 | `zig/pure/protocol.zig` | Zig | Pure protocol library (frame/ext/channel) |
 | `zig/sbe_generated.zig` | Zig | FSL-generated SBE serializers |
 | `java/` | Java | JNI `figClientSubscribe` / `figClientSubNext` + JWT/SBE |
+| `python/` (`crates/fig-python`) | Python | PyO3 module `fig`: `FigPyClient` / `FigPySubscription` + states |
 
 ## FSL codegen
 
@@ -32,7 +40,13 @@ All type targets emit typed enums, nested structs, type aliases, message metadat
 
 ## JWT (dev / conformance)
 
-All bindings expose HS256 JWT helpers via FFI (`fig_jwt_encode`, `fig_jwt_verify_bearer`) for dev `AuthToken` on wire. Production venues verify RS256 JWTs from their identity service.
+All **FFI** bindings (Go, C++, C#, Java, OCaml, TypeScript, Zig) expose HS256 JWT
+helpers via the C ABI (`fig_jwt_encode`, `fig_jwt_verify_bearer`) for the dev
+`AUTH_TOKEN`. The Python binding does not wrap them yet — use the FFI library
+directly or the gateway.
+
+Production venues verify RS256 tokens with `fig_core::jwt_keys`
+(`FIG_JWT_JWKS`); rotation is described in [JWT_KEY_ROTATION.md](../docs/JWT_KEY_ROTATION.md).
 
 ## Conformance
 
@@ -49,9 +63,9 @@ cargo run -p xtask -- codegen --check
 **Stream merge (CBOR payload → local state):** `fig_order_book_*`, `fig_mids_*`,
 `fig_bbo_*`, `fig_trade_tape_*`, `fig_mark_price_*`, `fig_orders_*`,
 `fig_agg_trades_*`, `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*` — see
-`crates/fig-ffi/include/fig.h`. Python: `OrderBookState`, `MidsState`, `BboState`,
-`TradeTape`, `MarkPriceState`, `OrdersState`, `AggTradesState`, `FundingState`,
-`LedgerState`, `LiquidationState` in `fig-python`.
+`crates/fig-ffi/include/fig.h`. Python (module `fig`): `PyOrderBookState`,
+`PyMidsState`, `PyBboState`, `PyTradeTape`, `PyMarkPriceState`, `PyOrdersState`,
+`PyAggTradesState`, `PyFundingState`, `PyLedgerState`, `PyLiquidationState`.
 
 **Compile smoke** (CI also runs Java / TypeScript / Zig / OCaml):
 
@@ -83,6 +97,12 @@ Both `fig-ffi` and `fig-python` run shared §16.1 vectors from `tests/conformanc
 
 **Live subscribe:** `fig_client_subscribe` / `fig_client_sub_next` (C), `FigPyClient.subscribe_live` (Python), and the Go/C++/C#/Java/TS/OCaml/Zig wrappers. `fig_client_request_and_recv` is REQUEST only. Test: `cargo test -p fig-ffi --test client_integration`.
 
-**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. Go/C++/C#/TS/OCaml/Zig SBE hex parity uses FFI `fig_sbe_encode_*` against §16.1 vectors.
+**Scope:** FFI wire codecs (encode/decode, client connect) are conformance-tested in CI. The SBE hex parity checks for Go/C++/C# call the **FFI** encoders (`fig_sbe_encode_*`) against the §16.1 vectors — they do not exercise the per-language generated SBE files.
+
+**Per-language generated SBE (`*_generated.{go,hpp,cs,ts,zig}`): experimental.**
+`cargo run -p xtask -- codegen` emits them from FSL, but they are not compiled or
+parity-verified by CI and they do not yet cover every field kind (optional `i64`/enum
+layouts and the Go target in particular are incomplete). Use the FFI wire codecs for
+production; track progress in [TODO.md §16](../TODO.md).
 
 Go smoke: `cargo build -p fig-ffi && cd bindings/go/fig && go test -c -tags=conformance`.

@@ -3,6 +3,40 @@
 All notable changes to the FIG repository. The wire format is versioned in
 [SPEC.md](SPEC.md); this file tracks the libraries and tooling.
 
+## 1.2.2
+
+### Fixed
+- **TypeScript binding:** `FigClient.ping()` always threw
+  `fig_client_ping failed: undefined` because the `bun:ffi` call was declared with
+  a `void` return while the C ABI returns `int32_t`. Verified against the simulator.
+- **SPEC §6.1/§15** now list `AUTH_METHOD` (`0x001E`), matching
+  `fig_core::ext`. §11.1's example (symbol length, `ExecutionReport` field numbers)
+  was aligned with `schemas/orders.fsl` and marked abridged.
+- **Conformance vectors:** the CandleBar and BalanceSnapshot SBE descriptions named
+  the wrong template ids (20 and 33 are what the encoders emit).
+- `fig_core::sbe::encode_balance_snapshot` doc comment said template 31;
+  `ext.rs` and `durable_session.rs` doc comments stated tag ranges / session
+  backends that do not match the code.
+- **Docs:** Python binding class names and usage (module `fig`, `Py*` state
+  classes, frame-list returns, `FigPySubscription.snapshot` property,
+  `next()` raising on timeout), Python install via `maturin`, tutorial MSRV
+  (1.75 → 1.97), `FIG_SESSION_STORE`/`FIG_SESSION_PATH`/`FIG_SERVER` documented,
+  the non-existent `memory` session backend and `redis` `fix-seq-store` removed
+  from DEPLOYMENT, ftlc `--lang` lists completed, `sbe_decode` fuzz target added
+  to CONTRIBUTING.
+- **TODO.md** counts and markers reconciled with the code (test counts, SPEC line
+  count, 30 extension tags, template ids, historical §18.x rows).
+
+### Changed
+- The generated Go SBE target is excluded from Go builds (`//go:build ignore`):
+  it does not compile yet (incomplete field coverage), so a plain
+  `go build ./...` in `bindings/go/fig` previously failed. It is now documented as
+  experimental in `bindings/README.md`, `docs/PUBLISHING.md` and TODO §16.2.
+
+### Added
+- CI: Python module import smoke (`import fig; fig.version()`), and
+  `go build ./... && go vet ./... && go test -tags=conformance` for the Go wrapper.
+
 ## 1.2.1
 
 ### Fixed

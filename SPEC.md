@@ -264,6 +264,7 @@ the payload (or in a dedicated extension). Defined sub-types:
 | `0x001B` | ACK_RANGE_END | uint32 | End of acknowledged seq range |
 | `0x001C` | FLOW_CONTROL_CREDIT | uint32 | Additional message credits granted |
 | `0x001D` | SCOPE | UTF-8 string | Authorization scope: `trading:orders:write` |
+| `0x001E` | AUTH_METHOD | UTF-8 string | Authentication method used on the connection: `token`, `jwt`, `mtls` |
 
 ### 6.2 Custom Tags
 
@@ -606,6 +607,10 @@ hand without updating FSL and regenerating all targets. See
 
 ### 11.1 Example
 
+*Abridged for readability — the normative definition, including every field number,
+enum variant, and length constraint, is [`schemas/orders.fsl`](schemas/orders.fsl)
+(see [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md)).*
+
 ```
 schema trading.orders v1.0.0 {
     well_known_id: 0x01
@@ -613,7 +618,7 @@ schema trading.orders v1.0.0 {
     type ClientOrderId: string(max_len: 20)
     type Price: decimal64(precision: 8, min: 0)
     type Quantity: decimal64(precision: 0, min: 0, max: 999999999)
-    type Symbol: string(max_len: 8, uppercase: true)
+    type Symbol: string(max_len: 32, uppercase: true)
 
     message NewOrderSingle {
         channel_type: request_response
@@ -630,14 +635,27 @@ schema trading.orders v1.0.0 {
         channel_type: stream_item
         correlation_field: cl_ord_id
         cl_ord_id: ClientOrderId @1
-        exec_id: string(max_len: 20) @2
-        exec_type: enum { new, fill, partial_fill, canceled, rejected } @3
-        last_qty: Quantity @4 optional
-        last_price: Price @5 optional
-        leaves_qty: Quantity @6
-        cum_qty: Quantity @7
-        avg_price: Price @8
-        symbol: Symbol @9
+        order_id: string(max_len: 32) @2
+        exec_id: string(max_len: 20) @3
+        exec_type: enum {
+            new, partial_fill, fill, done_for_day, canceled,
+            replaced, pending_cancel, stopped, rejected,
+            suspended, pending_new, expired
+        } @4
+        ord_status: enum {
+            new, partially_filled, filled, done_for_day, canceled,
+            pending_cancel, stopped, rejected, suspended,
+            pending_new, expired, replaced
+        } @5
+        side: enum { buy, sell, sell_short } @6
+        last_qty: Quantity @7 optional
+        last_price: Price @8 optional
+        leaves_qty: Quantity @9
+        cum_qty: Quantity @10
+        avg_price: Price @11
+        symbol: Symbol @12
+        transact_time: TradeTimestamp @13
+        priority: high
     }
 
     gateway fix {
@@ -752,7 +770,7 @@ Servers advertise their tier during CONNECT via SETTINGS.
 
 - **ALPN identifier:** `fig/1`
 - **Well-known Schema IDs:** 0x01–0xEF (registry TBD)
-- **Well-known Extension Tags:** 0x0001–0x001D (this document); future tags via registry
+- **Well-known Extension Tags:** 0x0001–0x001E (this document); future tags via registry
 - **Content Types:** `application/fig+sbe`, `application/cbor`
 
 ---

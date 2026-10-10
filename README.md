@@ -145,7 +145,7 @@ for later `STREAM_ITEM`s. `send_and_read` is REQUEST-only and will hang on a liv
 | Language | Connect | Docs |
 |---|---|---|
 | Rust | `fig-core` · `fig-client` · `fig-cli` | [docs/TUTORIAL.md](docs/TUTORIAL.md) |
-| Python | `cargo build -p fig-python`, then `import fig` | [crates/fig-python](crates/fig-python/) |
+| Python | `pip install maturin && maturin develop -m crates/fig-python/Cargo.toml`, then `import fig` | [crates/fig-python](crates/fig-python/) · [docs/PUBLISHING.md](docs/PUBLISHING.md) |
 | Go · C# · TypeScript · Java · OCaml · Zig · C++ | `cargo build -p fig-ffi` + the per-language wrapper over [`fig.h`](crates/fig-ffi/include/fig.h) | [bindings/README.md](bindings/README.md) |
 | Browser / no FFI | `fig-gateway` REST + WebSocket | [docs/GATEWAY.md](docs/GATEWAY.md) |
 
@@ -217,7 +217,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.2.1** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+Latest release **1.2.2** ([release notes](CHANGELOG.md)). The wire format is **frozen**
 ([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
 your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).

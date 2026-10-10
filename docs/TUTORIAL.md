@@ -10,7 +10,7 @@ already issued (see §7 and [SPEC.md](../SPEC.md) §9.3).
 
 ## Prerequisites
 
-- Rust 1.75+ (`rustup` recommended)
+- Rust 1.97+ (`rustup` recommended)
 - Linux, macOS, or Windows (CI-tested on all three)
 
 ```bash
@@ -69,7 +69,7 @@ use fig_core::transport;
 use quinn::Endpoint;
 
 let mut ep = Endpoint::client("0.0.0.0:0".parse()?)?;
-ep.set_default_client_config(transport::client_config()?);
+ep.set_default_client_config(transport::client_config_from_env()?);   // verifies TLS
 let conn = ep.connect("127.0.0.1:8443".parse()?, "localhost")?.await?;
 let client = FigSdkClient::new(&conn);
 
@@ -144,7 +144,7 @@ cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 
 Supported `--lang` values:
 
-`rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `json-schema`, `fix-yaml`
+`rust`, `sbe`, `sbe-go`, `sbe-cpp`, `sbe-csharp`, `sbe-typescript` (`sbe-ts`), `sbe-zig`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `java`, `json-schema`, `fix-yaml`, `protocol-cpp`, `protocol-zig`
 
 After changing a schema, regenerate all targets — see
 [ADR 0004 — FSL as Single Source of Truth](adr/0004-fsl-single-source-of-truth.md)

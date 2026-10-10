@@ -112,7 +112,7 @@ cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang go --out /t
 cargo run -p fig-fsl --bin ftlc -- validate schemas/orders.fsl
 ```
 
-Supported `--lang` values: `rust`, `sbe`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `json-schema`, `fix-yaml`.
+Supported `--lang` values: `rust`, `sbe`, `sbe-go`, `sbe-cpp`, `sbe-csharp`, `sbe-typescript` (`sbe-ts`), `sbe-zig`, `go`, `proto`, `sbe-xml`, `cpp`, `csharp`, `python`, `typescript`, `ocaml`, `zig`, `java`, `json-schema`, `fix-yaml`, `protocol-cpp`, `protocol-zig`.
 
 ---
 
@@ -161,14 +161,32 @@ Live subscribe: `fig_client_subscribe`, `fig_client_sub_next`, `fig_client_sub_c
 
 ## `fig-python` — reference binding
 
-`FigPyClient.request()` is REQUEST. `subscribe()` returns a snapshot (no EOF wait).
-`subscribe_live()` returns `FigPySubscription` (`snapshot`, `next`, `close`).
+PyO3 module `fig` (build with `maturin develop -m crates/fig-python/Cargo.toml`).
 
-```bash
-FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli
-FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-cli -- --server 127.0.0.1:8443
-cargo test -p fig-cli
+```python
+import fig
+fig.version()                       # crate version
+
+c = fig.FigPyClient()
+c.connect("127.0.0.1:8443")         # TLS verified by default: set FIG_TLS_CA
+
+c.request(".well-known/capabilities", "GET")   # -> list[bytes] of encoded response frames
+c.subscribe("accounts/A/balances", "accounts/A/balances", "fig-dev-A", 1, 1)  # -> list[bytes] snapshot
+
+sub = c.subscribe_live("accounts/A/balances", "accounts/A/balances", "fig-dev-A", 2, 1)
+sub.snapshot                      # property -> list[bytes] of the snapshot frames
+try:
+    frame = sub.next(500)         # bytes; None on EOF; raises on timeout
+except RuntimeError as e:         # RuntimeError("timeout") when nothing arrived
+    frame = None
+sub.close()
+c.ping()
 ```
+
+`request` and `subscribe` return **lists of encoded frames** (decode with
+`fig.frame_decode_header`). `subscribe_live` returns a subscription whose
+`snapshot` is a property, not a method. Requests are REQUEST-mode; use
+`subscribe_live` (not `request`) for streams that keep pushing.
 
 ---
 

@@ -13,7 +13,7 @@ pub enum DurableSessionStore {
 }
 
 impl DurableSessionStore {
-    /// `FIG_SESSION_STORE=memory|file|redis` (default `file`). `REDIS_URL` required for redis.
+    /// `FIG_SESSION_STORE=file|redis` (default `file`). `REDIS_URL` required for redis.
     pub fn from_env() -> Result<Self, SessionError> {
         let backend = std::env::var("FIG_SESSION_STORE").unwrap_or_else(|_| "file".into());
         match backend.as_str() {

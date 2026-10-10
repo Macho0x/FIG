@@ -53,8 +53,10 @@ nxt = sub.next(timeout_ms=5000)
 3. Regenerate FSL types: `cargo xtask codegen`.
 
 **Conformance:** Rust vectors + `fig-ffi` `binding_conformance` are CI-tested.
-Per-language generated SBE is compile-smoke only until hex parity lands — prefer
-FFI wire codecs for production.
+Per-language generated SBE (`bindings/{go,cpp,csharp,typescript,zig}/*_generated.*`) is
+**experimental**: it is emitted by `cargo xtask codegen` but not compiled or
+parity-tested by CI, and some field kinds are not yet covered. Prefer the FFI wire
+codecs for production; SBE hex parity in CI is measured against the FFI encoders.
 
 ## Manual crates.io publish (maintainers)
 

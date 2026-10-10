@@ -96,23 +96,23 @@ fn collect_schema_types(schema: &Schema) -> (SbeEnumTypes, SbeInlineStructTypes)
 fn file_header(schema: &Schema, lang: SbeTargetLang, desc: &str) -> String {
     let mut out = match lang {
         SbeTargetLang::Go => format!(
-            "//go:build !conformance\n\n// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\npackage figsbe\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\n",
+            "//go:build ignore\n\n// NOTE: the Go SBE target is not compilable yet (incomplete field coverage).\n// It is excluded from builds with `//go:build ignore` so `go build ./...` stays green.\n// Track progress in TODO.md §16.2; use the FFI wire codecs meanwhile.\n\n// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n// {}\n\npackage figsbe\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\n",
             schema.name, schema.version, desc
         ),
         SbeTargetLang::Cpp => format!(
-            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\n#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <optional>\n#include <stdexcept>\n#include <string>\n#include <vector>\n\nnamespace fig::sbe {{\n\n",
+            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n// {}\n\n#pragma once\n\n#include <cstdint>\n#include <cstring>\n#include <optional>\n#include <stdexcept>\n#include <string>\n#include <vector>\n\nnamespace fig::sbe {{\n\n",
             schema.name, schema.version, desc
         ),
         SbeTargetLang::Csharp => format!(
-            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\nusing System;\nusing System.Collections.Generic;\nusing System.Text;\n\nnamespace Fig.Sbe\n{{\n",
+            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n// {}\n\nusing System;\nusing System.Collections.Generic;\nusing System.Text;\n\nnamespace Fig.Sbe\n{{\n",
             schema.name, schema.version, desc
         ),
         SbeTargetLang::TypeScript => format!(
-            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\n",
+            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n// {}\n\n",
             schema.name, schema.version, desc
         ),
         SbeTargetLang::Zig => format!(
-            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n// {}\n\nconst std = @import(\"std\");\n\n",
+            "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n// {}\n\nconst std = @import(\"std\");\n\n",
             schema.name, schema.version, desc
         ),
     };

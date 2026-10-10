@@ -39,7 +39,7 @@ const fig = dlopen(libPath, {
     returns: FFIType.i32,
   },
   fig_client_close: { args: [FFIType.pointer], returns: FFIType.void },
-  fig_client_ping: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_client_ping: { args: [FFIType.pointer], returns: FFIType.i32 },
   fig_client_request_and_recv: {
     args: [FFIType.pointer, FFIType.pointer, FFIType.u64, FFIType.pointer],
     returns: FFIType.i32,

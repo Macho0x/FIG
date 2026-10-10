@@ -167,9 +167,9 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 | Status | Criterion | Blocker | Evidence |
 |---|---|---|---|
 | ✅ | `fig-client` merge helpers (book, candles, account, mids, bbo, trades, mark, orders) | Required | `crates/fig-client` tests |
-| 🔶 | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `run_demos` via `FigSdkClient` — `cli_demos_complete_successfully` |
+| ✅ | `fig-cli` uses `fig-client` as primary demo path | Post-1.0* | `run_demos` via `FigSdkClient` — `cli_demos_complete_successfully` |
 | ✅ | Python + FFI exposure | Required | `PyOrderBookState`, `PyMidsState`, … + `fig_*` FFI |
-| ⬜ | Per-language generated SBE hex CI | Optional | FFI conformance required; native SBE compile-smoke only |
+| ⬜ | Per-language generated SBE hex CI | Optional | FFI SBE hex parity is in CI (§0.4); the *generated* per-language codecs are not compiled or parity-verified — see §16.2 |
 
 ### 18.4 Operations
 
@@ -217,9 +217,9 @@ Ticket or accept each P1–P4 row before sign-off.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | See §0.2 (P1 security) | High | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
-| ⬜ | See §0.3 (P2 SDK polish) | Medium | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
-| ⬜ | See §0.4–0.7 (P3–P4) | Mixed | Accepted at 1.0 sign-off (2026-07-29) — tracked in §0 |
+| — | See §0.2 (P1 security) | High | **Historical 1.0 sign-off snapshot.** Current status lives in §0 — every §0.2 item is now ✅ |
+| — | See §0.3 (P2 SDK polish) | Medium | **Historical 1.0 sign-off snapshot.** Current status lives in §0 |
+| — | See §0.4–0.7 (P3–P4) | Mixed | **Historical 1.0 sign-off snapshot.** Current status lives in §0 |
 
 ### 18.8 Review packet (Engineering + Security)
 
@@ -549,10 +549,10 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 | 🔶 | OCaml: records + variant enums + CBOR | Low | FSL types + ctypes; wire via `fig-ffi` |
 | 🔶 | Zig: structs + CBOR helpers | Medium | FSL types + `@cImport`; wire via `fig-ffi` |
 | ✅ | SBE encode/decode codegen per language | Medium | `ftlc --lang sbe-{go,cpp,csharp,typescript,zig}` → `bindings/` via `sbe_target_codegen.rs` + xtask |
-| ✅ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Cross-validation test in `target_codegen_tests.rs` |
+| ✅ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Generated-code tests in `crates/fig-fsl/tests/target_codegen_tests.rs` |
 | ✅ | Java codegen target (`--lang java`) | Low | `JavaCodegen` → `Generated.java` |
 | ✅ | Update SPEC §11.2 claims to match reality | Low | ADR 0004 + SPEC §11.2 |
-| ✅ | Codegen tests per target (orders.fsl) | High | `target_codegen_tests.rs` — 14 tests |
+| ✅ | Codegen tests per target (orders.fsl) | High | `crates/fig-fsl/tests/target_codegen_tests.rs` — 16 tests |
 
 ---
 
@@ -622,7 +622,7 @@ For languages where FFI is unacceptable — optional alternative to §16.3.
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | Generated frame encode/decode (spec-driven) | Medium | `protocol_codegen.rs` → frame header encode/decode |
-| ✅ | Generated extension tag library | Medium | All 29 extension tags in `bindings/cpp/pure/fig_protocol.hpp` + `bindings/zig/pure/protocol.zig` |
+| ✅ | Generated extension tag library | Medium | All 30 extension tags (0x0001–0x001E) in `bindings/cpp/pure/fig_protocol.hpp` + `bindings/zig/pure/protocol.zig` |
 | ✅ | Generated channel manager | Medium | Stream ID formula, seq nums in pure protocol libs |
 | ✅ | Generated control frame dispatcher | Medium | PING/PONG + control dispatch in pure protocol libs |
 | ⬜ | TREE transport binding per language | Low | Native FIG client over UDP/TLS (ALPN `fig/1`); or TCP downgrade (`FIG\x01`) where TREE is unavailable |
@@ -937,7 +937,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
 | ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
-| 🔶 | Tier 1 SDK: native `request()` | High | See [§0.3](#03-p2--reference-client-and-sdk-polish) |
+| ✅ | Tier 1 SDK: native `request()` | High | `fig-client` `request_*` / `FigSdkClient` — see [§0.3](#03-p2--reference-client-and-sdk-polish) |
 | ✅ | Session resume restores subscriptions | High | `Method: RESUME` + `.well-known/resume` + session store |
 | ✅ | Heartbeat independent of data | — | PING/PONG in §3; used by `fig-cli` |
 | 🔶 | Tier 3 SDK parity definition | Medium | See [§0.3](#03-p2--reference-client-and-sdk-polish) |
@@ -1027,8 +1027,8 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
-| ✅ | SBE templates for hot-path streams | High | `fig-core::sbe_stream` encoders (templates 9, 21–22, 27, 30) |
-| ✅ | CBOR golden vectors per message | High | 28 vectors incl. snapshot/delta pairs + paginated history frame |
+| ✅ | SBE templates for hot-path streams | High | `fig_core::sbe` encoders (templates 9, 20, 22, 27, 33) |
+| ✅ | CBOR golden vectors per message | High | 30 vectors incl. snapshot/delta pairs + paginated history frame |
 | ✅ | SBE golden vectors per message | High | `sbe.candle_bar*`, `sbe.symbol_ticker`, `sbe.order_book_snapshot`, `sbe.balance_snapshot` |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
 | ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE via `ContentType`; `multi_codec.rs` + integration test |
@@ -1133,7 +1133,7 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | TREE transport via quinn 0.11 | — | ALPN `fig/1`, self-signed certs, 0-RTT |
 | ✅ | FrameDecoder for streaming TREE reads | — | Buffered, handles partial frames |
 | ✅ | FigConnection wrapper (open/send/recv/close) | — | Per-channel TREE streams |
-| ✅ | 0-RTT session resumption end-to-end | — | FigClient::connect_0rtt + FigServer::accept_0rtt with rejection fallback; TODO: production replay protection |
+| ✅ | 0-RTT session resumption end-to-end | — | FigClient::connect_0rtt + FigServer::accept_0rtt with rejection fallback; authenticated resumption tokens + replay cache (fig_core::session_token, fig_core::replay) |
 | ✅ | TCP downgrade mode (`FIG\x01` magic prefix) | Medium | Spec §2.1; FigTcpConnection/FigTcpServer over plain TCP |
 | ✅ | Connection migration handling | Low | `migration` module + `FigConnection::prepare_migration` / `apply_migration` |
 | ✅ | TREE stream reset → channel CLOSED transition | — | StreamReset/StreamStopped errors detected, force_close_channel transitions to Closed |
@@ -1145,7 +1145,7 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | 16-byte fixed header encode/decode | — | All fields, round-trip tested |
-| ✅ | TLV extension encode/decode | — | All 29 extension tags |
+| ✅ | TLV extension encode/decode | — | All 30 extension tags |
 | ✅ | All 13 frame types | — | CONTROL through REDIRECT |
 | ✅ | Frame flags (ACK_REQUESTED, COMPRESSED, FRAGMENTED, LAST_FRAGMENT) | — | Defined and tested |
 | ✅ | Payload fragmentation | Medium | FRAGMENTED + LAST_FRAGMENT split/reassembly via FragmentReassembler |
@@ -1248,9 +1248,9 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 
 | Status | Item | Priority | Notes |
 |---|----|----|----|
-| ✅ | FSL parser (tokenizer + recursive descent) | — | 12 tests, full orders.fsl |
+| ✅ | FSL parser (tokenizer + recursive descent) | — | 14 tests, full orders.fsl |
 | ✅ | AST with all node types | — | Serde round-trip |
-| ✅ | Rust codegen | — | 5 tests |
+| ✅ | Rust codegen | — | 6 tests |
 | ✅ | ftlc CLI (compile, validate) | — | 10 tests |
 | ✅ | Enum codegen | — | from_value/to_value with explicit discriminators |
 | ✅ | Inline struct codegen | — | ENCODED_LEN constant, fixed-size struct generation |
@@ -1276,7 +1276,7 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | Order book (price-time priority) | — | 8 tests |
 | ✅ | Matching engine (market + limit orders) | — | 8 tests |
 | ✅ | FIG server over TREE | — | Order entry, cancel, market data, account query |
-| ✅ | Integration tests (end-to-end) | — | 22 tests (orders, MD, account, candles, auth, ticker, capabilities, open orders, book seq, agg trades, mark price, margin, position delta, UNSUBSCRIBE, session resume, request_stream, …) |
+| ✅ | Integration tests (end-to-end) | — | 38 tests (orders, MD, account, candles, auth, ticker, capabilities, open orders, book seq, agg trades, mark price, margin, position delta, UNSUBSCRIBE, session resume, request_stream, …) |
 | ✅ | Market data streaming (push updates) | Medium | Subscription registry + build_market_data_push on trade |
 | ✅ | Historical data handlers in exchange-sim | High | See **§17.4b** — `broker_api::handle_query_request` |
 | ✅ | Candle / OHLCV bar streaming | High | See **§17.3** — `market_data` + `SubscriptionKind::Candles` |
@@ -1310,7 +1310,7 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | Frame encode/decode benchmarks | — | 4 benchmarks |
 | ✅ | CBOR vs SBE codec benchmarks | — | 6 benchmarks |
 | ✅ | Gateway adapter benchmarks | — | 8 benchmarks |
-| ✅ | Matching engine benchmarks | — | 3 benchmarks |
+| ✅ | Matching engine benchmarks | — | 4 benchmarks |
 | ✅ | TREE transport benchmarks (round-trip latency) | Medium | cold-start + steady-state in transport_bench; CI smoke-tests steady-state |
 | ✅ | Tail-latency harness (p99 / p99.9) | Medium | `fig-latency` binary + `latency_bench`; HDR Histogram per-operation samples |
 | ✅ | Comparison benchmarks vs FIX/REST/WS | Medium | protocol_comparison_new_order group in gateway_bench |
@@ -1326,7 +1326,7 @@ If you want the full transport throughput benchmark back in CI later, we'll need
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | README.md | — | Full description, benchmarks, architecture |
-| ✅ | SPEC.md | — | RFC-style protocol specification (553 lines) |
+| ✅ | SPEC.md | — | RFC-style protocol specification (773 lines) |
 | ✅ | CONTRIBUTING.md | — | Development guidelines |
 | ✅ | schemas/orders.fsl | — | Complete example schema |
 | ✅ | API docs (rustdoc) | Medium | docs/API.md + module index; cargo doc --workspace |
@@ -1356,7 +1356,7 @@ If you want the full transport throughput benchmark back in CI later, we'll need
 |---|---|---|---|
 | ✅ | TLS 1.3 via TREE | — | Mandatory, integrated |
 | ✅ | Self-signed cert generation | — | For development |
-| ✅ | mTLS | Medium | server_config_mtls + FIG_MTLS=1 in exchange-sim |
+| ✅ | mTLS | Medium | `server_config_mtls_with_ca` (CA-verified) + `server_config_mtls_insecure` dev fallback; `FIG_MTLS=1` + `FIG_MTLS_CA` in exchange-sim |
 | ✅ | Certificate rotation | Medium | RotatingServerCerts with reload + rebuild config |
 | ✅ | Rate limiting | Medium | ChannelRateLimiter token-bucket per channel |
 | ✅ | DoS protection | Low | `DoSGuard` + `FloodDetector` in dos module |

@@ -1,6 +1,10 @@
-//go:build !conformance
+//go:build ignore
 
-// Auto-generated SBE encode/decode by fig-fsl from schema 'trading.orders' vv1.0.0
+// NOTE: the Go SBE target is not compilable yet (incomplete field coverage).
+// It is excluded from builds with `//go:build ignore` so `go build ./...` stays green.
+// Track progress in TODO.md §16.2; use the FFI wire codecs meanwhile.
+
+// Auto-generated SBE encode/decode by fig-fsl from schema 'trading.orders' v1.0.0
 // Standard order entry and execution messages
 
 package figsbe

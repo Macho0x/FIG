@@ -14,7 +14,7 @@ pub fn generate_sbe(schema: &Schema) -> String {
     let desc = schema.description.as_deref().unwrap_or(&schema.name);
 
     out.push_str(&format!(
-        "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' v{}\n",
+        "// Auto-generated SBE encode/decode by fig-fsl from schema '{}' {}\n",
         schema.name, schema.version
     ));
     out.push_str(&format!("// {}\n\n", desc));

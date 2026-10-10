@@ -1,4 +1,4 @@
-// Auto-generated SBE encode/decode by fig-fsl from schema 'trading.orders' vv1.0.0
+// Auto-generated SBE encode/decode by fig-fsl from schema 'trading.orders' v1.0.0
 // Standard order entry and execution messages
 
 export const SCHEMA_ID = 0x01 as const;

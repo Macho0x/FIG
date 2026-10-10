@@ -170,7 +170,8 @@ Live subscribe tests: `cargo test -p fig-ffi --test client_integration` and
 
 ## Fuzzing
 
-CI runs `cargo fuzz run frame_decode -- -max_total_time=30` on the nightly
+CI runs `cargo fuzz run frame_decode -- -max_total_time=30` and
+`cargo fuzz run sbe_decode -- -max_total_time=30` on the nightly
 toolchain. Locally:
 
 ```bash

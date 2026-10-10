@@ -10,7 +10,7 @@ and account portals.
                     ┌─────────────────────────────────────┐
   Native FIG bots   │  FIG backend (your venue or sim)     │
   (TREE :8443) ────►│  fig-exchange-sim / custom server    │
-                    │  session store: memory | file | redis │
+                    │  session store: file | redis          │
                     │  live SUBSCRIBE: held-open TREE streams │
                     └──────────────┬──────────────────────┘
                                    │
@@ -55,7 +55,7 @@ streams still half-close after the response.
      --session-store redis --redis-url redis://redis:6379 --print-ca .fig/dev-ca.pem
    ```
 
-3. **Gateway** — typically stateless when proxying to `--fig-backend`; use file or redis `fix-seq-store` for FIX sequence persistence across gateway restarts.
+3. **Gateway** — typically stateless when proxying to `--fig-backend`; use `--fix-seq-store file` (or the default in-memory store) for FIX sequence persistence across gateway restarts. Redis is not a supported `fix-seq-store` backend.
 4. **0-RTT replay cache** — default in-process `MemoryReplayCache` per node. For
    strict cluster-wide replay rejection, point nodes at a shared Redis and build
    with the `session-redis` feature:
@@ -122,9 +122,12 @@ Wire `tracing-subscriber` in your binary to export spans to OpenTelemetry.
 | `FIG_TLS_INSECURE` | Client: `1` disables TLS verification (dev only) |
 | `FIG_MTLS` | Enable mTLS on exchange-sim |
 | `FIG_MTLS_CA` | Server: client CA bundle to verify mTLS client certificates |
+| `FIG_SESSION_STORE` | Simulator session backend: `file` (default) or `redis` |
+| `FIG_SESSION_PATH` | Directory for the `file` session backend |
+| `FIG_SERVER` | `fig-cli` server address (`host:port`; overridden by `--server`) |
 | `FIG_RESUMPTION_KEY` | Shared HMAC key for session resumption tokens (HA) |
 | `FIG_REPLAY_REDIS_URL` | Shared Redis 0-RTT replay cache (requires `session-redis`) |
-| `FIG_JWT_JWKS` | RS256 public keys: inline JWKS JSON or a path to a JWKS file |
+| `FIG_JWT_JWKS` | RS256 public keys: inline JWKS JSON or a JWKS file path — read by `fig_core::jwt_keys::RsaKeySet::from_env()`; wire it into your server's auth path |
 | `REDIS_URL` | Redis session store when `--session-store redis` |
 | `RUST_LOG` | Log level (`info`, `debug`) |
 
