@@ -549,10 +549,13 @@ integration tests are the reference behavior.
 > `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
 > **Outstanding:**
-> 1. Widen the vectors: 7 of 54 SBE messages have one (`NewOrderSingle`, `OrderBookSnapshot`,
->    `CapabilitiesResponse`, plus the CBOR/other-category entries), so parity is proven for those
->    three message types only. Adding a vector requires an `encode_*` helper in `fig-core::sbe`
->    plus a `sample_*` in `fig-conformance` to keep encoder and runner aligned.
+> 1. Vector coverage: 16 of 54 catalog messages now have an SBE vector (every message type that
+>    already had a CBOR sample, plus `CapabilitiesResponse`); the other ~38 need a `sample_*` in
+>    `fig-conformance` and an `encode_*` helper in `fig-core::sbe` — the vectors are only as good
+>    as that sample data, which is why the CBOR-covered set came first. The five generated-target
+>    parity drivers cover `NewOrderSingle`, `OrderBookSnapshot` and `CapabilitiesResponse`, i.e.
+>    every distinct wire shape (optionals, enums, nested structs, struct lists, scalar lists);
+>    extending them to all 16 would need hand-written call sites in five languages.
 > 2. Scalar list items are defined for `u8`/`u16`/`i16`/`u32`/`i32`/`u64`/`i64`/`f32`/`f64` and
 >    strings, but no schema currently exercises the numeric variants (the only scalar lists in the
 >    catalog are `list<uint8>`, `list<Symbol>`, `list<CandleInterval>`), so those paths are emitted

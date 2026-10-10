@@ -2,8 +2,10 @@
 
 use crate::generated::sbe_wire::*;
 use crate::messages::{
-    BalanceSnapshot, CancelRequest, CandleBar, CandleBarBatch, ExecutionReport, NewOrderSingle,
-    OrdStatus, OrderBookSnapshot, OrderType, SecurityIdSource, Side, SymbolTicker, TimeInForce,
+    BalanceSnapshot, CancelRequest, CandleBar, CandleBarBatch, ExecutionReport, MarkPriceUpdate,
+    MarketDataSnapshot, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderType,
+    PositionUpdate, SecurityIdSource, Side, SymbolTicker, TimeInForce,
 };
 
 /// Errors that can occur during SBE encoding or decoding.
@@ -282,6 +284,95 @@ pub fn decode_capabilities_response(
         symbols: d.symbols,
         intervals: d.intervals,
     })
+}
+
+/// Encode a `MarkPriceUpdate` SBE message.
+pub fn encode_mark_price_update(m: &MarkPriceUpdate) -> Vec<u8> {
+    MarkPriceUpdateEncoder::encode(
+        m.symbol.clone(),
+        m.mark_price.clone(),
+        m.index_price.clone(),
+        m.funding_rate,
+        m.timestamp,
+        m.is_snapshot,
+    )
+}
+
+/// Encode a `MarketDataSnapshot` SBE message.
+pub fn encode_market_data_snapshot(m: &MarketDataSnapshot) -> Vec<u8> {
+    MarketDataSnapshotEncoder::encode(
+        m.symbol.clone(),
+        m.exchange.clone(),
+        m.bids.clone(),
+        m.asks.clone(),
+        m.timestamp,
+        m.sequence,
+        m.is_snapshot,
+    )
+}
+
+/// Encode a `MiniTicker` SBE message.
+pub fn encode_mini_ticker(m: &MiniTicker) -> Vec<u8> {
+    MiniTickerEncoder::encode(
+        m.symbol.clone(),
+        m.last_price.clone(),
+        m.volume.clone(),
+        m.timestamp,
+        m.is_snapshot,
+    )
+}
+
+/// Encode a `OpenOrdersSnapshot` SBE message.
+pub fn encode_open_orders_snapshot(m: &OpenOrdersSnapshot) -> Vec<u8> {
+    OpenOrdersSnapshotEncoder::encode(m.account.clone(), m.orders.clone(), m.is_snapshot)
+}
+
+/// Encode a `OrderBookDelta` SBE message.
+pub fn encode_order_book_delta(m: &OrderBookDelta) -> Vec<u8> {
+    OrderBookDeltaEncoder::encode(m.symbol.clone(), m.updates.clone(), m.timestamp, m.sequence)
+}
+
+/// Encode a `OrderHistoryBatch` SBE message.
+pub fn encode_order_history_batch(m: &OrderHistoryBatch) -> Vec<u8> {
+    OrderHistoryBatchEncoder::encode(
+        m.account.clone(),
+        m.orders.clone(),
+        m.has_more,
+        m.next_cursor.clone(),
+    )
+}
+
+/// Encode a `OrderHistoryRequest` SBE message.
+pub fn encode_order_history_request(m: &OrderHistoryRequest) -> Vec<u8> {
+    OrderHistoryRequestEncoder::encode(
+        m.account.clone(),
+        m.symbol.clone(),
+        m.start_time,
+        m.end_time,
+        m.limit,
+        m.cursor.clone(),
+    )
+}
+
+/// Encode a `OrderListStatus` SBE message.
+pub fn encode_order_list_status(m: &OrderListStatus) -> Vec<u8> {
+    OrderListStatusEncoder::encode(
+        m.account.clone(),
+        m.list_id.clone(),
+        m.status,
+        m.symbol.clone(),
+    )
+}
+
+/// Encode a `PositionUpdate` SBE message.
+pub fn encode_position_update(m: &PositionUpdate) -> Vec<u8> {
+    PositionUpdateEncoder::encode(
+        m.account.clone(),
+        m.symbol.clone(),
+        m.qty.clone(),
+        m.entry_price.clone(),
+        m.unrealized_pnl,
+    )
 }
 
 /// Encode a `CapabilitiesResponse` SBE message — exercises list-of-scalar fields

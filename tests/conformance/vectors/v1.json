@@ -421,6 +421,96 @@
       "channel": null
     },
     {
+      "id": "sbe.mark_price_update.demo",
+      "category": "sbe",
+      "description": "MarkPriceUpdate SBE",
+      "message_type": "MarkPriceUpdate",
+      "expected_hex": "000100110000002100044141504c405900a3d70a3d714059000000000000013f1a36e2eb1c432d0117979cfe362a00000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.market_data_snapshot.demo",
+      "category": "sbe",
+      "description": "MarketDataSnapshot SBE",
+      "message_type": "MarketDataSnapshot",
+      "expected_hex": "000100060000001100044141504c000353494d00000001000000154059000000000000401400000000000000000001010000000017979cfe362a0000000000000000002a010101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.mini_ticker.demo",
+      "category": "sbe",
+      "description": "MiniTicker SBE",
+      "message_type": "MiniTicker",
+      "expected_hex": "0001000e0000001900044141504c4059000000000000404900000000000017979cfe362a00000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.open_orders_snapshot.demo",
+      "category": "sbe",
+      "description": "OpenOrdersSnapshot SBE",
+      "message_type": "OpenOrdersSnapshot",
+      "expected_hex": "0001003100000001000444454d4f000000000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.order_book_delta.demo",
+      "category": "sbe",
+      "description": "OrderBookDelta SBE",
+      "message_type": "OrderBookDelta",
+      "expected_hex": "0001000a0000001000044141504c000000010000001201024059000000000000401400000000000017979cfe362a0000000000000000002b01",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.order_history_batch.demo",
+      "category": "sbe",
+      "description": "OrderHistoryBatch SBE",
+      "message_type": "OrderHistoryBatch",
+      "expected_hex": "0001003300000001000444454d4f000000010000004e0006484953542d310001310006657865632d3101010100000000000000000000000000000000000040240000000000000000000000000000000000000000000000044141504c17979cfe362a000001010006657865632d31",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.order_history_request.demo",
+      "category": "sbe",
+      "description": "OrderHistoryRequest SBE",
+      "message_type": "OrderHistoryRequest",
+      "expected_hex": "0001003200000014000444454d4f00000000000000000000000000000000000000000000640100",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.order_list_status.demo",
+      "category": "sbe",
+      "description": "OrderListStatus SBE",
+      "message_type": "OrderListStatus",
+      "expected_hex": "0001002700000001000444454d4f00044f4c2d31010100044141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.position_update.demo",
+      "category": "sbe",
+      "description": "PositionUpdate SBE",
+      "message_type": "PositionUpdate",
+      "expected_hex": "0001002400000018000444454d4f00044141504c402400000000000040590000000000000000000000000000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "sbe.capabilities_response.demo",
       "category": "sbe",
       "description": "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>",

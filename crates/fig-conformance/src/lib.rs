@@ -118,7 +118,7 @@ fn run_cbor_vector(vector: &ConformanceVector) -> Result<()> {
     Ok(())
 }
 
-fn sample_candle_bar() -> CandleBar {
+pub fn sample_candle_bar() -> CandleBar {
     CandleBar {
         symbol: "AAPL".to_string(),
         interval: "5m".to_string(),
@@ -134,7 +134,7 @@ fn sample_candle_bar() -> CandleBar {
     }
 }
 
-fn sample_balance_snapshot() -> BalanceSnapshot {
+pub fn sample_balance_snapshot() -> BalanceSnapshot {
     BalanceSnapshot {
         account: "DEMO".to_string(),
         balances: vec![fig_core::messages::BalanceEntry {
@@ -147,7 +147,7 @@ fn sample_balance_snapshot() -> BalanceSnapshot {
     }
 }
 
-fn sample_capabilities_response() -> CapabilitiesResponse {
+pub fn sample_capabilities_response() -> CapabilitiesResponse {
     CapabilitiesResponse {
         schema_ids: vec![1, 2, 3],
         paths: vec![fig_core::messages::CapabilityPath {
@@ -160,7 +160,7 @@ fn sample_capabilities_response() -> CapabilitiesResponse {
     }
 }
 
-fn sample_open_orders_snapshot() -> OpenOrdersSnapshot {
+pub fn sample_open_orders_snapshot() -> OpenOrdersSnapshot {
     OpenOrdersSnapshot {
         account: "DEMO".to_string(),
         orders: vec![],
@@ -168,7 +168,7 @@ fn sample_open_orders_snapshot() -> OpenOrdersSnapshot {
     }
 }
 
-fn sample_market_data_snapshot() -> MarketDataSnapshot {
+pub fn sample_market_data_snapshot() -> MarketDataSnapshot {
     use fig_core::messages::PriceLevel;
     MarketDataSnapshot {
         symbol: "AAPL".to_string(),
@@ -185,7 +185,7 @@ fn sample_market_data_snapshot() -> MarketDataSnapshot {
     }
 }
 
-fn sample_order_history_request() -> OrderHistoryRequest {
+pub fn sample_order_history_request() -> OrderHistoryRequest {
     OrderHistoryRequest {
         account: "DEMO".to_string(),
         symbol: None,
@@ -196,7 +196,7 @@ fn sample_order_history_request() -> OrderHistoryRequest {
     }
 }
 
-fn sample_order_history_batch() -> OrderHistoryBatch {
+pub fn sample_order_history_batch() -> OrderHistoryBatch {
     OrderHistoryBatch {
         account: "DEMO".to_string(),
         orders: vec![ExecutionReport {
@@ -219,7 +219,7 @@ fn sample_order_history_batch() -> OrderHistoryBatch {
     }
 }
 
-fn sample_order_list_status() -> OrderListStatus {
+pub fn sample_order_list_status() -> OrderListStatus {
     OrderListStatus {
         account: "DEMO".to_string(),
         list_id: "OL-1".to_string(),
@@ -228,7 +228,7 @@ fn sample_order_list_status() -> OrderListStatus {
     }
 }
 
-fn sample_order_book_snapshot() -> OrderBookSnapshot {
+pub fn sample_order_book_snapshot() -> OrderBookSnapshot {
     use fig_core::messages::PriceLevel;
     OrderBookSnapshot {
         symbol: "AAPL".to_string(),
@@ -245,7 +245,7 @@ fn sample_order_book_snapshot() -> OrderBookSnapshot {
     }
 }
 
-fn sample_order_book_delta() -> OrderBookDelta {
+pub fn sample_order_book_delta() -> OrderBookDelta {
     OrderBookDelta {
         symbol: "AAPL".to_string(),
         updates: vec![MarketDataUpdate {
@@ -259,7 +259,7 @@ fn sample_order_book_delta() -> OrderBookDelta {
     }
 }
 
-fn sample_position_update() -> PositionUpdate {
+pub fn sample_position_update() -> PositionUpdate {
     PositionUpdate {
         account: "DEMO".to_string(),
         symbol: "AAPL".to_string(),
@@ -269,7 +269,7 @@ fn sample_position_update() -> PositionUpdate {
     }
 }
 
-fn sample_aggregate_trade() -> AggregateTrade {
+pub fn sample_aggregate_trade() -> AggregateTrade {
     AggregateTrade {
         symbol: "AAPL".to_string(),
         agg_trade_id: "A-1".to_string(),
@@ -282,7 +282,7 @@ fn sample_aggregate_trade() -> AggregateTrade {
     }
 }
 
-fn sample_mini_ticker() -> MiniTicker {
+pub fn sample_mini_ticker() -> MiniTicker {
     MiniTicker {
         symbol: "AAPL".to_string(),
         last_price: Price(100.0),
@@ -292,7 +292,7 @@ fn sample_mini_ticker() -> MiniTicker {
     }
 }
 
-fn sample_mark_price_update() -> MarkPriceUpdate {
+pub fn sample_mark_price_update() -> MarkPriceUpdate {
     MarkPriceUpdate {
         symbol: "AAPL".to_string(),
         mark_price: Price(100.01),
@@ -303,7 +303,7 @@ fn sample_mark_price_update() -> MarkPriceUpdate {
     }
 }
 
-fn sample_candle_bar_batch() -> CandleBarBatch {
+pub fn sample_candle_bar_batch() -> CandleBarBatch {
     CandleBarBatch {
         symbol: "AAPL".to_string(),
         interval: "5m".to_string(),
@@ -313,7 +313,7 @@ fn sample_candle_bar_batch() -> CandleBarBatch {
     }
 }
 
-fn sample_symbol_ticker() -> SymbolTicker {
+pub fn sample_symbol_ticker() -> SymbolTicker {
     SymbolTicker {
         symbol: "AAPL".to_string(),
         last_price: Price(150.5),
@@ -331,7 +331,10 @@ fn sample_symbol_ticker() -> SymbolTicker {
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
         encode_balance_snapshot, encode_candle_bar, encode_candle_bar_batch,
-        encode_capabilities_response, encode_order_book_snapshot, encode_symbol_ticker,
+        encode_capabilities_response, encode_mark_price_update, encode_market_data_snapshot,
+        encode_mini_ticker, encode_open_orders_snapshot, encode_order_book_delta,
+        encode_order_book_snapshot, encode_order_history_batch, encode_order_history_request,
+        encode_order_list_status, encode_position_update, encode_symbol_ticker,
     };
 
     let encoded = match vector.message_type.as_str() {
@@ -349,6 +352,15 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "OrderBookSnapshot" => encode_order_book_snapshot(&sample_order_book_snapshot()),
         "BalanceSnapshot" => encode_balance_snapshot(&sample_balance_snapshot()),
         "CapabilitiesResponse" => encode_capabilities_response(&sample_capabilities_response()),
+        "MarkPriceUpdate" => encode_mark_price_update(&sample_mark_price_update()),
+        "MarketDataSnapshot" => encode_market_data_snapshot(&sample_market_data_snapshot()),
+        "MiniTicker" => encode_mini_ticker(&sample_mini_ticker()),
+        "OpenOrdersSnapshot" => encode_open_orders_snapshot(&sample_open_orders_snapshot()),
+        "OrderBookDelta" => encode_order_book_delta(&sample_order_book_delta()),
+        "OrderHistoryBatch" => encode_order_history_batch(&sample_order_history_batch()),
+        "OrderHistoryRequest" => encode_order_history_request(&sample_order_history_request()),
+        "OrderListStatus" => encode_order_list_status(&sample_order_list_status()),
+        "PositionUpdate" => encode_position_update(&sample_position_update()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;
