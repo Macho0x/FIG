@@ -5,8 +5,9 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, InstrumentCatalogResponse,
-    InstrumentMetadata, MarketDataSnapshot, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot,
-    OrderHistoryRequest, OrderType, Price, PriceLevel, Quantity, Side, TimeInForce,
+    InstrumentMetadata, MarketDataSnapshot, MassCancelRequest, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrderHistoryRequest, OrderType, Price, PriceLevel, Quantity, Side,
+    TimeInForce,
 };
 
 pub fn encode_new_order_single(
@@ -41,6 +42,21 @@ pub fn encode_new_order_single(
         reduce_only,
     };
     encode_cbor(&order).map_err(|e| e.to_string())
+}
+
+pub fn encode_mass_cancel_request(
+    cl_ord_id: &str,
+    account: &str,
+    symbol: Option<&str>,
+    side: Option<Side>,
+) -> Result<Vec<u8>, String> {
+    let req = MassCancelRequest {
+        cl_ord_id: cl_ord_id.to_string(),
+        account: account.to_string(),
+        symbol: symbol.map(str::to_string),
+        side,
+    };
+    encode_cbor(&req).map_err(|e| e.to_string())
 }
 
 pub fn decode_new_order_cl_ord_id(data: &[u8]) -> Result<String, String> {

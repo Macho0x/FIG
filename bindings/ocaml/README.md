@@ -12,4 +12,6 @@ bash bindings/ocaml/smoke/run.sh
 ```
 
 See [`fig.ml`](fig.ml) and [`fig_stubs.c`](fig_stubs.c) for `subscribe` /
-`sub_next` (live SUBSCRIBE) and `request_and_recv` (REQUEST only).
+`sub_next` (live SUBSCRIBE), `request_and_recv` (REQUEST only), and the
+market-state helpers `request_session_status`, `request_security_status`,
+and `mass_cancel`.

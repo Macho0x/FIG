@@ -238,3 +238,190 @@ CAMLprim value caml_fig_client_sub_close(value sub) {
     }
     CAMLreturn(Val_unit);
 }
+
+static value owned_string(char *s) {
+    CAMLparam0();
+    CAMLlocal1(str);
+    if (s == NULL) {
+        caml_failwith("unexpected null string");
+    }
+    str = caml_copy_string(s);
+    fig_string_free(s);
+    CAMLreturn(str);
+}
+
+static value option_string(char *s) {
+    CAMLparam0();
+    CAMLlocal2(str, some);
+    if (s == NULL) {
+        CAMLreturn(Val_int(0));
+    }
+    str = caml_copy_string(s);
+    fig_string_free(s);
+    some = caml_alloc(1, 0);
+    Store_field(some, 0, str);
+    CAMLreturn(some);
+}
+
+CAMLprim value caml_fig_cbor_encode_mass_cancel_request(
+    value cl, value account, value symbol, value side) {
+    CAMLparam4(cl, account, symbol, side);
+    struct FigBuffer out = {0};
+    const char *sym = caml_string_length(symbol) ? String_val(symbol) : NULL;
+    int32_t rc = fig_cbor_encode_mass_cancel_request(
+        String_val(cl), String_val(account), sym, (uint8_t)Int_val(side), &out);
+    if (rc != 0) {
+        caml_failwith("fig_cbor_encode_mass_cancel_request failed");
+    }
+    CAMLreturn(bytes_of_fig_buffer(out));
+}
+
+CAMLprim value caml_fig_cbor_decode_mass_cancel_request(value data) {
+    CAMLparam1(data);
+    CAMLlocal1(tup);
+    char *cl = NULL;
+    char *account = NULL;
+    char *symbol = NULL;
+    uint8_t side = 0;
+    int32_t rc = fig_cbor_decode_mass_cancel_request(
+        (const uint8_t *)String_val(data),
+        caml_string_length(data),
+        &cl,
+        &account,
+        &symbol,
+        &side);
+    if (rc != 0) {
+        caml_failwith("fig_cbor_decode_mass_cancel_request failed");
+    }
+    tup = caml_alloc_tuple(4);
+    Store_field(tup, 0, owned_string(cl));
+    Store_field(tup, 1, owned_string(account));
+    Store_field(tup, 2, option_string(symbol));
+    Store_field(tup, 3, Val_int(side));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_cbor_decode_trading_session_status(value data) {
+    CAMLparam1(data);
+    CAMLlocal1(tup);
+    uint8_t status = 0;
+    char *session = NULL;
+    int32_t rc = fig_cbor_decode_trading_session_status(
+        (const uint8_t *)String_val(data), caml_string_length(data), &status, &session);
+    if (rc != 0) {
+        caml_failwith("fig_cbor_decode_trading_session_status failed");
+    }
+    tup = caml_alloc_tuple(2);
+    Store_field(tup, 0, Val_int(status));
+    Store_field(tup, 1, owned_string(session));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_cbor_decode_security_status(value data) {
+    CAMLparam1(data);
+    CAMLlocal1(tup);
+    char *symbol = NULL;
+    uint8_t status = 0;
+    int32_t rc = fig_cbor_decode_security_status(
+        (const uint8_t *)String_val(data), caml_string_length(data), &symbol, &status);
+    if (rc != 0) {
+        caml_failwith("fig_cbor_decode_security_status failed");
+    }
+    tup = caml_alloc_tuple(2);
+    Store_field(tup, 0, owned_string(symbol));
+    Store_field(tup, 1, Val_int(status));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_cbor_decode_mass_cancel_report(value data) {
+    CAMLparam1(data);
+    CAMLlocal1(tup);
+    char *cl = NULL;
+    uint32_t total = 0;
+    uint8_t status = 0;
+    int32_t rc = fig_cbor_decode_mass_cancel_report(
+        (const uint8_t *)String_val(data),
+        caml_string_length(data),
+        &cl,
+        &total,
+        &status);
+    if (rc != 0) {
+        caml_failwith("fig_cbor_decode_mass_cancel_report failed");
+    }
+    tup = caml_alloc_tuple(3);
+    Store_field(tup, 0, owned_string(cl));
+    Store_field(tup, 1, Val_int((int)total));
+    Store_field(tup, 2, Val_int(status));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_client_request_session_status(value client, value channel_id) {
+    CAMLparam2(client, channel_id);
+    CAMLlocal1(tup);
+    uint8_t status = 0;
+    char *session = NULL;
+    int32_t rc = fig_client_request_session_status(
+        Client_val(client), (uint16_t)Int_val(channel_id), &status, &session);
+    if (rc != 0) {
+        caml_failwith("fig_client_request_session_status failed");
+    }
+    tup = caml_alloc_tuple(2);
+    Store_field(tup, 0, Val_int(status));
+    Store_field(tup, 1, owned_string(session));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_client_request_security_status(
+    value client, value symbol, value channel_id) {
+    CAMLparam3(client, symbol, channel_id);
+    CAMLlocal1(tup);
+    char *out_symbol = NULL;
+    uint8_t status = 0;
+    int32_t rc = fig_client_request_security_status(
+        Client_val(client),
+        String_val(symbol),
+        (uint16_t)Int_val(channel_id),
+        &out_symbol,
+        &status);
+    if (rc != 0) {
+        caml_failwith("fig_client_request_security_status failed");
+    }
+    tup = caml_alloc_tuple(2);
+    Store_field(tup, 0, owned_string(out_symbol));
+    Store_field(tup, 1, Val_int(status));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_client_mass_cancel(
+    value client, value cl, value account, value symbol, value side, value channel_id) {
+    CAMLparam5(client, cl, account, symbol, side);
+    CAMLxparam1(channel_id);
+    CAMLlocal1(tup);
+    const char *sym = caml_string_length(symbol) ? String_val(symbol) : NULL;
+    char *out_cl = NULL;
+    uint32_t total = 0;
+    uint8_t status = 0;
+    int32_t rc = fig_client_mass_cancel(
+        Client_val(client),
+        String_val(cl),
+        String_val(account),
+        sym,
+        (uint8_t)Int_val(side),
+        (uint16_t)Int_val(channel_id),
+        &out_cl,
+        &total,
+        &status);
+    if (rc != 0) {
+        caml_failwith("fig_client_mass_cancel failed");
+    }
+    tup = caml_alloc_tuple(3);
+    Store_field(tup, 0, owned_string(out_cl));
+    Store_field(tup, 1, Val_int((int)total));
+    Store_field(tup, 2, Val_int(status));
+    CAMLreturn(tup);
+}
+
+CAMLprim value caml_fig_client_mass_cancel_byte(value *argv, int argn) {
+    (void)argn;
+    return caml_fig_client_mass_cancel(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}

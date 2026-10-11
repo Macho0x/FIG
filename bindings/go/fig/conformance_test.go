@@ -20,6 +20,20 @@ func TestSbeNewOrderSingleCompiles(t *testing.T) {
 	}
 }
 
+func TestMassCancelCborRoundTrip(t *testing.T) {
+	buf, err := CborEncodeMassCancelRequest("MC-001", "DEMO", "AAPL", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := CborDecodeMassCancelRequest(buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ClOrdID != "MC-001" || got.Account != "DEMO" || got.Symbol != "AAPL" || got.Side != 1 {
+		t.Fatalf("round trip %+v", got)
+	}
+}
+
 func TestMergeStateConstructors(t *testing.T) {
 	funding := NewFundingState(8)
 	defer funding.Close()

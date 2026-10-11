@@ -32,6 +32,22 @@ fn encode_cbor_order(
 }
 
 #[pyfunction]
+#[pyo3(signature = (cl_ord_id, account, symbol=None, side=None))]
+fn encode_cbor_mass_cancel(
+    cl_ord_id: String,
+    account: String,
+    symbol: Option<String>,
+    side: Option<String>,
+) -> PyResult<Vec<u8>> {
+    let side = match side {
+        Some(s) => Some(codec::parse_side(&s).map_err(PyValueError::new_err)?),
+        None => None,
+    };
+    codec::encode_mass_cancel_request(&cl_ord_id, &account, symbol.as_deref(), side)
+        .map_err(PyValueError::new_err)
+}
+
+#[pyfunction]
 fn decode_cbor_order_cl_ord_id(data: &[u8]) -> PyResult<String> {
     codec::decode_new_order_cl_ord_id(data).map_err(PyValueError::new_err)
 }
@@ -249,6 +265,7 @@ fn check_hex(expected_hex: &str, actual: &[u8]) -> Result<(), String> {
 fn fig(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(encode_cbor_order, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_cbor_mass_cancel, m)?)?;
     m.add_function(wrap_pyfunction!(decode_cbor_order_cl_ord_id, m)?)?;
     m.add_function(wrap_pyfunction!(encode_request_frame, m)?)?;
     m.add_function(wrap_pyfunction!(encode_subscribe_frame, m)?)?;

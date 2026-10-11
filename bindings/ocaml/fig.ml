@@ -28,3 +28,30 @@ external subscribe : client -> string -> string array * subscription
 
 external sub_next : subscription -> int -> string option = "caml_fig_client_sub_next"
 external sub_close : subscription -> unit = "caml_fig_client_sub_close"
+
+(* Empty symbol omits the filter. side 0 omits the side filter.
+   Wire values: 1 buy, 2 sell, 3 sell short, 4 sell short exempt. *)
+external cbor_encode_mass_cancel_request : string -> string -> string -> int -> string
+  = "caml_fig_cbor_encode_mass_cancel_request"
+
+external cbor_decode_mass_cancel_request : string -> string * string * string option * int
+  = "caml_fig_cbor_decode_mass_cancel_request"
+
+external cbor_decode_trading_session_status : string -> int * string
+  = "caml_fig_cbor_decode_trading_session_status"
+
+external cbor_decode_security_status : string -> string * int
+  = "caml_fig_cbor_decode_security_status"
+
+external cbor_decode_mass_cancel_report : string -> string * int * int
+  = "caml_fig_cbor_decode_mass_cancel_report"
+
+external request_session_status : client -> int -> int * string
+  = "caml_fig_client_request_session_status"
+
+external request_security_status : client -> string -> int -> string * int
+  = "caml_fig_client_request_security_status"
+
+external mass_cancel :
+  client -> string -> string -> string -> int -> int -> string * int * int
+  = "caml_fig_client_mass_cancel_byte" "caml_fig_client_mass_cancel"

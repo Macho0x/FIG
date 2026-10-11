@@ -10,6 +10,7 @@ extern "C" {
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -71,6 +72,99 @@ private:
     std::unique_ptr<FigSubHandle, Deleter> handle_;
 };
 
+struct MassCancelRequestFields {
+    std::string cl_ord_id;
+    std::string account;
+    std::optional<std::string> symbol;
+    uint8_t side = 0;
+};
+
+struct TradingSessionStatusFields {
+    uint8_t status = 0;
+    std::string session_id;
+};
+
+struct SecurityStatusFields {
+    std::string symbol;
+    uint8_t status = 0;
+};
+
+struct MassCancelReportFields {
+    std::string cl_ord_id;
+    uint32_t total_affected = 0;
+    uint8_t status = 0;
+};
+
+inline std::string take_c_string(char* s) {
+    if (s == nullptr) {
+        return {};
+    }
+    std::string out(s);
+    fig_string_free(s);
+    return out;
+}
+
+inline std::optional<std::string> take_optional_c_string(char* s) {
+    if (s == nullptr) {
+        return std::nullopt;
+    }
+    std::string out(s);
+    fig_string_free(s);
+    return out;
+}
+
+/// `side` 0 omits the field. `symbol` nullptr omits the field.
+inline Buffer cbor_encode_mass_cancel_request(const char* cl_ord_id,
+                                              const char* account,
+                                              const char* symbol,
+                                              uint8_t side) {
+    FigBuffer out{};
+    if (fig_cbor_encode_mass_cancel_request(cl_ord_id, account, symbol, side, &out) != 0) {
+        throw std::runtime_error("fig_cbor_encode_mass_cancel_request failed");
+    }
+    return Buffer(out);
+}
+
+inline MassCancelRequestFields cbor_decode_mass_cancel_request(const uint8_t* data, std::size_t len) {
+    char* cl = nullptr;
+    char* account = nullptr;
+    char* symbol = nullptr;
+    uint8_t side = 0;
+    if (fig_cbor_decode_mass_cancel_request(data, len, &cl, &account, &symbol, &side) != 0) {
+        throw std::runtime_error("fig_cbor_decode_mass_cancel_request failed");
+    }
+    return {take_c_string(cl), take_c_string(account), take_optional_c_string(symbol), side};
+}
+
+inline TradingSessionStatusFields cbor_decode_trading_session_status(const uint8_t* data,
+                                                                     std::size_t len) {
+    uint8_t status = 0;
+    char* session_id = nullptr;
+    if (fig_cbor_decode_trading_session_status(data, len, &status, &session_id) != 0) {
+        throw std::runtime_error("fig_cbor_decode_trading_session_status failed");
+    }
+    return {status, take_c_string(session_id)};
+}
+
+inline SecurityStatusFields cbor_decode_security_status(const uint8_t* data, std::size_t len) {
+    char* symbol = nullptr;
+    uint8_t status = 0;
+    if (fig_cbor_decode_security_status(data, len, &symbol, &status) != 0) {
+        throw std::runtime_error("fig_cbor_decode_security_status failed");
+    }
+    return {take_c_string(symbol), status};
+}
+
+inline MassCancelReportFields cbor_decode_mass_cancel_report(const uint8_t* data, std::size_t len) {
+    char* cl = nullptr;
+    uint32_t total = 0;
+    uint8_t status = 0;
+    if (fig_cbor_decode_mass_cancel_report(data, len, &cl, &total, &status) != 0) {
+        throw std::runtime_error("fig_cbor_decode_mass_cancel_report failed");
+    }
+    return {take_c_string(cl), total, status};
+}
+
 class Client {
 public:
     Client(const char* addr, const char* server_name = nullptr) {
@@ -117,6 +211,43 @@ public:
         }
         fig_frame_list_free(list);
         return {std::move(snapshot), Subscription(raw)};
+    }
+
+    /// GET marketdata/session.
+    TradingSessionStatusFields request_session_status(uint16_t channel_id = 1) {
+        uint8_t status = 0;
+        char* session_id = nullptr;
+        if (fig_client_request_session_status(handle_.get(), channel_id, &status, &session_id) != 0) {
+            throw std::runtime_error("fig_client_request_session_status failed");
+        }
+        return {status, take_c_string(session_id)};
+    }
+
+    /// GET marketdata/{symbol}/status.
+    SecurityStatusFields request_security_status(const char* symbol, uint16_t channel_id = 1) {
+        char* out_symbol = nullptr;
+        uint8_t status = 0;
+        if (fig_client_request_security_status(handle_.get(), symbol, channel_id, &out_symbol, &status) !=
+            0) {
+            throw std::runtime_error("fig_client_request_security_status failed");
+        }
+        return {take_c_string(out_symbol), status};
+    }
+
+    /// POST trading/accounts/{account}/orders/masscancel. side 0 and symbol nullptr omit filters.
+    MassCancelReportFields mass_cancel(const char* cl_ord_id,
+                                       const char* account,
+                                       const char* symbol,
+                                       uint8_t side,
+                                       uint16_t channel_id = 1) {
+        char* out_cl = nullptr;
+        uint32_t total = 0;
+        uint8_t status = 0;
+        if (fig_client_mass_cancel(handle_.get(), cl_ord_id, account, symbol, side, channel_id, &out_cl,
+                                   &total, &status) != 0) {
+            throw std::runtime_error("fig_client_mass_cancel failed");
+        }
+        return {take_c_string(out_cl), total, status};
     }
 
 private:

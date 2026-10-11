@@ -156,3 +156,149 @@ pub fn sbeEncodeNewOrderSingle(
     defer c.fig_buffer_free(out);
     return alloc.dupe(u8, out.data[0..out.len]);
 }
+
+pub const MassCancelRequest = struct {
+    cl_ord_id: []u8,
+    account: []u8,
+    symbol: ?[]u8,
+    side: u8,
+};
+
+pub const TradingSessionStatus = struct {
+    status: u8,
+    session_id: []u8,
+};
+
+pub const SecurityStatus = struct {
+    symbol: []u8,
+    status: u8,
+};
+
+pub const MassCancelReport = struct {
+    cl_ord_id: []u8,
+    total_affected: u32,
+    status: u8,
+};
+
+fn dupCString(p: [*c]u8) ![]u8 {
+    if (p == null) return error.NullString;
+    const span = std.mem.span(@as([*:0]const u8, @ptrCast(p)));
+    const out = try alloc.dupe(u8, span);
+    c.fig_string_free(p);
+    return out;
+}
+
+fn dupOptional(p: [*c]u8) !?[]u8 {
+    if (p == null) return null;
+    return try dupCString(p);
+}
+
+/// side 0 omits the filter. symbol null omits the symbol filter.
+pub fn cborEncodeMassCancelRequest(
+    cl_ord_id: [:0]const u8,
+    account: [:0]const u8,
+    symbol: ?[:0]const u8,
+    side: u8,
+) ![]u8 {
+    var out = FigBuffer{ .data = null, .len = 0 };
+    const rc = c.fig_cbor_encode_mass_cancel_request(
+        cl_ord_id.ptr,
+        account.ptr,
+        if (symbol) |s| s.ptr else null,
+        side,
+        &out,
+    );
+    if (rc != 0) return error.EncodeFailed;
+    defer c.fig_buffer_free(out);
+    return alloc.dupe(u8, out.data[0..out.len]);
+}
+
+pub fn cborDecodeMassCancelRequest(data: []const u8) !MassCancelRequest {
+    var cl: [*c]u8 = null;
+    var account: [*c]u8 = null;
+    var symbol: [*c]u8 = null;
+    var side: u8 = 0;
+    const rc = c.fig_cbor_decode_mass_cancel_request(data.ptr, data.len, &cl, &account, &symbol, &side);
+    if (rc != 0) return error.DecodeFailed;
+    return .{
+        .cl_ord_id = try dupCString(cl),
+        .account = try dupCString(account),
+        .symbol = try dupOptional(symbol),
+        .side = side,
+    };
+}
+
+pub fn cborDecodeTradingSessionStatus(data: []const u8) !TradingSessionStatus {
+    var status: u8 = 0;
+    var session: [*c]u8 = null;
+    const rc = c.fig_cbor_decode_trading_session_status(data.ptr, data.len, &status, &session);
+    if (rc != 0) return error.DecodeFailed;
+    return .{ .status = status, .session_id = try dupCString(session) };
+}
+
+pub fn cborDecodeSecurityStatus(data: []const u8) !SecurityStatus {
+    var symbol: [*c]u8 = null;
+    var status: u8 = 0;
+    const rc = c.fig_cbor_decode_security_status(data.ptr, data.len, &symbol, &status);
+    if (rc != 0) return error.DecodeFailed;
+    return .{ .symbol = try dupCString(symbol), .status = status };
+}
+
+pub fn cborDecodeMassCancelReport(data: []const u8) !MassCancelReport {
+    var cl: [*c]u8 = null;
+    var total: u32 = 0;
+    var status: u8 = 0;
+    const rc = c.fig_cbor_decode_mass_cancel_report(data.ptr, data.len, &cl, &total, &status);
+    if (rc != 0) return error.DecodeFailed;
+    return .{
+        .cl_ord_id = try dupCString(cl),
+        .total_affected = total,
+        .status = status,
+    };
+}
+
+pub fn requestSessionStatus(handle: *c.FigClientHandle, channel_id: u16) !TradingSessionStatus {
+    var status: u8 = 0;
+    var session: [*c]u8 = null;
+    const rc = c.fig_client_request_session_status(handle, channel_id, &status, &session);
+    if (rc != 0) return error.RequestFailed;
+    return .{ .status = status, .session_id = try dupCString(session) };
+}
+
+pub fn requestSecurityStatus(handle: *c.FigClientHandle, symbol: [:0]const u8, channel_id: u16) !SecurityStatus {
+    var out_symbol: [*c]u8 = null;
+    var status: u8 = 0;
+    const rc = c.fig_client_request_security_status(handle, symbol.ptr, channel_id, &out_symbol, &status);
+    if (rc != 0) return error.RequestFailed;
+    return .{ .symbol = try dupCString(out_symbol), .status = status };
+}
+
+pub fn massCancel(
+    handle: *c.FigClientHandle,
+    cl_ord_id: [:0]const u8,
+    account: [:0]const u8,
+    symbol: ?[:0]const u8,
+    side: u8,
+    channel_id: u16,
+) !MassCancelReport {
+    var out_cl: [*c]u8 = null;
+    var total: u32 = 0;
+    var status: u8 = 0;
+    const rc = c.fig_client_mass_cancel(
+        handle,
+        cl_ord_id.ptr,
+        account.ptr,
+        if (symbol) |s| s.ptr else null,
+        side,
+        channel_id,
+        &out_cl,
+        &total,
+        &status,
+    );
+    if (rc != 0) return error.RequestFailed;
+    return .{
+        .cl_ord_id = try dupCString(out_cl),
+        .total_affected = total,
+        .status = status,
+    };
+}

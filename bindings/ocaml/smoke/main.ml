@@ -33,4 +33,8 @@ let () =
   let got = hex bytes in
   if got <> expected then
     failwith ("SBE hex mismatch expected=" ^ expected ^ " got=" ^ got);
+  let body = Fig.cbor_encode_mass_cancel_request "MC-001" "DEMO" "AAPL" 1 in
+  let (cl, account, symbol, side) = Fig.cbor_decode_mass_cancel_request body in
+  if cl <> "MC-001" || account <> "DEMO" || symbol <> Some "AAPL" || side <> 1 then
+    failwith "mass-cancel CBOR round trip failed";
   print_endline ("fig-ocaml smoke OK " ^ v)

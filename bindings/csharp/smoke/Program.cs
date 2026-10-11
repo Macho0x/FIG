@@ -7,6 +7,13 @@ if (bytes.Length == 0)
     throw new InvalidOperationException("empty SBE payload");
 }
 
+var mass = FigNative.CborEncodeMassCancelRequest("MC-001", "DEMO", "AAPL", 1);
+var decoded = FigNative.CborDecodeMassCancelRequest(mass);
+if (decoded.ClOrdId != "MC-001" || decoded.Account != "DEMO" || decoded.Symbol != "AAPL" || decoded.Side != 1)
+{
+    throw new InvalidOperationException("mass-cancel CBOR round trip failed");
+}
+
 using var funding = new FundingState(4);
 
 var root = Environment.GetEnvironmentVariable("FIG_REPO_ROOT")

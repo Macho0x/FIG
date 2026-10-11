@@ -48,6 +48,28 @@ directly or the gateway.
 Production venues verify RS256 tokens with `fig_core::jwt_keys`
 (`FIG_JWT_JWKS`); rotation is described in [JWT_KEY_ROTATION.md](../docs/JWT_KEY_ROTATION.md).
 
+## Market state
+
+The same helpers the Rust `FigSdkClient` added in 1.4.0 are on every binding:
+
+| Call | Path | Payload |
+|------|------|---------|
+| session status | `GET marketdata/session` | response `TradingSessionStatus` |
+| security status | `GET marketdata/{symbol}/status` | response `SecurityStatus` |
+| mass cancel | `POST trading/accounts/{account}/orders/masscancel` | CBOR `MassCancelRequest` → `MassCancelReport` |
+
+FFI (`fig_client_request_session_status`, `fig_client_request_security_status`,
+`fig_client_mass_cancel`) is what Go, C++, C#, TypeScript, Java, OCaml, and Zig call.
+Python calls the same Rust client directly (`request_session_status`,
+`request_security_status`, `mass_cancel`). Status fields come back as the 1-based
+wire values (session `2` = open, security `1` = trading, report `2` = completed).
+Mass-cancel `side` `0` and a null symbol omit those filters. The dev auth token is
+`fig-dev-{account}`, injected by the mass-cancel helper.
+
+`fig_cbor_encode_mass_cancel_request` and the matching decoders are there when you
+already have payload bytes. Generated SBE encoders in Go, C++, C#, TypeScript, and
+Zig also include these messages; a native FIG REQUEST still carries CBOR.
+
 ## Conformance
 
 ```bash

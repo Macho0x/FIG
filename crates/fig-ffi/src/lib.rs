@@ -6,6 +6,7 @@ mod advanced;
 mod binding;
 mod client;
 mod jwt;
+mod market_state;
 mod order_book;
 mod sbe;
 pub mod stream_state;
@@ -23,6 +24,12 @@ pub use client::{
     FigClientHandle, FigFrameList, FigSubHandle,
 };
 pub use jwt::{fig_jwt_decode_sub, fig_jwt_encode, fig_jwt_verify_bearer};
+pub use market_state::{
+    fig_cbor_decode_mass_cancel_report, fig_cbor_decode_mass_cancel_request,
+    fig_cbor_decode_security_status, fig_cbor_decode_trading_session_status,
+    fig_cbor_encode_mass_cancel_request, fig_client_mass_cancel,
+    fig_client_request_security_status, fig_client_request_session_status,
+};
 pub use sbe::{
     fig_sbe_decode_new_order_single_cl_ord_id, fig_sbe_encode_candle_bar,
     fig_sbe_encode_new_order_single, fig_sbe_encode_symbol_ticker,

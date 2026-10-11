@@ -2,6 +2,19 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.2
+
+### Added
+- Language clients can use the 1.4.0 market-state paths, not only the Rust SDK.
+  `fig.h` encodes `MassCancelRequest` and decodes `TradingSessionStatus`,
+  `SecurityStatus`, and `MassCancelReport` as CBOR, and the connected client
+  helpers GET `marketdata/session`, GET `marketdata/{symbol}/status`, and POST
+  `trading/accounts/{account}/orders/masscancel`. Go, C++, C#, TypeScript, Java,
+  OCaml, and Zig wrap those calls. Python `FigPyClient` has
+  `request_session_status`, `request_security_status`, and `mass_cancel`.
+  Generated SBE for Go, C++, C#, TypeScript, and Zig already covered these
+  messages; native FIG requests still use CBOR.
+
 ## 1.4.1
 
 ### Changed

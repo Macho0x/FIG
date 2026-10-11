@@ -323,6 +323,90 @@ int32_t fig_jwt_decode_sub(const char *token, const char *secret, char **out_sub
 int32_t fig_jwt_verify_bearer(const char *token, const char *secret);
 
 /**
+ * Encode `MassCancelRequest` as CBOR.
+ *
+ * `symbol` NULL (or empty) omits the field. `side` 0 omits the field; otherwise it is the
+ * 1-based `Side` wire value (1 buy, 2 sell, 3 sell short, 4 sell short exempt).
+ */
+int32_t fig_cbor_encode_mass_cancel_request(const char *cl_ord_id,
+                                            const char *account,
+                                            const char *symbol,
+                                            uint8_t side,
+                                            struct FigBuffer *out);
+
+/**
+ * Decode `MassCancelRequest` CBOR. `out_symbol` is NULL when absent. `out_side` is 0 when absent.
+ * Non-NULL strings must be released with `fig_string_free`.
+ */
+int32_t fig_cbor_decode_mass_cancel_request(const uint8_t *data,
+                                            uintptr_t data_len,
+                                            char **out_cl_ord_id,
+                                            char **out_account,
+                                            char **out_symbol,
+                                            uint8_t *out_side);
+
+/**
+ * Decode `TradingSessionStatus` CBOR. `out_status` is the 1-based session status wire value.
+ * `out_session_id` must be released with `fig_string_free`.
+ */
+int32_t fig_cbor_decode_trading_session_status(const uint8_t *data,
+                                               uintptr_t data_len,
+                                               uint8_t *out_status,
+                                               char **out_session_id);
+
+/**
+ * Decode `SecurityStatus` CBOR. `out_status` is the 1-based security status wire value.
+ * `out_symbol` must be released with `fig_string_free`.
+ */
+int32_t fig_cbor_decode_security_status(const uint8_t *data,
+                                        uintptr_t data_len,
+                                        char **out_symbol,
+                                        uint8_t *out_status);
+
+/**
+ * Decode `MassCancelReport` CBOR. `out_status` is the 1-based report status wire value.
+ * `out_cl_ord_id` must be released with `fig_string_free`.
+ */
+int32_t fig_cbor_decode_mass_cancel_report(const uint8_t *data,
+                                           uintptr_t data_len,
+                                           char **out_cl_ord_id,
+                                           uint32_t *out_total_affected,
+                                           uint8_t *out_status);
+
+/**
+ * GET `marketdata/session`. `out_status` is the 1-based session status. Free `out_session_id`.
+ */
+int32_t fig_client_request_session_status(struct FigClientHandle *handle,
+                                          uint16_t channel_id,
+                                          uint8_t *out_status,
+                                          char **out_session_id);
+
+/**
+ * GET `marketdata/{symbol}/status`. `out_status` is the 1-based security status. Free `out_symbol`.
+ */
+int32_t fig_client_request_security_status(struct FigClientHandle *handle,
+                                           const char *symbol,
+                                           uint16_t channel_id,
+                                           char **out_symbol,
+                                           uint8_t *out_status);
+
+/**
+ * POST `trading/accounts/{account}/orders/masscancel` with the dev auth token.
+ *
+ * `symbol` NULL omits the filter. `side` 0 omits the filter. `out_status` is the 1-based
+ * `MassCancelReport` status. Free `out_cl_ord_id`.
+ */
+int32_t fig_client_mass_cancel(struct FigClientHandle *handle,
+                               const char *cl_ord_id,
+                               const char *account,
+                               const char *symbol,
+                               uint8_t side,
+                               uint16_t channel_id,
+                               char **out_cl_ord_id,
+                               uint32_t *out_total_affected,
+                               uint8_t *out_status);
+
+/**
  * Create an empty order book state.
  */
 struct FigOrderBookHandle *fig_order_book_new(void);

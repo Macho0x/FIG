@@ -368,3 +368,214 @@ func SbeEncodeNewOrderSingle(clOrdID, symbol string, sideBuy bool, qty, price fl
 	}
 	return intoGoBuffer(out)
 }
+
+// MassCancelRequest is the CBOR body of a mass-cancel request.
+// Side 0 means the side filter is absent.
+type MassCancelRequest struct {
+	ClOrdID string
+	Account string
+	Symbol  string
+	Side    byte
+}
+
+// TradingSessionStatus is the decoded session-status payload.
+// Status is the 1-based wire value.
+type TradingSessionStatus struct {
+	Status    byte
+	SessionID string
+}
+
+// SecurityStatus is the decoded security-status payload.
+type SecurityStatus struct {
+	Symbol string
+	Status byte
+}
+
+// MassCancelReport is the decoded mass-cancel response.
+type MassCancelReport struct {
+	ClOrdID       string
+	TotalAffected uint32
+	Status        byte
+}
+
+func takeCString(p *C.char) string {
+	if p == nil {
+		return ""
+	}
+	defer C.fig_string_free(p)
+	return C.GoString(p)
+}
+
+// CborEncodeMassCancelRequest encodes a MassCancelRequest. An empty symbol omits the field.
+// Side 0 omits the side filter.
+func CborEncodeMassCancelRequest(clOrdID, account, symbol string, side byte) (Buffer, error) {
+	cCl := C.CString(clOrdID)
+	cAccount := C.CString(account)
+	cSymbol := cStringOrNil(symbol)
+	defer C.free(unsafe.Pointer(cCl))
+	defer C.free(unsafe.Pointer(cAccount))
+	defer freeCString(cSymbol)
+	var out C.struct_FigBuffer
+	rc := C.fig_cbor_encode_mass_cancel_request(cCl, cAccount, cSymbol, C.uint8_t(side), &out)
+	if rc != 0 {
+		return Buffer{}, errors.New("fig_cbor_encode_mass_cancel_request failed")
+	}
+	return intoGoBuffer(out)
+}
+
+// CborDecodeMassCancelRequest decodes a MassCancelRequest payload.
+func CborDecodeMassCancelRequest(data []byte) (MassCancelRequest, error) {
+	if len(data) == 0 {
+		return MassCancelRequest{}, errors.New("empty mass-cancel payload")
+	}
+	var cl, account, symbol *C.char
+	var side C.uint8_t
+	rc := C.fig_cbor_decode_mass_cancel_request(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.uintptr_t(len(data)),
+		&cl,
+		&account,
+		&symbol,
+		&side,
+	)
+	if rc != 0 {
+		return MassCancelRequest{}, errors.New("fig_cbor_decode_mass_cancel_request failed")
+	}
+	return MassCancelRequest{
+		ClOrdID: takeCString(cl),
+		Account: takeCString(account),
+		Symbol:  takeCString(symbol),
+		Side:    byte(side),
+	}, nil
+}
+
+// CborDecodeTradingSessionStatus decodes a TradingSessionStatus payload.
+func CborDecodeTradingSessionStatus(data []byte) (TradingSessionStatus, error) {
+	if len(data) == 0 {
+		return TradingSessionStatus{}, errors.New("empty session payload")
+	}
+	var status C.uint8_t
+	var session *C.char
+	rc := C.fig_cbor_decode_trading_session_status(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.uintptr_t(len(data)),
+		&status,
+		&session,
+	)
+	if rc != 0 {
+		return TradingSessionStatus{}, errors.New("fig_cbor_decode_trading_session_status failed")
+	}
+	return TradingSessionStatus{Status: byte(status), SessionID: takeCString(session)}, nil
+}
+
+// CborDecodeSecurityStatus decodes a SecurityStatus payload.
+func CborDecodeSecurityStatus(data []byte) (SecurityStatus, error) {
+	if len(data) == 0 {
+		return SecurityStatus{}, errors.New("empty security payload")
+	}
+	var symbol *C.char
+	var status C.uint8_t
+	rc := C.fig_cbor_decode_security_status(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.uintptr_t(len(data)),
+		&symbol,
+		&status,
+	)
+	if rc != 0 {
+		return SecurityStatus{}, errors.New("fig_cbor_decode_security_status failed")
+	}
+	return SecurityStatus{Symbol: takeCString(symbol), Status: byte(status)}, nil
+}
+
+// CborDecodeMassCancelReport decodes a MassCancelReport payload.
+func CborDecodeMassCancelReport(data []byte) (MassCancelReport, error) {
+	if len(data) == 0 {
+		return MassCancelReport{}, errors.New("empty mass-cancel report")
+	}
+	var cl *C.char
+	var total C.uint32_t
+	var status C.uint8_t
+	rc := C.fig_cbor_decode_mass_cancel_report(
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.uintptr_t(len(data)),
+		&cl,
+		&total,
+		&status,
+	)
+	if rc != 0 {
+		return MassCancelReport{}, errors.New("fig_cbor_decode_mass_cancel_report failed")
+	}
+	return MassCancelReport{
+		ClOrdID:       takeCString(cl),
+		TotalAffected: uint32(total),
+		Status:        byte(status),
+	}, nil
+}
+
+// RequestSessionStatus GETs marketdata/session.
+func (c *Client) RequestSessionStatus(channelID uint16) (TradingSessionStatus, error) {
+	if c == nil || c.handle == nil {
+		return TradingSessionStatus{}, errors.New("client closed")
+	}
+	var status C.uint8_t
+	var session *C.char
+	rc := C.fig_client_request_session_status(c.handle, C.uint16_t(channelID), &status, &session)
+	if rc != 0 {
+		return TradingSessionStatus{}, errors.New("fig_client_request_session_status failed")
+	}
+	return TradingSessionStatus{Status: byte(status), SessionID: takeCString(session)}, nil
+}
+
+// RequestSecurityStatus GETs marketdata/{symbol}/status.
+func (c *Client) RequestSecurityStatus(symbol string, channelID uint16) (SecurityStatus, error) {
+	if c == nil || c.handle == nil {
+		return SecurityStatus{}, errors.New("client closed")
+	}
+	cSymbol := C.CString(symbol)
+	defer C.free(unsafe.Pointer(cSymbol))
+	var outSymbol *C.char
+	var status C.uint8_t
+	rc := C.fig_client_request_security_status(
+		c.handle, cSymbol, C.uint16_t(channelID), &outSymbol, &status,
+	)
+	if rc != 0 {
+		return SecurityStatus{}, errors.New("fig_client_request_security_status failed")
+	}
+	return SecurityStatus{Symbol: takeCString(outSymbol), Status: byte(status)}, nil
+}
+
+// MassCancel POSTs trading/accounts/{account}/orders/masscancel.
+// An empty symbol and side 0 omit those filters.
+func (c *Client) MassCancel(clOrdID, account, symbol string, side byte, channelID uint16) (MassCancelReport, error) {
+	if c == nil || c.handle == nil {
+		return MassCancelReport{}, errors.New("client closed")
+	}
+	cCl := C.CString(clOrdID)
+	cAccount := C.CString(account)
+	cSymbol := cStringOrNil(symbol)
+	defer C.free(unsafe.Pointer(cCl))
+	defer C.free(unsafe.Pointer(cAccount))
+	defer freeCString(cSymbol)
+	var outCl *C.char
+	var total C.uint32_t
+	var status C.uint8_t
+	rc := C.fig_client_mass_cancel(
+		c.handle,
+		cCl,
+		cAccount,
+		cSymbol,
+		C.uint8_t(side),
+		C.uint16_t(channelID),
+		&outCl,
+		&total,
+		&status,
+	)
+	if rc != 0 {
+		return MassCancelReport{}, errors.New("fig_client_mass_cancel failed")
+	}
+	return MassCancelReport{
+		ClOrdID:       takeCString(outCl),
+		TotalAffected: uint32(total),
+		Status:        byte(status),
+	}, nil
+}

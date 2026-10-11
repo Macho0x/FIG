@@ -44,6 +44,9 @@ c.connect("127.0.0.1:8443")
 frames = c.request(".well-known/capabilities", "GET")  # REQUEST, waits for EOF
 sub = c.subscribe_live("marketdata/AAPL/candles/5m")     # snapshot + live handle
 nxt = sub.next(timeout_ms=5000)
+session = c.request_session_status()                     # GET marketdata/session
+security = c.request_security_status("AAPL")
+report = c.mass_cancel("MC-1", "DEMO", symbol="AAPL")
 ```
 
 ## Go / TypeScript / C# / Java / OCaml / Zig / C++
@@ -86,4 +89,6 @@ bash bindings/ocaml/smoke/run.sh         # needs ocamlopt
 
 TypeScript is **Bun** (`bun:ffi`) — `FigClient.subscribe` / `FigSubscription.next`.
 Python `FigPyClient.request()` is REQUEST (EOF); `subscribe_live()` holds the stream.
+Session status, security status, and mass cancel are on `FigPyClient` and on every FFI binding
+([bindings/README.md](../bindings/README.md)).
 Browsers and Node use the gateway.

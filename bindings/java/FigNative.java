@@ -43,6 +43,37 @@ public final class FigNative {
 
     public static native int figJwtVerifyBearer(String token, String secret);
 
+    public static native int figCborEncodeMassCancelRequest(
+            String clOrdId, String account, String symbol, byte side, byte[][] out);
+
+    public static native int figCborDecodeMassCancelRequest(
+            byte[] data, String[] outClOrdId, String[] outAccount, String[] outSymbol, int[] outSide);
+
+    public static native int figCborDecodeTradingSessionStatus(
+            byte[] data, int[] outStatus, String[] outSessionId);
+
+    public static native int figCborDecodeSecurityStatus(byte[] data, String[] outSymbol, int[] outStatus);
+
+    public static native int figCborDecodeMassCancelReport(
+            byte[] data, String[] outClOrdId, int[] outTotalAffected, int[] outStatus);
+
+    public static native int figClientRequestSessionStatus(
+            long handle, short channelId, int[] outStatus, String[] outSessionId);
+
+    public static native int figClientRequestSecurityStatus(
+            long handle, String symbol, short channelId, String[] outSymbol, int[] outStatus);
+
+    public static native int figClientMassCancel(
+            long handle,
+            String clOrdId,
+            String account,
+            String symbol,
+            byte side,
+            short channelId,
+            String[] outClOrdId,
+            int[] outTotalAffected,
+            int[] outStatus);
+
     public static native int figSbeEncodeNewOrderSingle(
             String clOrdId,
             String symbol,
@@ -114,5 +145,129 @@ public final class FigNative {
 
     public static void subClose(long sub) {
         figClientSubClose(sub);
+    }
+
+    /** Decoded mass-cancel request. side 0 means the side filter was absent. symbol may be null. */
+    public static final class MassCancelRequest {
+        public final String clOrdId;
+        public final String account;
+        public final String symbol;
+        public final int side;
+
+        public MassCancelRequest(String clOrdId, String account, String symbol, int side) {
+            this.clOrdId = clOrdId;
+            this.account = account;
+            this.symbol = symbol;
+            this.side = side;
+        }
+    }
+
+    public static final class TradingSessionStatus {
+        public final int status;
+        public final String sessionId;
+
+        public TradingSessionStatus(int status, String sessionId) {
+            this.status = status;
+            this.sessionId = sessionId;
+        }
+    }
+
+    public static final class SecurityStatus {
+        public final String symbol;
+        public final int status;
+
+        public SecurityStatus(String symbol, int status) {
+            this.symbol = symbol;
+            this.status = status;
+        }
+    }
+
+    public static final class MassCancelReport {
+        public final String clOrdId;
+        public final int totalAffected;
+        public final int status;
+
+        public MassCancelReport(String clOrdId, int totalAffected, int status) {
+            this.clOrdId = clOrdId;
+            this.totalAffected = totalAffected;
+            this.status = status;
+        }
+    }
+
+    /** side 0 omits the filter. symbol null omits the symbol filter. */
+    public static byte[] cborEncodeMassCancelRequest(String clOrdId, String account, String symbol, byte side) {
+        byte[][] out = new byte[1][];
+        if (figCborEncodeMassCancelRequest(clOrdId, account, symbol, side, out) != 0) {
+            throw new IllegalStateException("fig_cbor_encode_mass_cancel_request failed");
+        }
+        return out[0];
+    }
+
+    public static MassCancelRequest cborDecodeMassCancelRequest(byte[] data) {
+        String[] cl = new String[1];
+        String[] account = new String[1];
+        String[] symbol = new String[1];
+        int[] side = new int[1];
+        if (figCborDecodeMassCancelRequest(data, cl, account, symbol, side) != 0) {
+            throw new IllegalStateException("fig_cbor_decode_mass_cancel_request failed");
+        }
+        return new MassCancelRequest(cl[0], account[0], symbol[0], side[0]);
+    }
+
+    public static TradingSessionStatus cborDecodeTradingSessionStatus(byte[] data) {
+        int[] status = new int[1];
+        String[] session = new String[1];
+        if (figCborDecodeTradingSessionStatus(data, status, session) != 0) {
+            throw new IllegalStateException("fig_cbor_decode_trading_session_status failed");
+        }
+        return new TradingSessionStatus(status[0], session[0]);
+    }
+
+    public static SecurityStatus cborDecodeSecurityStatus(byte[] data) {
+        String[] symbol = new String[1];
+        int[] status = new int[1];
+        if (figCborDecodeSecurityStatus(data, symbol, status) != 0) {
+            throw new IllegalStateException("fig_cbor_decode_security_status failed");
+        }
+        return new SecurityStatus(symbol[0], status[0]);
+    }
+
+    public static MassCancelReport cborDecodeMassCancelReport(byte[] data) {
+        String[] cl = new String[1];
+        int[] total = new int[1];
+        int[] status = new int[1];
+        if (figCborDecodeMassCancelReport(data, cl, total, status) != 0) {
+            throw new IllegalStateException("fig_cbor_decode_mass_cancel_report failed");
+        }
+        return new MassCancelReport(cl[0], total[0], status[0]);
+    }
+
+    public static TradingSessionStatus requestSessionStatus(long handle, short channelId) {
+        int[] status = new int[1];
+        String[] session = new String[1];
+        if (figClientRequestSessionStatus(handle, channelId, status, session) != 0) {
+            throw new IllegalStateException("fig_client_request_session_status failed");
+        }
+        return new TradingSessionStatus(status[0], session[0]);
+    }
+
+    public static SecurityStatus requestSecurityStatus(long handle, String symbol, short channelId) {
+        String[] outSymbol = new String[1];
+        int[] status = new int[1];
+        if (figClientRequestSecurityStatus(handle, symbol, channelId, outSymbol, status) != 0) {
+            throw new IllegalStateException("fig_client_request_security_status failed");
+        }
+        return new SecurityStatus(outSymbol[0], status[0]);
+    }
+
+    public static MassCancelReport massCancel(
+            long handle, String clOrdId, String account, String symbol, byte side, short channelId) {
+        String[] cl = new String[1];
+        int[] total = new int[1];
+        int[] status = new int[1];
+        if (figClientMassCancel(handle, clOrdId, account, symbol, side, channelId, cl, total, status) != 0) {
+            throw new IllegalStateException("fig_client_mass_cancel failed");
+        }
+        return new MassCancelReport(cl[0], total[0], status[0]);
     }
 }

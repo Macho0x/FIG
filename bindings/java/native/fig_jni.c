@@ -256,3 +256,261 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figSbeEncodeNewOrderSingle(
     }
     return set_out_buffer(env, out, out_arr);
 }
+
+static void put_string(JNIEnv *env, jobjectArray arr, char *s) {
+    if (s == NULL) {
+        if (arr != NULL) {
+            (*env)->SetObjectArrayElement(env, arr, 0, NULL);
+        }
+        return;
+    }
+    jstring js = (*env)->NewStringUTF(env, s);
+    fig_string_free(s);
+    if (arr != NULL) {
+        (*env)->SetObjectArrayElement(env, arr, 0, js);
+    }
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figCborEncodeMassCancelRequest(
+    JNIEnv *env,
+    jclass cls,
+    jstring cl_ord_id,
+    jstring account,
+    jstring symbol,
+    jbyte side,
+    jobjectArray out_arr) {
+    (void)cls;
+    char *cl = copy_jstring(env, cl_ord_id);
+    char *acct = copy_jstring(env, account);
+    char *sym = copy_jstring(env, symbol);
+    if (cl == NULL || acct == NULL) {
+        free(cl);
+        free(acct);
+        free(sym);
+        return -1;
+    }
+    struct FigBuffer out = {0};
+    int32_t rc = fig_cbor_encode_mass_cancel_request(cl, acct, sym, (uint8_t)side, &out);
+    free(cl);
+    free(acct);
+    free(sym);
+    if (rc != 0) {
+        return rc;
+    }
+    return set_out_buffer(env, out, out_arr);
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figCborDecodeMassCancelRequest(
+    JNIEnv *env,
+    jclass cls,
+    jbyteArray data,
+    jobjectArray out_cl,
+    jobjectArray out_account,
+    jobjectArray out_symbol,
+    jintArray out_side) {
+    (void)cls;
+    jsize len = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    if (bytes == NULL) {
+        return -1;
+    }
+    char *cl = NULL;
+    char *account = NULL;
+    char *symbol = NULL;
+    uint8_t side = 0;
+    int32_t rc = fig_cbor_decode_mass_cancel_request(
+        (const uint8_t *)bytes, (uintptr_t)len, &cl, &account, &symbol, &side);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    if (rc != 0) {
+        return rc;
+    }
+    put_string(env, out_cl, cl);
+    put_string(env, out_account, account);
+    put_string(env, out_symbol, symbol);
+    jint side_j = (jint)side;
+    (*env)->SetIntArrayRegion(env, out_side, 0, 1, &side_j);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figCborDecodeTradingSessionStatus(
+    JNIEnv *env,
+    jclass cls,
+    jbyteArray data,
+    jintArray out_status,
+    jobjectArray out_session) {
+    (void)cls;
+    jsize len = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    if (bytes == NULL) {
+        return -1;
+    }
+    uint8_t status = 0;
+    char *session = NULL;
+    int32_t rc = fig_cbor_decode_trading_session_status(
+        (const uint8_t *)bytes, (uintptr_t)len, &status, &session);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    if (rc != 0) {
+        return rc;
+    }
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    put_string(env, out_session, session);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figCborDecodeSecurityStatus(
+    JNIEnv *env,
+    jclass cls,
+    jbyteArray data,
+    jobjectArray out_symbol,
+    jintArray out_status) {
+    (void)cls;
+    jsize len = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    if (bytes == NULL) {
+        return -1;
+    }
+    char *symbol = NULL;
+    uint8_t status = 0;
+    int32_t rc = fig_cbor_decode_security_status(
+        (const uint8_t *)bytes, (uintptr_t)len, &symbol, &status);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    if (rc != 0) {
+        return rc;
+    }
+    put_string(env, out_symbol, symbol);
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figCborDecodeMassCancelReport(
+    JNIEnv *env,
+    jclass cls,
+    jbyteArray data,
+    jobjectArray out_cl,
+    jintArray out_total,
+    jintArray out_status) {
+    (void)cls;
+    jsize len = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    if (bytes == NULL) {
+        return -1;
+    }
+    char *cl = NULL;
+    uint32_t total = 0;
+    uint8_t status = 0;
+    int32_t rc = fig_cbor_decode_mass_cancel_report(
+        (const uint8_t *)bytes, (uintptr_t)len, &cl, &total, &status);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    if (rc != 0) {
+        return rc;
+    }
+    put_string(env, out_cl, cl);
+    jint total_j = (jint)total;
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_total, 0, 1, &total_j);
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figClientRequestSessionStatus(
+    JNIEnv *env,
+    jclass cls,
+    jlong handle,
+    jshort channel_id,
+    jintArray out_status,
+    jobjectArray out_session) {
+    (void)cls;
+    uint8_t status = 0;
+    char *session = NULL;
+    int32_t rc = fig_client_request_session_status(
+        (struct FigClientHandle *)(intptr_t)handle, (uint16_t)channel_id, &status, &session);
+    if (rc != 0) {
+        return rc;
+    }
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    put_string(env, out_session, session);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figClientRequestSecurityStatus(
+    JNIEnv *env,
+    jclass cls,
+    jlong handle,
+    jstring symbol,
+    jshort channel_id,
+    jobjectArray out_symbol,
+    jintArray out_status) {
+    (void)cls;
+    char *sym = copy_jstring(env, symbol);
+    if (sym == NULL) {
+        return -1;
+    }
+    char *out_sym = NULL;
+    uint8_t status = 0;
+    int32_t rc = fig_client_request_security_status(
+        (struct FigClientHandle *)(intptr_t)handle,
+        sym,
+        (uint16_t)channel_id,
+        &out_sym,
+        &status);
+    free(sym);
+    if (rc != 0) {
+        return rc;
+    }
+    put_string(env, out_symbol, out_sym);
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    return 0;
+}
+
+JNIEXPORT jint JNICALL Java_fig_FigNative_figClientMassCancel(
+    JNIEnv *env,
+    jclass cls,
+    jlong handle,
+    jstring cl_ord_id,
+    jstring account,
+    jstring symbol,
+    jbyte side,
+    jshort channel_id,
+    jobjectArray out_cl,
+    jintArray out_total,
+    jintArray out_status) {
+    (void)cls;
+    char *cl = copy_jstring(env, cl_ord_id);
+    char *acct = copy_jstring(env, account);
+    char *sym = copy_jstring(env, symbol);
+    if (cl == NULL || acct == NULL) {
+        free(cl);
+        free(acct);
+        free(sym);
+        return -1;
+    }
+    char *out_id = NULL;
+    uint32_t total = 0;
+    uint8_t status = 0;
+    int32_t rc = fig_client_mass_cancel(
+        (struct FigClientHandle *)(intptr_t)handle,
+        cl,
+        acct,
+        sym,
+        (uint8_t)side,
+        (uint16_t)channel_id,
+        &out_id,
+        &total,
+        &status);
+    free(cl);
+    free(acct);
+    free(sym);
+    if (rc != 0) {
+        return rc;
+    }
+    put_string(env, out_cl, out_id);
+    jint total_j = (jint)total;
+    jint status_j = (jint)status;
+    (*env)->SetIntArrayRegion(env, out_total, 0, 1, &total_j);
+    (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
+    return 0;
+}

@@ -166,7 +166,8 @@ for later `STREAM_ITEM`s. `send_and_read` is REQUEST-only and will hang on a liv
 | Browser / no FFI | `fig-gateway` REST + WebSocket | [docs/GATEWAY.md](docs/GATEWAY.md) |
 | Colo SoupBin | `fig-gateway --ouch-addr` (order entry) · `--itch-addr` / `--itch-multicast` (L2 egress) | [docs/GATEWAY.md](docs/GATEWAY.md) |
 
-Bindings share the C ABI for connect, request, subscribe, and SBE codecs. Prefer the FFI wire codecs
+Bindings share the C ABI for connect, request, subscribe, market-state helpers
+(session status, security status, mass cancel), and SBE codecs. Prefer the FFI wire codecs
 until a given binding's generated-SBE coverage matches Rust ([TODO.md](TODO.md)).
 
 ---
@@ -236,7 +237,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.1** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+Latest release **1.4.2** ([release notes](CHANGELOG.md)). The wire format is **frozen**
 ([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
 your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).

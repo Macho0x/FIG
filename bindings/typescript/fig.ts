@@ -135,6 +135,55 @@ const fig = dlopen(libPath, {
     ],
     returns: FFIType.i32,
   },
+  fig_cbor_encode_mass_cancel_request: {
+    args: [FFIType.cstring, FFIType.cstring, FFIType.cstring, FFIType.u8, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_cbor_decode_mass_cancel_request: {
+    args: [
+      FFIType.pointer,
+      FFIType.u64,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.i32,
+  },
+  fig_cbor_decode_trading_session_status: {
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_cbor_decode_security_status: {
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_cbor_decode_mass_cancel_report: {
+    args: [FFIType.pointer, FFIType.u64, FFIType.pointer, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_client_request_session_status: {
+    args: [FFIType.pointer, FFIType.u16, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_client_request_security_status: {
+    args: [FFIType.pointer, FFIType.cstring, FFIType.u16, FFIType.pointer, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_client_mass_cancel: {
+    args: [
+      FFIType.pointer,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.u8,
+      FFIType.u16,
+      FFIType.pointer,
+      FFIType.pointer,
+      FFIType.pointer,
+    ],
+    returns: FFIType.i32,
+  },
   fig_funding_new: { args: [FFIType.u64], returns: FFIType.pointer },
   fig_funding_free: { args: [FFIType.pointer], returns: FFIType.void },
   fig_funding_apply: {
@@ -224,6 +273,21 @@ function takeFrameList(slot: Buffer): Buffer[] {
 
 function readHandle(slot: Buffer): Pointer {
   return Number(slot.readBigUInt64LE(0)) as unknown as Pointer;
+}
+
+function takeCString(slot: Buffer): string {
+  const addr = Number(slot.readBigUInt64LE(0));
+  if (!addr) {
+    return "";
+  }
+  const len = Number(libc.symbols.strlen(addr));
+  const text = copyRaw(addr, len).toString("utf8");
+  fig.symbols.fig_string_free(addr);
+  return text;
+}
+
+function ptrSlot(): Buffer {
+  return Buffer.alloc(8);
 }
 
 export function version(): string {
@@ -434,6 +498,74 @@ export class FigClient {
     return takeOwnedBytes(out);
   }
 
+  /** GET marketdata/session. status is the 1-based wire value. */
+  requestSessionStatus(channelId = 1): { status: number; sessionId: string } {
+    const status = Buffer.alloc(1);
+    const session = ptrSlot();
+    const rc = fig.symbols.fig_client_request_session_status(
+      this.handle,
+      channelId,
+      ptr(status),
+      ptr(session),
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_client_request_session_status failed: ${rc}`);
+    }
+    return { status: status[0], sessionId: takeCString(session) };
+  }
+
+  /** GET marketdata/{symbol}/status. */
+  requestSecurityStatus(symbol: string, channelId = 1): { symbol: string; status: number } {
+    const outSymbol = ptrSlot();
+    const status = Buffer.alloc(1);
+    const rc = fig.symbols.fig_client_request_security_status(
+      this.handle,
+      symbol,
+      channelId,
+      ptr(outSymbol),
+      ptr(status),
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_client_request_security_status failed: ${rc}`);
+    }
+    return { symbol: takeCString(outSymbol), status: status[0] };
+  }
+
+  /**
+   * POST trading/accounts/{account}/orders/masscancel.
+   * side 0 and symbol null omit those filters.
+   */
+  massCancel(
+    clOrdId: string,
+    account: string,
+    symbol: string | null,
+    side: number,
+    channelId = 1,
+  ): { clOrdId: string; totalAffected: number; status: number } {
+    const outCl = ptrSlot();
+    const total = Buffer.alloc(4);
+    const status = Buffer.alloc(1);
+    const rc = fig.symbols.fig_client_mass_cancel(
+      this.handle,
+      clOrdId,
+      account,
+      symbol,
+      side,
+      channelId,
+      ptr(outCl),
+      ptr(total),
+      ptr(status),
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_client_mass_cancel failed: ${rc}`);
+    }
+    return {
+      clOrdId: takeCString(outCl),
+      totalAffected: total.readUInt32LE(0),
+      status: status[0],
+    };
+  }
+
   close(): void {
     if (this.handle) {
       fig.symbols.fig_client_close(this.handle);
@@ -485,6 +617,117 @@ export function sbeEncodeNewOrderSingle(
     throw new Error(`fig_sbe_encode_new_order_single failed: ${rc}`);
   }
   return takeOwnedBytes(out);
+}
+
+/** side 0 omits the filter. symbol null omits the symbol filter. */
+export function cborEncodeMassCancelRequest(
+  clOrdId: string,
+  account: string,
+  symbol: string | null,
+  side: number,
+): Buffer {
+  const out = outSlot();
+  const rc = fig.symbols.fig_cbor_encode_mass_cancel_request(
+    clOrdId,
+    account,
+    symbol,
+    side,
+    ptr(out),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_cbor_encode_mass_cancel_request failed: ${rc}`);
+  }
+  return takeOwnedBytes(out);
+}
+
+export function cborDecodeMassCancelRequest(data: Buffer): {
+  clOrdId: string;
+  account: string;
+  symbol: string;
+  side: number;
+} {
+  const cl = ptrSlot();
+  const account = ptrSlot();
+  const symbol = ptrSlot();
+  const side = Buffer.alloc(1);
+  const rc = fig.symbols.fig_cbor_decode_mass_cancel_request(
+    data,
+    data.length,
+    ptr(cl),
+    ptr(account),
+    ptr(symbol),
+    ptr(side),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_cbor_decode_mass_cancel_request failed: ${rc}`);
+  }
+  return {
+    clOrdId: takeCString(cl),
+    account: takeCString(account),
+    symbol: takeCString(symbol),
+    side: side[0],
+  };
+}
+
+export function cborDecodeTradingSessionStatus(data: Buffer): {
+  status: number;
+  sessionId: string;
+} {
+  const status = Buffer.alloc(1);
+  const session = ptrSlot();
+  const rc = fig.symbols.fig_cbor_decode_trading_session_status(
+    data,
+    data.length,
+    ptr(status),
+    ptr(session),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_cbor_decode_trading_session_status failed: ${rc}`);
+  }
+  return { status: status[0], sessionId: takeCString(session) };
+}
+
+export function cborDecodeSecurityStatus(data: Buffer): {
+  symbol: string;
+  status: number;
+} {
+  const symbol = ptrSlot();
+  const status = Buffer.alloc(1);
+  const rc = fig.symbols.fig_cbor_decode_security_status(
+    data,
+    data.length,
+    ptr(symbol),
+    ptr(status),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_cbor_decode_security_status failed: ${rc}`);
+  }
+  return { symbol: takeCString(symbol), status: status[0] };
+}
+
+export function cborDecodeMassCancelReport(data: Buffer): {
+  clOrdId: string;
+  totalAffected: number;
+  status: number;
+} {
+  const cl = ptrSlot();
+  const total = Buffer.alloc(4);
+  const status = Buffer.alloc(1);
+  const rc = fig.symbols.fig_cbor_decode_mass_cancel_report(
+    data,
+    data.length,
+    ptr(cl),
+    ptr(total),
+    ptr(status),
+  ) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_cbor_decode_mass_cancel_report failed: ${rc}`);
+  }
+  return {
+    clOrdId: takeCString(cl),
+    totalAffected: total.readUInt32LE(0),
+    status: status[0],
+  };
 }
 
 /** RAII merge-state wrappers over fig.h stream merge handles. */

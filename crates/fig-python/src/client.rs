@@ -6,12 +6,17 @@ use std::time::Duration;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyBytes, PyDict};
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use fig_client::{FigSdkClient, LiveSubscription};
 use fig_core::frame::Frame;
+use fig_core::messages::{
+    MassCancelReport, MassCancelReportStatus, MassCancelRequest, SecurityStatus,
+    SecurityStatusHaltReason, SecurityStatusStatus, TradingSessionStatus,
+    TradingSessionStatusHaltReason, TradingSessionStatusStatus,
+};
 use fig_core::transport::{client_config_from_env, FigClient, FigConnection};
 
 use crate::codec;
@@ -116,6 +121,135 @@ impl FigPyClient {
                 .collect()
         })
     }
+
+    pub(crate) fn request_session_status_inner(
+        &self,
+        channel_id: u16,
+    ) -> Result<TradingSessionStatus, String> {
+        self.rt.block_on(async {
+            let guard = self.conn.lock().await;
+            let conn = guard.as_ref().ok_or_else(|| "not connected".to_string())?;
+            FigSdkClient::new(conn.inner())
+                .request_session_status(channel_id)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    pub(crate) fn request_security_status_inner(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<SecurityStatus, String> {
+        self.rt.block_on(async {
+            let guard = self.conn.lock().await;
+            let conn = guard.as_ref().ok_or_else(|| "not connected".to_string())?;
+            FigSdkClient::new(conn.inner())
+                .request_security_status(symbol, channel_id)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    }
+
+    pub(crate) fn mass_cancel_inner(
+        &self,
+        req: &MassCancelRequest,
+        channel_id: u16,
+    ) -> Result<MassCancelReport, String> {
+        self.rt.block_on(async {
+            let guard = self.conn.lock().await;
+            let conn = guard.as_ref().ok_or_else(|| "not connected".to_string())?;
+            FigSdkClient::new(conn.inner())
+                .mass_cancel(req, channel_id)
+                .await
+                .map_err(|e| e.to_string())
+        })
+    }
+}
+
+fn session_status_name(status: TradingSessionStatusStatus) -> &'static str {
+    match status {
+        TradingSessionStatusStatus::PreOpen => "pre_open",
+        TradingSessionStatusStatus::Open => "open",
+        TradingSessionStatusStatus::Break => "break",
+        TradingSessionStatusStatus::Close => "close",
+        TradingSessionStatusStatus::Halt => "halt",
+        TradingSessionStatusStatus::Auction => "auction",
+    }
+}
+
+fn session_halt_name(reason: TradingSessionStatusHaltReason) -> &'static str {
+    match reason {
+        TradingSessionStatusHaltReason::None => "none",
+        TradingSessionStatusHaltReason::News => "news",
+        TradingSessionStatusHaltReason::MatchingEngine => "matching_engine",
+        TradingSessionStatusHaltReason::Regulatory => "regulatory",
+        TradingSessionStatusHaltReason::Auction => "auction",
+        TradingSessionStatusHaltReason::Other => "other",
+    }
+}
+
+fn security_status_name(status: SecurityStatusStatus) -> &'static str {
+    match status {
+        SecurityStatusStatus::Trading => "trading",
+        SecurityStatusStatus::Halt => "halt",
+        SecurityStatusStatus::Auction => "auction",
+        SecurityStatusStatus::Suspended => "suspended",
+    }
+}
+
+fn security_halt_name(reason: SecurityStatusHaltReason) -> &'static str {
+    match reason {
+        SecurityStatusHaltReason::None => "none",
+        SecurityStatusHaltReason::News => "news",
+        SecurityStatusHaltReason::MatchingEngine => "matching_engine",
+        SecurityStatusHaltReason::Regulatory => "regulatory",
+        SecurityStatusHaltReason::Auction => "auction",
+        SecurityStatusHaltReason::Other => "other",
+    }
+}
+
+fn report_status_name(status: MassCancelReportStatus) -> &'static str {
+    match status {
+        MassCancelReportStatus::Accepted => "accepted",
+        MassCancelReportStatus::Completed => "completed",
+        MassCancelReportStatus::Rejected => "rejected",
+    }
+}
+
+fn session_dict<'py>(
+    py: Python<'py>,
+    status: &TradingSessionStatus,
+) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("symbol", status.symbol.clone())?;
+    d.set_item("trading_session_id", &status.trading_session_id)?;
+    d.set_item("status", session_status_name(status.status))?;
+    d.set_item("halt_reason", status.halt_reason.map(session_halt_name))?;
+    d.set_item("timestamp", status.timestamp)?;
+    d.set_item("is_snapshot", status.is_snapshot)?;
+    Ok(d)
+}
+
+fn security_dict<'py>(py: Python<'py>, status: &SecurityStatus) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("symbol", &status.symbol)?;
+    d.set_item("status", security_status_name(status.status))?;
+    d.set_item("halt_reason", status.halt_reason.map(security_halt_name))?;
+    d.set_item("timestamp", status.timestamp)?;
+    d.set_item("is_snapshot", status.is_snapshot)?;
+    Ok(d)
+}
+
+fn report_dict<'py>(py: Python<'py>, report: &MassCancelReport) -> PyResult<Bound<'py, PyDict>> {
+    let d = PyDict::new(py);
+    d.set_item("cl_ord_id", &report.cl_ord_id)?;
+    d.set_item("account", &report.account)?;
+    d.set_item("symbol", report.symbol.clone())?;
+    d.set_item("total_affected", report.total_affected)?;
+    d.set_item("status", report_status_name(report.status))?;
+    d.set_item("timestamp", report.timestamp)?;
+    Ok(d)
 }
 
 #[pyclass]
@@ -278,6 +412,62 @@ impl FigPyClient {
         })
     }
 
+    /// GET `marketdata/session` and return the trading-session status.
+    #[pyo3(signature = (channel_id=1))]
+    fn request_session_status<'py>(
+        &self,
+        py: Python<'py>,
+        channel_id: u16,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let status = self
+            .request_session_status_inner(channel_id)
+            .map_err(PyRuntimeError::new_err)?;
+        session_dict(py, &status)
+    }
+
+    /// GET `marketdata/{symbol}/status`.
+    #[pyo3(signature = (symbol, channel_id=1))]
+    fn request_security_status<'py>(
+        &self,
+        py: Python<'py>,
+        symbol: &str,
+        channel_id: u16,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let status = self
+            .request_security_status_inner(symbol, channel_id)
+            .map_err(PyRuntimeError::new_err)?;
+        security_dict(py, &status)
+    }
+
+    /// POST `trading/accounts/{account}/orders/masscancel`.
+    ///
+    /// `side` is `buy`, `sell`, `sell_short`, or `sell_short_exempt`. Omit it to cancel every side.
+    #[pyo3(signature = (cl_ord_id, account, symbol=None, side=None, channel_id=1))]
+    fn mass_cancel<'py>(
+        &self,
+        py: Python<'py>,
+        cl_ord_id: &str,
+        account: &str,
+        symbol: Option<&str>,
+        side: Option<&str>,
+        channel_id: u16,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let side = match side {
+            Some(s) => Some(codec::parse_side(s).map_err(PyRuntimeError::new_err)?),
+            None => None,
+        };
+        let req = MassCancelRequest {
+            cl_ord_id: cl_ord_id.to_string(),
+            account: account.to_string(),
+            symbol: symbol.map(str::to_string),
+            side,
+        };
+        let report = self
+            .mass_cancel_inner(&req, channel_id)
+            .map_err(PyRuntimeError::new_err)?;
+        report_dict(py, &report)
+    }
+
     /// Send a PING control frame on channel 0.
     fn ping(&self) -> PyResult<()> {
         let frame = Frame::ping();
@@ -306,7 +496,8 @@ mod tests {
     use fig_core::codec;
     use fig_core::frame::FrameType;
     use fig_core::messages::{
-        NewOrderSingle, OrderType, PositionUpdate, Price, Quantity, Side, TimeInForce,
+        MassCancelReportStatus, MassCancelRequest, NewOrderSingle, OrderType, PositionUpdate,
+        Price, Quantity, SecurityStatusStatus, Side, TimeInForce, TradingSessionStatusStatus,
     };
     use fig_exchange_sim::server::run_server;
 
@@ -402,5 +593,56 @@ mod tests {
         assert_eq!(frame.frame_type, FrameType::StreamItem);
         let update: PositionUpdate = codec::decode_cbor(&frame.payload).expect("position");
         assert_eq!(update.account, "TEST");
+    }
+
+    #[test]
+    fn python_market_state_helpers() {
+        std::env::set_var("FIG_TLS_INSECURE", "1");
+        std::env::set_var("FIG_DEV_OPEN", "1");
+        let server_rt = Runtime::new().expect("server runtime");
+        let endpoint = server_rt
+            .block_on(run_server("127.0.0.1:0"))
+            .expect("server");
+        let addr = endpoint.local_addr().expect("local addr").to_string();
+
+        let client = FigPyClient::try_new().expect("client");
+        client.connect_inner(&addr, None).expect("connect");
+        let session = client.request_session_status_inner(10).expect("session");
+        assert_eq!(session.status, TradingSessionStatusStatus::Open);
+        assert_eq!(session.trading_session_id, "REG");
+        let security = client
+            .request_security_status_inner("AAPL", 11)
+            .expect("security");
+        assert_eq!(security.symbol, "AAPL");
+        assert_eq!(security.status, SecurityStatusStatus::Trading);
+
+        for (id, px) in [("PY-MC-A", 10.0), ("PY-MC-B", 9.0)] {
+            let payload = order_payload(id, Side::Buy, OrderType::Limit, Some(px), 1.0);
+            client
+                .request_inner(
+                    "trading/accounts/TEST/orders",
+                    "POST",
+                    Some(&payload),
+                    Some("fig-dev-TEST"),
+                    2,
+                    1,
+                    1,
+                )
+                .expect("resting order");
+        }
+        let report = client
+            .mass_cancel_inner(
+                &MassCancelRequest {
+                    cl_ord_id: "PY-MC-ALL".into(),
+                    account: "TEST".into(),
+                    symbol: Some("AAPL".into()),
+                    side: None,
+                },
+                12,
+            )
+            .expect("mass cancel");
+        assert_eq!(report.cl_ord_id, "PY-MC-ALL");
+        assert_eq!(report.status, MassCancelReportStatus::Completed);
+        assert!(report.total_affected >= 2);
     }
 }

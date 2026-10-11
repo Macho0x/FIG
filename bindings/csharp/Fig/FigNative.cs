@@ -137,6 +137,72 @@ public static class FigNative
     public static extern void fig_string_free(IntPtr s);
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_cbor_encode_mass_cancel_request(
+        string clOrdId,
+        string account,
+        string? symbol,
+        byte side,
+        out FigBuffer outBuf);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_cbor_decode_mass_cancel_request(
+        byte[] data,
+        UIntPtr len,
+        out IntPtr outClOrdId,
+        out IntPtr outAccount,
+        out IntPtr outSymbol,
+        out byte outSide);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_cbor_decode_trading_session_status(
+        byte[] data,
+        UIntPtr len,
+        out byte outStatus,
+        out IntPtr outSessionId);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_cbor_decode_security_status(
+        byte[] data,
+        UIntPtr len,
+        out IntPtr outSymbol,
+        out byte outStatus);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_cbor_decode_mass_cancel_report(
+        byte[] data,
+        UIntPtr len,
+        out IntPtr outClOrdId,
+        out uint outTotalAffected,
+        out byte outStatus);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_request_session_status(
+        IntPtr handle,
+        ushort channelId,
+        out byte outStatus,
+        out IntPtr outSessionId);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_request_security_status(
+        IntPtr handle,
+        string symbol,
+        ushort channelId,
+        out IntPtr outSymbol,
+        out byte outStatus);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_mass_cancel(
+        IntPtr handle,
+        string clOrdId,
+        string account,
+        string? symbol,
+        byte side,
+        ushort channelId,
+        out IntPtr outClOrdId,
+        out uint outTotalAffected,
+        out byte outStatus);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     public static extern int fig_sbe_encode_new_order_single(
         string clOrdId,
         string symbol,
@@ -259,6 +325,64 @@ public static class FigNative
         return CopyBuffer(buf);
     }
 
+    internal static string TakeString(IntPtr p)
+    {
+        if (p == IntPtr.Zero)
+        {
+            return "";
+        }
+        var s = Marshal.PtrToStringUTF8(p) ?? "";
+        fig_string_free(p);
+        return s;
+    }
+
+    public static byte[] CborEncodeMassCancelRequest(string clOrdId, string account, string? symbol, byte side)
+    {
+        if (fig_cbor_encode_mass_cancel_request(clOrdId, account, symbol, side, out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_cbor_encode_mass_cancel_request failed");
+        }
+        return CopyBuffer(buf);
+    }
+
+    public static (string ClOrdId, string Account, string Symbol, byte Side) CborDecodeMassCancelRequest(byte[] data)
+    {
+        if (fig_cbor_decode_mass_cancel_request(
+                data, (UIntPtr)data.Length, out var cl, out var account, out var symbol, out var side) != 0)
+        {
+            throw new InvalidOperationException("fig_cbor_decode_mass_cancel_request failed");
+        }
+        return (TakeString(cl), TakeString(account), TakeString(symbol), side);
+    }
+
+    public static (byte Status, string SessionId) CborDecodeTradingSessionStatus(byte[] data)
+    {
+        if (fig_cbor_decode_trading_session_status(data, (UIntPtr)data.Length, out var status, out var session) != 0)
+        {
+            throw new InvalidOperationException("fig_cbor_decode_trading_session_status failed");
+        }
+        return (status, TakeString(session));
+    }
+
+    public static (string Symbol, byte Status) CborDecodeSecurityStatus(byte[] data)
+    {
+        if (fig_cbor_decode_security_status(data, (UIntPtr)data.Length, out var symbol, out var status) != 0)
+        {
+            throw new InvalidOperationException("fig_cbor_decode_security_status failed");
+        }
+        return (TakeString(symbol), status);
+    }
+
+    public static (string ClOrdId, uint TotalAffected, byte Status) CborDecodeMassCancelReport(byte[] data)
+    {
+        if (fig_cbor_decode_mass_cancel_report(
+                data, (UIntPtr)data.Length, out var cl, out var total, out var status) != 0)
+        {
+            throw new InvalidOperationException("fig_cbor_decode_mass_cancel_report failed");
+        }
+        return (TakeString(cl), total, status);
+    }
+
     public static string Version => Marshal.PtrToStringUTF8(fig_version()) ?? "unknown";
 
     public static byte[] CopyBuffer(FigBuffer buf)
@@ -342,6 +466,35 @@ public sealed class FigClient : IDisposable
             throw new InvalidOperationException("fig_client_subscribe failed");
         }
         return new FigSubscription(sub, FigNative.CopyFrameList(list));
+    }
+
+    public (byte Status, string SessionId) RequestSessionStatus(ushort channelId = 1)
+    {
+        if (FigNative.fig_client_request_session_status(_handle, channelId, out var status, out var session) != 0)
+        {
+            throw new InvalidOperationException("fig_client_request_session_status failed");
+        }
+        return (status, FigNative.TakeString(session));
+    }
+
+    public (string Symbol, byte Status) RequestSecurityStatus(string symbol, ushort channelId = 1)
+    {
+        if (FigNative.fig_client_request_security_status(_handle, symbol, channelId, out var outSymbol, out var status) != 0)
+        {
+            throw new InvalidOperationException("fig_client_request_security_status failed");
+        }
+        return (FigNative.TakeString(outSymbol), status);
+    }
+
+    public (string ClOrdId, uint TotalAffected, byte Status) MassCancel(
+        string clOrdId, string account, string? symbol, byte side, ushort channelId = 1)
+    {
+        if (FigNative.fig_client_mass_cancel(
+                _handle, clOrdId, account, symbol, side, channelId, out var cl, out var total, out var status) != 0)
+        {
+            throw new InvalidOperationException("fig_client_mass_cancel failed");
+        }
+        return (FigNative.TakeString(cl), total, status);
     }
 
     public void Dispose()
