@@ -10,7 +10,7 @@ Guides below are how-to: they must match the spec, not replace it.
 | Understand frames, channels, 0-RTT | [PROTOCOL.md](PROTOCOL.md) · [SPEC.md](../SPEC.md) |
 | Live `SUBSCRIBE` (held-open TREE stream) | [STREAMING.md](STREAMING.md) |
 | Historical `REQUEST` / REST GET | [QUERY.md](QUERY.md) |
-| Keep FIX / REST / WebSocket clients | [GATEWAY.md](GATEWAY.md) |
+| Keep FIX / REST / WebSocket / OUCH / ITCH clients | [GATEWAY.md](GATEWAY.md) |
 | Deploy a venue | [DEPLOYMENT.md](DEPLOYMENT.md) |
 | Rotate JWT signing keys | [JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md) |
 | Colo SBE order entry | [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md) |
@@ -25,7 +25,7 @@ Guides below are how-to: they must match the spec, not replace it.
 
 | Intent | Client API | Server behavior |
 |---|---|---|
-| Query / order (`REQUEST`) | `FigSdkClient::send_and_read` / `request_*` | Response, then **half-close** (finish + EOF) |
+| Query / order (`REQUEST`) | `FigSdkClient::request` / `request_*` | Response, then **half-close** (finish + EOF) |
 | Live stream (`SUBSCRIBE`) | `subscribe_*` for snapshot, or `subscribe_live` + `LiveSubscription::next_frame` | Snapshot, then **stream stays open** |
 
 `send_and_read` on a live `SUBSCRIBE` waits for EOF and **hangs** on the

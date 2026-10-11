@@ -12,7 +12,7 @@ bindings caveats), start at [README.md](README.md) in this folder.
 | [PROTOCOL.md](PROTOCOL.md) | Design rationale, channel directions, migration |
 | [STREAMING.md](STREAMING.md) | Live `SUBSCRIBE` paths and gateway WS mapping |
 | [QUERY.md](QUERY.md) | Historical `REQUEST`/`RESPONSE` paths and REST GET mapping |
-| [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST/WebSocket gateway deployment |
+| [GATEWAY.md](GATEWAY.md) | Legacy FIX/REST/WebSocket/OUCH/ITCH gateway deployment |
 | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | Security checklist (1.0 sign-off recorded) |
 | [TODO.md §18](../TODO.md#18-fig-10-release-criteria) | 1.0 release criteria · [§0 backlog](../TODO.md#0-active-backlog-fig-repo) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | HA deployment and operations |
@@ -20,6 +20,8 @@ bindings caveats), start at [README.md](README.md) in this folder.
 | [adr/README.md](adr/README.md) | Architecture decision records |
 | [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
+| [adr/0008-named-gateway-adapters.md](adr/0008-named-gateway-adapters.md) | FIX/REST/WS/OUCH/ITCH as named adapters |
+| [adr/0009-market-data-plane.md](adr/0009-market-data-plane.md) | TREE L2 native; ITCH is L2 egress |
 | [../SPEC.md](../SPEC.md) | Normative wire format specification |
 | [../TODO.md](../TODO.md) | Implementation roadmap |
 
@@ -83,15 +85,19 @@ cargo doc --workspace --no-deps --open
 | [`ws_listener`](../crates/fig-gateways/src/ws_listener.rs) | HTTP upgrade handler for `fig-gateway` WS listener |
 | [`backend`](../crates/fig-gateways/src/backend.rs) | `proxy_frame` (REQUEST/EOF), `BackendSession` (live SUBSCRIBE) |
 | [`sse`](../crates/fig-gateways/src/sse.rs) | Server-Sent Events ↔ STREAM_ITEM |
+| [`soupbin`](../crates/fig-gateways/src/soupbin.rs) | SoupBinTCP session framing for OUCH/ITCH |
+| [`ouch`](../crates/fig-gateways/src/ouch.rs) | FIG OUCH 4.2-shaped order entry (`--ouch-addr`) |
+| [`itch`](../crates/fig-gateways/src/itch.rs) | ITCH L2 price-level egress (SoupBin + MoldUDP64) |
 
 ### Binaries
 
 | Binary | Command | Purpose |
 |---|---|---|
-| `fig-gateway` | `FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876` |
+| `fig-gateway` | `FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443` | REST `:8080`, WS `:8090`, FIX `:9876`; OUCH/ITCH opt-in |
 
 E2E alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`
 (Binance / Hyperliquid / FIX / REST fixture tables in one test file).
+OUCH/ITCH: `cargo test -p fig-gateways --test gateway_ouch_itch_e2e`.
 
 ---
 
@@ -150,7 +156,7 @@ key-issuance API).
 | `funding` | `FundingState` | funding payments |
 | `ledger` | `LedgerState` | ledger updates |
 | `liquidations` | `LiquidationState` | user + public liquidations |
-| `client` | `FigSdkClient`, `LiveSubscription` | `request_*` / `send_and_read` (EOF); `subscribe_*` / `subscribe_live` (held open) |
+| `client` | `FigSdkClient`, `LiveSubscription` | `request()` / `request_*` (EOF); `subscribe_*` / `subscribe_live` (held open) |
 
 ## `fig-ffi` — C ABI
 

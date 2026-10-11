@@ -36,9 +36,12 @@ Order history (>50 rows in exchange-sim) uses this pattern today.
 | 24h ticker snapshot | `marketdata/{symbol}/ticker` | `TickerRequest` | `SymbolTicker` |
 | All mids / mini ticker | `marketdata/ticker/all` | `AllMidsRequest` | `AllMidsBatch` |
 | Mark price | `marketdata/{symbol}/mark` | `MarkPriceRequest` | `MarkPriceUpdate` |
+| Trading session | `marketdata/session` | `TradingSessionStatusRequest` | `TradingSessionStatus` |
+| Security status | `marketdata/{symbol}/status` | `SecurityStatusRequest` | `SecurityStatus` |
 | Account summary | `accounts/{account}` | (empty GET) | `AccountSummary` |
 | Margin summary | `accounts/{account}/margin` | (empty GET) | `MarginSummary` |
 | Open orders | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` | `OpenOrdersSnapshot` |
+| Mass cancel | `trading/accounts/{account}/orders/masscancel` | `MassCancelRequest` (POST) | `MassCancelReport` |
 | Order history | `trading/accounts/{account}/orders` | `OrderHistoryRequest` | `OrderHistoryBatch` (+ stream) |
 | Fill history | `accounts/{account}/fills` | `FillHistoryRequest` | `FillHistoryBatch` |
 | Funding history | `accounts/{account}/funding` | `FundingHistoryRequest` | `FundingHistoryBatch` |

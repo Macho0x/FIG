@@ -310,6 +310,130 @@ export function LedgerUpdateKindFromValue(v: number): LedgerUpdateKind | null {
 
 export function LedgerUpdateKindToValue(e: LedgerUpdateKind): number { return e; }
 
+export enum TradingSessionStatusStatus {
+  PreOpen = 1,
+  Open = 2,
+  Break = 3,
+  Close = 4,
+  Halt = 5,
+  Auction = 6,
+}
+
+export function TradingSessionStatusStatusFromValue(v: number): TradingSessionStatusStatus | null {
+  switch (v) {
+    case 1: return TradingSessionStatusStatus.PreOpen;
+    case 2: return TradingSessionStatusStatus.Open;
+    case 3: return TradingSessionStatusStatus.Break;
+    case 4: return TradingSessionStatusStatus.Close;
+    case 5: return TradingSessionStatusStatus.Halt;
+    case 6: return TradingSessionStatusStatus.Auction;
+    default: return null;
+  }
+}
+
+export function TradingSessionStatusStatusToValue(e: TradingSessionStatusStatus): number { return e; }
+
+export enum TradingSessionStatusHaltReason {
+  None = 1,
+  News = 2,
+  MatchingEngine = 3,
+  Regulatory = 4,
+  Auction = 5,
+  Other = 6,
+}
+
+export function TradingSessionStatusHaltReasonFromValue(v: number): TradingSessionStatusHaltReason | null {
+  switch (v) {
+    case 1: return TradingSessionStatusHaltReason.None;
+    case 2: return TradingSessionStatusHaltReason.News;
+    case 3: return TradingSessionStatusHaltReason.MatchingEngine;
+    case 4: return TradingSessionStatusHaltReason.Regulatory;
+    case 5: return TradingSessionStatusHaltReason.Auction;
+    case 6: return TradingSessionStatusHaltReason.Other;
+    default: return null;
+  }
+}
+
+export function TradingSessionStatusHaltReasonToValue(e: TradingSessionStatusHaltReason): number { return e; }
+
+export enum SecurityStatusStatus {
+  Trading = 1,
+  Halt = 2,
+  Auction = 3,
+  Suspended = 4,
+}
+
+export function SecurityStatusStatusFromValue(v: number): SecurityStatusStatus | null {
+  switch (v) {
+    case 1: return SecurityStatusStatus.Trading;
+    case 2: return SecurityStatusStatus.Halt;
+    case 3: return SecurityStatusStatus.Auction;
+    case 4: return SecurityStatusStatus.Suspended;
+    default: return null;
+  }
+}
+
+export function SecurityStatusStatusToValue(e: SecurityStatusStatus): number { return e; }
+
+export enum SecurityStatusHaltReason {
+  None = 1,
+  News = 2,
+  MatchingEngine = 3,
+  Regulatory = 4,
+  Auction = 5,
+  Other = 6,
+}
+
+export function SecurityStatusHaltReasonFromValue(v: number): SecurityStatusHaltReason | null {
+  switch (v) {
+    case 1: return SecurityStatusHaltReason.None;
+    case 2: return SecurityStatusHaltReason.News;
+    case 3: return SecurityStatusHaltReason.MatchingEngine;
+    case 4: return SecurityStatusHaltReason.Regulatory;
+    case 5: return SecurityStatusHaltReason.Auction;
+    case 6: return SecurityStatusHaltReason.Other;
+    default: return null;
+  }
+}
+
+export function SecurityStatusHaltReasonToValue(e: SecurityStatusHaltReason): number { return e; }
+
+export enum MassCancelRequestSide {
+  Buy = 1,
+  Sell = 2,
+  SellShort = 3,
+  SellShortExempt = 4,
+}
+
+export function MassCancelRequestSideFromValue(v: number): MassCancelRequestSide | null {
+  switch (v) {
+    case 1: return MassCancelRequestSide.Buy;
+    case 2: return MassCancelRequestSide.Sell;
+    case 3: return MassCancelRequestSide.SellShort;
+    case 4: return MassCancelRequestSide.SellShortExempt;
+    default: return null;
+  }
+}
+
+export function MassCancelRequestSideToValue(e: MassCancelRequestSide): number { return e; }
+
+export enum MassCancelReportStatus {
+  Accepted = 1,
+  Completed = 2,
+  Rejected = 3,
+}
+
+export function MassCancelReportStatusFromValue(v: number): MassCancelReportStatus | null {
+  switch (v) {
+    case 1: return MassCancelReportStatus.Accepted;
+    case 2: return MassCancelReportStatus.Completed;
+    case 3: return MassCancelReportStatus.Rejected;
+    default: return null;
+  }
+}
+
+export function MassCancelReportStatusToValue(e: MassCancelReportStatus): number { return e; }
+
 export enum AggregateTradeSide {
   Buy = 1,
   Sell = 2,
@@ -5499,6 +5623,477 @@ export function PositionRequestDecoderDecode(buf: Uint8Array): PositionRequest {
   const account = readString(buf, pos);
   const value: PositionRequest = {
     account: account,
+  };
+  return value;
+}
+
+/** SBE message TradingSessionStatusRequest */
+export interface TradingSessionStatusRequest {
+  symbol: string | null;
+}
+
+/** SBE body encoder for TradingSessionStatusRequest (fields only, no header). */
+export function TradingSessionStatusRequestBodyEncoderEncode(value: TradingSessionStatusRequest, buf: number[]): void {
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+}
+
+/** SBE body decoder for TradingSessionStatusRequest: reads fields at `pos`. */
+export function TradingSessionStatusRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): TradingSessionStatusRequest {
+  let symbol: string | null = null;
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: TradingSessionStatusRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for TradingSessionStatusRequest — returns the complete message. */
+export function TradingSessionStatusRequestEncoderEncode(symbol: string | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 55);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for TradingSessionStatusRequest: validates the header and reads the body. */
+export function TradingSessionStatusRequestDecoderDecode(buf: Uint8Array): TradingSessionStatusRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 55) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const value: TradingSessionStatusRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE message TradingSessionStatus */
+export interface TradingSessionStatus {
+  symbol: string | null;
+  trading_session_id: string;
+  status: TradingSessionStatusStatus;
+  halt_reason: TradingSessionStatusHaltReason | null;
+  timestamp: bigint;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for TradingSessionStatus (fields only, no header). */
+export function TradingSessionStatusBodyEncoderEncode(value: TradingSessionStatus, buf: number[]): void {
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  writeString(buf, value.trading_session_id);
+  buf.push(TradingSessionStatusStatusToValue(value.status));
+  buf.push(value.halt_reason != null ? TradingSessionStatusHaltReasonToValue(value.halt_reason) : 0);
+  buf.push(value.halt_reason != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for TradingSessionStatus: reads fields at `pos`. */
+export function TradingSessionStatusBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): TradingSessionStatus {
+  let symbol: string | null = null;
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const trading_session_id = readString(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = TradingSessionStatusStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid TradingSessionStatusStatus');
+  const halt_reasonRaw = readU8(buf, pos);
+  let halt_reason: TradingSessionStatusHaltReason | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = TradingSessionStatusHaltReasonFromValue(halt_reasonRaw);
+    if (v == null) throw new Error('invalid TradingSessionStatusHaltReason');
+    halt_reason = v;
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: TradingSessionStatus = {
+    symbol: symbol,
+    trading_session_id: trading_session_id,
+    status: status,
+    halt_reason: halt_reason,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for TradingSessionStatus — returns the complete message. */
+export function TradingSessionStatusEncoderEncode(symbol: string | null, trading_session_id: string, status: TradingSessionStatusStatus, halt_reason: TradingSessionStatusHaltReason | null, timestamp: bigint, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 56);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 11);
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  writeString(buf, trading_session_id);
+  buf.push(TradingSessionStatusStatusToValue(status));
+  buf.push(halt_reason != null ? TradingSessionStatusHaltReasonToValue(halt_reason) : 0);
+  buf.push(halt_reason != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for TradingSessionStatus: validates the header and reads the body. */
+export function TradingSessionStatusDecoderDecode(buf: Uint8Array): TradingSessionStatus {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 56) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const trading_session_id = readString(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = TradingSessionStatusStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid TradingSessionStatusStatus');
+  const halt_reasonRaw = readU8(buf, pos);
+  let halt_reason: TradingSessionStatusHaltReason | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = TradingSessionStatusHaltReasonFromValue(halt_reasonRaw);
+    if (v == null) throw new Error('invalid TradingSessionStatusHaltReason');
+    halt_reason = v;
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: TradingSessionStatus = {
+    symbol: symbol,
+    trading_session_id: trading_session_id,
+    status: status,
+    halt_reason: halt_reason,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message SecurityStatusRequest */
+export interface SecurityStatusRequest {
+  symbol: string;
+}
+
+/** SBE body encoder for SecurityStatusRequest (fields only, no header). */
+export function SecurityStatusRequestBodyEncoderEncode(value: SecurityStatusRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+}
+
+/** SBE body decoder for SecurityStatusRequest: reads fields at `pos`. */
+export function SecurityStatusRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): SecurityStatusRequest {
+  const symbol = readString(buf, pos);
+  const value: SecurityStatusRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for SecurityStatusRequest — returns the complete message. */
+export function SecurityStatusRequestEncoderEncode(symbol: string): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 57);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+  writeString(buf, symbol);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for SecurityStatusRequest: validates the header and reads the body. */
+export function SecurityStatusRequestDecoderDecode(buf: Uint8Array): SecurityStatusRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 57) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const value: SecurityStatusRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE message SecurityStatus */
+export interface SecurityStatus {
+  symbol: string;
+  status: SecurityStatusStatus;
+  halt_reason: SecurityStatusHaltReason | null;
+  timestamp: bigint;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for SecurityStatus (fields only, no header). */
+export function SecurityStatusBodyEncoderEncode(value: SecurityStatus, buf: number[]): void {
+  writeString(buf, value.symbol);
+  buf.push(SecurityStatusStatusToValue(value.status));
+  buf.push(value.halt_reason != null ? SecurityStatusHaltReasonToValue(value.halt_reason) : 0);
+  buf.push(value.halt_reason != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for SecurityStatus: reads fields at `pos`. */
+export function SecurityStatusBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): SecurityStatus {
+  const symbol = readString(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = SecurityStatusStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid SecurityStatusStatus');
+  const halt_reasonRaw = readU8(buf, pos);
+  let halt_reason: SecurityStatusHaltReason | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = SecurityStatusHaltReasonFromValue(halt_reasonRaw);
+    if (v == null) throw new Error('invalid SecurityStatusHaltReason');
+    halt_reason = v;
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: SecurityStatus = {
+    symbol: symbol,
+    status: status,
+    halt_reason: halt_reason,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for SecurityStatus — returns the complete message. */
+export function SecurityStatusEncoderEncode(symbol: string, status: SecurityStatusStatus, halt_reason: SecurityStatusHaltReason | null, timestamp: bigint, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 58);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 11);
+  writeString(buf, symbol);
+  buf.push(SecurityStatusStatusToValue(status));
+  buf.push(halt_reason != null ? SecurityStatusHaltReasonToValue(halt_reason) : 0);
+  buf.push(halt_reason != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for SecurityStatus: validates the header and reads the body. */
+export function SecurityStatusDecoderDecode(buf: Uint8Array): SecurityStatus {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 58) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = SecurityStatusStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid SecurityStatusStatus');
+  const halt_reasonRaw = readU8(buf, pos);
+  let halt_reason: SecurityStatusHaltReason | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = SecurityStatusHaltReasonFromValue(halt_reasonRaw);
+    if (v == null) throw new Error('invalid SecurityStatusHaltReason');
+    halt_reason = v;
+  }
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: SecurityStatus = {
+    symbol: symbol,
+    status: status,
+    halt_reason: halt_reason,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE message MassCancelRequest */
+export interface MassCancelRequest {
+  cl_ord_id: string;
+  account: string;
+  symbol: string | null;
+  side: MassCancelRequestSide | null;
+}
+
+/** SBE body encoder for MassCancelRequest (fields only, no header). */
+export function MassCancelRequestBodyEncoderEncode(value: MassCancelRequest, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  buf.push(value.side != null ? MassCancelRequestSideToValue(value.side) : 0);
+  buf.push(value.side != null ? 1 : 0);
+}
+
+/** SBE body decoder for MassCancelRequest: reads fields at `pos`. */
+export function MassCancelRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MassCancelRequest {
+  let symbol: string | null = null;
+  const cl_ord_id = readString(buf, pos);
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  let side: MassCancelRequestSide | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = MassCancelRequestSideFromValue(sideRaw);
+    if (v == null) throw new Error('invalid MassCancelRequestSide');
+    side = v;
+  }
+  const value: MassCancelRequest = {
+    cl_ord_id: cl_ord_id,
+    account: account,
+    symbol: symbol,
+    side: side,
+  };
+  return value;
+}
+
+/** SBE encoder for MassCancelRequest — returns the complete message. */
+export function MassCancelRequestEncoderEncode(cl_ord_id: string, account: string, symbol: string | null, side: MassCancelRequestSide | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 59);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 1);
+  writeString(buf, cl_ord_id);
+  writeString(buf, account);
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  buf.push(side != null ? MassCancelRequestSideToValue(side) : 0);
+  buf.push(side != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for MassCancelRequest: validates the header and reads the body. */
+export function MassCancelRequestDecoderDecode(buf: Uint8Array): MassCancelRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 59) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  const cl_ord_id = readString(buf, pos);
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const sideRaw = readU8(buf, pos);
+  let side: MassCancelRequestSide | null = null;
+  if (buf[pos.value++] === 1) {
+    const v = MassCancelRequestSideFromValue(sideRaw);
+    if (v == null) throw new Error('invalid MassCancelRequestSide');
+    side = v;
+  }
+  const value: MassCancelRequest = {
+    cl_ord_id: cl_ord_id,
+    account: account,
+    symbol: symbol,
+    side: side,
+  };
+  return value;
+}
+
+/** SBE message MassCancelReport */
+export interface MassCancelReport {
+  cl_ord_id: string;
+  account: string;
+  symbol: string | null;
+  total_affected: number;
+  status: MassCancelReportStatus;
+  timestamp: bigint;
+}
+
+/** SBE body encoder for MassCancelReport (fields only, no header). */
+export function MassCancelReportBodyEncoderEncode(value: MassCancelReport, buf: number[]): void {
+  writeString(buf, value.cl_ord_id);
+  writeString(buf, value.account);
+  if (value.symbol != null) { buf.push(1); writeString(buf, value.symbol); } else { buf.push(0); }
+  writeU32BE(buf, value.total_affected);
+  buf.push(MassCancelReportStatusToValue(value.status));
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+}
+
+/** SBE body decoder for MassCancelReport: reads fields at `pos`. */
+export function MassCancelReportBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): MassCancelReport {
+  let symbol: string | null = null;
+  const cl_ord_id = readString(buf, pos);
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const total_affected = readU32BE(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = MassCancelReportStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid MassCancelReportStatus');
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: MassCancelReport = {
+    cl_ord_id: cl_ord_id,
+    account: account,
+    symbol: symbol,
+    total_affected: total_affected,
+    status: status,
+    timestamp: timestamp,
+  };
+  return value;
+}
+
+/** SBE encoder for MassCancelReport — returns the complete message. */
+export function MassCancelReportEncoderEncode(cl_ord_id: string, account: string, symbol: string | null, total_affected: number, status: MassCancelReportStatus, timestamp: bigint): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 60);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 13);
+  writeString(buf, cl_ord_id);
+  writeString(buf, account);
+  if (symbol != null) { buf.push(1); writeString(buf, symbol); } else { buf.push(0); }
+  writeU32BE(buf, total_affected);
+  buf.push(MassCancelReportStatusToValue(status));
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for MassCancelReport: validates the header and reads the body. */
+export function MassCancelReportDecoderDecode(buf: Uint8Array): MassCancelReport {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 60) throw new Error("invalid template_id");
+  let symbol: string | null = null;
+  const cl_ord_id = readString(buf, pos);
+  const account = readString(buf, pos);
+  if (readU8(buf, pos) === 1) symbol = readString(buf, pos);
+  const total_affected = readU32BE(buf, pos);
+  const statusRaw = readU8(buf, pos);
+  const status = MassCancelReportStatusFromValue(statusRaw);
+  if (status == null) throw new Error('invalid MassCancelReportStatus');
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const value: MassCancelReport = {
+    cl_ord_id: cl_ord_id,
+    account: account,
+    symbol: symbol,
+    total_affected: total_affected,
+    status: status,
+    timestamp: timestamp,
   };
   return value;
 }

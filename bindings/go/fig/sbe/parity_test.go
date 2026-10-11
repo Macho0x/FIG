@@ -167,6 +167,14 @@ func TestAllSbeMessagesMatchConformanceVectors(t *testing.T) {
 		got, err := MarketDataSnapshotEncoder{}.Encode("AAPL", "SIM", []PriceLevel{PriceLevel{Price: 100.0, Qty: 5.0, OrderCount: ptr(uint32(1))}}, nil, int64(1700000000000000000), ptr(uint64(42)), ptr(uint8(1)))
 		check(t, "sbe.market_data_snapshot.demo", "000100060000001100044141504c000353494d00000001000000154059000000000000401400000000000000000001010000000017979cfe362a0000000000000000002a010101", got, err)
 	})
+	t.Run("sbe.mass_cancel_report.demo", func(t *testing.T) {
+		got, err := MassCancelReportEncoder{}.Encode("MC-001", "DEMO", ptr("AAPL"), uint32(2), MassCancelReportStatusCompleted, int64(1700000000000000000))
+		check(t, "sbe.mass_cancel_report.demo", "0001003c0000000d00064d432d303031000444454d4f0100044141504c000000020217979cfe362a0000", got, err)
+	})
+	t.Run("sbe.mass_cancel_request.demo", func(t *testing.T) {
+		got, err := MassCancelRequestEncoder{}.Encode("MC-001", "DEMO", ptr("AAPL"), ptr(MassCancelRequestSideBuy))
+		check(t, "sbe.mass_cancel_request.demo", "0001003b0000000100064d432d303031000444454d4f0100044141504c0101", got, err)
+	})
 	t.Run("sbe.mini_ticker.demo", func(t *testing.T) {
 		got, err := MiniTickerEncoder{}.Encode("AAPL", 100.0, 50.0, int64(1700000000000000000), ptr(uint8(1)))
 		check(t, "sbe.mini_ticker.demo", "0001000e0000001900044141504c4059000000000000404900000000000017979cfe362a00000101", got, err)
@@ -227,6 +235,14 @@ func TestAllSbeMessagesMatchConformanceVectors(t *testing.T) {
 		got, err := PublicTradeEventEncoder{}.Encode(PublicTrade{Symbol: "AAPL", TradeId: "TRADE-ID-2", Price: 102.0, Qty: 8.0, Side: PublicTradeSideSell, Timestamp: int64(1700000000000000005)})
 		check(t, "sbe.public_trade_event.demo", "000100170000000000044141504c000a54524144452d49442d32405980000000000040200000000000000217979cfe362a0005", got, err)
 	})
+	t.Run("sbe.security_status.demo", func(t *testing.T) {
+		got, err := SecurityStatusEncoder{}.Encode("AAPL", SecurityStatusStatusTrading, ptr(SecurityStatusHaltReasonNone), int64(1700000000000000000), ptr(uint8(1)))
+		check(t, "sbe.security_status.demo", "0001003a0000000b00044141504c01010117979cfe362a00000101", got, err)
+	})
+	t.Run("sbe.security_status_request.demo", func(t *testing.T) {
+		got, err := SecurityStatusRequestEncoder{}.Encode("AAPL")
+		check(t, "sbe.security_status_request.demo", "000100390000000000044141504c", got, err)
+	})
 	t.Run("sbe.symbol_ticker.demo", func(t *testing.T) {
 		got, err := SymbolTickerEncoder{}.Encode("AAPL", 150.5, 0.5, 0.33, 1000.0, 151.0, 149.5, 150.0, int64(1700000000000000000), ptr(uint8(1)))
 		check(t, "sbe.symbol_ticker.demo", "0001001b0000004100044141504c4062d000000000003fe00000000000003fd51eb851eb851f408f4000000000004062e000000000004062b000000000004062c0000000000017979cfe362a00000101", got, err)
@@ -238,6 +254,14 @@ func TestAllSbeMessagesMatchConformanceVectors(t *testing.T) {
 	t.Run("sbe.trade_history_request.demo", func(t *testing.T) {
 		got, err := TradeHistoryRequestEncoder{}.Encode("AAPL", ptr(int64(1700000000000000001)), ptr(int64(1700000000000000002)), ptr(uint32(4)), ptr("CUR-1"))
 		check(t, "sbe.trade_history_request.demo", "000100180000001400044141504c17979cfe362a00010117979cfe362a00020100000004010100054355522d31", got, err)
+	})
+	t.Run("sbe.trading_session_status.demo", func(t *testing.T) {
+		got, err := TradingSessionStatusEncoder{}.Encode(ptr("AAPL"), "REG", TradingSessionStatusStatusOpen, ptr(TradingSessionStatusHaltReasonNews), int64(1700000000000000000), ptr(uint8(1)))
+		check(t, "sbe.trading_session_status.demo", "000100380000000b0100044141504c000352454702020117979cfe362a00000101", got, err)
+	})
+	t.Run("sbe.trading_session_status_request.demo", func(t *testing.T) {
+		got, err := TradingSessionStatusRequestEncoder{}.Encode(ptr("AAPL"))
+		check(t, "sbe.trading_session_status_request.demo", "00010037000000000100044141504c", got, err)
 	})
 	t.Run("sbe.user_liquidation.demo", func(t *testing.T) {
 		got, err := UserLiquidationEncoder{}.Encode("ACC-1", "MSFT", 7.0, 103.0, int64(1700000000000000004))

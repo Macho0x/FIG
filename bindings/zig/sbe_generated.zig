@@ -306,6 +306,130 @@ pub fn LedgerUpdateKindFromValue(v: u8) !LedgerUpdateKind {
 
 pub fn LedgerUpdateKindToValue(e: LedgerUpdateKind) u8 { return @intFromEnum(e); }
 
+pub const TradingSessionStatusStatus = enum(u8) {
+    PreOpen = 1,
+    Open = 2,
+    Break = 3,
+    Close = 4,
+    Halt = 5,
+    Auction = 6,
+};
+
+pub fn TradingSessionStatusStatusFromValue(v: u8) !TradingSessionStatusStatus {
+    return switch (v) {
+        1 => .PreOpen,
+        2 => .Open,
+        3 => .Break,
+        4 => .Close,
+        5 => .Halt,
+        6 => .Auction,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn TradingSessionStatusStatusToValue(e: TradingSessionStatusStatus) u8 { return @intFromEnum(e); }
+
+pub const TradingSessionStatusHaltReason = enum(u8) {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+};
+
+pub fn TradingSessionStatusHaltReasonFromValue(v: u8) !TradingSessionStatusHaltReason {
+    return switch (v) {
+        1 => .None,
+        2 => .News,
+        3 => .MatchingEngine,
+        4 => .Regulatory,
+        5 => .Auction,
+        6 => .Other,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn TradingSessionStatusHaltReasonToValue(e: TradingSessionStatusHaltReason) u8 { return @intFromEnum(e); }
+
+pub const SecurityStatusStatus = enum(u8) {
+    Trading = 1,
+    Halt = 2,
+    Auction = 3,
+    Suspended = 4,
+};
+
+pub fn SecurityStatusStatusFromValue(v: u8) !SecurityStatusStatus {
+    return switch (v) {
+        1 => .Trading,
+        2 => .Halt,
+        3 => .Auction,
+        4 => .Suspended,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn SecurityStatusStatusToValue(e: SecurityStatusStatus) u8 { return @intFromEnum(e); }
+
+pub const SecurityStatusHaltReason = enum(u8) {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+};
+
+pub fn SecurityStatusHaltReasonFromValue(v: u8) !SecurityStatusHaltReason {
+    return switch (v) {
+        1 => .None,
+        2 => .News,
+        3 => .MatchingEngine,
+        4 => .Regulatory,
+        5 => .Auction,
+        6 => .Other,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn SecurityStatusHaltReasonToValue(e: SecurityStatusHaltReason) u8 { return @intFromEnum(e); }
+
+pub const MassCancelRequestSide = enum(u8) {
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
+    SellShortExempt = 4,
+};
+
+pub fn MassCancelRequestSideFromValue(v: u8) !MassCancelRequestSide {
+    return switch (v) {
+        1 => .Buy,
+        2 => .Sell,
+        3 => .SellShort,
+        4 => .SellShortExempt,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn MassCancelRequestSideToValue(e: MassCancelRequestSide) u8 { return @intFromEnum(e); }
+
+pub const MassCancelReportStatus = enum(u8) {
+    Accepted = 1,
+    Completed = 2,
+    Rejected = 3,
+};
+
+pub fn MassCancelReportStatusFromValue(v: u8) !MassCancelReportStatus {
+    return switch (v) {
+        1 => .Accepted,
+        2 => .Completed,
+        3 => .Rejected,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn MassCancelReportStatusToValue(e: MassCancelReportStatus) u8 { return @intFromEnum(e); }
+
 pub const AggregateTradeSide = enum(u8) {
     Buy = 1,
     Sell = 2,
@@ -6344,6 +6468,569 @@ pub const PositionRequestDecoder = struct {
         var value: PositionRequest = undefined;
         const account = try readString(buf, &pos, allocator);
         value.account = account;
+        return value;
+    }
+};
+
+/// SBE message TradingSessionStatusRequest
+pub const TradingSessionStatusRequest = struct {
+    symbol: ?[]const u8,
+};
+
+/// SBE body encoder for TradingSessionStatusRequest (fields only, no header).
+pub const TradingSessionStatusRequestBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: TradingSessionStatusRequest, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for TradingSessionStatusRequest: reads fields at `pos`.
+pub const TradingSessionStatusRequestBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !TradingSessionStatusRequest {
+        var value: TradingSessionStatusRequest = undefined;
+        var symbol: ?[]u8 = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE encoder for TradingSessionStatusRequest
+pub const TradingSessionStatusRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 55);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for TradingSessionStatusRequest: validates the header and reads the body.
+pub const TradingSessionStatusRequestDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !TradingSessionStatusRequest {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 55) return error.InvalidTemplateId;
+        var value: TradingSessionStatusRequest = undefined;
+        var symbol: ?[]u8 = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE message TradingSessionStatus
+pub const TradingSessionStatus = struct {
+    symbol: ?[]const u8,
+    trading_session_id: []const u8,
+    status: TradingSessionStatusStatus,
+    halt_reason: ?TradingSessionStatusHaltReason,
+    timestamp: i64,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for TradingSessionStatus (fields only, no header).
+pub const TradingSessionStatusBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: TradingSessionStatus, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeString(buf, value.trading_session_id);
+        try buf.append(TradingSessionStatusStatusToValue(value.status));
+        try buf.append(if (value.halt_reason) |e| TradingSessionStatusHaltReasonToValue(e) else 0);
+        try buf.append(if (value.halt_reason != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for TradingSessionStatus: reads fields at `pos`.
+pub const TradingSessionStatusBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !TradingSessionStatus {
+        var value: TradingSessionStatus = undefined;
+        var symbol: ?[]u8 = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const trading_session_id = try readString(buf, &pos, allocator);
+        const status = try TradingSessionStatusStatusFromValue(readU8(buf, &pos));
+        const halt_reason_raw = readU8(buf, &pos);
+        var halt_reason: ?TradingSessionStatusHaltReason = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            halt_reason = try TradingSessionStatusHaltReasonFromValue(halt_reason_raw);
+        } else {
+            pos += 1;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.trading_session_id = trading_session_id;
+        value.status = status;
+        value.halt_reason = halt_reason;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for TradingSessionStatus
+pub const TradingSessionStatusEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: ?[]const u8, trading_session_id: []const u8, status: TradingSessionStatusStatus, halt_reason: ?TradingSessionStatusHaltReason, timestamp: i64, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 56);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 11);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeString(buf, trading_session_id);
+        try buf.append(TradingSessionStatusStatusToValue(status));
+        try buf.append(if (halt_reason) |e| TradingSessionStatusHaltReasonToValue(e) else 0);
+        try buf.append(if (halt_reason != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for TradingSessionStatus: validates the header and reads the body.
+pub const TradingSessionStatusDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !TradingSessionStatus {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 56) return error.InvalidTemplateId;
+        var value: TradingSessionStatus = undefined;
+        var symbol: ?[]u8 = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const trading_session_id = try readString(buf, &pos, allocator);
+        const status = try TradingSessionStatusStatusFromValue(readU8(buf, &pos));
+        const halt_reason_raw = readU8(buf, &pos);
+        var halt_reason: ?TradingSessionStatusHaltReason = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            halt_reason = try TradingSessionStatusHaltReasonFromValue(halt_reason_raw);
+        } else {
+            pos += 1;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.trading_session_id = trading_session_id;
+        value.status = status;
+        value.halt_reason = halt_reason;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message SecurityStatusRequest
+pub const SecurityStatusRequest = struct {
+    symbol: []const u8,
+};
+
+/// SBE body encoder for SecurityStatusRequest (fields only, no header).
+pub const SecurityStatusRequestBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: SecurityStatusRequest, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.symbol);
+    }
+};
+
+/// SBE body decoder for SecurityStatusRequest: reads fields at `pos`.
+pub const SecurityStatusRequestBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !SecurityStatusRequest {
+        var value: SecurityStatusRequest = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE encoder for SecurityStatusRequest
+pub const SecurityStatusRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 57);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, symbol);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for SecurityStatusRequest: validates the header and reads the body.
+pub const SecurityStatusRequestDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !SecurityStatusRequest {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 57) return error.InvalidTemplateId;
+        var value: SecurityStatusRequest = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE message SecurityStatus
+pub const SecurityStatus = struct {
+    symbol: []const u8,
+    status: SecurityStatusStatus,
+    halt_reason: ?SecurityStatusHaltReason,
+    timestamp: i64,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for SecurityStatus (fields only, no header).
+pub const SecurityStatusBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: SecurityStatus, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.symbol);
+        try buf.append(SecurityStatusStatusToValue(value.status));
+        try buf.append(if (value.halt_reason) |e| SecurityStatusHaltReasonToValue(e) else 0);
+        try buf.append(if (value.halt_reason != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for SecurityStatus: reads fields at `pos`.
+pub const SecurityStatusBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !SecurityStatus {
+        var value: SecurityStatus = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const status = try SecurityStatusStatusFromValue(readU8(buf, &pos));
+        const halt_reason_raw = readU8(buf, &pos);
+        var halt_reason: ?SecurityStatusHaltReason = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            halt_reason = try SecurityStatusHaltReasonFromValue(halt_reason_raw);
+        } else {
+            pos += 1;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.status = status;
+        value.halt_reason = halt_reason;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for SecurityStatus
+pub const SecurityStatusEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, status: SecurityStatusStatus, halt_reason: ?SecurityStatusHaltReason, timestamp: i64, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 58);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 11);
+        try writeString(buf, symbol);
+        try buf.append(SecurityStatusStatusToValue(status));
+        try buf.append(if (halt_reason) |e| SecurityStatusHaltReasonToValue(e) else 0);
+        try buf.append(if (halt_reason != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for SecurityStatus: validates the header and reads the body.
+pub const SecurityStatusDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !SecurityStatus {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 58) return error.InvalidTemplateId;
+        var value: SecurityStatus = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const status = try SecurityStatusStatusFromValue(readU8(buf, &pos));
+        const halt_reason_raw = readU8(buf, &pos);
+        var halt_reason: ?SecurityStatusHaltReason = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            halt_reason = try SecurityStatusHaltReasonFromValue(halt_reason_raw);
+        } else {
+            pos += 1;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.status = status;
+        value.halt_reason = halt_reason;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message MassCancelRequest
+pub const MassCancelRequest = struct {
+    cl_ord_id: []const u8,
+    account: []const u8,
+    symbol: ?[]const u8,
+    side: ?MassCancelRequestSide,
+};
+
+/// SBE body encoder for MassCancelRequest (fields only, no header).
+pub const MassCancelRequestBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: MassCancelRequest, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try buf.append(if (value.side) |e| MassCancelRequestSideToValue(e) else 0);
+        try buf.append(if (value.side != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for MassCancelRequest: reads fields at `pos`.
+pub const MassCancelRequestBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MassCancelRequest {
+        var value: MassCancelRequest = undefined;
+        var symbol: ?[]u8 = null;
+        const cl_ord_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const side_raw = readU8(buf, &pos);
+        var side: ?MassCancelRequestSide = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            side = try MassCancelRequestSideFromValue(side_raw);
+        } else {
+            pos += 1;
+        }
+        value.cl_ord_id = cl_ord_id;
+        value.account = account;
+        value.symbol = symbol;
+        value.side = side;
+        return value;
+    }
+};
+
+/// SBE encoder for MassCancelRequest
+pub const MassCancelRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, account: []const u8, symbol: ?[]const u8, side: ?MassCancelRequestSide) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 59);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try buf.append(if (side) |e| MassCancelRequestSideToValue(e) else 0);
+        try buf.append(if (side != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for MassCancelRequest: validates the header and reads the body.
+pub const MassCancelRequestDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MassCancelRequest {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 59) return error.InvalidTemplateId;
+        var value: MassCancelRequest = undefined;
+        var symbol: ?[]u8 = null;
+        const cl_ord_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const side_raw = readU8(buf, &pos);
+        var side: ?MassCancelRequestSide = null;
+        if (buf[pos] == 1) {
+            pos += 1;
+            side = try MassCancelRequestSideFromValue(side_raw);
+        } else {
+            pos += 1;
+        }
+        value.cl_ord_id = cl_ord_id;
+        value.account = account;
+        value.symbol = symbol;
+        value.side = side;
+        return value;
+    }
+};
+
+/// SBE message MassCancelReport
+pub const MassCancelReport = struct {
+    cl_ord_id: []const u8,
+    account: []const u8,
+    symbol: ?[]const u8,
+    total_affected: u32,
+    status: MassCancelReportStatus,
+    timestamp: i64,
+};
+
+/// SBE body encoder for MassCancelReport (fields only, no header).
+pub const MassCancelReportBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: MassCancelReport, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.cl_ord_id);
+        try writeString(buf, value.account);
+        if (value.symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU32BE(buf, @intCast(value.total_affected));
+        try buf.append(MassCancelReportStatusToValue(value.status));
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+    }
+};
+
+/// SBE body decoder for MassCancelReport: reads fields at `pos`.
+pub const MassCancelReportBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MassCancelReport {
+        var value: MassCancelReport = undefined;
+        var symbol: ?[]u8 = null;
+        const cl_ord_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const total_affected = readU32BE(buf, &pos);
+        const status = try MassCancelReportStatusFromValue(readU8(buf, &pos));
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        value.cl_ord_id = cl_ord_id;
+        value.account = account;
+        value.symbol = symbol;
+        value.total_affected = total_affected;
+        value.status = status;
+        value.timestamp = timestamp;
+        return value;
+    }
+};
+
+/// SBE encoder for MassCancelReport
+pub const MassCancelReportEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, cl_ord_id: []const u8, account: []const u8, symbol: ?[]const u8, total_affected: u32, status: MassCancelReportStatus, timestamp: i64) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 60);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 13);
+        try writeString(buf, cl_ord_id);
+        try writeString(buf, account);
+        if (symbol) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        try writeU32BE(buf, @intCast(total_affected));
+        try buf.append(MassCancelReportStatusToValue(status));
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for MassCancelReport: validates the header and reads the body.
+pub const MassCancelReportDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MassCancelReport {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 60) return error.InvalidTemplateId;
+        var value: MassCancelReport = undefined;
+        var symbol: ?[]u8 = null;
+        const cl_ord_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        if (buf[pos] == 1) {
+            pos += 1;
+            symbol = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        const total_affected = readU32BE(buf, &pos);
+        const status = try MassCancelReportStatusFromValue(readU8(buf, &pos));
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        value.cl_ord_id = cl_ord_id;
+        value.account = account;
+        value.symbol = symbol;
+        value.total_affected = total_affected;
+        value.status = status;
+        value.timestamp = timestamp;
         return value;
     }
 };

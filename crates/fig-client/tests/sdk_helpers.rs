@@ -87,4 +87,22 @@ async fn sdk_helpers_request_and_subscribe_smoke() {
         .subscribe_orderlists("TEST", 9)
         .await
         .expect("orderlists");
+
+    let session = sdk.request_session_status(10).await.expect("session");
+    assert_eq!(
+        session.status,
+        fig_core::messages::TradingSessionStatusStatus::Open
+    );
+    let sec = sdk
+        .request_security_status("AAPL", 11)
+        .await
+        .expect("security status");
+    assert_eq!(sec.symbol, "AAPL");
+    let raw = sdk
+        .request(12, 0x01, "marketdata/session", "GET", None, None)
+        .await
+        .expect("generic request");
+    assert!(raw
+        .iter()
+        .any(|f| f.frame_type == fig_core::frame::FrameType::Response));
 }

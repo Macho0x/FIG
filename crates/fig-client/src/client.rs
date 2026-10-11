@@ -117,6 +117,29 @@ impl<'a> FigSdkClient<'a> {
         Self { conn }
     }
 
+    /// Generic REQUEST on a `CHANNEL_PATH`. Typed helpers (`request_ticker`,
+    /// `post_order`, …) are thin wrappers over this.
+    pub async fn request(
+        &self,
+        channel_id: u16,
+        schema_id: u8,
+        channel_path: &str,
+        method: &str,
+        payload: Option<Vec<u8>>,
+        auth_token: Option<&str>,
+    ) -> Result<Vec<Frame>, ClientError> {
+        let frame = request_frame(
+            channel_id,
+            1,
+            schema_id,
+            channel_path,
+            method,
+            payload,
+            auth_token,
+        )?;
+        self.send_and_read(frame).await
+    }
+
     pub async fn send_and_read(&self, frame: Frame) -> Result<Vec<Frame>, ClientError> {
         let (mut send, mut recv) = self.conn.open_bi().await?;
         send.write_all(&frame.encode()?)
@@ -210,8 +233,9 @@ impl<'a> FigSdkClient<'a> {
         let interval = req.interval.clone();
         let path = format!("marketdata/{symbol}/candles/{interval}");
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), None)
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let batch: CandleBarBatch =
@@ -231,16 +255,9 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/fills");
         let token = dev_auth_token(account);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "GET",
-            Some(payload),
-            Some(&token),
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -258,16 +275,8 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("trading/accounts/{account}/orders");
         let token = dev_auth_token(account);
         let payload = encode_cbor(order).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "POST",
-            Some(payload),
-            Some(&token),
-        )?;
-        self.send_and_read(frame).await
+        self.request(channel_id, 0x01, &path, "POST", Some(payload), Some(&token))
+            .await
     }
 
     pub async fn request_open_orders(
@@ -282,16 +291,9 @@ impl<'a> FigSdkClient<'a> {
             symbol: None,
         };
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "GET",
-            Some(payload),
-            Some(&token),
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -307,8 +309,9 @@ impl<'a> FigSdkClient<'a> {
         let path = "marketdata/ticker/all";
         let payload =
             encode_cbor(&AllMidsRequest {}).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, path, "GET", Some(payload), None)
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 let batch: AllMidsBatch =
@@ -438,8 +441,9 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<(AccountSummary, Vec<Frame>), ClientError> {
         let path = format!("accounts/{account}");
         let token = dev_auth_token(account);
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", None, Some(&token))?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", None, Some(&token))
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let summary: AccountSummary =
@@ -460,8 +464,9 @@ impl<'a> FigSdkClient<'a> {
             symbol: symbol.to_string(),
         };
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), None)
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let ticker: SymbolTicker =
@@ -482,8 +487,9 @@ impl<'a> FigSdkClient<'a> {
             symbol: symbol.to_string(),
         };
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), None)
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let mark: MarkPriceUpdate =
@@ -574,16 +580,9 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/funding");
         let token = dev_auth_token(account);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "GET",
-            Some(payload),
-            Some(&token),
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let batch: FundingHistoryBatch =
@@ -603,16 +602,9 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("accounts/{account}/ledger");
         let token = dev_auth_token(account);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "GET",
-            Some(payload),
-            Some(&token),
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
         for f in &frames {
             if f.frame_type == FrameType::Response {
                 let batch: LedgerHistoryBatch =
@@ -677,16 +669,9 @@ impl<'a> FigSdkClient<'a> {
         let path = format!("trading/accounts/{account}/orders");
         let token = dev_auth_token(account);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            &path,
-            "GET",
-            Some(payload),
-            Some(&token),
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -707,8 +692,9 @@ impl<'a> FigSdkClient<'a> {
             at_time: None,
         };
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), None)
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -724,8 +710,9 @@ impl<'a> FigSdkClient<'a> {
     ) -> Result<PublicTradeBatch, ClientError> {
         let path = format!("marketdata/{}/trades", req.symbol);
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
-        let frame = request_frame(channel_id, 1, 0x01, &path, "GET", Some(payload), None)?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", Some(payload), None)
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -738,16 +725,16 @@ impl<'a> FigSdkClient<'a> {
         &self,
         channel_id: u16,
     ) -> Result<CapabilitiesResponse, ClientError> {
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            ".well-known/capabilities",
-            "GET",
-            None,
-            None,
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(
+                channel_id,
+                0x01,
+                ".well-known/capabilities",
+                "GET",
+                None,
+                None,
+            )
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
@@ -760,16 +747,67 @@ impl<'a> FigSdkClient<'a> {
         &self,
         channel_id: u16,
     ) -> Result<InstrumentCatalogResponse, ClientError> {
-        let frame = request_frame(
-            channel_id,
-            1,
-            0x01,
-            ".well-known/instruments",
-            "GET",
-            None,
-            None,
-        )?;
-        let frames = self.send_and_read(frame).await?;
+        let frames = self
+            .request(
+                channel_id,
+                0x01,
+                ".well-known/instruments",
+                "GET",
+                None,
+                None,
+            )
+            .await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_session_status(
+        &self,
+        channel_id: u16,
+    ) -> Result<fig_core::messages::TradingSessionStatus, ClientError> {
+        let frames = self
+            .request(channel_id, 0x01, "marketdata/session", "GET", None, None)
+            .await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn request_security_status(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<fig_core::messages::SecurityStatus, ClientError> {
+        let path = format!("marketdata/{symbol}/status");
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", None, None)
+            .await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn mass_cancel(
+        &self,
+        req: &fig_core::messages::MassCancelRequest,
+        channel_id: u16,
+    ) -> Result<fig_core::messages::MassCancelReport, ClientError> {
+        let path = format!("trading/accounts/{}/orders/masscancel", req.account);
+        let token = dev_auth_token(&req.account);
+        let payload = encode_cbor(req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "POST", Some(payload), Some(&token))
+            .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {
                 return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));

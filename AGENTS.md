@@ -26,7 +26,7 @@ brokers adopt the same native FIG surface. Do not create exchange-specific bindi
 | **FIG** | Protocol (frames, channels, sessions) |
 | **TREE** | Mandatory QUIC transport (ALPN `fig/1`, TLS 1.3) |
 | **FSL** | Schema IDL — single source of truth for message types |
-| **Gateway** | Optional migration edge (FIX / REST / WS → native FIG) |
+| **Gateway** | Optional migration edge (FIX / REST / WS / OUCH / ITCH → native FIG) |
 | **Venue / broker** | Whoever runs the FIG server and owns business logic |
 
 ---
@@ -50,7 +50,7 @@ Work **top-down**. Never add Layer 3 without Layer 2 existing.
                          │
 ┌────────────────────────▼────────────────────────────────┐
 │  LAYER 3 — Gateway (optional migration edge)            │
-│  REST GET, WS topics, FIX → same FSL payloads             │
+│  REST GET, WS topics, FIX, OUCH, ITCH L2 egress           │
 │  Binance @kline_5m, HL subscription JSON = aliases only │
 │  Source: fig-gateways                                     │
 └─────────────────────────────────────────────────────────┘
@@ -71,12 +71,14 @@ to the same FSL payloads and `CHANNEL_PATH` values. They never define new semant
 
 Every exchange/broker follows the same path ([TODO.md §20](TODO.md)):
 
-1. **Day 1 — Gateway:** Legacy JSON WS/REST/FIX clients hit `fig-gateway`; gateway
-   translates to native FIG and proxies to the venue's FIG backend.
+1. **Day 1 — Gateway:** Legacy JSON WS/REST/FIX/OUCH/ITCH clients hit `fig-gateway`;
+   gateway translates to native FIG and proxies to the venue's FIG backend.
 2. **Day 2 — Native FIG:** Performance clients connect over TREE with SBE/CBOR;
    gateway shrinks to stragglers.
-3. **Day 3 — Product extensions:** Venue-specific products (vaults, signed actions,
-   chain events) extend FSL and `CapabilitiesResponse` — not protocol forks.
+3. **Day 3 — Product extensions:** Venue-specific products (vaults, chain
+   events) extend FSL and `CapabilitiesResponse` — not protocol forks.
+   Session auth stays `AUTH_TOKEN` / JWT / mTLS. Per-order wallet signatures
+   are venue issuance, not a FIG auth method.
 
 ---
 
@@ -111,8 +113,8 @@ Full path catalog: [SPEC.md §9.1](SPEC.md), [docs/QUERY.md](docs/QUERY.md),
 | Gateway for legacy clients | Venue or integrator (`fig-gateways`) |
 | Reference broker implementation | `fig-exchange-sim` (not production) |
 
-When adding wallet signatures or chain events, treat them as **protocol extensions**
-(FSL + SPEC) usable by any venue — not Hyperliquid-specific code in core.
+Chain-event FSL, if added, must be venue-neutral — not Hyperliquid-specific
+code in core. Do not add chain-specific signing schemes to SPEC.
 
 ---
 

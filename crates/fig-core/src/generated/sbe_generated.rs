@@ -12,13 +12,16 @@ use crate::messages::{
     InstrumentCatalogRequest, InstrumentCatalogResponse, InstrumentMetadata, LedgerHistoryBatch,
     LedgerHistoryRequest, LedgerUpdate, LedgerUpdateKind, LiquidationTrade, LiquidationTradeEvent,
     MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate, MarketDataAction,
-    MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate, MiniTicker, NewOrderSingle,
-    OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
-    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderListStatusStatus, OrderType, PageInfo, PositionEntry, PositionRequest, PositionSnapshot,
-    PositionUpdate, Price, PriceLevel, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
-    SecurityIdSource, Side, Symbol, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
-    TradeTimestamp, UserLiquidation,
+    MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate, MassCancelReport,
+    MassCancelReportStatus, MassCancelRequest, MiniTicker, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest, OrderBookSnapshot,
+    OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
+    PageInfo, PositionEntry, PositionRequest, PositionSnapshot, PositionUpdate, Price, PriceLevel,
+    PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity, SecurityIdSource, SecurityStatus,
+    SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side, Symbol,
+    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradeTimestamp,
+    TradingSessionStatus, TradingSessionStatusHaltReason, TradingSessionStatusRequest,
+    TradingSessionStatusStatus, UserLiquidation,
 };
 
 // --- Bounds-checked SBE decode helpers ---
@@ -365,6 +368,30 @@ impl CancelRejectRejectReason {
             2 => Some(CancelRejectRejectReason::AlreadyCanceled),
             3 => Some(CancelRejectRejectReason::AlreadyFilled),
             4 => Some(CancelRejectRejectReason::TooLateToCancel),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MassCancelRequestSide {
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
+    SellShortExempt = 4,
+}
+
+impl MassCancelRequestSide {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(MassCancelRequestSide::Buy),
+            2 => Some(MassCancelRequestSide::Sell),
+            3 => Some(MassCancelRequestSide::SellShort),
+            4 => Some(MassCancelRequestSide::SellShortExempt),
             _ => None,
         }
     }
@@ -4080,6 +4107,316 @@ impl PositionRequestBodyDecoder {
         let account = sbe_str(buf, &mut pos)?;
 
         Ok((PositionRequest { account }, pos))
+    }
+}
+
+/// SBE body encoder for nested TradingSessionStatusRequest
+pub struct TradingSessionStatusRequestBodyEncoder;
+
+impl TradingSessionStatusRequestBodyEncoder {
+    pub fn encode(value: &TradingSessionStatusRequest, buf: &mut Vec<u8>) {
+        buf.push(if value.symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+    }
+}
+
+/// SBE body decoder for nested TradingSessionStatusRequest
+pub struct TradingSessionStatusRequestBodyDecoder;
+
+impl TradingSessionStatusRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(TradingSessionStatusRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+
+        Ok((TradingSessionStatusRequest { symbol }, pos))
+    }
+}
+
+/// SBE body encoder for nested TradingSessionStatus
+pub struct TradingSessionStatusBodyEncoder;
+
+impl TradingSessionStatusBodyEncoder {
+    pub fn encode(value: &TradingSessionStatus, buf: &mut Vec<u8>) {
+        buf.push(if value.symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        let trading_session_id_bytes = value.trading_session_id.as_bytes();
+        buf.extend_from_slice(&(trading_session_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(trading_session_id_bytes);
+        buf.push(value.status.to_value());
+        buf.push(value.halt_reason.map(|v| v.to_value()).unwrap_or(0));
+        buf.push(u8::from(value.halt_reason.is_some()));
+        buf.extend_from_slice(&value.timestamp.to_be_bytes());
+        buf.push(value.is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(value.is_snapshot.is_some()));
+    }
+}
+
+/// SBE body decoder for nested TradingSessionStatus
+pub struct TradingSessionStatusBodyDecoder;
+
+impl TradingSessionStatusBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(TradingSessionStatus, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let trading_session_id = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = TradingSessionStatusStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid TradingSessionStatusStatus value: {}", status_raw))?;
+        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
+        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                TradingSessionStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
+                    format!(
+                        "invalid TradingSessionStatusHaltReason value: {}",
+                        halt_reason_raw
+                    )
+                })?,
+            )
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok((
+            TradingSessionStatus {
+                symbol,
+                trading_session_id,
+                status,
+                halt_reason,
+                timestamp,
+                is_snapshot,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested SecurityStatusRequest
+pub struct SecurityStatusRequestBodyEncoder;
+
+impl SecurityStatusRequestBodyEncoder {
+    pub fn encode(value: &SecurityStatusRequest, buf: &mut Vec<u8>) {
+        let symbol_bytes = value.symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+    }
+}
+
+/// SBE body decoder for nested SecurityStatusRequest
+pub struct SecurityStatusRequestBodyDecoder;
+
+impl SecurityStatusRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(SecurityStatusRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+
+        Ok((SecurityStatusRequest { symbol }, pos))
+    }
+}
+
+/// SBE body encoder for nested SecurityStatus
+pub struct SecurityStatusBodyEncoder;
+
+impl SecurityStatusBodyEncoder {
+    pub fn encode(value: &SecurityStatus, buf: &mut Vec<u8>) {
+        let symbol_bytes = value.symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.push(value.status.to_value());
+        buf.push(value.halt_reason.map(|v| v.to_value()).unwrap_or(0));
+        buf.push(u8::from(value.halt_reason.is_some()));
+        buf.extend_from_slice(&value.timestamp.to_be_bytes());
+        buf.push(value.is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(value.is_snapshot.is_some()));
+    }
+}
+
+/// SBE body decoder for nested SecurityStatus
+pub struct SecurityStatusBodyDecoder;
+
+impl SecurityStatusBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(SecurityStatus, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = SecurityStatusStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid SecurityStatusStatus value: {}", status_raw))?;
+        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
+        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                SecurityStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
+                    format!(
+                        "invalid SecurityStatusHaltReason value: {}",
+                        halt_reason_raw
+                    )
+                })?,
+            )
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok((
+            SecurityStatus {
+                symbol,
+                status,
+                halt_reason,
+                timestamp,
+                is_snapshot,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested MassCancelRequest
+pub struct MassCancelRequestBodyEncoder;
+
+impl MassCancelRequestBodyEncoder {
+    pub fn encode(value: &MassCancelRequest, buf: &mut Vec<u8>) {
+        let cl_ord_id_bytes = value.cl_ord_id.as_bytes();
+        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(cl_ord_id_bytes);
+        let account_bytes = value.account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(if value.symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.push(value.side.map(|v| v.to_value()).unwrap_or(0));
+        buf.push(u8::from(value.side.is_some()));
+    }
+}
+
+/// SBE body decoder for nested MassCancelRequest
+pub struct MassCancelRequestBodyDecoder;
+
+impl MassCancelRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(MassCancelRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let side_raw = sbe_u8(buf, &mut pos)?;
+        let side = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                Side::from_value(side_raw)
+                    .ok_or_else(|| format!("invalid Side value: {}", side_raw))?,
+            )
+        } else {
+            None
+        };
+
+        Ok((
+            MassCancelRequest {
+                cl_ord_id,
+                account,
+                symbol,
+                side,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested MassCancelReport
+pub struct MassCancelReportBodyEncoder;
+
+impl MassCancelReportBodyEncoder {
+    pub fn encode(value: &MassCancelReport, buf: &mut Vec<u8>) {
+        let cl_ord_id_bytes = value.cl_ord_id.as_bytes();
+        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(cl_ord_id_bytes);
+        let account_bytes = value.account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(if value.symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.extend_from_slice(&value.total_affected.to_be_bytes());
+        buf.push(value.status.to_value());
+        buf.extend_from_slice(&value.timestamp.to_be_bytes());
+    }
+}
+
+/// SBE body decoder for nested MassCancelReport
+pub struct MassCancelReportBodyDecoder;
+
+impl MassCancelReportBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(MassCancelReport, usize), String> {
+        let mut pos: usize = 0;
+
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let total_affected_raw = sbe_u32(buf, &mut pos)?;
+        let total_affected = total_affected_raw;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = MassCancelReportStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid MassCancelReportStatus value: {}", status_raw))?;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+
+        Ok((
+            MassCancelReport {
+                cl_ord_id,
+                account,
+                symbol,
+                total_affected,
+                status,
+                timestamp,
+            },
+            pos,
+        ))
     }
 }
 
@@ -9271,5 +9608,543 @@ impl PositionRequestDecoder {
         let account = sbe_str(buf, &mut pos)?;
 
         Ok(Self { account })
+    }
+}
+
+/// SBE encoder for TradingSessionStatusRequest
+pub struct TradingSessionStatusRequestEncoder;
+
+impl TradingSessionStatusRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Option<Symbol>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&55u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        buf.push(if symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for TradingSessionStatusRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct TradingSessionStatusRequestDecoder {
+    pub symbol: Option<Symbol>,
+}
+
+impl TradingSessionStatusRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 55 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+
+        Ok(Self { symbol })
+    }
+}
+
+/// SBE encoder for TradingSessionStatus
+pub struct TradingSessionStatusEncoder;
+
+impl TradingSessionStatusEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        symbol: Option<Symbol>,
+        trading_session_id: String,
+        status: TradingSessionStatusStatus,
+        halt_reason: Option<TradingSessionStatusHaltReason>,
+        timestamp: TradeTimestamp,
+        is_snapshot: Option<bool>,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&56u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&11u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        buf.push(if symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        let trading_session_id_bytes = trading_session_id.as_bytes();
+        buf.extend_from_slice(&(trading_session_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(trading_session_id_bytes);
+        buf.push(status.to_value());
+        buf.push(halt_reason.map(|v| v.to_value()).unwrap_or(0));
+        buf.push(u8::from(halt_reason.is_some()));
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+        buf.push(is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(is_snapshot.is_some()));
+
+        buf
+    }
+}
+
+/// SBE decoder for TradingSessionStatus
+#[derive(Debug, Clone, PartialEq)]
+pub struct TradingSessionStatusDecoder {
+    pub symbol: Option<Symbol>,
+    pub trading_session_id: String,
+    pub status: TradingSessionStatusStatus,
+    pub halt_reason: Option<TradingSessionStatusHaltReason>,
+    pub timestamp: TradeTimestamp,
+    pub is_snapshot: Option<bool>,
+}
+
+impl TradingSessionStatusDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 56 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let trading_session_id = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = TradingSessionStatusStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid TradingSessionStatusStatus value: {}", status_raw))?;
+        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
+        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                TradingSessionStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
+                    format!(
+                        "invalid TradingSessionStatusHaltReason value: {}",
+                        halt_reason_raw
+                    )
+                })?,
+            )
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            symbol,
+            trading_session_id,
+            status,
+            halt_reason,
+            timestamp,
+            is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for SecurityStatusRequest
+pub struct SecurityStatusRequestEncoder;
+
+impl SecurityStatusRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&57u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+
+        buf
+    }
+}
+
+/// SBE decoder for SecurityStatusRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct SecurityStatusRequestDecoder {
+    pub symbol: Symbol,
+}
+
+impl SecurityStatusRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 57 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+
+        Ok(Self { symbol })
+    }
+}
+
+/// SBE encoder for SecurityStatus
+pub struct SecurityStatusEncoder;
+
+impl SecurityStatusEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        symbol: Symbol,
+        status: SecurityStatusStatus,
+        halt_reason: Option<SecurityStatusHaltReason>,
+        timestamp: TradeTimestamp,
+        is_snapshot: Option<bool>,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&58u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&11u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.push(status.to_value());
+        buf.push(halt_reason.map(|v| v.to_value()).unwrap_or(0));
+        buf.push(u8::from(halt_reason.is_some()));
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+        buf.push(is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(is_snapshot.is_some()));
+
+        buf
+    }
+}
+
+/// SBE decoder for SecurityStatus
+#[derive(Debug, Clone, PartialEq)]
+pub struct SecurityStatusDecoder {
+    pub symbol: Symbol,
+    pub status: SecurityStatusStatus,
+    pub halt_reason: Option<SecurityStatusHaltReason>,
+    pub timestamp: TradeTimestamp,
+    pub is_snapshot: Option<bool>,
+}
+
+impl SecurityStatusDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 58 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = SecurityStatusStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid SecurityStatusStatus value: {}", status_raw))?;
+        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
+        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                SecurityStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
+                    format!(
+                        "invalid SecurityStatusHaltReason value: {}",
+                        halt_reason_raw
+                    )
+                })?,
+            )
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            symbol,
+            status,
+            halt_reason,
+            timestamp,
+            is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for MassCancelRequest
+pub struct MassCancelRequestEncoder;
+
+impl MassCancelRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        cl_ord_id: ClientOrderId,
+        account: String,
+        symbol: Option<Symbol>,
+        side: Option<MassCancelRequestSide>,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&59u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let cl_ord_id_bytes = cl_ord_id.as_bytes();
+        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(cl_ord_id_bytes);
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(if symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.push(side.map(|v| v as u8).unwrap_or(0));
+        buf.push(u8::from(side.is_some()));
+
+        buf
+    }
+}
+
+/// SBE decoder for MassCancelRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct MassCancelRequestDecoder {
+    pub cl_ord_id: ClientOrderId,
+    pub account: String,
+    pub symbol: Option<Symbol>,
+    pub side: Option<MassCancelRequestSide>,
+}
+
+impl MassCancelRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 59 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let side_raw = sbe_u8(buf, &mut pos)?;
+        let side = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(
+                MassCancelRequestSide::from_value(side_raw)
+                    .ok_or_else(|| format!("invalid MassCancelRequestSide value: {}", side_raw))?,
+            )
+        } else {
+            None
+        };
+
+        Ok(Self {
+            cl_ord_id,
+            account,
+            symbol,
+            side,
+        })
+    }
+}
+
+/// SBE encoder for MassCancelReport
+pub struct MassCancelReportEncoder;
+
+impl MassCancelReportEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        cl_ord_id: ClientOrderId,
+        account: String,
+        symbol: Option<Symbol>,
+        total_affected: u32,
+        status: MassCancelReportStatus,
+        timestamp: TradeTimestamp,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&60u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&13u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let cl_ord_id_bytes = cl_ord_id.as_bytes();
+        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(cl_ord_id_bytes);
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(if symbol.is_some() { 1 } else { 0 });
+        if let Some(ref s) = symbol {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+        buf.extend_from_slice(&total_affected.to_be_bytes());
+        buf.push(status.to_value());
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+
+        buf
+    }
+}
+
+/// SBE decoder for MassCancelReport
+#[derive(Debug, Clone, PartialEq)]
+pub struct MassCancelReportDecoder {
+    pub cl_ord_id: ClientOrderId,
+    pub account: String,
+    pub symbol: Option<Symbol>,
+    pub total_affected: u32,
+    pub status: MassCancelReportStatus,
+    pub timestamp: TradeTimestamp,
+}
+
+impl MassCancelReportDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 60 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+        let total_affected_raw = sbe_u32(buf, &mut pos)?;
+        let total_affected = total_affected_raw;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = MassCancelReportStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid MassCancelReportStatus value: {}", status_raw))?;
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+
+        Ok(Self {
+            cl_ord_id,
+            account,
+            symbol,
+            total_affected,
+            status,
+            timestamp,
+        })
     }
 }

@@ -419,6 +419,8 @@ to Binance-style topics; Hyperliquid JSON subscriptions map via `ws_catalog.rs`.
 | `marketdata/ticker/all` | pub/sub + GET | `MiniTicker`, `AllMidsBatch` | `@miniTicker`, `allMids` |
 | `marketdata/{symbol}/mark` | pub/sub + GET | `MarkPriceUpdate` | `@markPrice`, `activeAssetCtx` |
 | `marketdata/liquidations` | pub/sub | `LiquidationTrade` | `@forceOrder` |
+| `marketdata/session` | pub/sub + GET | `TradingSessionStatus` | FIX 35=h |
+| `marketdata/{symbol}/status` | pub/sub + GET | `SecurityStatus` | FIX 35=f |
 
 Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 
@@ -429,6 +431,7 @@ Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 | `trading/accounts/{account}/executions` | pub/sub | `ExecutionReport` | Fill fan-out on match |
 | `trading/accounts/{account}/orders/open` | GET | `OpenOrdersSnapshot` | Snapshot query |
 | `trading/accounts/{account}/orders` | GET (+ stream) | `OrderHistoryBatch` | `request_stream` when >50 rows |
+| `trading/accounts/{account}/orders/masscancel` | POST | `MassCancelRequest` → `MassCancelReport` | FIX 35=q / 35=r |
 | `accounts/{account}` | GET | `AccountSummary` | Account snapshot |
 | `accounts/{account}/balances` | pub/sub | `BalanceSnapshot`, `BalanceUpdate` | Snapshot on subscribe |
 | `accounts/{account}/positions` | pub/sub | `PositionSnapshot`, `PositionUpdate` | Delta on fill |

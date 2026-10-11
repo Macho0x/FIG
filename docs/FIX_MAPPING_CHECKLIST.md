@@ -93,6 +93,8 @@ Gateway sends BMR on FIX→FIG translation failures (`fig-gateway.rs`).
 | Resend ↔ CONTROL | Done | `resend_request_to_control` |
 | FixSession state machine | Done | `fix_session.rs` |
 | Gateway session loop | Done | `fig-gateway.rs` |
+| ResendRequest application replay + PossDup | Done | `FixSession::replay_outbound` |
+| Drop copy (SUBSCRIBE executions → 35=8) | Done | `--fix-dropcopy-account` |
 | Message framing | Done | `split_fix_messages` |
 | Checksum validate/serialize | Done | `parse_fix_message` / `serialize_fix_message` |
 | TLS FIX acceptor | Done | `fix_tls.rs`, `--fix-tls` on `fig-gateway` |
@@ -111,8 +113,19 @@ Gateway sends BMR on FIX→FIG translation failures (`fig-gateway.rs`).
 | CancelReject on failed cancel | Done | `server.rs` + `CancelOutcome` |
 | MOC / LOC / Pegged | Done | Mapped to Market/Limit/Limit in `matching.rs` |
 
+## Mass cancel / market state
+
+| FIG field | FIX | Status |
+|-----------|-----|--------|
+| `MassCancelRequest` | 35=q | Done (`fix_to_fig_mass_cancel`) |
+| `MassCancelReport` | 35=r | Done (`fig_to_fix_mass_cancel_report`) |
+| `TradingSessionStatusRequest` | 35=g | Done |
+| `TradingSessionStatus` | 35=h | Done |
+| `SecurityStatusRequest` | 35=e | Done |
+| `SecurityStatus` | 35=f | Done |
+
 ## Still out of scope (production FIX venues)
 
 - SecurityDefinition reference data workflow
 - Session Reject (35=3) application-level handling beyond ignore
-- Drop copy, allocations, locates
+- Allocations, locates, trade capture, IOI, multi-leg

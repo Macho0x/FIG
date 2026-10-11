@@ -54,6 +54,10 @@ pub fn capabilities_response() -> CapabilitiesResponse {
             cap("marketdata/{symbol}/mark", PubSub, false),
             cap("marketdata/{symbol}/mark", RequestResponse, false),
             cap("marketdata/liquidations", PubSub, false),
+            cap("marketdata/session", PubSub, false),
+            cap("marketdata/session", RequestResponse, false),
+            cap("marketdata/{symbol}/status", PubSub, false),
+            cap("marketdata/{symbol}/status", RequestResponse, false),
             cap("trading/accounts/{account}/executions", PubSub, true),
             cap(
                 "trading/accounts/{account}/orders/open",
@@ -61,6 +65,11 @@ pub fn capabilities_response() -> CapabilitiesResponse {
                 true,
             ),
             cap("trading/accounts/{account}/orders", RequestStream, true),
+            cap(
+                "trading/accounts/{account}/orders/masscancel",
+                RequestResponse,
+                true,
+            ),
             cap("accounts/{account}", RequestResponse, true),
             cap("accounts/{account}/balances", PubSub, true),
             cap("accounts/{account}/positions", PubSub, true),
@@ -413,6 +422,19 @@ fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {
         .to_string()
 }
 
+pub fn parse_mass_cancel_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 5
+        && parts[0] == "trading"
+        && parts[1] == "accounts"
+        && parts[3] == "orders"
+        && parts[4] == "masscancel"
+    {
+        return Some(parts[2].to_string());
+    }
+    None
+}
+
 pub fn parse_open_orders_path(path: &str) -> Option<String> {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() >= 5
@@ -493,6 +515,10 @@ mod tests {
             ("marketdata/{symbol}/mark", PubSub, false),
             ("marketdata/{symbol}/mark", RequestResponse, false),
             ("marketdata/liquidations", PubSub, false),
+            ("marketdata/session", PubSub, false),
+            ("marketdata/session", RequestResponse, false),
+            ("marketdata/{symbol}/status", PubSub, false),
+            ("marketdata/{symbol}/status", RequestResponse, false),
             ("trading/accounts/{account}/executions", PubSub, true),
             (
                 "trading/accounts/{account}/orders/open",
@@ -500,6 +526,11 @@ mod tests {
                 true,
             ),
             ("trading/accounts/{account}/orders", RequestStream, true),
+            (
+                "trading/accounts/{account}/orders/masscancel",
+                RequestResponse,
+                true,
+            ),
             ("accounts/{account}", RequestResponse, true),
             ("accounts/{account}/balances", PubSub, true),
             ("accounts/{account}/positions", PubSub, true),

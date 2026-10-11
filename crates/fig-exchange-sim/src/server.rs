@@ -30,6 +30,7 @@ use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_mark_query_path, MarketDataHub,
     StreamSubscription,
 };
+use crate::market_state::{parse_security_status_path, parse_session_path, MarketStateHub};
 use crate::matching::MatchingEngine;
 
 /// Well-known schema IDs for trading messages.
@@ -62,6 +63,7 @@ pub struct ExchangeState {
     pub account_subscriptions: Mutex<Vec<AccountSubscription>>,
     pub market_data: Mutex<MarketDataHub>,
     pub accounts: Mutex<AccountHub>,
+    pub market_state: Mutex<MarketStateHub>,
 }
 
 /// Options for [`run_server_with`].
@@ -151,6 +153,7 @@ pub async fn run_server_with(addr: &str, options: ServerOptions) -> anyhow::Resu
         account_subscriptions: Mutex::new(Vec::new()),
         market_data: Mutex::new(MarketDataHub::default()),
         accounts: Mutex::new(AccountHub::default()),
+        market_state: Mutex::new(MarketStateHub::default()),
     });
 
     info!("Waiting for connections...");
@@ -374,6 +377,8 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
             || parse_agg_trade_query_path(channel_path).is_some()
             || parse_mark_query_path(channel_path).is_some()
             || parse_all_mids_path(channel_path)
+            || parse_session_path(channel_path)
+            || parse_security_status_path(channel_path).is_some()
             || channel_path.contains("/candles/")
             || channel_path.contains("/ticker")
             || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
@@ -416,10 +421,64 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
 
     info!("Trading request: {} {}", method, channel_path);
 
-    // Decode the payload as CBOR
-    let result = if channel_path.contains("/orders")
+    let result = if crate::broker_session::parse_mass_cancel_path(&channel_path).is_some() {
+        match codec::decode_cbor::<MassCancelRequest>(&frame.payload) {
+            Ok(req) => {
+                if let Some(err) = crate::auth::authorize_private(&frame, &req.account) {
+                    return vec![err];
+                }
+                let mut engine = state.engine.lock().await;
+                let (total_affected, reports) = engine.process_mass_cancel(&req);
+                for report in &reports {
+                    engine.record_execution(&req.account, report.clone());
+                }
+                drop(engine);
+                let report = MassCancelReport {
+                    cl_ord_id: req.cl_ord_id.clone(),
+                    account: req.account.clone(),
+                    symbol: req.symbol.clone(),
+                    total_affected,
+                    status: MassCancelReportStatus::Completed,
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as i64,
+                };
+                let mut responses = Vec::new();
+                if let Ok(payload) = codec::encode_cbor(&report) {
+                    responses.push(
+                        Frame::new(FrameType::Response, frame.channel_id)
+                            .with_seq(frame.stream_seq)
+                            .with_schema_id(schema_id::TRADING_ORDERS)
+                            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+                            .with_payload(payload),
+                    );
+                }
+                if !reports.is_empty() {
+                    responses.extend(
+                        crate::broker_api::post_execution_reports(state, &req.account, &reports)
+                            .await,
+                    );
+                }
+                if let Some(sym) = &req.symbol {
+                    responses.extend(push_book_depth(state, sym).await);
+                }
+                responses
+            }
+            Err(e) => {
+                error!("Failed to decode MassCancelRequest: {}", e);
+                vec![make_error_frame(
+                    frame.channel_id,
+                    frame.stream_seq,
+                    "DECODE_ERROR",
+                )]
+            }
+        }
+    } else if channel_path.contains("/orders")
         && !channel_path.contains("/cancel")
         && !channel_path.contains("/replace")
+        && !channel_path.ends_with("/open")
+        && !channel_path.ends_with("/masscancel")
     {
         // New order
         match codec::decode_new_order_single_frame(&frame) {
@@ -433,6 +492,14 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 );
 
                 let account = order.account.as_deref().unwrap_or("DEMO-ACCT");
+
+                {
+                    let ms = state.market_state.lock().await;
+                    if let Err(code) = ms.orders_allowed(&order.symbol) {
+                        drop(ms);
+                        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+                    }
+                }
 
                 if order.reduce_only == Some(true) {
                     let accounts = state.accounts.lock().await;

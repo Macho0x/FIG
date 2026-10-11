@@ -34,6 +34,7 @@ fn is_subscribe_forbidden_path(path: &str) -> bool {
     parse_capabilities_path(path)
         || parse_instruments_path(path)
         || parse_order_history_path(path).is_some()
+        || crate::broker_session::parse_mass_cancel_path(path).is_some()
         || path.ends_with("/fills")
         || (path.starts_with("accounts/") && path.matches('/').count() == 1)
 }
@@ -51,6 +52,8 @@ fn is_get_query_path(path: &str) -> bool {
         || parse_mark_query_path(path).is_some()
         || parse_all_mids_path(path)
         || parse_order_book_path(path).is_some()
+        || crate::market_state::parse_session_path(path)
+        || crate::market_state::parse_security_status_path(path).is_some()
         || path.ends_with("/fills")
         || path.ends_with("/funding")
         || path.ends_with("/ledger")
@@ -62,11 +65,15 @@ pub fn expected_interaction(path: &str) -> Interaction {
     if parse_order_history_path(path).is_some() {
         return Interaction::RequestGet;
     }
+    if crate::broker_session::parse_mass_cancel_path(path).is_some() {
+        return Interaction::RequestPost;
+    }
     if path.contains("/orders")
         && path.contains("/accounts/")
         && !path.contains("/open")
         && !path.contains("/cancel")
         && !path.contains("/replace")
+        && !path.contains("/masscancel")
     {
         return Interaction::RequestPost;
     }
@@ -226,6 +233,28 @@ mod tests {
             .with_extension(Extension::text(
                 ExtensionTag::ChannelPath,
                 "trading/accounts/DEMO/orders",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn get_allowed_on_session_path() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/session",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn post_allowed_for_mass_cancel() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "trading/accounts/DEMO/orders/masscancel",
             ))
             .with_extension(Extension::text(ExtensionTag::Method, "POST"));
         assert!(validate_interaction(&frame).is_none());

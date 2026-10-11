@@ -10,7 +10,10 @@ use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{schema_id, AccountSummary, CapabilitiesResponse, ExecutionReport};
 use fig_exchange_sim::server::run_server;
 use fig_gateways::backend::{proxy_frame, proxy_subscribe_snapshot, BackendSession};
-use fig_gateways::fix::{fix_to_fig_order, parse_fix_message};
+use fig_gateways::fix::{
+    fig_to_fix_execution_report, fix_to_fig_order, parse_fix_message, FixMessage,
+    FixOutboundContext,
+};
 use fig_gateways::rest::parse_http_request;
 use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws_catalog::{fig_frame_to_legacy_ws_json, legacy_ws_json_to_fig_subscribe};
@@ -429,6 +432,11 @@ async fn legacy_fix_order_aliases_round_trip_through_backend() {
         let report: ExecutionReport = decode_cbor(&payload_frame.payload)
             .unwrap_or_else(|e| panic!("[{}] {} decode: {e}", case.source, case.name));
         assert_eq!(report.cl_ord_id, order.cl_ord_id);
+        let drop_copy = fig_to_fix_execution_report(&report, &FixOutboundContext::default());
+        let fix8 = FixMessage::from_bytes(&drop_copy)
+            .unwrap_or_else(|e| panic!("[{}] {} drop-copy: {e}", case.source, case.name));
+        assert_eq!(fix8.msg_type(), Some("8"));
+        assert_eq!(fix8.get_tag(11), Some(order.cl_ord_id.as_str()));
     }
 
     drop(endpoint);
@@ -440,6 +448,14 @@ async fn legacy_rest_get_aliases_round_trip_through_backend() {
     std::env::set_var("FIG_TLS_INSECURE", "1");
     let endpoint = run_server("127.0.0.1:0").await.expect("server");
     let addr = endpoint.local_addr().unwrap();
+
+    let sess_raw = b"GET /marketdata/session HTTP/1.1\r\n\r\n";
+    let sess_http = parse_http_request(sess_raw).expect("parse session http");
+    let sess_frame = http_get_to_fig_request(&sess_http).expect("map session");
+    let sess_frames = proxy_frame(addr, sess_frame).await.expect("proxy session");
+    assert!(sess_frames
+        .iter()
+        .any(|f| f.frame_type == FrameType::Response));
 
     let caps_raw = b"GET /.well-known/capabilities HTTP/1.1\r\n\r\n";
     let caps_http = parse_http_request(caps_raw).expect("parse capabilities http");

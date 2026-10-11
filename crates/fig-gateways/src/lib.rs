@@ -6,6 +6,8 @@
 //! - **REST** — Parse HTTP/1.1 requests, map to/from FIG request/response frames
 //! - **WebSocket** — Parse RFC 6455 frames, map to/from FIG stream frames
 //! - **SSE** — Parse Server-Sent Events, map to/from FIG STREAM_ITEM frames
+//! - **OUCH** — SoupBinTCP + FIG OUCH 4.2-shaped order entry (`--ouch-addr`)
+//! - **ITCH** — L2 price-level egress over SoupBinTCP / MoldUDP64
 //!
 //! # Example
 //!
@@ -21,8 +23,11 @@ pub mod fix;
 pub mod fix_seq_store;
 pub mod fix_session;
 pub mod fix_tls;
+pub mod itch;
+pub mod ouch;
 pub mod rest;
 pub mod rest_query;
+pub mod soupbin;
 pub mod sse;
 pub mod ws;
 pub mod ws_catalog;

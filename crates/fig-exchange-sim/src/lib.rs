@@ -8,6 +8,7 @@ pub mod auth;
 pub mod broker_api;
 pub mod broker_session;
 pub mod market_data;
+pub mod market_state;
 pub mod matching;
 pub mod multi_codec;
 pub mod orderbook;

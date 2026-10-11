@@ -47,6 +47,8 @@ pub enum SubscriptionKind {
     MiniTicker { symbol: Option<String> },
     MarkPrice { symbol: String },
     Liquidations,
+    Session,
+    SecurityStatus { symbol: String },
 }
 
 #[derive(Clone)]
@@ -466,6 +468,16 @@ impl MarketDataHub {
 }
 
 pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<SubscriptionKind> {
+    if crate::market_state::parse_session_path(channel_path)
+        || crate::market_state::parse_session_path(routing_key)
+    {
+        return Some(SubscriptionKind::Session);
+    }
+    if let Some(symbol) = crate::market_state::parse_security_status_path(channel_path)
+        .or_else(|| crate::market_state::parse_security_status_path(routing_key))
+    {
+        return Some(SubscriptionKind::SecurityStatus { symbol });
+    }
     if parse_liquidations_subscription(routing_key, channel_path) {
         return Some(SubscriptionKind::Liquidations);
     }

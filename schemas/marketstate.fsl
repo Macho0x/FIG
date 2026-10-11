@@ -1,0 +1,100 @@
+// FIG Schema Language — Market state and control (§21)
+// Merged by `cargo xtask codegen` with orders.fsl (well-known id 0x01).
+// Halts, trading-session status, security status, and mass cancel.
+
+schema trading.orders v1.0.0 {
+    description: "Market state and control messages (§21.1)"
+    well_known_id: 0x01
+
+    type Symbol: string(max_len: 32, uppercase: true)
+    type ClientOrderId: string(max_len: 20, pattern: "[A-Za-z0-9\\-]+")
+    type TradeTimestamp: int64
+
+    message TradingSessionStatusRequest {
+        channel_type: request_response
+
+        symbol: Symbol @1 optional
+    }
+
+    message TradingSessionStatus {
+        channel_type: stream_item
+
+        symbol: Symbol @1 optional
+        trading_session_id: string(max_len: 16) @2
+        status: enum { pre_open, open, break, close, halt, auction } @3
+        halt_reason: enum { none, news, matching_engine, regulatory, auction, other } @4 optional
+        timestamp: TradeTimestamp @5
+        is_snapshot: bool @6 optional
+    }
+
+    message SecurityStatusRequest {
+        channel_type: request_response
+
+        symbol: Symbol @1
+    }
+
+    message SecurityStatus {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        status: enum { trading, halt, auction, suspended } @2
+        halt_reason: enum { none, news, matching_engine, regulatory, auction, other } @3 optional
+        timestamp: TradeTimestamp @4
+        is_snapshot: bool @5 optional
+    }
+
+    message MassCancelRequest {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        account: string(max_len: 32) @2
+        symbol: Symbol @3 optional
+        side: enum { buy, sell, sell_short, sell_short_exempt } @4 optional
+    }
+
+    message MassCancelReport {
+        channel_type: request_response
+        correlation_field: cl_ord_id
+
+        cl_ord_id: ClientOrderId @1
+        account: string(max_len: 32) @2
+        symbol: Symbol @3 optional
+        total_affected: uint32 @4
+        status: enum { accepted, completed, rejected } @5
+        timestamp: TradeTimestamp @6
+    }
+
+    gateway fix {
+        message MassCancelRequest -> MsgType: "q" {
+            cl_ord_id -> tag: 11
+            account -> tag: 1
+            symbol -> tag: 55
+            side -> tag: 54 values: { buy: "1", sell: "2", sell_short: "5", sell_short_exempt: "6" }
+        }
+        message MassCancelReport -> MsgType: "r" {
+            cl_ord_id -> tag: 11
+            account -> tag: 1
+            symbol -> tag: 55
+            total_affected -> tag: 533
+        }
+        message TradingSessionStatus -> MsgType: "h" {
+            symbol -> tag: 55
+            trading_session_id -> tag: 336
+            timestamp -> tag: 60
+        }
+        message SecurityStatus -> MsgType: "f" {
+            symbol -> tag: 55
+            timestamp -> tag: 60
+        }
+    }
+
+    gateway rest {
+        message TradingSessionStatusRequest -> method: GET path: "/marketdata/session"
+        message TradingSessionStatus -> method: SSE path: "/marketdata/session"
+        message SecurityStatusRequest -> method: GET path: "/marketdata/{symbol}/status"
+        message SecurityStatus -> method: SSE path: "/marketdata/{symbol}/status"
+        message MassCancelRequest -> method: POST path: "/trading/accounts/{account}/orders/masscancel"
+        message MassCancelReport -> method: POST path: "/trading/accounts/{account}/orders/masscancel"
+    }
+}

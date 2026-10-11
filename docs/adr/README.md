@@ -12,6 +12,8 @@ and consequences** for choices with long-term impact.
 | 0005 | [Multi-Language Runtime Strategy](0005-multi-language-runtime-strategy.md) | Accepted |
 | 0006 | [Broker ↔ Client API Parity](0006-broker-api-parity.md) | Accepted |
 | 0007 | [Crypto Instrument Model](0007-crypto-instrument-model.md) | Accepted |
+| 0008 | [Named Gateway Adapters](0008-named-gateway-adapters.md) | Accepted |
+| 0009 | [Market-Data Plane](0009-market-data-plane.md) | Accepted |
 
 ---
 

@@ -5,23 +5,31 @@ How to run FIG alongside legacy FIX and REST infrastructure.
 ## Overview
 
 The `fig-gateway` binary is a **translation bridge** for migration testing. It
-accepts legacy FIX, REST, and WebSocket connections, converts them to FIG frames,
-and proxies to a remote FIG backend when `--fig-backend` is set:
+accepts legacy connections, converts them to FIG frames, and proxies to a remote
+FIG backend when `--fig-backend` is set ([ADR 0008](adr/0008-named-gateway-adapters.md)):
 
 - **REST GET** — one-shot `proxy_frame` (finish send, read until EOF)
 - **WebSocket SUBSCRIBE** — one `BackendSession` (`FigConnection`) per WS client;
   subscribe without finishing send, then forward later `STREAM_ITEM`s until
   `STREAM_CLOSE` or the socket closes
+- **FIX TCP** — session + D/F/G application messages; optional drop-copy 35=8
+- **OUCH / SoupBinTCP** — opt-in (`--ouch-addr`); binary order entry
+- **ITCH L2 egress** — opt-in (`--itch-addr` SoupBin, `--itch-multicast` MoldUDP64);
+  price-level messages only ([ADR 0009](adr/0009-market-data-plane.md))
 
-Library adapters (`fig_gateways::fix`, `rest`, `ws`, `sse`) can be embedded in
-your own gateway service that forwards to a FIG server.
+Library adapters (`fig_gateways::fix`, `rest`, `ws`, `sse`, `ouch`, `itch`) can
+be embedded in your own gateway service that forwards to a FIG server.
 
 ```text
 FIX clients ──► :9876 ──┐
-REST clients ──► :8080 ─┼──► fig-gateway (translate in-process)
-                        │
-WebSocket / SSE         └── use library adapters in custom gateway
+REST clients ──► :8080 ─┼──► fig-gateway ──► FIG backend (TREE)
+WS clients  ──► :8090 ─┘
+OUCH / ITCH ──► opt-in --ouch-addr / --itch-addr (off by default)
 ```
+
+**Not served:** NASDAQ TotalView-ITCH (order-by-order), CME MDP 3.0 / FAST,
+Cboe BOE/PITCH, Eurex ETI/EOBI, iLink 3. Those are other named adapters, not
+this binary. Native FIG market data remains TREE L2.
 
 ## Quick Start
 
@@ -43,6 +51,10 @@ hit a live book. Native FIG clients (`fig-cli`) connect to `:8443` directly.
 | `--rest-addr` | `127.0.0.1:8080` | REST HTTP listener |
 | `--ws-addr` | `127.0.0.1:8090` | WebSocket HTTP upgrade listener |
 | `--fix-addr` | `127.0.0.1:9876` | FIX TCP listener |
+| `--fix-dropcopy-account` | (none) | After Logon, SUBSCRIBE executions for this account and egress FIX 35=8 |
+| `--ouch-addr` | (none) | SoupBinTCP + OUCH 4.2-shaped listener (off unless set) |
+| `--itch-addr` | (none) | SoupBinTCP ITCH L2 egress (off unless set) |
+| `--itch-multicast` | (none) | MoldUDP64 ITCH L2 datagram egress (off unless set) |
 | `--fig-backend` | (none) | Proxy REST GET (`proxy_frame`) and live WS SUBSCRIBE (`BackendSession`) to native FIG |
 
 Example:
@@ -82,7 +94,47 @@ curl 'http://127.0.0.1:8080/marketdata/AAPL/ticker'
 - Application messages map to FIG Request/StreamItem frames.
 
 Use `fig_gateways::fix_session::FixSession` for production-grade FIX session
-state management (sequence numbers, heartbeats, gap fill).
+state management (sequence numbers, heartbeats, gap fill). Application
+messages (35=8 and mass-cancel/session/security-status) are stored and
+replayed on ResendRequest (35=2) with `PossDupFlag=Y`; admin messages are
+gap-filled (35=4). `--fix-dropcopy-account` SUBSCRIBEs
+`trading/accounts/{account}/executions` after Logon and egresses 35=8.
+
+FIX 35=q / 35=r map to `MassCancelRequest` / `MassCancelReport`. 35=g / 35=h
+map to trading-session status; 35=e / 35=f map to security status.
+
+## OUCH (SoupBinTCP)
+
+Opt-in `--ouch-addr`. Session is SoupBinTCP (`L` login, `A` accept, `S`
+sequenced, `U` unsequenced, `H`/`R` heartbeats). **FIG OUCH is 4.2-shaped,
+not NASDAQ byte-identical.**
+
+Inbound unsequenced payloads:
+
+| Type | Layout |
+|---|---|
+| `O` Enter | token 14 ASCII, side `B`/`S`, shares u32 BE, stock 8 ASCII, price u64 BE (`px * 10_000`), TIF `0` Day / `3` IOC, account 16 ASCII |
+| `X` Cancel | token 14, shares u32 BE (0 = remaining) |
+| `U` Replace | existing 14, replacement 14, shares u32 BE, price u64 BE |
+
+Outbound sequenced: `A` accepted, `E` executed, `C` canceled, `J` rejected.
+Login username (SoupBin 6-byte field) is the FIG account; `AUTH_TOKEN` is
+`fig-dev-{account}`. E2E: `cargo test -p fig-gateways --test gateway_ouch_itch_e2e`.
+
+## ITCH L2 egress
+
+Opt-in `--itch-addr` (SoupBin replay) and/or `--itch-multicast` (MoldUDP64).
+Price-level only — no Add/Delete order references ([ADR 0009](adr/0009-market-data-plane.md)).
+
+| Type | Meaning |
+|---|---|
+| `S` | System event (`O` start, `S` open, `H` halt, `C` close) |
+| `R` | Stock directory (8-byte stock) |
+| `L` | Price level: stock, side `B`/`S`, price u64, qty u32, level u8, action `S`/`U`/`D` |
+| `T` | Trade |
+
+MoldUDP64: 10-byte session (`FIGITCH01`), u64 sequence, u16 count, then
+`u16 length + payload` per message. Same payload bytes as SoupBin `S`.
 
 ## WebSocket & SSE
 

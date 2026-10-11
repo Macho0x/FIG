@@ -24,7 +24,9 @@ margin-asset denomination (e.g. USDC). FIG's original `Symbol` type was limited 
 
 - Codegen must include `instruments.fsl` in the merge list (`fig-fsl` parser).
 - Gateway HL `coin` fields map to FIG `Symbol` (uppercase, max 32).
-- Full §20.1 deferred items (EIP-712, TWAP, vaults, chain events) remain out of scope.
+- Product-surface FSL (TWAP, vaults, chain events) remains out of scope.
+  Wallet signing is venue credential issuance, not FIG protocol auth
+  ([SPEC.md §9.3](../../SPEC.md), [ADR 0008](0008-named-gateway-adapters.md)).
 
 ## Evidence
 

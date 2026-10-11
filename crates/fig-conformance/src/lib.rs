@@ -22,11 +22,15 @@ use fig_core::messages::{
     InstrumentMetadata, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, LiquidationTrade,
     LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
     MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate,
-    MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
-    OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    MassCancelReport, MassCancelReportStatus, MassCancelRequest, MiniTicker, NewOrderSingle,
+    OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
+    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
     OrderListStatusStatus, OrderType, PositionEntry, PositionRequest, PositionSnapshot,
-    PositionUpdate, Price, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity, Side,
-    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, UserLiquidation,
+    PositionUpdate, Price, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
+    SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side,
+    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
+    TradingSessionStatusHaltReason, TradingSessionStatusRequest, TradingSessionStatusStatus,
+    UserLiquidation,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -837,6 +841,59 @@ pub fn sample_user_liquidation() -> UserLiquidation {
     }
 }
 
+pub fn sample_trading_session_status_request() -> TradingSessionStatusRequest {
+    TradingSessionStatusRequest {
+        symbol: Some("AAPL".to_string()),
+    }
+}
+
+pub fn sample_trading_session_status() -> TradingSessionStatus {
+    TradingSessionStatus {
+        symbol: Some("AAPL".to_string()),
+        trading_session_id: "REG".to_string(),
+        status: TradingSessionStatusStatus::Open,
+        halt_reason: Some(TradingSessionStatusHaltReason::News),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    }
+}
+
+pub fn sample_security_status_request() -> SecurityStatusRequest {
+    SecurityStatusRequest {
+        symbol: "AAPL".to_string(),
+    }
+}
+
+pub fn sample_security_status() -> SecurityStatus {
+    SecurityStatus {
+        symbol: "AAPL".to_string(),
+        status: SecurityStatusStatus::Trading,
+        halt_reason: Some(SecurityStatusHaltReason::None),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    }
+}
+
+pub fn sample_mass_cancel_request() -> MassCancelRequest {
+    MassCancelRequest {
+        cl_ord_id: "MC-001".to_string(),
+        account: "DEMO".to_string(),
+        symbol: Some("AAPL".to_string()),
+        side: Some(Side::Buy),
+    }
+}
+
+pub fn sample_mass_cancel_report() -> MassCancelReport {
+    MassCancelReport {
+        cl_ord_id: "MC-001".to_string(),
+        account: "DEMO".to_string(),
+        symbol: Some("AAPL".to_string()),
+        total_affected: 2,
+        status: MassCancelReportStatus::Completed,
+        timestamp: 1_700_000_000_000_000_000,
+    }
+}
+
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
         encode_account_summary, encode_aggregate_trade_batch, encode_aggregate_trade_event,
@@ -851,13 +908,16 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         encode_ledger_history_batch, encode_ledger_history_request, encode_ledger_update,
         encode_liquidation_trade_event, encode_margin_summary, encode_margin_update,
         encode_mark_price_request, encode_mark_price_update,
-        encode_market_data_incremental_refresh, encode_market_data_snapshot, encode_mini_ticker,
+        encode_market_data_incremental_refresh, encode_market_data_snapshot,
+        encode_mass_cancel_report, encode_mass_cancel_request, encode_mini_ticker,
         encode_open_orders_request, encode_open_orders_snapshot, encode_order_book_delta,
         encode_order_book_request, encode_order_book_snapshot, encode_order_history_batch,
         encode_order_history_request, encode_order_list_status, encode_position_request,
         encode_position_snapshot, encode_position_update, encode_public_trade_batch,
-        encode_public_trade_event, encode_symbol_ticker, encode_ticker_request,
-        encode_trade_history_request, encode_user_liquidation,
+        encode_public_trade_event, encode_security_status, encode_security_status_request,
+        encode_symbol_ticker, encode_ticker_request, encode_trade_history_request,
+        encode_trading_session_status, encode_trading_session_status_request,
+        encode_user_liquidation,
     };
 
     let encoded = match vector.message_type.as_str() {
@@ -935,6 +995,16 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "TickerRequest" => encode_ticker_request(&sample_ticker_request()),
         "TradeHistoryRequest" => encode_trade_history_request(&sample_trade_history_request()),
         "UserLiquidation" => encode_user_liquidation(&sample_user_liquidation()),
+        "TradingSessionStatusRequest" => {
+            encode_trading_session_status_request(&sample_trading_session_status_request())
+        }
+        "TradingSessionStatus" => encode_trading_session_status(&sample_trading_session_status()),
+        "SecurityStatusRequest" => {
+            encode_security_status_request(&sample_security_status_request())
+        }
+        "SecurityStatus" => encode_security_status(&sample_security_status()),
+        "MassCancelRequest" => encode_mass_cancel_request(&sample_mass_cancel_request()),
+        "MassCancelReport" => encode_mass_cancel_report(&sample_mass_cancel_report()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;

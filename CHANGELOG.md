@@ -1,6 +1,31 @@
 # Changelog
 
 All notable changes to the FIG repository.
+## 1.4.0
+
+### Added
+- **Named gateway adapters** ([ADR 0008](docs/adr/0008-named-gateway-adapters.md)): opt-in
+  SoupBinTCP + OUCH 4.2-shaped order entry (`--ouch-addr`) and ITCH L2 price-level egress
+  (`--itch-addr` SoupBin replay, `--itch-multicast` MoldUDP64). FIG OUCH is 4.2-shaped, not
+  NASDAQ byte-identical. ITCH carries snapshot/incremental **price levels** only — no synthetic
+  order references ([ADR 0009](docs/adr/0009-market-data-plane.md)).
+- **Market-state FSL** (`schemas/marketstate.fsl`): `TradingSessionStatus`, `SecurityStatus`,
+  `MassCancelRequest` / `MassCancelReport`. The reference broker rejects new orders on halt
+  and still accepts mass cancel. Native paths: `marketdata/session`,
+  `marketdata/{symbol}/status`, `trading/accounts/{account}/orders/masscancel`.
+- **FIX session completeness:** application-message replay on ResendRequest (35=2) with
+  `PossDupFlag=Y`, admin gap-fill (35=4), mass cancel (35=q/r), trading-session status (35=g/h),
+  security status (35=e/f), and optional drop-copy (`--fix-dropcopy-account` SUBSCRIBE
+  executions → 35=8).
+- **`FigSdkClient::request()`** is the generic REQUEST path; typed helpers wrap it.
+  Helpers for session status, security status, and mass cancel.
+
+### Changed
+- Conformance SBE coverage is 85 vectors, including six new market-state messages.
+  Per-language parity drivers regenerated from the same samples.
+- Session auth remains `AUTH_TOKEN` / JWT / mTLS. Per-order wallet signatures are
+  venue issuance, not FIG protocol auth ([SPEC.md §9.3](SPEC.md), ADR 0008).
+
 ## 1.3.2
 
 ### Added

@@ -60,7 +60,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 |---|---|---|---|
 | ✅ | `fig-client`: funding, ledger, liquidations, agg trades merge helpers | both | `fig-client::{FundingState,LedgerState,AggTradeState,LiquidationState}` |
 | ✅ | `fig-cli` demos use `FigSdkClient` subscribe/request helpers | both | `cli_demos_complete_successfully` |
-| 🔶 | Tier 1 SDK: `FigSdkClient` as primary `request()` path | both | [§17.2](#172-cross-cutting-protocol-both-sides) |
+| ✅ | Tier 1 SDK: `FigSdkClient` as primary `request()` path | both | `FigSdkClient::request()`; typed helpers wrap it — [§17.2](#172-cross-cutting-protocol-both-sides) |
 | ✅ | Tier 3 SDK: pub/sub merge wrappers complete | both | perps + account merge helpers in `fig-client` |
 | ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
@@ -80,14 +80,16 @@ Detail sections (§18–21) add context; do not duplicate status here.
 
 ### 0.5 P3 — Crypto-perps track (pick one track at a time)
 
-**Deferred to Full §20.1** (venue product surface, not protocol forks): EIP-712 wallet auth,
-TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chain/L1 streams.
+**Deferred to Full §20.1** (venue product surface, not protocol forks): TWAP,
+vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chain/L1
+streams. Per-order wallet signatures are venue issuance, not a FIG work item —
+session auth is `AUTH_TOKEN` / JWT / mTLS ([SPEC.md §9.3](SPEC.md),
+[ADR 0008](docs/adr/0008-named-gateway-adapters.md)).
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
 | ✅ | Extended instrument model (long symbols, perp IDs, margin asset metadata) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ✅ | Gateway legacy alias E2E (Binance/HL/FIX/REST fixtures) | crypto | `gateway_legacy_ws_alias_e2e.rs` |
-| ⬜ | Cryptographic action auth (wallet signatures, EIP-712) | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Batch / atomic multi-action `REQUEST` contract | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
@@ -99,13 +101,15 @@ TWAP, vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chai
 | Status | Item | Track | Detail |
 |---|---|---|---|
 | ⬜ | FIX gateway: full institutional dialect matrix | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
-| ⬜ | FIX: mass cancel, trading session status, security status | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
+| ✅ | FIX: mass cancel, trading session status, security status | institutional | FIX 35=q/r, 35=g/h, 35=e/f — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FIX: allocations, trade capture, multi-leg, IOI | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
-| ⬜ | FSL: market state & control (halts, auctions, pre-open, price limits) | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
+| 🔶 | FSL: market state & control (halts, auctions, pre-open, price limits) | institutional | `schemas/marketstate.fsl` + sim hub; price limits not in catalog — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: open interest, settlement prices, block trades | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Member entitlement model on wire (beyond path scoping) | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
-| ⬜ | MDP 3.0 / FAST adapter or multicast distribution ADR | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
-| ⬜ | FIX session cert harness (resend/gap-fill vs OMS stacks) | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
+| ✅ | MDP 3.0 / FAST adapter or multicast distribution ADR | institutional | [ADR 0009](docs/adr/0009-market-data-plane.md): TREE L2 native; ITCH L2 egress; no MDP |
+| ✅ | FIX session cert harness (resend/gap-fill vs OMS stacks) | institutional | `fix_session` resend/gap-fill/PossDup tests; member OMS labs remain venue-owned — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
+| ✅ | OUCH 4.2-shaped + SoupBinTCP order-entry adapter | institutional | `--ouch-addr`; `gateway_ouch_itch_e2e` — [ADR 0008](docs/adr/0008-named-gateway-adapters.md) |
+| ✅ | ITCH L2 egress (price-level, SoupBin + MoldUDP64) | institutional | `--itch-addr` / `--itch-multicast` — [ADR 0009](docs/adr/0009-market-data-plane.md) |
 | ⬜ | Co-lo latency SLA benchmark program | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: regulatory / surveillance (bust/correct, give-up, reporting) | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Tier 4 advanced frames in all production SDKs | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
@@ -343,7 +347,6 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | Cryptographic action auth (wallet signatures, EIP-712, chain-specific) | High | Today: `AUTH_TOKEN` / JWT / mTLS — not signed L1 actions |
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | High | Not in `schemas/*.fsl` |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | Medium | HL product surface |
 | ⬜ | Batch / atomic multi-action `REQUEST` contract | Medium | HL batches L1 actions; FIG is frame-per-request |
@@ -372,7 +375,7 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 |---|---|---|---|
 | **P1** | Gateway in front of existing JSON API | ✅ `fig-gateway` + `--fig-backend`, HL alias E2E | Proxy to real matching engine |
 | **P2** | Native FIG/TREE + SBE for colo MMs | ✅ SBE order path doc + demo, instrument model, order flags | Production order entry SLA |
-| **P3** | Venue-specific products on FIG wire | §20.1 FSL + auth extensions (deferred) | Vaults, signed actions, chain events |
+| **P3** | Venue-specific products on FIG wire | §20.1 FSL (deferred) | Vaults, chain events |
 
 **Rough effort:** §17 API surface ~70% for Binance/Hyperliquid-shaped perps;
 production venue **12–24+ months** venue engineering on top of §19.
@@ -392,14 +395,16 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ⬜ | FIX gateway: full institutional dialect matrix | High | Today: subset (Logon, D/F/G/8/9, some MD) — see `fix.rs` |
-| ⬜ | FIX: mass cancel, trading session status, security status | High | Not in gateway |
+| ✅ | FIX: mass cancel, trading session status, security status | High | FIX 35=q/r, 35=g/h, 35=e/f on native paths |
 | ⬜ | FIX: allocations, trade capture, multi-leg, IOI | High | Institutional order types |
-| ⬜ | FSL: market state & control (halts, auctions, pre-open, price limits) | High | Not in catalog |
+| 🔶 | FSL: market state & control (halts, auctions, pre-open, price limits) | High | `schemas/marketstate.fsl` + sim hub; price limits not in catalog |
 | ⬜ | FSL: open interest, settlement prices, block trades | High | Not in catalog |
 | ⬜ | FSL: regulatory / surveillance (bust/correct, give-up, trade reporting) | Medium | Out of current scope |
 | ⬜ | Member entitlement model on wire (beyond path scoping) | High | Channel arbitration, drop-copy entitlements |
-| ⬜ | MDP 3.0 / FAST adapter OR documented multicast distribution layer | High | FIG is TREE point-to-point; CME uses UDP multicast fan-out |
-| ⬜ | FIX session cert harness (resend/gap-fill matrix vs OMS stacks) | High | Partial resend wiring |
+| ✅ | MD-plane ADR (multicast vs TREE) | High | [ADR 0009](docs/adr/0009-market-data-plane.md) — native L2 on TREE; ITCH L2 egress; no MDP/FAST |
+| ✅ | OUCH 4.2-shaped + SoupBinTCP adapter | High | `--ouch-addr`; `gateway_ouch_itch_e2e` — [ADR 0008](docs/adr/0008-named-gateway-adapters.md) |
+| ✅ | ITCH L2 price-level egress | High | SoupBin `--itch-addr`, MoldUDP64 `--itch-multicast` |
+| ✅ | FIX session cert harness (resend/gap-fill matrix vs OMS stacks) | High | Application replay + PossDup + admin gap-fill; member OMS labs remain venue-owned |
 | ⬜ | Co-lo latency SLA benchmark program | High | Dedicated hardware, jitter budgets — not localhost claims |
 | ⬜ | Tier 4 advanced frames in all production SDKs | Medium | §16.4 core ✅; not all langs at Tier 4 |
 | ⬜ | Wire schema split `0x02` market / `0x03` account | Low | Institutions care about domain versioning — §18.7 |
@@ -431,7 +436,7 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 |---|---|---|---|
 | **P1** | FIX drop-copy / order-entry bridge | Expand `fix.rs`, cert tests | Member OMS integration |
 | **P2** | Market-state FSL domain + halts/auctions | New FSL + exchange-sim reference | Production supervision |
-| **P3** | MD distribution strategy (multicast adapter or hybrid) | §21.1 MDP/FAST or ADR | Globex-scale fan-out |
+| **P3** | MD distribution strategy | [ADR 0009](docs/adr/0009-market-data-plane.md) ITCH L2 egress | Keep incumbent multicast for HFT MD |
 
 **Rough effort:** Protocol surface ~**25–35%** for CME-equivalent connectivity;
 institutional cert + MD distribution largely **greenfield** relative to current FIG.
@@ -445,7 +450,7 @@ institutional cert + MD distribution largely **greenfield** relative to current 
 | **§17 API catalog fit** | High | Low (different MD/order models) |
 | **Gateway migration value** | High (JSON WS → FIG) | Medium (FIX subset only) |
 | **Native FIG as primary wire** | Plausible for colo MM clients | Unlikely for core Globex MD |
-| **Biggest FIG-project gap** | Signed-action auth + product FSL | FIX completeness + multicast MD |
+| **Biggest FIG-project gap** | Product FSL (TWAP/vaults/chain events) | FIX completeness + named binary adapters |
 | **Biggest venue gap** | Chain + matching at scale | Clearing, cert, surveillance, MDP |
 | **Sensible first milestone** | Gateway + native FIG orders/MD | FIX drop-copy / order-entry bridge |
 | **Depends on** | §18 1.0 + §19 shared foundation | §18 1.0 + §19 shared foundation |
@@ -541,7 +546,7 @@ integration tests are the reference behavior.
 > conformance vectors: Go (`bindings/go/fig/sbe/parity_test.go`), C++
 > (`bindings/cpp/smoke/sbe_parity.cpp`), C# (`bindings/csharp/smoke/Program.cs`), TypeScript
 > (`bindings/typescript/smoke/run.sh`), Zig (`bindings/zig/sbe_parity.zig`) — covering
-> **all 55 catalog messages** (the drivers are generated by `scripts/gen_sbe_parity.py` from
+> **all catalog messages** (the drivers are generated by `scripts/gen_sbe_parity.py` from
 > the same `sample_*` builders that pin the vectors).
 > Bugs fixed along the way: language-specific parameter order, wire tokens leaking into type
 > positions, struct-typed fields resolving to strings, colliding temporaries, optional-enum/`i64`
@@ -549,8 +554,8 @@ integration tests are the reference behavior.
 > parameters, C# namespace-level constants/helpers and nullable-reference optionals, and
 > `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
-> **Vector coverage is complete.** Every message in the catalog has an SBE vector (55 message
-> types, 79 vectors total). Each sample is authored to exercise the non-degenerate paths —
+> **Vector coverage is complete.** Every message in the catalog has an SBE vector (85 vectors
+> total, including six market-state messages). Each sample is authored to exercise the non-degenerate paths —
 > optionals present, lists with two distinct elements, enums at a non-first variant, non-empty
 > strings, timestamps in the `i64` range — and the runner re-encodes every sample and compares it
 > to the pinned hex, so a codec regression fails CI rather than silently re-pinning.
@@ -958,7 +963,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
 | ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
-| ✅ | Tier 1 SDK: native `request()` | High | `fig-client` `request_*` / `FigSdkClient` — see [§0.3](#03-p2--reference-client-and-sdk-polish) |
+| ✅ | Tier 1 SDK: native `request()` | High | `FigSdkClient::request()`; typed `request_*` wrap it — see [§0.3](#03-p2--reference-client-and-sdk-polish) |
 | ✅ | Session resume restores subscriptions | High | `Method: RESUME` + `.well-known/resume` + session store |
 | ✅ | Heartbeat independent of data | — | PING/PONG in §3; used by `fig-cli` |
 | 🔶 | Tier 3 SDK parity definition | Medium | See [§0.3](#03-p2--reference-client-and-sdk-polish) |

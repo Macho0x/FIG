@@ -36,6 +36,8 @@ import {
   MarkPriceUpdateEncoderEncode,
   MarketDataIncrementalRefreshEncoderEncode,
   MarketDataSnapshotEncoderEncode,
+  MassCancelReportEncoderEncode,
+  MassCancelRequestEncoderEncode,
   MiniTickerEncoderEncode,
   NewOrderSingleEncoderEncode,
   OpenOrdersRequestEncoderEncode,
@@ -51,9 +53,13 @@ import {
   PositionUpdateEncoderEncode,
   PublicTradeBatchEncoderEncode,
   PublicTradeEventEncoderEncode,
+  SecurityStatusEncoderEncode,
+  SecurityStatusRequestEncoderEncode,
   SymbolTickerEncoderEncode,
   TickerRequestEncoderEncode,
   TradeHistoryRequestEncoderEncode,
+  TradingSessionStatusEncoderEncode,
+  TradingSessionStatusRequestEncoderEncode,
   UserLiquidationEncoderEncode,
   NewOrderSingleDecoderDecode,
   AggregateTradeSide,
@@ -69,12 +75,18 @@ import {
   LiquidationTradeSide,
   MarketDataUpdateAction,
   MarketDataUpdateSide,
+  MassCancelReportStatus,
+  MassCancelRequestSide,
   NewOrderSingleIdSource,
   NewOrderSingleOrderType,
   NewOrderSingleSide,
   NewOrderSingleTimeInForce,
   OrderListStatusStatus,
   PublicTradeSide,
+  SecurityStatusHaltReason,
+  SecurityStatusStatus,
+  TradingSessionStatusHaltReason,
+  TradingSessionStatusStatus,
 } from "../sbe_generated.ts";
 
 const root = process.env.FIG_REPO_ROOT ?? process.cwd();
@@ -299,6 +311,18 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
   }
 }
 {
+  const got = MassCancelReportEncoderEncode("MC-001", "DEMO", "AAPL", 2, MassCancelReportStatus.Completed, 1700000000000000000n);
+  if (hex(got) !== want("sbe.mass_cancel_report.demo")) {
+    throw new Error("sbe.mass_cancel_report.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.mass_cancel_report.demo"));
+  }
+}
+{
+  const got = MassCancelRequestEncoderEncode("MC-001", "DEMO", "AAPL", MassCancelRequestSide.Buy);
+  if (hex(got) !== want("sbe.mass_cancel_request.demo")) {
+    throw new Error("sbe.mass_cancel_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.mass_cancel_request.demo"));
+  }
+}
+{
   const got = MiniTickerEncoderEncode("AAPL", 100.0, 50.0, 1700000000000000000n, 1);
   if (hex(got) !== want("sbe.mini_ticker.demo")) {
     throw new Error("sbe.mini_ticker.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.mini_ticker.demo"));
@@ -389,6 +413,18 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
   }
 }
 {
+  const got = SecurityStatusEncoderEncode("AAPL", SecurityStatusStatus.Trading, SecurityStatusHaltReason.None, 1700000000000000000n, 1);
+  if (hex(got) !== want("sbe.security_status.demo")) {
+    throw new Error("sbe.security_status.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.security_status.demo"));
+  }
+}
+{
+  const got = SecurityStatusRequestEncoderEncode("AAPL");
+  if (hex(got) !== want("sbe.security_status_request.demo")) {
+    throw new Error("sbe.security_status_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.security_status_request.demo"));
+  }
+}
+{
   const got = SymbolTickerEncoderEncode("AAPL", 150.5, 0.5, 0.33, 1000.0, 151.0, 149.5, 150.0, 1700000000000000000n, 1);
   if (hex(got) !== want("sbe.symbol_ticker.demo")) {
     throw new Error("sbe.symbol_ticker.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.symbol_ticker.demo"));
@@ -404,6 +440,18 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
   const got = TradeHistoryRequestEncoderEncode("AAPL", 1700000000000000001n, 1700000000000000002n, 4, "CUR-1");
   if (hex(got) !== want("sbe.trade_history_request.demo")) {
     throw new Error("sbe.trade_history_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.trade_history_request.demo"));
+  }
+}
+{
+  const got = TradingSessionStatusEncoderEncode("AAPL", "REG", TradingSessionStatusStatus.Open, TradingSessionStatusHaltReason.News, 1700000000000000000n, 1);
+  if (hex(got) !== want("sbe.trading_session_status.demo")) {
+    throw new Error("sbe.trading_session_status.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.trading_session_status.demo"));
+  }
+}
+{
+  const got = TradingSessionStatusRequestEncoderEncode("AAPL");
+  if (hex(got) !== want("sbe.trading_session_status_request.demo")) {
+    throw new Error("sbe.trading_session_status_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.trading_session_status_request.demo"));
   }
 }
 {

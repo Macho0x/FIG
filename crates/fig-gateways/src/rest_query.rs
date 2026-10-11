@@ -485,6 +485,8 @@ mod tests {
             "/marketdata/BTC/aggtrades",
             "/marketdata/BTC/mark",
             "/marketdata/ticker/all",
+            "/marketdata/session",
+            "/marketdata/AAPL/status",
             "/accounts/DEMO",
             "/accounts/DEMO/fills",
             "/accounts/DEMO/funding",

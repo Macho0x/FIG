@@ -901,6 +901,66 @@
       "channel": null
     },
     {
+      "id": "sbe.trading_session_status_request.demo",
+      "category": "sbe",
+      "description": "TradingSessionStatusRequest SBE",
+      "message_type": "TradingSessionStatusRequest",
+      "expected_hex": "00010037000000000100044141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.trading_session_status.demo",
+      "category": "sbe",
+      "description": "TradingSessionStatus SBE",
+      "message_type": "TradingSessionStatus",
+      "expected_hex": "000100380000000b0100044141504c000352454702020117979cfe362a00000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.security_status_request.demo",
+      "category": "sbe",
+      "description": "SecurityStatusRequest SBE",
+      "message_type": "SecurityStatusRequest",
+      "expected_hex": "000100390000000000044141504c",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.security_status.demo",
+      "category": "sbe",
+      "description": "SecurityStatus SBE",
+      "message_type": "SecurityStatus",
+      "expected_hex": "0001003a0000000b00044141504c01010117979cfe362a00000101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.mass_cancel_request.demo",
+      "category": "sbe",
+      "description": "MassCancelRequest SBE",
+      "message_type": "MassCancelRequest",
+      "expected_hex": "0001003b0000000100064d432d303031000444454d4f0100044141504c0101",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.mass_cancel_report.demo",
+      "category": "sbe",
+      "description": "MassCancelReport SBE",
+      "message_type": "MassCancelReport",
+      "expected_hex": "0001003c0000000d00064d432d303031000444454d4f0100044141504c000000020217979cfe362a0000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "sbe.capabilities_response.demo",
       "category": "sbe",
       "description": "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>",

@@ -1,22 +1,29 @@
 //! Standalone FIG gateway process.
 //!
-//! Accepts legacy FIX, REST, and WebSocket connections and translates them to FIG frames.
-//! Intended as a migration bridge alongside native FIG clients.
+//! Accepts legacy FIX, REST, WebSocket, and opt-in OUCH/ITCH connections and
+//! translates them to FIG frames. Intended as a migration bridge alongside
+//! native FIG clients.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
-use fig_core::codec::encode_cbor;
+use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
-use fig_core::messages::{self, CancelReplaceRequest, CancelRequest, NewOrderSingle};
+use fig_core::messages::{
+    self, CancelReplaceRequest, CancelRequest, ExecutionReport, MassCancelRequest, NewOrderSingle,
+    SecurityStatus, SecurityStatusRequest, TradingSessionStatus, TradingSessionStatusRequest,
+};
 use fig_gateways::backend::{connect_backend, proxy_frame, BackendSession};
 use fig_gateways::fix::{
-    fig_to_fix_business_message_reject, fix_to_fig_cancel, fix_to_fig_cancel_replace,
-    fix_to_fig_order, logon_to_stream_open, split_fix_messages, BusinessMessageReject,
-    BusinessRejectReason, FixMessage, FixOutboundContext,
+    fig_to_fix_business_message_reject, fig_to_fix_execution_report, fig_to_fix_mass_cancel_report,
+    fig_to_fix_security_status, fig_to_fix_trading_session_status, fix_to_fig_cancel,
+    fix_to_fig_cancel_replace, fix_to_fig_mass_cancel, fix_to_fig_order,
+    fix_to_fig_security_status_request, fix_to_fig_trading_session_status_request,
+    logon_to_stream_open, split_fix_messages, BusinessMessageReject, BusinessRejectReason,
+    FixMessage,
 };
 use fig_gateways::fix_seq_store::{build_seq_store, FixSeqStoreBackend};
 use fig_gateways::fix_session::{FixAction, FixSession};
@@ -64,6 +71,18 @@ struct Args {
     /// HTTP listen address for Prometheus `/metrics`
     #[arg(long)]
     metrics_addr: Option<SocketAddr>,
+    /// After FIX Logon, SUBSCRIBE executions for this account and egress 35=8
+    #[arg(long)]
+    fix_dropcopy_account: Option<String>,
+    /// SoupBinTCP + OUCH 4.2-shaped listener (off unless set)
+    #[arg(long)]
+    ouch_addr: Option<SocketAddr>,
+    /// SoupBinTCP ITCH L2 egress (off unless set)
+    #[arg(long)]
+    itch_addr: Option<SocketAddr>,
+    /// MoldUDP64 ITCH L2 datagram destination (off unless set)
+    #[arg(long)]
+    itch_multicast: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -101,7 +120,25 @@ async fn main() -> anyhow::Result<()> {
         tls_acceptor,
         seq_store,
         args.fig_backend,
+        args.fix_dropcopy_account.clone(),
     ));
+    if let Some(addr) = args.ouch_addr {
+        info!("  OUCH: {}", addr);
+        tokio::spawn(fig_gateways::ouch::run_ouch_gateway(addr, args.fig_backend));
+    }
+    if args.itch_addr.is_some() || args.itch_multicast.is_some() {
+        if let Some(addr) = args.itch_addr {
+            info!("  ITCH SoupBin: {}", addr);
+        }
+        if let Some(addr) = args.itch_multicast {
+            info!("  ITCH MoldUDP64: {}", addr);
+        }
+        tokio::spawn(fig_gateways::itch::run_itch_gateway(
+            args.itch_addr,
+            args.itch_multicast,
+            args.fig_backend,
+        ));
+    }
 
     if let Some(addr) = args.health_addr {
         tokio::spawn(run_health_server(addr));
@@ -357,6 +394,7 @@ async fn run_fix_gateway(
     tls_acceptor: Option<FixTlsAcceptor>,
     seq_store: Arc<dyn fig_gateways::fix_seq_store::FixSeqStore>,
     fig_backend: Option<SocketAddr>,
+    dropcopy_account: Option<String>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("FIX gateway listening on {}", addr);
@@ -366,6 +404,7 @@ async fn run_fix_gateway(
         let acceptor = tls_acceptor.clone();
         let store = seq_store.clone();
         let backend = fig_backend;
+        let dropcopy = dropcopy_account.clone();
         tokio::spawn(async move {
             let gateway_stream = match acceptor {
                 Some(acceptor) => match accept_tls(&acceptor, stream).await {
@@ -377,7 +416,7 @@ async fn run_fix_gateway(
                 },
                 None => FixGatewayStream::from_plain(stream),
             };
-            if let Err(e) = handle_fix_connection(gateway_stream, store, backend).await {
+            if let Err(e) = handle_fix_connection(gateway_stream, store, backend, dropcopy).await {
                 warn!("FIX connection from {} failed: {}", peer, e);
             }
         });
@@ -388,6 +427,7 @@ async fn handle_fix_connection(
     mut stream: FixGatewayStream,
     seq_store: Arc<dyn fig_gateways::fix_seq_store::FixSeqStore>,
     fig_backend: Option<SocketAddr>,
+    dropcopy_account: Option<String>,
 ) -> anyhow::Result<()> {
     let backend_conn = if let Some(addr) = fig_backend {
         Some(connect_backend(addr).await?)
@@ -397,99 +437,218 @@ async fn handle_fix_connection(
     let mut session = FixSession::new("FIG-GW".into(), "CLIENT".into()).with_seq_store(seq_store);
     let mut read_buf = Vec::new();
     let mut tmp = vec![0u8; 65536];
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ExecutionReport>();
+    let mut dropcopy_started = false;
 
     loop {
-        let n = stream.read(&mut tmp).await?;
-        if n == 0 {
-            break;
-        }
-        read_buf.extend_from_slice(&tmp[..n]);
+        tokio::select! {
+            n = stream.read(&mut tmp) => {
+                let n = n?;
+                if n == 0 {
+                    break;
+                }
+                read_buf.extend_from_slice(&tmp[..n]);
 
-        let messages = split_fix_messages(&read_buf);
-        if messages.is_empty() {
-            continue;
-        }
+                let messages = split_fix_messages(&read_buf);
+                if messages.is_empty() {
+                    continue;
+                }
 
-        let consumed = messages.iter().map(|m| m.len()).sum::<usize>();
-        read_buf.drain(..consumed);
+                let consumed = messages.iter().map(|m| m.len()).sum::<usize>();
+                read_buf.drain(..consumed);
 
-        for raw in messages {
-            let fix_msg = FixMessage::from_bytes(&raw)?;
-            let msg_type = fix_msg.msg_type().unwrap_or("?").to_string();
-            let ref_seq_num = fix_msg.get_tag(34).and_then(|s| s.parse().ok());
-            info!("FIX message received: MsgType={}", msg_type);
+                for raw in messages {
+                    let fix_msg = FixMessage::from_bytes(&raw)?;
+                    let msg_type = fix_msg.msg_type().unwrap_or("?").to_string();
+                    let ref_seq_num = fix_msg.get_tag(34).and_then(|s| s.parse().ok());
+                    info!("FIX message received: MsgType={}", msg_type);
 
-            if msg_type == "A" {
-                let frame = logon_to_stream_open(&fix_msg)?;
-                info!(
-                    "Translated FIX Logon → FIG {:?} ch={}",
-                    frame.frame_type, frame.channel_id
-                );
-            } else if session.is_logged_in() {
-                let translate_result: Result<(), fig_gateways::fix::FixError> =
-                    match msg_type.as_str() {
-                        "D" => {
-                            let order = fix_to_fig_order(&fix_msg.tags)?;
-                            if let Some(conn) = backend_conn.as_ref() {
-                                if let Err(e) = forward_new_order(conn, &order).await {
-                                    warn!("FIG backend forward failed: {}", e);
-                                }
-                            }
-                            Ok(())
+                    if msg_type == "A" {
+                        if let Some(sender) = fix_msg.get_tag(49) {
+                            session.set_target_comp_id(sender);
                         }
-                        "F" => {
-                            let cancel = fix_to_fig_cancel(&fix_msg.tags)?;
-                            if let Some(conn) = backend_conn.as_ref() {
-                                if let Err(e) = forward_cancel(conn, &cancel).await {
-                                    warn!("FIG backend forward failed: {}", e);
-                                }
-                            }
-                            Ok(())
-                        }
-                        "G" => {
-                            let replace = fix_to_fig_cancel_replace(&fix_msg.tags)?;
-                            if let Some(conn) = backend_conn.as_ref() {
-                                if let Err(e) = forward_cancel_replace(conn, &replace).await {
-                                    warn!("FIG backend forward failed: {}", e);
-                                }
-                            }
-                            Ok(())
-                        }
-                        _ => Ok(()),
-                    };
+                        let _frame = logon_to_stream_open(&fix_msg)?;
+                    }
 
-                if let Err(err) = translate_result {
-                    warn!("FIX translation failed for MsgType={}: {}", msg_type, err);
-                    let ctx = FixOutboundContext {
-                        sender_comp_id: session.sender_comp_id().to_string(),
-                        target_comp_id: session.target_comp_id().to_string(),
-                        msg_seq_num: session.next_send_seq(),
-                    };
-                    let reject = BusinessMessageReject {
-                        ref_msg_type: msg_type.clone(),
-                        ref_seq_num,
-                        reason: BusinessRejectReason::ConditionallyRequiredFieldMissing,
-                        text: Some(err.to_string()),
-                    };
-                    stream
-                        .write_all(&fig_to_fix_business_message_reject(&reject, &ctx))
-                        .await?;
-                } else if msg_type == "D" || msg_type == "F" || msg_type == "G" {
-                    fig_core::observability::Metrics::inc(
-                        &fig_core::observability::METRICS.gateway_translations,
-                    );
+                    let actions = session.process_incoming(&fix_msg)?;
+                    for action in actions {
+                        match action {
+                            FixAction::SendMessage(response) => {
+                                session.record_outbound(response.clone());
+                                stream.write_all(&response.to_bytes()).await?;
+                            }
+                            FixAction::CloseConnection => return Ok(()),
+                            FixAction::SendResendRequest { .. } | FixAction::NoAction => {}
+                        }
+                    }
+
+                    if msg_type == "A" && session.is_logged_in() {
+                        let ack = session.send_logon();
+                        stream.write_all(&ack.to_bytes()).await?;
+                        if !dropcopy_started {
+                            if let (Some(account), Some(addr)) =
+                                (dropcopy_account.as_deref(), fig_backend)
+                            {
+                                start_dropcopy(addr, account, tx.clone());
+                                dropcopy_started = true;
+                            }
+                        }
+                    }
+
+                    if !session.is_logged_in() {
+                        continue;
+                    }
+
+                    let translate_result: Result<Vec<Vec<u8>>, fig_gateways::fix::FixError> =
+                        match msg_type.as_str() {
+                            "D" => {
+                                let order = fix_to_fig_order(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    match forward_new_order(conn, &order).await {
+                                        Ok(reports) => {
+                                            for report in reports {
+                                                let ctx = session.outbound_context();
+                                                let bytes = fig_to_fix_execution_report(&report, &ctx);
+                                                if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                                    session.record_outbound(msg);
+                                                }
+                                                out.push(bytes);
+                                            }
+                                        }
+                                        Err(e) => warn!("FIG backend forward failed: {}", e),
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            "F" => {
+                                let cancel = fix_to_fig_cancel(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    match forward_cancel(conn, &cancel, "DEFAULT").await {
+                                        Ok(reports) => {
+                                            for report in reports {
+                                                let ctx = session.outbound_context();
+                                                let bytes = fig_to_fix_execution_report(&report, &ctx);
+                                                if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                                    session.record_outbound(msg);
+                                                }
+                                                out.push(bytes);
+                                            }
+                                        }
+                                        Err(e) => warn!("FIG backend forward failed: {}", e),
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            "G" => {
+                                let replace = fix_to_fig_cancel_replace(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    match forward_cancel_replace(conn, &replace).await {
+                                        Ok(reports) => {
+                                            for report in reports {
+                                                let ctx = session.outbound_context();
+                                                let bytes = fig_to_fix_execution_report(&report, &ctx);
+                                                if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                                    session.record_outbound(msg);
+                                                }
+                                                out.push(bytes);
+                                            }
+                                        }
+                                        Err(e) => warn!("FIG backend forward failed: {}", e),
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            "q" => {
+                                let req = fix_to_fig_mass_cancel(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    match forward_mass_cancel(conn, &req).await {
+                                        Ok(report) => {
+                                            let ctx = session.outbound_context();
+                                            let bytes =
+                                                fig_to_fix_mass_cancel_report(&report, &ctx);
+                                            if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                                session.record_outbound(msg);
+                                            }
+                                            out.push(bytes);
+                                        }
+                                        Err(e) => warn!("mass cancel forward failed: {e}"),
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            "g" => {
+                                let req = fix_to_fig_trading_session_status_request(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    if let Ok(status) = forward_session_status(conn, &req).await {
+                                        let ctx = session.outbound_context();
+                                        let bytes = fig_to_fix_trading_session_status(&status, &ctx);
+                                        if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                            session.record_outbound(msg);
+                                        }
+                                        out.push(bytes);
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            "e" => {
+                                let req = fix_to_fig_security_status_request(&fix_msg.tags)?;
+                                let mut out = Vec::new();
+                                if let Some(conn) = backend_conn.as_ref() {
+                                    if let Ok(status) = forward_security_status(conn, &req).await {
+                                        let ctx = session.outbound_context();
+                                        let bytes = fig_to_fix_security_status(&status, &ctx);
+                                        if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                            session.record_outbound(msg);
+                                        }
+                                        out.push(bytes);
+                                    }
+                                }
+                                Ok(out)
+                            }
+                            _ => Ok(Vec::new()),
+                        };
+
+                    match translate_result {
+                        Err(err) => {
+                            warn!("FIX translation failed for MsgType={}: {}", msg_type, err);
+                            let ctx = session.outbound_context();
+                            let reject = BusinessMessageReject {
+                                ref_msg_type: msg_type.clone(),
+                                ref_seq_num,
+                                reason: BusinessRejectReason::ConditionallyRequiredFieldMissing,
+                                text: Some(err.to_string()),
+                            };
+                            let bytes = fig_to_fix_business_message_reject(&reject, &ctx);
+                            if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                                session.record_outbound(msg);
+                            }
+                            stream.write_all(&bytes).await?;
+                        }
+                        Ok(outbound) => {
+                            if matches!(msg_type.as_str(), "D" | "F" | "G" | "q" | "g" | "e") {
+                                fig_core::observability::Metrics::inc(
+                                    &fig_core::observability::METRICS.gateway_translations,
+                                );
+                            }
+                            for bytes in outbound {
+                                stream.write_all(&bytes).await?;
+                            }
+                        }
+                    }
                 }
             }
-
-            let actions = session.process_incoming(&fix_msg)?;
-            for action in actions {
-                match action {
-                    FixAction::SendMessage(response) => {
-                        stream.write_all(&response.to_bytes()).await?;
-                    }
-                    FixAction::CloseConnection => return Ok(()),
-                    FixAction::SendResendRequest { .. } | FixAction::NoAction => {}
+            Some(report) = rx.recv() => {
+                let ctx = session.outbound_context();
+                let bytes = fig_to_fix_execution_report(&report, &ctx);
+                if let Ok(msg) = FixMessage::from_bytes(&bytes) {
+                    session.record_outbound(msg);
                 }
+                stream.write_all(&bytes).await?;
             }
         }
     }
@@ -497,61 +656,195 @@ async fn handle_fix_connection(
     Ok(())
 }
 
+fn start_dropcopy(
+    backend: SocketAddr,
+    account: &str,
+    tx: tokio::sync::mpsc::UnboundedSender<ExecutionReport>,
+) {
+    let account = account.to_string();
+    tokio::spawn(async move {
+        let session = match BackendSession::connect(backend).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("drop-copy backend connect failed: {e}");
+                return;
+            }
+        };
+        let path = format!("trading/accounts/{account}/executions");
+        let frame = Frame::new(FrameType::Subscribe, 100)
+            .with_seq(1)
+            .with_extension(Extension::text(ExtensionTag::ChannelPath, &path))
+            .with_extension(Extension::text(ExtensionTag::RoutingKey, &path))
+            .with_extension(Extension::text(
+                ExtensionTag::AuthToken,
+                format!("fig-dev-{account}"),
+            ));
+        if let Err(e) = session.send_frame(&frame).await {
+            warn!("drop-copy subscribe failed: {e}");
+            return;
+        }
+        let conn = session.connection();
+        while let Ok(frame) = conn.recv_frame(100).await {
+            if let Ok(report) = decode_cbor::<ExecutionReport>(&frame.payload) {
+                if tx.send(report).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+}
+
+fn auth_frame(frame: Frame, account: &str) -> Frame {
+    frame.with_extension(Extension::text(
+        ExtensionTag::AuthToken,
+        format!("fig-dev-{account}"),
+    ))
+}
+
+fn reports_from_frames(frames: &[Frame]) -> Vec<ExecutionReport> {
+    frames
+        .iter()
+        .filter_map(|f| decode_cbor::<ExecutionReport>(&f.payload).ok())
+        .collect()
+}
+
 async fn forward_new_order(
     conn: &fig_core::transport::FigConnection,
     order: &NewOrderSingle,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<ExecutionReport>> {
     let account = order.account.as_deref().unwrap_or("DEFAULT");
     let payload = encode_cbor(order)?;
-    let frame = Frame::new(FrameType::Request, 1)
-        .with_seq(1)
-        .with_schema_id(messages::schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            format!("trading/accounts/{account}/orders"),
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "POST"))
-        .with_extension(Extension::text(
-            ExtensionTag::ContentType,
-            "application/cbor",
-        ))
-        .with_payload(payload);
-    conn.request_and_recv_all(frame).await?;
-    Ok(())
+    let frame = auth_frame(
+        Frame::new(FrameType::Request, 1)
+            .with_seq(1)
+            .with_schema_id(messages::schema_id::TRADING_ORDERS)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                format!("trading/accounts/{account}/orders"),
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/cbor",
+            ))
+            .with_payload(payload),
+        account,
+    );
+    let frames = conn.request_and_recv_all(frame).await?;
+    Ok(reports_from_frames(&frames))
 }
 
 async fn forward_cancel(
     conn: &fig_core::transport::FigConnection,
     cancel: &CancelRequest,
-) -> anyhow::Result<()> {
+    account: &str,
+) -> anyhow::Result<Vec<ExecutionReport>> {
     let payload = encode_cbor(cancel)?;
-    let frame = Frame::new(FrameType::Request, 1)
-        .with_seq(2)
-        .with_schema_id(messages::schema_id::TRADING_ORDERS)
-        .with_extension(Extension::text(
-            ExtensionTag::ChannelPath,
-            "trading/accounts/DEFAULT/orders/cancel",
-        ))
-        .with_extension(Extension::text(ExtensionTag::Method, "DELETE"))
-        .with_payload(payload);
-    conn.request_and_recv_all(frame).await?;
-    Ok(())
+    let frame = auth_frame(
+        Frame::new(FrameType::Request, 1)
+            .with_seq(2)
+            .with_schema_id(messages::schema_id::TRADING_ORDERS)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                format!(
+                    "trading/accounts/{account}/orders/{}/cancel",
+                    cancel.orig_cl_ord_id
+                ),
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+            .with_payload(payload),
+        account,
+    );
+    let frames = conn.request_and_recv_all(frame).await?;
+    Ok(reports_from_frames(&frames))
 }
 
 async fn forward_cancel_replace(
     conn: &fig_core::transport::FigConnection,
     replace: &CancelReplaceRequest,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<ExecutionReport>> {
     let payload = encode_cbor(replace)?;
+    let frame = auth_frame(
+        Frame::new(FrameType::Request, 1)
+            .with_seq(3)
+            .with_schema_id(messages::schema_id::TRADING_ORDERS)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                format!(
+                    "trading/accounts/DEFAULT/orders/{}/replace",
+                    replace.orig_cl_ord_id
+                ),
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+            .with_payload(payload),
+        "DEFAULT",
+    );
+    let frames = conn.request_and_recv_all(frame).await?;
+    Ok(reports_from_frames(&frames))
+}
+
+async fn forward_mass_cancel(
+    conn: &fig_core::transport::FigConnection,
+    req: &MassCancelRequest,
+) -> anyhow::Result<fig_core::messages::MassCancelReport> {
+    let payload = encode_cbor(req)?;
+    let frame = auth_frame(
+        Frame::new(FrameType::Request, 1)
+            .with_seq(1)
+            .with_schema_id(messages::schema_id::TRADING_ORDERS)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                format!("trading/accounts/{}/orders/masscancel", req.account),
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+            .with_payload(payload),
+        &req.account,
+    );
+    let frames = conn.request_and_recv_all(frame).await?;
+    frames
+        .iter()
+        .find_map(|f| decode_cbor::<fig_core::messages::MassCancelReport>(&f.payload).ok())
+        .ok_or_else(|| anyhow::anyhow!("no MassCancelReport"))
+}
+
+async fn forward_session_status(
+    conn: &fig_core::transport::FigConnection,
+    req: &TradingSessionStatusRequest,
+) -> anyhow::Result<TradingSessionStatus> {
+    let payload = encode_cbor(req)?;
     let frame = Frame::new(FrameType::Request, 1)
-        .with_seq(3)
+        .with_seq(1)
         .with_schema_id(messages::schema_id::TRADING_ORDERS)
         .with_extension(Extension::text(
             ExtensionTag::ChannelPath,
-            "trading/accounts/DEFAULT/orders/replace",
+            "marketdata/session",
         ))
-        .with_extension(Extension::text(ExtensionTag::Method, "PUT"))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
         .with_payload(payload);
-    conn.request_and_recv_all(frame).await?;
-    Ok(())
+    let frames = conn.request_and_recv_all(frame).await?;
+    frames
+        .iter()
+        .find_map(|f| decode_cbor::<TradingSessionStatus>(&f.payload).ok())
+        .ok_or_else(|| anyhow::anyhow!("no TradingSessionStatus"))
+}
+
+async fn forward_security_status(
+    conn: &fig_core::transport::FigConnection,
+    req: &SecurityStatusRequest,
+) -> anyhow::Result<SecurityStatus> {
+    let payload = encode_cbor(req)?;
+    let frame = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(messages::schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            format!("marketdata/{}/status", req.symbol),
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"))
+        .with_payload(payload);
+    let frames = conn.request_and_recv_all(frame).await?;
+    frames
+        .iter()
+        .find_map(|f| decode_cbor::<SecurityStatus>(&f.payload).ok())
+        .ok_or_else(|| anyhow::anyhow!("no SecurityStatus"))
 }

@@ -43,6 +43,9 @@ pub mod channel_path {
     pub const ORDERLISTS: &str = "trading/accounts/{account}/orderlists";
     pub const CAPABILITIES: &str = ".well-known/capabilities";
     pub const INSTRUMENTS: &str = ".well-known/instruments";
+    pub const SESSION: &str = "marketdata/session";
+    pub const SECURITY_STATUS: &str = "marketdata/{symbol}/status";
+    pub const MASS_CANCEL: &str = "trading/accounts/{account}/orders/masscancel";
 }
 
 #[cfg(test)]

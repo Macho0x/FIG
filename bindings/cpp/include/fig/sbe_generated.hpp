@@ -345,6 +345,130 @@ inline std::optional<LedgerUpdateKind> LedgerUpdateKindFromValue(uint8_t v) {
 
 inline uint8_t LedgerUpdateKindToValue(LedgerUpdateKind e) { return static_cast<uint8_t>(e); }
 
+enum class TradingSessionStatusStatus : uint8_t {
+    PreOpen = 1,
+    Open = 2,
+    Break = 3,
+    Close = 4,
+    Halt = 5,
+    Auction = 6,
+};
+
+inline std::optional<TradingSessionStatusStatus> TradingSessionStatusStatusFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return TradingSessionStatusStatus::PreOpen;
+    case 2: return TradingSessionStatusStatus::Open;
+    case 3: return TradingSessionStatusStatus::Break;
+    case 4: return TradingSessionStatusStatus::Close;
+    case 5: return TradingSessionStatusStatus::Halt;
+    case 6: return TradingSessionStatusStatus::Auction;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t TradingSessionStatusStatusToValue(TradingSessionStatusStatus e) { return static_cast<uint8_t>(e); }
+
+enum class TradingSessionStatusHaltReason : uint8_t {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+};
+
+inline std::optional<TradingSessionStatusHaltReason> TradingSessionStatusHaltReasonFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return TradingSessionStatusHaltReason::None;
+    case 2: return TradingSessionStatusHaltReason::News;
+    case 3: return TradingSessionStatusHaltReason::MatchingEngine;
+    case 4: return TradingSessionStatusHaltReason::Regulatory;
+    case 5: return TradingSessionStatusHaltReason::Auction;
+    case 6: return TradingSessionStatusHaltReason::Other;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t TradingSessionStatusHaltReasonToValue(TradingSessionStatusHaltReason e) { return static_cast<uint8_t>(e); }
+
+enum class SecurityStatusStatus : uint8_t {
+    Trading = 1,
+    Halt = 2,
+    Auction = 3,
+    Suspended = 4,
+};
+
+inline std::optional<SecurityStatusStatus> SecurityStatusStatusFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return SecurityStatusStatus::Trading;
+    case 2: return SecurityStatusStatus::Halt;
+    case 3: return SecurityStatusStatus::Auction;
+    case 4: return SecurityStatusStatus::Suspended;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t SecurityStatusStatusToValue(SecurityStatusStatus e) { return static_cast<uint8_t>(e); }
+
+enum class SecurityStatusHaltReason : uint8_t {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+};
+
+inline std::optional<SecurityStatusHaltReason> SecurityStatusHaltReasonFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return SecurityStatusHaltReason::None;
+    case 2: return SecurityStatusHaltReason::News;
+    case 3: return SecurityStatusHaltReason::MatchingEngine;
+    case 4: return SecurityStatusHaltReason::Regulatory;
+    case 5: return SecurityStatusHaltReason::Auction;
+    case 6: return SecurityStatusHaltReason::Other;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t SecurityStatusHaltReasonToValue(SecurityStatusHaltReason e) { return static_cast<uint8_t>(e); }
+
+enum class MassCancelRequestSide : uint8_t {
+    Buy = 1,
+    Sell = 2,
+    SellShort = 3,
+    SellShortExempt = 4,
+};
+
+inline std::optional<MassCancelRequestSide> MassCancelRequestSideFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return MassCancelRequestSide::Buy;
+    case 2: return MassCancelRequestSide::Sell;
+    case 3: return MassCancelRequestSide::SellShort;
+    case 4: return MassCancelRequestSide::SellShortExempt;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t MassCancelRequestSideToValue(MassCancelRequestSide e) { return static_cast<uint8_t>(e); }
+
+enum class MassCancelReportStatus : uint8_t {
+    Accepted = 1,
+    Completed = 2,
+    Rejected = 3,
+};
+
+inline std::optional<MassCancelReportStatus> MassCancelReportStatusFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return MassCancelReportStatus::Accepted;
+    case 2: return MassCancelReportStatus::Completed;
+    case 3: return MassCancelReportStatus::Rejected;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t MassCancelReportStatusToValue(MassCancelReportStatus e) { return static_cast<uint8_t>(e); }
+
 enum class AggregateTradeSide : uint8_t {
     Buy = 1,
     Sell = 2,
@@ -6599,6 +6723,571 @@ inline PositionRequest PositionRequestDecoder::decode(const std::vector<uint8_t>
         if (tmpl_id != 54) throw std::runtime_error("invalid template_id");
         std::string account = read_string(buf, pos);
     value.account = account;
+    (void)value;
+    return value;
+}
+
+// SBE message TradingSessionStatusRequest
+struct TradingSessionStatusRequest {
+    std::optional<std::string> symbol;
+};
+
+// SBE body encoder for TradingSessionStatusRequest (fields only, no header).
+struct TradingSessionStatusRequestBodyEncoder {
+    static void encode(const TradingSessionStatusRequest& value, std::vector<uint8_t>& buf);
+};
+
+inline void TradingSessionStatusRequestBodyEncoder::encode(const TradingSessionStatusRequest& value, std::vector<uint8_t>& buf) {
+        if (value.symbol.has_value()) { buf.push_back(1); write_string(buf, *value.symbol); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for TradingSessionStatusRequest: reads fields at pos.
+struct TradingSessionStatusRequestBodyDecoder {
+    static std::pair<TradingSessionStatusRequest, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<TradingSessionStatusRequest, std::size_t> TradingSessionStatusRequestBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    TradingSessionStatusRequest value{};
+        std::optional<std::string> symbol;
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    return {value, pos};
+}
+
+// SBE encoder for TradingSessionStatusRequest
+struct TradingSessionStatusRequestEncoder {
+    static std::vector<uint8_t> encode(std::optional<std::string> symbol);
+};
+
+inline std::vector<uint8_t> TradingSessionStatusRequestEncoder::encode(std::optional<std::string> symbol) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 55);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for TradingSessionStatusRequest: validates the header and reads the body.
+struct TradingSessionStatusRequestDecoder {
+    static TradingSessionStatusRequest decode(const std::vector<uint8_t>& buf);
+};
+
+inline TradingSessionStatusRequest TradingSessionStatusRequestDecoder::decode(const std::vector<uint8_t>& buf) {
+    TradingSessionStatusRequest value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 55) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> symbol;
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    (void)value;
+    return value;
+}
+
+// SBE message TradingSessionStatus
+struct TradingSessionStatus {
+    std::optional<std::string> symbol;
+    std::string trading_session_id;
+    TradingSessionStatusStatus status;
+    std::optional<TradingSessionStatusHaltReason> halt_reason;
+    int64_t timestamp;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for TradingSessionStatus (fields only, no header).
+struct TradingSessionStatusBodyEncoder {
+    static void encode(const TradingSessionStatus& value, std::vector<uint8_t>& buf);
+};
+
+inline void TradingSessionStatusBodyEncoder::encode(const TradingSessionStatus& value, std::vector<uint8_t>& buf) {
+        if (value.symbol.has_value()) { buf.push_back(1); write_string(buf, *value.symbol); } else { buf.push_back(0); }
+        write_string(buf, value.trading_session_id);
+        buf.push_back(TradingSessionStatusStatusToValue(value.status));
+        buf.push_back(value.halt_reason.has_value() ? TradingSessionStatusHaltReasonToValue(*value.halt_reason) : 0);
+        buf.push_back(value.halt_reason.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for TradingSessionStatus: reads fields at pos.
+struct TradingSessionStatusBodyDecoder {
+    static std::pair<TradingSessionStatus, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<TradingSessionStatus, std::size_t> TradingSessionStatusBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    TradingSessionStatus value{};
+        std::optional<std::string> symbol;
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        std::string trading_session_id = read_string(buf, pos);
+        auto status_v = TradingSessionStatusStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid TradingSessionStatusStatus");
+        TradingSessionStatusStatus status = *status_v;
+        auto halt_reason_raw = take_u8(buf, pos);
+        std::optional<TradingSessionStatusHaltReason> halt_reason;
+        if (buf[pos++] == 1) {
+            auto v = TradingSessionStatusHaltReasonFromValue(halt_reason_raw);
+            if (!v) throw std::runtime_error("invalid TradingSessionStatusHaltReason");
+            halt_reason = *v;
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.trading_session_id = trading_session_id;
+    value.status = status;
+    value.halt_reason = halt_reason;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for TradingSessionStatus
+struct TradingSessionStatusEncoder {
+    static std::vector<uint8_t> encode(std::optional<std::string> symbol, std::string trading_session_id, TradingSessionStatusStatus status, std::optional<TradingSessionStatusHaltReason> halt_reason, int64_t timestamp, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> TradingSessionStatusEncoder::encode(std::optional<std::string> symbol, std::string trading_session_id, TradingSessionStatusStatus status, std::optional<TradingSessionStatusHaltReason> halt_reason, int64_t timestamp, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 56);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 11);
+        if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
+        write_string(buf, trading_session_id);
+        buf.push_back(TradingSessionStatusStatusToValue(status));
+        buf.push_back(halt_reason.has_value() ? TradingSessionStatusHaltReasonToValue(*halt_reason) : 0);
+        buf.push_back(halt_reason.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for TradingSessionStatus: validates the header and reads the body.
+struct TradingSessionStatusDecoder {
+    static TradingSessionStatus decode(const std::vector<uint8_t>& buf);
+};
+
+inline TradingSessionStatus TradingSessionStatusDecoder::decode(const std::vector<uint8_t>& buf) {
+    TradingSessionStatus value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 56) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> symbol;
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        std::string trading_session_id = read_string(buf, pos);
+        auto status_v = TradingSessionStatusStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid TradingSessionStatusStatus");
+        TradingSessionStatusStatus status = *status_v;
+        auto halt_reason_raw = take_u8(buf, pos);
+        std::optional<TradingSessionStatusHaltReason> halt_reason;
+        if (buf[pos++] == 1) {
+            auto v = TradingSessionStatusHaltReasonFromValue(halt_reason_raw);
+            if (!v) throw std::runtime_error("invalid TradingSessionStatusHaltReason");
+            halt_reason = *v;
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.trading_session_id = trading_session_id;
+    value.status = status;
+    value.halt_reason = halt_reason;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message SecurityStatusRequest
+struct SecurityStatusRequest {
+    std::string symbol;
+};
+
+// SBE body encoder for SecurityStatusRequest (fields only, no header).
+struct SecurityStatusRequestBodyEncoder {
+    static void encode(const SecurityStatusRequest& value, std::vector<uint8_t>& buf);
+};
+
+inline void SecurityStatusRequestBodyEncoder::encode(const SecurityStatusRequest& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+}
+
+// SBE body decoder for SecurityStatusRequest: reads fields at pos.
+struct SecurityStatusRequestBodyDecoder {
+    static std::pair<SecurityStatusRequest, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<SecurityStatusRequest, std::size_t> SecurityStatusRequestBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    SecurityStatusRequest value{};
+        std::string symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    return {value, pos};
+}
+
+// SBE encoder for SecurityStatusRequest
+struct SecurityStatusRequestEncoder {
+    static std::vector<uint8_t> encode(std::string symbol);
+};
+
+inline std::vector<uint8_t> SecurityStatusRequestEncoder::encode(std::string symbol) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 57);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_string(buf, symbol);
+        return buf;
+}
+
+// SBE decoder for SecurityStatusRequest: validates the header and reads the body.
+struct SecurityStatusRequestDecoder {
+    static SecurityStatusRequest decode(const std::vector<uint8_t>& buf);
+};
+
+inline SecurityStatusRequest SecurityStatusRequestDecoder::decode(const std::vector<uint8_t>& buf) {
+    SecurityStatusRequest value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 57) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    (void)value;
+    return value;
+}
+
+// SBE message SecurityStatus
+struct SecurityStatus {
+    std::string symbol;
+    SecurityStatusStatus status;
+    std::optional<SecurityStatusHaltReason> halt_reason;
+    int64_t timestamp;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for SecurityStatus (fields only, no header).
+struct SecurityStatusBodyEncoder {
+    static void encode(const SecurityStatus& value, std::vector<uint8_t>& buf);
+};
+
+inline void SecurityStatusBodyEncoder::encode(const SecurityStatus& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        buf.push_back(SecurityStatusStatusToValue(value.status));
+        buf.push_back(value.halt_reason.has_value() ? SecurityStatusHaltReasonToValue(*value.halt_reason) : 0);
+        buf.push_back(value.halt_reason.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for SecurityStatus: reads fields at pos.
+struct SecurityStatusBodyDecoder {
+    static std::pair<SecurityStatus, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<SecurityStatus, std::size_t> SecurityStatusBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    SecurityStatus value{};
+        std::string symbol = read_string(buf, pos);
+        auto status_v = SecurityStatusStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid SecurityStatusStatus");
+        SecurityStatusStatus status = *status_v;
+        auto halt_reason_raw = take_u8(buf, pos);
+        std::optional<SecurityStatusHaltReason> halt_reason;
+        if (buf[pos++] == 1) {
+            auto v = SecurityStatusHaltReasonFromValue(halt_reason_raw);
+            if (!v) throw std::runtime_error("invalid SecurityStatusHaltReason");
+            halt_reason = *v;
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.status = status;
+    value.halt_reason = halt_reason;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for SecurityStatus
+struct SecurityStatusEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, SecurityStatusStatus status, std::optional<SecurityStatusHaltReason> halt_reason, int64_t timestamp, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> SecurityStatusEncoder::encode(std::string symbol, SecurityStatusStatus status, std::optional<SecurityStatusHaltReason> halt_reason, int64_t timestamp, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 58);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 11);
+        write_string(buf, symbol);
+        buf.push_back(SecurityStatusStatusToValue(status));
+        buf.push_back(halt_reason.has_value() ? SecurityStatusHaltReasonToValue(*halt_reason) : 0);
+        buf.push_back(halt_reason.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for SecurityStatus: validates the header and reads the body.
+struct SecurityStatusDecoder {
+    static SecurityStatus decode(const std::vector<uint8_t>& buf);
+};
+
+inline SecurityStatus SecurityStatusDecoder::decode(const std::vector<uint8_t>& buf) {
+    SecurityStatus value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 58) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        auto status_v = SecurityStatusStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid SecurityStatusStatus");
+        SecurityStatusStatus status = *status_v;
+        auto halt_reason_raw = take_u8(buf, pos);
+        std::optional<SecurityStatusHaltReason> halt_reason;
+        if (buf[pos++] == 1) {
+            auto v = SecurityStatusHaltReasonFromValue(halt_reason_raw);
+            if (!v) throw std::runtime_error("invalid SecurityStatusHaltReason");
+            halt_reason = *v;
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.status = status;
+    value.halt_reason = halt_reason;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message MassCancelRequest
+struct MassCancelRequest {
+    std::string cl_ord_id;
+    std::string account;
+    std::optional<std::string> symbol;
+    std::optional<MassCancelRequestSide> side;
+};
+
+// SBE body encoder for MassCancelRequest (fields only, no header).
+struct MassCancelRequestBodyEncoder {
+    static void encode(const MassCancelRequest& value, std::vector<uint8_t>& buf);
+};
+
+inline void MassCancelRequestBodyEncoder::encode(const MassCancelRequest& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.cl_ord_id);
+        write_string(buf, value.account);
+        if (value.symbol.has_value()) { buf.push_back(1); write_string(buf, *value.symbol); } else { buf.push_back(0); }
+        buf.push_back(value.side.has_value() ? MassCancelRequestSideToValue(*value.side) : 0);
+        buf.push_back(value.side.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for MassCancelRequest: reads fields at pos.
+struct MassCancelRequestBodyDecoder {
+    static std::pair<MassCancelRequest, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<MassCancelRequest, std::size_t> MassCancelRequestBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    MassCancelRequest value{};
+        std::optional<std::string> symbol;
+        std::string cl_ord_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        auto side_raw = take_u8(buf, pos);
+        std::optional<MassCancelRequestSide> side;
+        if (buf[pos++] == 1) {
+            auto v = MassCancelRequestSideFromValue(side_raw);
+            if (!v) throw std::runtime_error("invalid MassCancelRequestSide");
+            side = *v;
+        }
+    value.cl_ord_id = cl_ord_id;
+    value.account = account;
+    value.symbol = symbol;
+    value.side = side;
+    return {value, pos};
+}
+
+// SBE encoder for MassCancelRequest
+struct MassCancelRequestEncoder {
+    static std::vector<uint8_t> encode(std::string cl_ord_id, std::string account, std::optional<std::string> symbol, std::optional<MassCancelRequestSide> side);
+};
+
+inline std::vector<uint8_t> MassCancelRequestEncoder::encode(std::string cl_ord_id, std::string account, std::optional<std::string> symbol, std::optional<MassCancelRequestSide> side) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 59);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, cl_ord_id);
+        write_string(buf, account);
+        if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
+        buf.push_back(side.has_value() ? MassCancelRequestSideToValue(*side) : 0);
+        buf.push_back(side.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for MassCancelRequest: validates the header and reads the body.
+struct MassCancelRequestDecoder {
+    static MassCancelRequest decode(const std::vector<uint8_t>& buf);
+};
+
+inline MassCancelRequest MassCancelRequestDecoder::decode(const std::vector<uint8_t>& buf) {
+    MassCancelRequest value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 59) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> symbol;
+        std::string cl_ord_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        auto side_raw = take_u8(buf, pos);
+        std::optional<MassCancelRequestSide> side;
+        if (buf[pos++] == 1) {
+            auto v = MassCancelRequestSideFromValue(side_raw);
+            if (!v) throw std::runtime_error("invalid MassCancelRequestSide");
+            side = *v;
+        }
+    value.cl_ord_id = cl_ord_id;
+    value.account = account;
+    value.symbol = symbol;
+    value.side = side;
+    (void)value;
+    return value;
+}
+
+// SBE message MassCancelReport
+struct MassCancelReport {
+    std::string cl_ord_id;
+    std::string account;
+    std::optional<std::string> symbol;
+    uint32_t total_affected;
+    MassCancelReportStatus status;
+    int64_t timestamp;
+};
+
+// SBE body encoder for MassCancelReport (fields only, no header).
+struct MassCancelReportBodyEncoder {
+    static void encode(const MassCancelReport& value, std::vector<uint8_t>& buf);
+};
+
+inline void MassCancelReportBodyEncoder::encode(const MassCancelReport& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.cl_ord_id);
+        write_string(buf, value.account);
+        if (value.symbol.has_value()) { buf.push_back(1); write_string(buf, *value.symbol); } else { buf.push_back(0); }
+        write_u32_be(buf, value.total_affected);
+        buf.push_back(MassCancelReportStatusToValue(value.status));
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+}
+
+// SBE body decoder for MassCancelReport: reads fields at pos.
+struct MassCancelReportBodyDecoder {
+    static std::pair<MassCancelReport, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<MassCancelReport, std::size_t> MassCancelReportBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    MassCancelReport value{};
+        std::optional<std::string> symbol;
+        std::string cl_ord_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        uint32_t total_affected = read_u32_be(buf, pos);
+        auto status_v = MassCancelReportStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid MassCancelReportStatus");
+        MassCancelReportStatus status = *status_v;
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+    value.cl_ord_id = cl_ord_id;
+    value.account = account;
+    value.symbol = symbol;
+    value.total_affected = total_affected;
+    value.status = status;
+    value.timestamp = timestamp;
+    return {value, pos};
+}
+
+// SBE encoder for MassCancelReport
+struct MassCancelReportEncoder {
+    static std::vector<uint8_t> encode(std::string cl_ord_id, std::string account, std::optional<std::string> symbol, uint32_t total_affected, MassCancelReportStatus status, int64_t timestamp);
+};
+
+inline std::vector<uint8_t> MassCancelReportEncoder::encode(std::string cl_ord_id, std::string account, std::optional<std::string> symbol, uint32_t total_affected, MassCancelReportStatus status, int64_t timestamp) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 60);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 13);
+        write_string(buf, cl_ord_id);
+        write_string(buf, account);
+        if (symbol.has_value()) { buf.push_back(1); write_string(buf, *symbol); } else { buf.push_back(0); }
+        write_u32_be(buf, total_affected);
+        buf.push_back(MassCancelReportStatusToValue(status));
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        return buf;
+}
+
+// SBE decoder for MassCancelReport: validates the header and reads the body.
+struct MassCancelReportDecoder {
+    static MassCancelReport decode(const std::vector<uint8_t>& buf);
+};
+
+inline MassCancelReport MassCancelReportDecoder::decode(const std::vector<uint8_t>& buf) {
+    MassCancelReport value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 60) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> symbol;
+        std::string cl_ord_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
+        uint32_t total_affected = read_u32_be(buf, pos);
+        auto status_v = MassCancelReportStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid MassCancelReportStatus");
+        MassCancelReportStatus status = *status_v;
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+    value.cl_ord_id = cl_ord_id;
+    value.account = account;
+    value.symbol = symbol;
+    value.total_affected = total_affected;
+    value.status = status;
+    value.timestamp = timestamp;
     (void)value;
     return value;
 }

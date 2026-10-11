@@ -359,6 +359,142 @@ namespace Fig.Sbe
         public static byte ToValue(LedgerUpdateKind e) => (byte)e;
     }
 
+    public enum TradingSessionStatusStatus : byte
+    {
+        PreOpen = 1,
+        Open = 2,
+        Break = 3,
+        Close = 4,
+        Halt = 5,
+        Auction = 6,
+    }
+
+    public static class TradingSessionStatusStatusHelpers
+    {
+        public static TradingSessionStatusStatus? FromValue(byte v) => v switch {
+        1 => TradingSessionStatusStatus.PreOpen,
+        2 => TradingSessionStatusStatus.Open,
+        3 => TradingSessionStatusStatus.Break,
+        4 => TradingSessionStatusStatus.Close,
+        5 => TradingSessionStatusStatus.Halt,
+        6 => TradingSessionStatusStatus.Auction,
+            _ => null,
+        };
+
+        public static byte ToValue(TradingSessionStatusStatus e) => (byte)e;
+    }
+
+    public enum TradingSessionStatusHaltReason : byte
+    {
+        None = 1,
+        News = 2,
+        MatchingEngine = 3,
+        Regulatory = 4,
+        Auction = 5,
+        Other = 6,
+    }
+
+    public static class TradingSessionStatusHaltReasonHelpers
+    {
+        public static TradingSessionStatusHaltReason? FromValue(byte v) => v switch {
+        1 => TradingSessionStatusHaltReason.None,
+        2 => TradingSessionStatusHaltReason.News,
+        3 => TradingSessionStatusHaltReason.MatchingEngine,
+        4 => TradingSessionStatusHaltReason.Regulatory,
+        5 => TradingSessionStatusHaltReason.Auction,
+        6 => TradingSessionStatusHaltReason.Other,
+            _ => null,
+        };
+
+        public static byte ToValue(TradingSessionStatusHaltReason e) => (byte)e;
+    }
+
+    public enum SecurityStatusStatus : byte
+    {
+        Trading = 1,
+        Halt = 2,
+        Auction = 3,
+        Suspended = 4,
+    }
+
+    public static class SecurityStatusStatusHelpers
+    {
+        public static SecurityStatusStatus? FromValue(byte v) => v switch {
+        1 => SecurityStatusStatus.Trading,
+        2 => SecurityStatusStatus.Halt,
+        3 => SecurityStatusStatus.Auction,
+        4 => SecurityStatusStatus.Suspended,
+            _ => null,
+        };
+
+        public static byte ToValue(SecurityStatusStatus e) => (byte)e;
+    }
+
+    public enum SecurityStatusHaltReason : byte
+    {
+        None = 1,
+        News = 2,
+        MatchingEngine = 3,
+        Regulatory = 4,
+        Auction = 5,
+        Other = 6,
+    }
+
+    public static class SecurityStatusHaltReasonHelpers
+    {
+        public static SecurityStatusHaltReason? FromValue(byte v) => v switch {
+        1 => SecurityStatusHaltReason.None,
+        2 => SecurityStatusHaltReason.News,
+        3 => SecurityStatusHaltReason.MatchingEngine,
+        4 => SecurityStatusHaltReason.Regulatory,
+        5 => SecurityStatusHaltReason.Auction,
+        6 => SecurityStatusHaltReason.Other,
+            _ => null,
+        };
+
+        public static byte ToValue(SecurityStatusHaltReason e) => (byte)e;
+    }
+
+    public enum MassCancelRequestSide : byte
+    {
+        Buy = 1,
+        Sell = 2,
+        SellShort = 3,
+        SellShortExempt = 4,
+    }
+
+    public static class MassCancelRequestSideHelpers
+    {
+        public static MassCancelRequestSide? FromValue(byte v) => v switch {
+        1 => MassCancelRequestSide.Buy,
+        2 => MassCancelRequestSide.Sell,
+        3 => MassCancelRequestSide.SellShort,
+        4 => MassCancelRequestSide.SellShortExempt,
+            _ => null,
+        };
+
+        public static byte ToValue(MassCancelRequestSide e) => (byte)e;
+    }
+
+    public enum MassCancelReportStatus : byte
+    {
+        Accepted = 1,
+        Completed = 2,
+        Rejected = 3,
+    }
+
+    public static class MassCancelReportStatusHelpers
+    {
+        public static MassCancelReportStatus? FromValue(byte v) => v switch {
+        1 => MassCancelReportStatus.Accepted,
+        2 => MassCancelReportStatus.Completed,
+        3 => MassCancelReportStatus.Rejected,
+            _ => null,
+        };
+
+        public static byte ToValue(MassCancelReportStatus e) => (byte)e;
+    }
+
     public enum AggregateTradeSide : byte
     {
         Buy = 1,
@@ -6470,6 +6606,543 @@ public static class CapabilityPathDecoder
             if (tmplId != 54) throw new InvalidOperationException("invalid template_id");
             string account = Wire.ReadString(buf, ref pos);
             value.Account = account;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message TradingSessionStatusRequest</summary>
+    public class TradingSessionStatusRequest
+    {
+        public string? Symbol;
+    }
+
+    /// <summary>SBE body encoder for TradingSessionStatusRequest (fields only, no header).</summary>
+    public static class TradingSessionStatusRequestBodyEncoder
+    {
+        public static void Encode(TradingSessionStatusRequest value, List<byte> buf)
+        {
+            if (value.Symbol != null) { buf.Add(1); Wire.WriteString(buf, value.Symbol); } else { buf.Add(0); }
+        }
+    }
+
+    /// <summary>SBE body decoder for TradingSessionStatusRequest: reads fields at pos.</summary>
+    public static class TradingSessionStatusRequestBodyDecoder
+    {
+        public static (TradingSessionStatusRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new TradingSessionStatusRequest();
+            string? symbol = null;
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for TradingSessionStatusRequest</summary>
+    public static class TradingSessionStatusRequestEncoder
+    {
+        public static byte[] Encode(string? Symbol)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 55);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            if (Symbol != null) { buf.Add(1); Wire.WriteString(buf, Symbol); } else { buf.Add(0); }
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for TradingSessionStatusRequest: validates the header and reads the body.</summary>
+    public static class TradingSessionStatusRequestDecoder
+    {
+        public static TradingSessionStatusRequest Decode(byte[] buf)
+        {
+            var value = new TradingSessionStatusRequest();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 55) throw new InvalidOperationException("invalid template_id");
+            string? symbol = null;
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message TradingSessionStatus</summary>
+    public class TradingSessionStatus
+    {
+        public string? Symbol;
+        public string TradingSessionId;
+        public TradingSessionStatusStatus Status;
+        public TradingSessionStatusHaltReason? HaltReason;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for TradingSessionStatus (fields only, no header).</summary>
+    public static class TradingSessionStatusBodyEncoder
+    {
+        public static void Encode(TradingSessionStatus value, List<byte> buf)
+        {
+            if (value.Symbol != null) { buf.Add(1); Wire.WriteString(buf, value.Symbol); } else { buf.Add(0); }
+            Wire.WriteString(buf, value.TradingSessionId);
+            buf.Add(TradingSessionStatusStatusHelpers.ToValue(value.Status));
+            buf.Add(value.HaltReason.HasValue ? TradingSessionStatusHaltReasonHelpers.ToValue(value.HaltReason.Value) : (byte)0);
+            buf.Add((byte)(value.HaltReason.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for TradingSessionStatus: reads fields at pos.</summary>
+    public static class TradingSessionStatusBodyDecoder
+    {
+        public static (TradingSessionStatus Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new TradingSessionStatus();
+            string? symbol = null;
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            string trading_session_id = Wire.ReadString(buf, ref pos);
+            var status = TradingSessionStatusStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid TradingSessionStatusStatus");
+            var halt_reasonRaw = Wire.TakeU8(buf, ref pos);
+            TradingSessionStatusHaltReason? halt_reason = null;
+            if (buf[pos++] == 1) {
+                halt_reason = TradingSessionStatusHaltReasonHelpers.FromValue(halt_reasonRaw) ?? throw new InvalidOperationException("invalid TradingSessionStatusHaltReason");
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.TradingSessionId = trading_session_id;
+            value.Status = status;
+            value.HaltReason = halt_reason;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for TradingSessionStatus</summary>
+    public static class TradingSessionStatusEncoder
+    {
+        public static byte[] Encode(string? Symbol, string TradingSessionId, TradingSessionStatusStatus Status, TradingSessionStatusHaltReason? HaltReason, long Timestamp, byte? IsSnapshot)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 56);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 11);
+            if (Symbol != null) { buf.Add(1); Wire.WriteString(buf, Symbol); } else { buf.Add(0); }
+            Wire.WriteString(buf, TradingSessionId);
+            buf.Add(TradingSessionStatusStatusHelpers.ToValue(Status));
+            buf.Add(HaltReason.HasValue ? TradingSessionStatusHaltReasonHelpers.ToValue(HaltReason.Value) : (byte)0);
+            buf.Add((byte)(HaltReason.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for TradingSessionStatus: validates the header and reads the body.</summary>
+    public static class TradingSessionStatusDecoder
+    {
+        public static TradingSessionStatus Decode(byte[] buf)
+        {
+            var value = new TradingSessionStatus();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 56) throw new InvalidOperationException("invalid template_id");
+            string? symbol = null;
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            string trading_session_id = Wire.ReadString(buf, ref pos);
+            var status = TradingSessionStatusStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid TradingSessionStatusStatus");
+            var halt_reasonRaw = Wire.TakeU8(buf, ref pos);
+            TradingSessionStatusHaltReason? halt_reason = null;
+            if (buf[pos++] == 1) {
+                halt_reason = TradingSessionStatusHaltReasonHelpers.FromValue(halt_reasonRaw) ?? throw new InvalidOperationException("invalid TradingSessionStatusHaltReason");
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.TradingSessionId = trading_session_id;
+            value.Status = status;
+            value.HaltReason = halt_reason;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message SecurityStatusRequest</summary>
+    public class SecurityStatusRequest
+    {
+        public string Symbol;
+    }
+
+    /// <summary>SBE body encoder for SecurityStatusRequest (fields only, no header).</summary>
+    public static class SecurityStatusRequestBodyEncoder
+    {
+        public static void Encode(SecurityStatusRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+        }
+    }
+
+    /// <summary>SBE body decoder for SecurityStatusRequest: reads fields at pos.</summary>
+    public static class SecurityStatusRequestBodyDecoder
+    {
+        public static (SecurityStatusRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new SecurityStatusRequest();
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for SecurityStatusRequest</summary>
+    public static class SecurityStatusRequestEncoder
+    {
+        public static byte[] Encode(string Symbol)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 57);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Symbol);
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for SecurityStatusRequest: validates the header and reads the body.</summary>
+    public static class SecurityStatusRequestDecoder
+    {
+        public static SecurityStatusRequest Decode(byte[] buf)
+        {
+            var value = new SecurityStatusRequest();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 57) throw new InvalidOperationException("invalid template_id");
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message SecurityStatus</summary>
+    public class SecurityStatus
+    {
+        public string Symbol;
+        public SecurityStatusStatus Status;
+        public SecurityStatusHaltReason? HaltReason;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for SecurityStatus (fields only, no header).</summary>
+    public static class SecurityStatusBodyEncoder
+    {
+        public static void Encode(SecurityStatus value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            buf.Add(SecurityStatusStatusHelpers.ToValue(value.Status));
+            buf.Add(value.HaltReason.HasValue ? SecurityStatusHaltReasonHelpers.ToValue(value.HaltReason.Value) : (byte)0);
+            buf.Add((byte)(value.HaltReason.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for SecurityStatus: reads fields at pos.</summary>
+    public static class SecurityStatusBodyDecoder
+    {
+        public static (SecurityStatus Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new SecurityStatus();
+            string symbol = Wire.ReadString(buf, ref pos);
+            var status = SecurityStatusStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid SecurityStatusStatus");
+            var halt_reasonRaw = Wire.TakeU8(buf, ref pos);
+            SecurityStatusHaltReason? halt_reason = null;
+            if (buf[pos++] == 1) {
+                halt_reason = SecurityStatusHaltReasonHelpers.FromValue(halt_reasonRaw) ?? throw new InvalidOperationException("invalid SecurityStatusHaltReason");
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Status = status;
+            value.HaltReason = halt_reason;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for SecurityStatus</summary>
+    public static class SecurityStatusEncoder
+    {
+        public static byte[] Encode(string Symbol, SecurityStatusStatus Status, SecurityStatusHaltReason? HaltReason, long Timestamp, byte? IsSnapshot)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 58);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 11);
+            Wire.WriteString(buf, Symbol);
+            buf.Add(SecurityStatusStatusHelpers.ToValue(Status));
+            buf.Add(HaltReason.HasValue ? SecurityStatusHaltReasonHelpers.ToValue(HaltReason.Value) : (byte)0);
+            buf.Add((byte)(HaltReason.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for SecurityStatus: validates the header and reads the body.</summary>
+    public static class SecurityStatusDecoder
+    {
+        public static SecurityStatus Decode(byte[] buf)
+        {
+            var value = new SecurityStatus();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 58) throw new InvalidOperationException("invalid template_id");
+            string symbol = Wire.ReadString(buf, ref pos);
+            var status = SecurityStatusStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid SecurityStatusStatus");
+            var halt_reasonRaw = Wire.TakeU8(buf, ref pos);
+            SecurityStatusHaltReason? halt_reason = null;
+            if (buf[pos++] == 1) {
+                halt_reason = SecurityStatusHaltReasonHelpers.FromValue(halt_reasonRaw) ?? throw new InvalidOperationException("invalid SecurityStatusHaltReason");
+            }
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.Status = status;
+            value.HaltReason = halt_reason;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MassCancelRequest</summary>
+    public class MassCancelRequest
+    {
+        public string ClOrdId;
+        public string Account;
+        public string? Symbol;
+        public MassCancelRequestSide? Side;
+    }
+
+    /// <summary>SBE body encoder for MassCancelRequest (fields only, no header).</summary>
+    public static class MassCancelRequestBodyEncoder
+    {
+        public static void Encode(MassCancelRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol != null) { buf.Add(1); Wire.WriteString(buf, value.Symbol); } else { buf.Add(0); }
+            buf.Add(value.Side.HasValue ? MassCancelRequestSideHelpers.ToValue(value.Side.Value) : (byte)0);
+            buf.Add((byte)(value.Side.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for MassCancelRequest: reads fields at pos.</summary>
+    public static class MassCancelRequestBodyDecoder
+    {
+        public static (MassCancelRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MassCancelRequest();
+            string? symbol = null;
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string account = Wire.ReadString(buf, ref pos);
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            var sideRaw = Wire.TakeU8(buf, ref pos);
+            MassCancelRequestSide? side = null;
+            if (buf[pos++] == 1) {
+                side = MassCancelRequestSideHelpers.FromValue(sideRaw) ?? throw new InvalidOperationException("invalid MassCancelRequestSide");
+            }
+            value.ClOrdId = cl_ord_id;
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Side = side;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for MassCancelRequest</summary>
+    public static class MassCancelRequestEncoder
+    {
+        public static byte[] Encode(string ClOrdId, string Account, string? Symbol, MassCancelRequestSide? Side)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 59);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 1);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, Account);
+            if (Symbol != null) { buf.Add(1); Wire.WriteString(buf, Symbol); } else { buf.Add(0); }
+            buf.Add(Side.HasValue ? MassCancelRequestSideHelpers.ToValue(Side.Value) : (byte)0);
+            buf.Add((byte)(Side.HasValue ? 1 : 0));
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for MassCancelRequest: validates the header and reads the body.</summary>
+    public static class MassCancelRequestDecoder
+    {
+        public static MassCancelRequest Decode(byte[] buf)
+        {
+            var value = new MassCancelRequest();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 59) throw new InvalidOperationException("invalid template_id");
+            string? symbol = null;
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string account = Wire.ReadString(buf, ref pos);
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            var sideRaw = Wire.TakeU8(buf, ref pos);
+            MassCancelRequestSide? side = null;
+            if (buf[pos++] == 1) {
+                side = MassCancelRequestSideHelpers.FromValue(sideRaw) ?? throw new InvalidOperationException("invalid MassCancelRequestSide");
+            }
+            value.ClOrdId = cl_ord_id;
+            value.Account = account;
+            value.Symbol = symbol;
+            value.Side = side;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message MassCancelReport</summary>
+    public class MassCancelReport
+    {
+        public string ClOrdId;
+        public string Account;
+        public string? Symbol;
+        public uint TotalAffected;
+        public MassCancelReportStatus Status;
+        public long Timestamp;
+    }
+
+    /// <summary>SBE body encoder for MassCancelReport (fields only, no header).</summary>
+    public static class MassCancelReportBodyEncoder
+    {
+        public static void Encode(MassCancelReport value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.ClOrdId);
+            Wire.WriteString(buf, value.Account);
+            if (value.Symbol != null) { buf.Add(1); Wire.WriteString(buf, value.Symbol); } else { buf.Add(0); }
+            Wire.WriteU32BE(buf, value.TotalAffected);
+            buf.Add(MassCancelReportStatusHelpers.ToValue(value.Status));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+        }
+    }
+
+    /// <summary>SBE body decoder for MassCancelReport: reads fields at pos.</summary>
+    public static class MassCancelReportBodyDecoder
+    {
+        public static (MassCancelReport Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new MassCancelReport();
+            string? symbol = null;
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string account = Wire.ReadString(buf, ref pos);
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            uint total_affected = Wire.ReadU32BE(buf, ref pos);
+            var status = MassCancelReportStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid MassCancelReportStatus");
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.ClOrdId = cl_ord_id;
+            value.Account = account;
+            value.Symbol = symbol;
+            value.TotalAffected = total_affected;
+            value.Status = status;
+            value.Timestamp = timestamp;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for MassCancelReport</summary>
+    public static class MassCancelReportEncoder
+    {
+        public static byte[] Encode(string ClOrdId, string Account, string? Symbol, uint TotalAffected, MassCancelReportStatus Status, long Timestamp)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 60);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 13);
+            Wire.WriteString(buf, ClOrdId);
+            Wire.WriteString(buf, Account);
+            if (Symbol != null) { buf.Add(1); Wire.WriteString(buf, Symbol); } else { buf.Add(0); }
+            Wire.WriteU32BE(buf, TotalAffected);
+            buf.Add(MassCancelReportStatusHelpers.ToValue(Status));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for MassCancelReport: validates the header and reads the body.</summary>
+    public static class MassCancelReportDecoder
+    {
+        public static MassCancelReport Decode(byte[] buf)
+        {
+            var value = new MassCancelReport();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 60) throw new InvalidOperationException("invalid template_id");
+            string? symbol = null;
+            string cl_ord_id = Wire.ReadString(buf, ref pos);
+            string account = Wire.ReadString(buf, ref pos);
+            if (Wire.TakeU8(buf, ref pos) == 1) symbol = Wire.ReadString(buf, ref pos);
+            uint total_affected = Wire.ReadU32BE(buf, ref pos);
+            var status = MassCancelReportStatusHelpers.FromValue(Wire.TakeU8(buf, ref pos)) ?? throw new InvalidOperationException("invalid MassCancelReportStatus");
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            value.ClOrdId = cl_ord_id;
+            value.Account = account;
+            value.Symbol = symbol;
+            value.TotalAffected = total_affected;
+            value.Status = status;
+            value.Timestamp = timestamp;
             return value;
         }
     }

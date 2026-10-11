@@ -214,6 +214,16 @@ int main() {
         "000100060000001100044141504c000353494d00000001000000154059000000000000401400000000000000000001010000000017979cfe362a0000000000000000002a010101");
 
     bad += check(
+        "sbe.mass_cancel_report.demo",
+        fig::sbe::MassCancelReportEncoder::encode("MC-001", "DEMO", "AAPL", uint32_t{2}, fig::sbe::MassCancelReportStatus::Completed, 1700000000000000000LL),
+        "0001003c0000000d00064d432d303031000444454d4f0100044141504c000000020217979cfe362a0000");
+
+    bad += check(
+        "sbe.mass_cancel_request.demo",
+        fig::sbe::MassCancelRequestEncoder::encode("MC-001", "DEMO", "AAPL", fig::sbe::MassCancelRequestSide::Buy),
+        "0001003b0000000100064d432d303031000444454d4f0100044141504c0101");
+
+    bad += check(
         "sbe.mini_ticker.demo",
         fig::sbe::MiniTickerEncoder::encode("AAPL", 100.0, 50.0, 1700000000000000000LL, uint8_t{1}),
         "0001000e0000001900044141504c4059000000000000404900000000000017979cfe362a00000101");
@@ -289,6 +299,16 @@ int main() {
         "000100170000000000044141504c000a54524144452d49442d32405980000000000040200000000000000217979cfe362a0005");
 
     bad += check(
+        "sbe.security_status.demo",
+        fig::sbe::SecurityStatusEncoder::encode("AAPL", fig::sbe::SecurityStatusStatus::Trading, fig::sbe::SecurityStatusHaltReason::None, 1700000000000000000LL, uint8_t{1}),
+        "0001003a0000000b00044141504c01010117979cfe362a00000101");
+
+    bad += check(
+        "sbe.security_status_request.demo",
+        fig::sbe::SecurityStatusRequestEncoder::encode("AAPL"),
+        "000100390000000000044141504c");
+
+    bad += check(
         "sbe.symbol_ticker.demo",
         fig::sbe::SymbolTickerEncoder::encode("AAPL", 150.5, 0.5, 0.33, 1000.0, 151.0, 149.5, 150.0, 1700000000000000000LL, uint8_t{1}),
         "0001001b0000004100044141504c4062d000000000003fe00000000000003fd51eb851eb851f408f4000000000004062e000000000004062b000000000004062c0000000000017979cfe362a00000101");
@@ -302,6 +322,16 @@ int main() {
         "sbe.trade_history_request.demo",
         fig::sbe::TradeHistoryRequestEncoder::encode("AAPL", 1700000000000000001LL, 1700000000000000002LL, uint32_t{4}, "CUR-1"),
         "000100180000001400044141504c17979cfe362a00010117979cfe362a00020100000004010100054355522d31");
+
+    bad += check(
+        "sbe.trading_session_status.demo",
+        fig::sbe::TradingSessionStatusEncoder::encode("AAPL", "REG", fig::sbe::TradingSessionStatusStatus::Open, fig::sbe::TradingSessionStatusHaltReason::News, 1700000000000000000LL, uint8_t{1}),
+        "000100380000000b0100044141504c000352454702020117979cfe362a00000101");
+
+    bad += check(
+        "sbe.trading_session_status_request.demo",
+        fig::sbe::TradingSessionStatusRequestEncoder::encode("AAPL"),
+        "00010037000000000100044141504c");
 
     bad += check(
         "sbe.user_liquidation.demo",

@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-use crate::fix::FixMessage;
+use crate::fix::{FixMessage, FixOutboundContext};
 use crate::fix_seq_store::{FixSeqState, FixSeqStore};
 
 // ─── State ───────────────────────────────────────────────────────
@@ -92,6 +92,7 @@ pub struct FixSession {
     sender_comp_id: String,
     target_comp_id: String,
     seq_store: Option<Arc<dyn FixSeqStore>>,
+    outbound_log: Vec<FixMessage>,
 }
 
 impl FixSession {
@@ -109,6 +110,7 @@ impl FixSession {
             sender_comp_id,
             target_comp_id,
             seq_store: None,
+            outbound_log: Vec::new(),
         }
     }
 
@@ -171,6 +173,30 @@ impl FixSession {
         self.next_send_seq
     }
 
+    /// Allocate the next outbound sequence number.
+    pub fn allocate_send_seq(&mut self) -> u32 {
+        let seq = self.next_send_seq;
+        self.next_send_seq += 1;
+        self.persist_to_store();
+        seq
+    }
+
+    pub fn outbound_context(&mut self) -> FixOutboundContext {
+        FixOutboundContext {
+            sender_comp_id: self.sender_comp_id.clone(),
+            target_comp_id: self.target_comp_id.clone(),
+            msg_seq_num: self.allocate_send_seq(),
+        }
+    }
+
+    pub fn record_outbound(&mut self, msg: FixMessage) {
+        self.outbound_log.push(msg);
+    }
+
+    pub fn set_target_comp_id(&mut self, id: impl Into<String>) {
+        self.target_comp_id = id.into();
+    }
+
     /// Expected inbound sequence number.
     pub fn expected_recv_seq(&self) -> u32 {
         self.expected_recv_seq
@@ -209,7 +235,9 @@ impl FixSession {
             self.state = FixSessionState::LogonSent;
         }
 
-        FixMessage::new(tags)
+        let msg = FixMessage::new(tags);
+        self.record_outbound(msg.clone());
+        msg
     }
 
     /// Build and send a Logout (35=5) message.
@@ -231,14 +259,18 @@ impl FixSession {
             self.state = FixSessionState::LogoutSent;
         }
 
-        FixMessage::new(tags)
+        let msg = FixMessage::new(tags);
+        self.record_outbound(msg.clone());
+        msg
     }
 
     /// Build and return a Heartbeat (35=0) message.
     ///
     /// Increments the send sequence number.
     pub fn send_heartbeat(&mut self) -> FixMessage {
-        FixMessage::new(self.build_heartbeat_tags())
+        let msg = FixMessage::new(self.build_heartbeat_tags());
+        self.record_outbound(msg.clone());
+        msg
     }
 
     /// Check if the heartbeat timer has expired. Returns a Heartbeat
@@ -388,39 +420,15 @@ impl FixSession {
                 actions.push(FixAction::SendMessage(FixMessage::new(tags)));
             }
             "2" => {
-                // ── ResendRequest ──
-                // Counterparty missed messages. For now, respond with a
-                // SequenceReset-GapFill (35=4) to fill the gap.
-                // TODO: Replay actual stored messages instead of gap-fill.
-                let _begin = msg
+                let begin = msg
                     .get_tag(7)
                     .and_then(|s| s.parse::<u32>().ok())
-                    .unwrap_or(0);
+                    .unwrap_or(1);
                 let end = msg
                     .get_tag(16)
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(0);
-
-                let new_seq = if end == 0 {
-                    self.expected_recv_seq
-                } else {
-                    end + 1
-                };
-
-                let seq = self.next_send_seq;
-                self.next_send_seq += 1;
-
-                let seq_reset_tags = vec![
-                    (8u32, "FIX.4.4".to_string()),
-                    (35, "4".to_string()),
-                    (49, self.sender_comp_id.clone()),
-                    (56, self.target_comp_id.clone()),
-                    (34, seq.to_string()),
-                    (36, new_seq.to_string()), // NewSeqNo
-                    (123, "Y".to_string()),    // GapFillFlag
-                ];
-
-                actions.push(FixAction::SendMessage(FixMessage::new(seq_reset_tags)));
+                actions.extend(self.replay_outbound(begin, end));
             }
             "3" => {
                 // ── Reject ──
@@ -445,6 +453,75 @@ impl FixSession {
     /// connection error or timeout.
     pub fn force_logout(&mut self) {
         self.state = FixSessionState::LoggedOut;
+    }
+
+    fn is_admin_msg_type(msg_type: &str) -> bool {
+        matches!(msg_type, "0" | "1" | "2" | "3" | "4" | "5" | "A")
+    }
+
+    fn seq_of(msg: &FixMessage) -> Option<u32> {
+        msg.get_tag(34).and_then(|s| s.parse().ok())
+    }
+
+    fn gap_fill_message(&self, start: u32, new_seq: u32) -> FixMessage {
+        FixMessage::new(vec![
+            (8u32, "FIX.4.4".to_string()),
+            (35, "4".to_string()),
+            (49, self.sender_comp_id.clone()),
+            (56, self.target_comp_id.clone()),
+            (34, start.to_string()),
+            (43, "Y".to_string()),
+            (36, new_seq.to_string()),
+            (123, "Y".to_string()),
+        ])
+    }
+
+    fn with_poss_dup(msg: &FixMessage) -> FixMessage {
+        let mut tags = msg.tags.clone();
+        if !tags.iter().any(|(t, _)| *t == 43) {
+            tags.push((43, "Y".to_string()));
+        }
+        FixMessage::new(tags)
+    }
+
+    /// Replay stored application messages in `[begin, end]`; gap-fill admin/missing seqs.
+    fn replay_outbound(&self, begin: u32, end: u32) -> Vec<FixAction> {
+        let begin = begin.max(1);
+        let end = if end == 0 {
+            self.next_send_seq.saturating_sub(1).max(begin)
+        } else {
+            end
+        };
+        let mut actions = Vec::new();
+        let mut gap_start: Option<u32> = None;
+        for seq in begin..=end {
+            let stored = self
+                .outbound_log
+                .iter()
+                .find(|m| Self::seq_of(m) == Some(seq));
+            let is_app = stored
+                .and_then(|m| m.msg_type())
+                .is_some_and(|t| !Self::is_admin_msg_type(t));
+            if is_app {
+                if let Some(gs) = gap_start.take() {
+                    actions.push(FixAction::SendMessage(self.gap_fill_message(gs, seq)));
+                }
+                if let Some(msg) = stored {
+                    actions.push(FixAction::SendMessage(Self::with_poss_dup(msg)));
+                }
+            } else if gap_start.is_none() {
+                gap_start = Some(seq);
+            }
+        }
+        if let Some(gs) = gap_start {
+            actions.push(FixAction::SendMessage(self.gap_fill_message(gs, end + 1)));
+        }
+        if actions.is_empty() {
+            actions.push(FixAction::SendMessage(
+                self.gap_fill_message(begin, end + 1),
+            ));
+        }
+        actions
     }
 
     // ── Private Helpers ───────────────────────────────────────
@@ -724,12 +801,52 @@ mod tests {
 
         match &actions[0] {
             FixAction::SendMessage(msg) => {
-                // NewSeqNo should be expected_recv_seq (which is 2, since we received seq 1
-                // from the logon, and seq 2 from this resend request)
-                assert_eq!(msg.get_tag(36), Some("3"));
+                // EndSeqNo=0 means "through last outbound" (logon seq 1).
+                assert_eq!(msg.get_tag(36), Some("2"));
             }
             _ => panic!("expected SendMessage action"),
         }
+    }
+
+    #[test]
+    fn test_resend_replays_application_messages_with_poss_dup() {
+        let mut session = FixSession::new("FIG-GW".into(), "CLIENT".into());
+        session.send_logon();
+        session.process_incoming(&fix_msg("A", 1)).unwrap();
+
+        let ctx = session.outbound_context();
+        let exec = crate::fix::fig_to_fix_execution_report(
+            &fig_core::messages::ExecutionReport {
+                cl_ord_id: "ORD-1".to_string(),
+                order_id: "OX-1".to_string(),
+                exec_id: "EX-1".to_string(),
+                exec_type: fig_core::messages::ExecType::New,
+                ord_status: fig_core::messages::OrdStatus::New,
+                side: fig_core::messages::Side::Buy,
+                last_qty: None,
+                last_price: None,
+                leaves_qty: fig_core::messages::Quantity(1.0),
+                cum_qty: fig_core::messages::Quantity(0.0),
+                avg_price: fig_core::messages::Price(10.0),
+                symbol: "AAPL".to_string(),
+                transact_time: 1,
+            },
+            &ctx,
+        );
+        let exec_msg = crate::fix::FixMessage::from_bytes(&exec).unwrap();
+        session.record_outbound(exec_msg);
+
+        let resend_req =
+            fix_msg_with_tags("2", 2, vec![(7, "1".to_string()), (16, "2".to_string())]);
+        let actions = session.process_incoming(&resend_req).unwrap();
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            FixAction::SendMessage(m) if m.msg_type() == Some("8") && m.get_tag(43) == Some("Y")
+        )));
+        assert!(actions.iter().any(|a| matches!(
+            a,
+            FixAction::SendMessage(m) if m.msg_type() == Some("4") && m.get_tag(123) == Some("Y")
+        )));
     }
 
     // ── SeqNum Tracking ───────────────────────────────────────

@@ -319,6 +319,28 @@ impl MarketDataAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum MassCancelReportStatus {
+    Accepted = 1,
+    Completed = 2,
+    Rejected = 3,
+}
+
+impl MassCancelReportStatus {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(MassCancelReportStatus::Accepted),
+            2 => Some(MassCancelReportStatus::Completed),
+            3 => Some(MassCancelReportStatus::Rejected),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum OrdStatus {
     New = 1,
     PartiallyFilled = 2,
@@ -437,6 +459,58 @@ impl SecurityIdSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SecurityStatusHaltReason {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+}
+
+impl SecurityStatusHaltReason {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(SecurityStatusHaltReason::None),
+            2 => Some(SecurityStatusHaltReason::News),
+            3 => Some(SecurityStatusHaltReason::MatchingEngine),
+            4 => Some(SecurityStatusHaltReason::Regulatory),
+            5 => Some(SecurityStatusHaltReason::Auction),
+            6 => Some(SecurityStatusHaltReason::Other),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SecurityStatusStatus {
+    Trading = 1,
+    Halt = 2,
+    Auction = 3,
+    Suspended = 4,
+}
+
+impl SecurityStatusStatus {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(SecurityStatusStatus::Trading),
+            2 => Some(SecurityStatusStatus::Halt),
+            3 => Some(SecurityStatusStatus::Auction),
+            4 => Some(SecurityStatusStatus::Suspended),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Side {
     Buy = 1,
     Sell = 2,
@@ -477,6 +551,62 @@ impl TimeInForce {
             3 => Some(TimeInForce::Ioc),
             4 => Some(TimeInForce::Fok),
             5 => Some(TimeInForce::Gtd),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TradingSessionStatusHaltReason {
+    None = 1,
+    News = 2,
+    MatchingEngine = 3,
+    Regulatory = 4,
+    Auction = 5,
+    Other = 6,
+}
+
+impl TradingSessionStatusHaltReason {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(TradingSessionStatusHaltReason::None),
+            2 => Some(TradingSessionStatusHaltReason::News),
+            3 => Some(TradingSessionStatusHaltReason::MatchingEngine),
+            4 => Some(TradingSessionStatusHaltReason::Regulatory),
+            5 => Some(TradingSessionStatusHaltReason::Auction),
+            6 => Some(TradingSessionStatusHaltReason::Other),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum TradingSessionStatusStatus {
+    PreOpen = 1,
+    Open = 2,
+    Break = 3,
+    Close = 4,
+    Halt = 5,
+    Auction = 6,
+}
+
+impl TradingSessionStatusStatus {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(TradingSessionStatusStatus::PreOpen),
+            2 => Some(TradingSessionStatusStatus::Open),
+            3 => Some(TradingSessionStatusStatus::Break),
+            4 => Some(TradingSessionStatusStatus::Close),
+            5 => Some(TradingSessionStatusStatus::Halt),
+            6 => Some(TradingSessionStatusStatus::Auction),
             _ => None,
         }
     }
@@ -1559,6 +1689,128 @@ pub struct PositionRequest {
 impl PositionRequest {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: TradingSessionStatusRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradingSessionStatusRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+}
+
+impl TradingSessionStatusRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: TradingSessionStatus (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TradingSessionStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+    pub trading_session_id: String,
+    pub status: TradingSessionStatusStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub halt_reason: Option<TradingSessionStatusHaltReason>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl TradingSessionStatus {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: SecurityStatusRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecurityStatusRequest {
+    pub symbol: Symbol,
+}
+
+impl SecurityStatusRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: SecurityStatus (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecurityStatus {
+    pub symbol: Symbol,
+    pub status: SecurityStatusStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub halt_reason: Option<SecurityStatusHaltReason>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl SecurityStatus {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: MassCancelRequest (channel: RequestResponse, priority: Medium)
+/// Correlation field: cl_ord_id
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MassCancelRequest {
+    pub cl_ord_id: ClientOrderId,
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<Side>,
+}
+
+impl MassCancelRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Correlation field name
+    pub const CORRELATION_FIELD: &str = "cl_ord_id";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: MassCancelReport (channel: RequestResponse, priority: Medium)
+/// Correlation field: cl_ord_id
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MassCancelReport {
+    pub cl_ord_id: ClientOrderId,
+    pub account: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<Symbol>,
+    pub total_affected: u32,
+    pub status: MassCancelReportStatus,
+    pub timestamp: TradeTimestamp,
+}
+
+impl MassCancelReport {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Correlation field name
+    pub const CORRELATION_FIELD: &str = "cl_ord_id";
     /// Priority level
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent

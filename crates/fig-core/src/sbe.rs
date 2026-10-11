@@ -9,12 +9,13 @@ use crate::messages::{
     FundingHistoryBatch, FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest,
     InstrumentCatalogResponse, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate,
     LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
-    MarketDataIncrementalRefresh, MarketDataSnapshot, MiniTicker, NewOrderSingle,
-    OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
-    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderType,
-    PositionRequest, PositionSnapshot, PositionUpdate, PublicTradeBatch, PublicTradeEvent,
-    SecurityIdSource, Side, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
-    UserLiquidation,
+    MarketDataIncrementalRefresh, MarketDataSnapshot, MassCancelReport, MassCancelRequest,
+    MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    OrderType, PositionRequest, PositionSnapshot, PositionUpdate, PublicTradeBatch,
+    PublicTradeEvent, SecurityIdSource, SecurityStatus, SecurityStatusRequest, Side, SymbolTicker,
+    TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
+    TradingSessionStatusRequest, UserLiquidation,
 };
 
 /// Errors that can occur during SBE encoding or decoding.
@@ -679,5 +680,61 @@ pub fn encode_balance_snapshot(snap: &BalanceSnapshot) -> Vec<u8> {
         snap.account.clone(),
         snap.balances.clone(),
         snap.is_snapshot,
+    )
+}
+
+/// Encode a `TradingSessionStatusRequest` SBE message.
+pub fn encode_trading_session_status_request(m: &TradingSessionStatusRequest) -> Vec<u8> {
+    TradingSessionStatusRequestEncoder::encode(m.symbol.clone())
+}
+
+/// Encode a `TradingSessionStatus` SBE message.
+pub fn encode_trading_session_status(m: &TradingSessionStatus) -> Vec<u8> {
+    TradingSessionStatusEncoder::encode(
+        m.symbol.clone(),
+        m.trading_session_id.clone(),
+        m.status,
+        m.halt_reason,
+        m.timestamp,
+        m.is_snapshot,
+    )
+}
+
+/// Encode a `SecurityStatusRequest` SBE message.
+pub fn encode_security_status_request(m: &SecurityStatusRequest) -> Vec<u8> {
+    SecurityStatusRequestEncoder::encode(m.symbol.clone())
+}
+
+/// Encode a `SecurityStatus` SBE message.
+pub fn encode_security_status(m: &SecurityStatus) -> Vec<u8> {
+    SecurityStatusEncoder::encode(
+        m.symbol.clone(),
+        m.status,
+        m.halt_reason,
+        m.timestamp,
+        m.is_snapshot,
+    )
+}
+
+/// Encode a `MassCancelRequest` SBE message.
+pub fn encode_mass_cancel_request(m: &MassCancelRequest) -> Vec<u8> {
+    MassCancelRequestEncoder::encode(
+        m.cl_ord_id.clone(),
+        m.account.clone(),
+        m.symbol.clone(),
+        m.side
+            .and_then(|s| MassCancelRequestSide::from_value(s.to_value())),
+    )
+}
+
+/// Encode a `MassCancelReport` SBE message.
+pub fn encode_mass_cancel_report(m: &MassCancelReport) -> Vec<u8> {
+    MassCancelReportEncoder::encode(
+        m.cl_ord_id.clone(),
+        m.account.clone(),
+        m.symbol.clone(),
+        m.total_affected,
+        m.status,
+        m.timestamp,
     )
 }

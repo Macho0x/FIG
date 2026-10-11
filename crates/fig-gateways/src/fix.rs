@@ -19,8 +19,10 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     BestBidOffer, CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, CandleBar,
-    ExecType, ExecutionReport, NewOrderSingle, OrdStatus, OrderBookSnapshot, OrderType, Price,
-    PriceLevel, Quantity, SecurityIdSource, Side, TimeInForce,
+    ExecType, ExecutionReport, MassCancelReport, MassCancelReportStatus, MassCancelRequest,
+    NewOrderSingle, OrdStatus, OrderBookSnapshot, OrderType, Price, PriceLevel, Quantity,
+    SecurityIdSource, SecurityStatus, SecurityStatusRequest, SecurityStatusStatus, Side,
+    TimeInForce, TradingSessionStatus, TradingSessionStatusRequest, TradingSessionStatusStatus,
 };
 
 /// SOH separator character (ASCII 0x01).
@@ -756,6 +758,121 @@ pub fn fig_to_fix_execution_report(report: &ExecutionReport, ctx: &FixOutboundCo
     body.push((60, format_fix_utc_timestamp(report.transact_time)));
 
     build_outbound_fix_message(ctx, "8", body)
+}
+
+/// FIX Order Mass Cancel Request (35=q) → FIG `MassCancelRequest`.
+pub fn fix_to_fig_mass_cancel(tags: &[(u32, String)]) -> FixResult<MassCancelRequest> {
+    let msg_type = require_tag(tags, 35, "OrderMassCancelRequest")?;
+    if msg_type != "q" {
+        return Err(FixError::UnsupportedMsgType(msg_type.to_string()));
+    }
+    let cl_ord_id = require_tag(tags, 11, "OrderMassCancelRequest")?.to_string();
+    let account = find_tag(tags, 1).unwrap_or("DEFAULT").to_string();
+    let symbol = find_tag(tags, 55).map(str::to_string);
+    let side = find_tag(tags, 54).map(parse_fix_side).transpose()?;
+    Ok(MassCancelRequest {
+        cl_ord_id,
+        account,
+        symbol,
+        side,
+    })
+}
+
+/// FIG `MassCancelReport` → FIX Order Mass Cancel Report (35=r).
+pub fn fig_to_fix_mass_cancel_report(
+    report: &MassCancelReport,
+    ctx: &FixOutboundContext,
+) -> Vec<u8> {
+    let mut body = vec![
+        (11, report.cl_ord_id.clone()),
+        (1, report.account.clone()),
+        (533, report.total_affected.to_string()),
+        (
+            531,
+            match report.status {
+                MassCancelReportStatus::Rejected => "0",
+                MassCancelReportStatus::Accepted => "7",
+                MassCancelReportStatus::Completed => "1",
+            }
+            .to_string(),
+        ),
+    ];
+    if let Some(ref symbol) = report.symbol {
+        body.push((55, symbol.clone()));
+    }
+    build_outbound_fix_message(ctx, "r", body)
+}
+
+/// FIX Trading Session Status Request (35=g).
+pub fn fix_to_fig_trading_session_status_request(
+    tags: &[(u32, String)],
+) -> FixResult<TradingSessionStatusRequest> {
+    let msg_type = require_tag(tags, 35, "TradingSessionStatusRequest")?;
+    if msg_type != "g" {
+        return Err(FixError::UnsupportedMsgType(msg_type.to_string()));
+    }
+    Ok(TradingSessionStatusRequest {
+        symbol: find_tag(tags, 55).map(str::to_string),
+    })
+}
+
+fn fix_trad_ses_status(status: TradingSessionStatusStatus) -> String {
+    match status {
+        TradingSessionStatusStatus::Halt | TradingSessionStatusStatus::Break => "1",
+        TradingSessionStatusStatus::Open | TradingSessionStatusStatus::Auction => "2",
+        TradingSessionStatusStatus::Close => "3",
+        TradingSessionStatusStatus::PreOpen => "4",
+    }
+    .to_string()
+}
+
+/// FIG `TradingSessionStatus` → FIX 35=h.
+pub fn fig_to_fix_trading_session_status(
+    status: &TradingSessionStatus,
+    ctx: &FixOutboundContext,
+) -> Vec<u8> {
+    let mut body = vec![
+        (336, status.trading_session_id.clone()),
+        (340, fix_trad_ses_status(status.status)),
+        (60, format_fix_utc_timestamp(status.timestamp)),
+    ];
+    if let Some(ref symbol) = status.symbol {
+        body.push((55, symbol.clone()));
+    }
+    build_outbound_fix_message(ctx, "h", body)
+}
+
+/// FIX Security Status Request (35=e).
+pub fn fix_to_fig_security_status_request(
+    tags: &[(u32, String)],
+) -> FixResult<SecurityStatusRequest> {
+    let msg_type = require_tag(tags, 35, "SecurityStatusRequest")?;
+    if msg_type != "e" {
+        return Err(FixError::UnsupportedMsgType(msg_type.to_string()));
+    }
+    Ok(SecurityStatusRequest {
+        symbol: require_tag(tags, 55, "SecurityStatusRequest")?.to_string(),
+    })
+}
+
+fn fix_security_trading_status(status: SecurityStatusStatus) -> String {
+    match status {
+        SecurityStatusStatus::Halt => "2",
+        SecurityStatusStatus::Trading => "17",
+        SecurityStatusStatus::Suspended => "18",
+        SecurityStatusStatus::Auction => "21",
+    }
+    .to_string()
+}
+
+/// FIG `SecurityStatus` → FIX 35=f.
+pub fn fig_to_fix_security_status(status: &SecurityStatus, ctx: &FixOutboundContext) -> Vec<u8> {
+    let body = vec![
+        (55, status.symbol.clone()),
+        (326, fix_security_trading_status(status.status)),
+        (60, format_fix_utc_timestamp(status.timestamp)),
+    ];
+    build_outbound_fix_message(ctx, "f", body)
 }
 
 /// Convert a FIG `NewOrderSingle` to FIX NewOrderSingle (35=D) wire-format bytes.
@@ -1568,6 +1685,64 @@ mod tests {
         assert_eq!(find(49), "FIG");
         assert_eq!(find(56), "CLIENT");
         assert_eq!(find(34), "1");
+    }
+
+    #[test]
+    fn test_fix_mass_cancel_round_trip() {
+        let tags = vec![
+            (35, "q".to_string()),
+            (11, "MC-1".to_string()),
+            (1, "DEMO".to_string()),
+            (55, "AAPL".to_string()),
+            (54, "1".to_string()),
+        ];
+        let req = fix_to_fig_mass_cancel(&tags).unwrap();
+        assert_eq!(req.cl_ord_id, "MC-1");
+        assert_eq!(req.account, "DEMO");
+        assert_eq!(req.symbol.as_deref(), Some("AAPL"));
+        assert_eq!(req.side, Some(Side::Buy));
+        let report = MassCancelReport {
+            cl_ord_id: req.cl_ord_id,
+            account: req.account,
+            symbol: req.symbol,
+            total_affected: 2,
+            status: MassCancelReportStatus::Completed,
+            timestamp: 1,
+        };
+        let encoded = fig_to_fix_mass_cancel_report(&report, &FixOutboundContext::default());
+        let msg = FixMessage::from_bytes(&encoded).unwrap();
+        assert_eq!(msg.msg_type(), Some("r"));
+        assert_eq!(msg.get_tag(533), Some("2"));
+    }
+
+    #[test]
+    fn test_fix_session_and_security_status() {
+        let g = vec![(35, "g".to_string()), (55, "AAPL".to_string())];
+        let req = fix_to_fig_trading_session_status_request(&g).unwrap();
+        assert_eq!(req.symbol.as_deref(), Some("AAPL"));
+        let status = TradingSessionStatus {
+            symbol: Some("AAPL".to_string()),
+            trading_session_id: "REG".to_string(),
+            status: TradingSessionStatusStatus::Open,
+            halt_reason: None,
+            timestamp: 1,
+            is_snapshot: Some(true),
+        };
+        let h = fig_to_fix_trading_session_status(&status, &FixOutboundContext::default());
+        assert_eq!(FixMessage::from_bytes(&h).unwrap().msg_type(), Some("h"));
+
+        let e = vec![(35, "e".to_string()), (55, "BTC".to_string())];
+        let sreq = fix_to_fig_security_status_request(&e).unwrap();
+        assert_eq!(sreq.symbol, "BTC");
+        let sec = SecurityStatus {
+            symbol: "BTC".to_string(),
+            status: SecurityStatusStatus::Trading,
+            halt_reason: None,
+            timestamp: 1,
+            is_snapshot: Some(true),
+        };
+        let f = fig_to_fix_security_status(&sec, &FixOutboundContext::default());
+        assert_eq!(FixMessage::from_bytes(&f).unwrap().msg_type(), Some("f"));
     }
 
     #[test]

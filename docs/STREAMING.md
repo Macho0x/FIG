@@ -38,6 +38,8 @@ streams still half-close after the response.
 | Mini ticker / all mids | `marketdata/ticker/all` | `MiniTicker`, `AllMids` | Binance `@miniTicker`, HL `allMids` |
 | Mark / index price | `marketdata/{symbol}/mark` | `MarkPriceUpdate` | Binance `@markPrice`, HL `activeAssetCtx` |
 | Public liquidations | `marketdata/liquidations` | `LiquidationTrade` | Binance `@forceOrder` |
+| Trading session | `marketdata/session` | `TradingSessionStatus` | FIX 35=h |
+| Security status | `marketdata/{symbol}/status` | `SecurityStatus` | FIX 35=f |
 
 Intervals use FIG names: `1m`, `5m`, `1h`, `1d` (not “klines”).
 

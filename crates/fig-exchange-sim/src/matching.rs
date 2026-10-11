@@ -525,6 +525,40 @@ impl MatchingEngine {
         self.order_history.push((account.to_string(), report));
     }
 
+    /// Cancel working orders for an account, optionally filtered by symbol/side.
+    pub fn process_mass_cancel(&mut self, req: &MassCancelRequest) -> (u32, Vec<ExecutionReport>) {
+        let snapshot = self.open_orders(&req.account, req.symbol.as_deref());
+        let targets: Vec<(ClientOrderId, Symbol, Side)> = snapshot
+            .orders
+            .into_iter()
+            .filter(|o| req.side.is_none_or(|s| o.side == s))
+            .map(|o| (o.cl_ord_id, o.symbol, o.side))
+            .collect();
+        let mut affected = 0u32;
+        let mut reports = Vec::new();
+        for (orig, symbol, side) in targets {
+            match self.process_cancel(&CancelRequest {
+                cl_ord_id: req.cl_ord_id.clone(),
+                orig_cl_ord_id: orig,
+                symbol,
+                side,
+                order_qty: None,
+            }) {
+                CancelOutcome::Cancelled(order) => {
+                    affected += 1;
+                    let mut report = resting_to_report(&order);
+                    report.cl_ord_id = req.cl_ord_id.clone();
+                    report.exec_type = ExecType::Canceled;
+                    report.ord_status = OrdStatus::Canceled;
+                    report.leaves_qty = Quantity(0.0);
+                    reports.push(report);
+                }
+                CancelOutcome::Rejected(_) => {}
+            }
+        }
+        (affected, reports)
+    }
+
     /// Working orders for an account (optionally filtered by symbol).
     pub fn open_orders(&self, account: &str, symbol: Option<&str>) -> OpenOrdersSnapshot {
         let mut orders = Vec::new();
@@ -896,5 +930,33 @@ mod tests {
             engine.process_cancel(&cancel),
             CancelOutcome::Rejected(CancelRejectReason::OrderNotFound)
         ));
+    }
+
+    #[test]
+    fn test_mass_cancel_by_symbol_and_side() {
+        let mut engine = MatchingEngine::new();
+        let mut buy = make_limit_order("B1", Side::Buy, "AAPL", 10.0, 1.0);
+        buy.account = Some("DEMO-ACCT".to_string());
+        let mut sell = make_limit_order("S1", Side::Sell, "AAPL", 20.0, 1.0);
+        sell.account = Some("DEMO-ACCT".to_string());
+        let mut other = make_limit_order("B2", Side::Buy, "BTC", 10.0, 1.0);
+        other.account = Some("DEMO-ACCT".to_string());
+        engine.process_new_order(&buy);
+        engine.process_new_order(&sell);
+        engine.process_new_order(&other);
+
+        let (n, reports) = engine.process_mass_cancel(&MassCancelRequest {
+            cl_ord_id: "MC-1".to_string(),
+            account: "DEMO-ACCT".to_string(),
+            symbol: Some("AAPL".to_string()),
+            side: Some(Side::Buy),
+        });
+        assert_eq!(n, 1);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(
+            engine.open_orders("DEMO-ACCT", Some("AAPL")).orders.len(),
+            1
+        );
+        assert_eq!(engine.open_orders("DEMO-ACCT", Some("BTC")).orders.len(), 1);
     }
 }

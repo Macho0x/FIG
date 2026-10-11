@@ -472,6 +472,177 @@ func LedgerUpdateKindFromValue(v uint8) (LedgerUpdateKind, error) {
 
 func (e LedgerUpdateKind) ToValue() uint8 { return uint8(e) }
 
+type TradingSessionStatusStatus uint8
+
+const (
+	TradingSessionStatusStatusPreOpen TradingSessionStatusStatus = 1
+	TradingSessionStatusStatusOpen    TradingSessionStatusStatus = 2
+	TradingSessionStatusStatusBreak   TradingSessionStatusStatus = 3
+	TradingSessionStatusStatusClose   TradingSessionStatusStatus = 4
+	TradingSessionStatusStatusHalt    TradingSessionStatusStatus = 5
+	TradingSessionStatusStatusAuction TradingSessionStatusStatus = 6
+)
+
+func TradingSessionStatusStatusFromValue(v uint8) (TradingSessionStatusStatus, error) {
+	switch v {
+	case 1:
+		return TradingSessionStatusStatusPreOpen, nil
+	case 2:
+		return TradingSessionStatusStatusOpen, nil
+	case 3:
+		return TradingSessionStatusStatusBreak, nil
+	case 4:
+		return TradingSessionStatusStatusClose, nil
+	case 5:
+		return TradingSessionStatusStatusHalt, nil
+	case 6:
+		return TradingSessionStatusStatusAuction, nil
+	default:
+		return 0, fmt.Errorf("invalid TradingSessionStatusStatus value: %d", v)
+	}
+}
+
+func (e TradingSessionStatusStatus) ToValue() uint8 { return uint8(e) }
+
+type TradingSessionStatusHaltReason uint8
+
+const (
+	TradingSessionStatusHaltReasonNone           TradingSessionStatusHaltReason = 1
+	TradingSessionStatusHaltReasonNews           TradingSessionStatusHaltReason = 2
+	TradingSessionStatusHaltReasonMatchingEngine TradingSessionStatusHaltReason = 3
+	TradingSessionStatusHaltReasonRegulatory     TradingSessionStatusHaltReason = 4
+	TradingSessionStatusHaltReasonAuction        TradingSessionStatusHaltReason = 5
+	TradingSessionStatusHaltReasonOther          TradingSessionStatusHaltReason = 6
+)
+
+func TradingSessionStatusHaltReasonFromValue(v uint8) (TradingSessionStatusHaltReason, error) {
+	switch v {
+	case 1:
+		return TradingSessionStatusHaltReasonNone, nil
+	case 2:
+		return TradingSessionStatusHaltReasonNews, nil
+	case 3:
+		return TradingSessionStatusHaltReasonMatchingEngine, nil
+	case 4:
+		return TradingSessionStatusHaltReasonRegulatory, nil
+	case 5:
+		return TradingSessionStatusHaltReasonAuction, nil
+	case 6:
+		return TradingSessionStatusHaltReasonOther, nil
+	default:
+		return 0, fmt.Errorf("invalid TradingSessionStatusHaltReason value: %d", v)
+	}
+}
+
+func (e TradingSessionStatusHaltReason) ToValue() uint8 { return uint8(e) }
+
+type SecurityStatusStatus uint8
+
+const (
+	SecurityStatusStatusTrading   SecurityStatusStatus = 1
+	SecurityStatusStatusHalt      SecurityStatusStatus = 2
+	SecurityStatusStatusAuction   SecurityStatusStatus = 3
+	SecurityStatusStatusSuspended SecurityStatusStatus = 4
+)
+
+func SecurityStatusStatusFromValue(v uint8) (SecurityStatusStatus, error) {
+	switch v {
+	case 1:
+		return SecurityStatusStatusTrading, nil
+	case 2:
+		return SecurityStatusStatusHalt, nil
+	case 3:
+		return SecurityStatusStatusAuction, nil
+	case 4:
+		return SecurityStatusStatusSuspended, nil
+	default:
+		return 0, fmt.Errorf("invalid SecurityStatusStatus value: %d", v)
+	}
+}
+
+func (e SecurityStatusStatus) ToValue() uint8 { return uint8(e) }
+
+type SecurityStatusHaltReason uint8
+
+const (
+	SecurityStatusHaltReasonNone           SecurityStatusHaltReason = 1
+	SecurityStatusHaltReasonNews           SecurityStatusHaltReason = 2
+	SecurityStatusHaltReasonMatchingEngine SecurityStatusHaltReason = 3
+	SecurityStatusHaltReasonRegulatory     SecurityStatusHaltReason = 4
+	SecurityStatusHaltReasonAuction        SecurityStatusHaltReason = 5
+	SecurityStatusHaltReasonOther          SecurityStatusHaltReason = 6
+)
+
+func SecurityStatusHaltReasonFromValue(v uint8) (SecurityStatusHaltReason, error) {
+	switch v {
+	case 1:
+		return SecurityStatusHaltReasonNone, nil
+	case 2:
+		return SecurityStatusHaltReasonNews, nil
+	case 3:
+		return SecurityStatusHaltReasonMatchingEngine, nil
+	case 4:
+		return SecurityStatusHaltReasonRegulatory, nil
+	case 5:
+		return SecurityStatusHaltReasonAuction, nil
+	case 6:
+		return SecurityStatusHaltReasonOther, nil
+	default:
+		return 0, fmt.Errorf("invalid SecurityStatusHaltReason value: %d", v)
+	}
+}
+
+func (e SecurityStatusHaltReason) ToValue() uint8 { return uint8(e) }
+
+type MassCancelRequestSide uint8
+
+const (
+	MassCancelRequestSideBuy             MassCancelRequestSide = 1
+	MassCancelRequestSideSell            MassCancelRequestSide = 2
+	MassCancelRequestSideSellShort       MassCancelRequestSide = 3
+	MassCancelRequestSideSellShortExempt MassCancelRequestSide = 4
+)
+
+func MassCancelRequestSideFromValue(v uint8) (MassCancelRequestSide, error) {
+	switch v {
+	case 1:
+		return MassCancelRequestSideBuy, nil
+	case 2:
+		return MassCancelRequestSideSell, nil
+	case 3:
+		return MassCancelRequestSideSellShort, nil
+	case 4:
+		return MassCancelRequestSideSellShortExempt, nil
+	default:
+		return 0, fmt.Errorf("invalid MassCancelRequestSide value: %d", v)
+	}
+}
+
+func (e MassCancelRequestSide) ToValue() uint8 { return uint8(e) }
+
+type MassCancelReportStatus uint8
+
+const (
+	MassCancelReportStatusAccepted  MassCancelReportStatus = 1
+	MassCancelReportStatusCompleted MassCancelReportStatus = 2
+	MassCancelReportStatusRejected  MassCancelReportStatus = 3
+)
+
+func MassCancelReportStatusFromValue(v uint8) (MassCancelReportStatus, error) {
+	switch v {
+	case 1:
+		return MassCancelReportStatusAccepted, nil
+	case 2:
+		return MassCancelReportStatusCompleted, nil
+	case 3:
+		return MassCancelReportStatusRejected, nil
+	default:
+		return 0, fmt.Errorf("invalid MassCancelReportStatus value: %d", v)
+	}
+}
+
+func (e MassCancelReportStatus) ToValue() uint8 { return uint8(e) }
+
 type AggregateTradeSide uint8
 
 const (
@@ -8910,6 +9081,805 @@ func PositionRequestDecoderDecode(buf []byte) (PositionRequest, int, error) {
 	account := readString(buf, &pos)
 	value := PositionRequest{
 		Account: account,
+	}
+	return value, pos, nil
+}
+
+// SBE message TradingSessionStatusRequest
+type TradingSessionStatusRequest struct {
+	Symbol *string
+}
+
+// SBE body encoder for TradingSessionStatusRequest (fields only, no header).
+type TradingSessionStatusRequestBodyEncoder struct{}
+
+func (TradingSessionStatusRequestBodyEncoder) Encode(value TradingSessionStatusRequest, buf *[]byte) {
+	local := *buf
+	if value.Symbol != nil {
+		local = append(local, 1)
+		writeString(&local, *value.Symbol)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for TradingSessionStatusRequest: reads fields at pos, returns the value and the new offset.
+func TradingSessionStatusRequestBodyDecoderDecode(buf []byte, pos int) (TradingSessionStatusRequest, int, error) {
+	var symbol *string
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	value := TradingSessionStatusRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for TradingSessionStatusRequest
+type TradingSessionStatusRequestEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (TradingSessionStatusRequestEncoder) Encode(Symbol *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 55)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	if Symbol != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *Symbol)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for TradingSessionStatusRequest: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func TradingSessionStatusRequestDecoderDecode(buf []byte) (TradingSessionStatusRequest, int, error) {
+	if len(buf) < 8 {
+		return TradingSessionStatusRequest{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return TradingSessionStatusRequest{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 55 {
+		return TradingSessionStatusRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var symbol *string
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	value := TradingSessionStatusRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE message TradingSessionStatus
+type TradingSessionStatus struct {
+	Symbol           *string
+	TradingSessionId string
+	Status           TradingSessionStatusStatus
+	HaltReason       *TradingSessionStatusHaltReason
+	Timestamp        int64
+	IsSnapshot       *uint8
+}
+
+// SBE body encoder for TradingSessionStatus (fields only, no header).
+type TradingSessionStatusBodyEncoder struct{}
+
+func (TradingSessionStatusBodyEncoder) Encode(value TradingSessionStatus, buf *[]byte) {
+	local := *buf
+	if value.Symbol != nil {
+		local = append(local, 1)
+		writeString(&local, *value.Symbol)
+	} else {
+		local = append(local, 0)
+	}
+	writeString(&local, value.TradingSessionId)
+	local = append(local, byte(value.Status.ToValue()))
+	value_HaltReason_v := uint8(0)
+	if value.HaltReason != nil {
+		value_HaltReason_v = byte(value.HaltReason.ToValue())
+	}
+	local = append(local, value_HaltReason_v)
+	if value.HaltReason != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for TradingSessionStatus: reads fields at pos, returns the value and the new offset.
+func TradingSessionStatusBodyDecoderDecode(buf []byte, pos int) (TradingSessionStatus, int, error) {
+	var symbol *string
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	trading_session_id := readString(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := TradingSessionStatusStatusFromValue(status_raw)
+	if status_err != nil {
+		return TradingSessionStatus{}, pos, status_err
+	}
+	halt_reason_raw := readU8(buf, &pos)
+	var halt_reason *TradingSessionStatusHaltReason
+	if buf[pos] == 1 {
+		pos++
+		e, halt_reason_err := TradingSessionStatusHaltReasonFromValue(halt_reason_raw)
+		if halt_reason_err != nil {
+			return TradingSessionStatus{}, pos, halt_reason_err
+		}
+		halt_reason = &e
+	} else {
+		pos++
+		halt_reason = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := TradingSessionStatus{
+		Symbol:           symbol,
+		TradingSessionId: trading_session_id,
+		Status:           status,
+		HaltReason:       halt_reason,
+		Timestamp:        timestamp,
+		IsSnapshot:       is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for TradingSessionStatus
+type TradingSessionStatusEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (TradingSessionStatusEncoder) Encode(Symbol *string, TradingSessionId string, Status TradingSessionStatusStatus, HaltReason *TradingSessionStatusHaltReason, Timestamp int64, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 56)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 11)
+	if Symbol != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *Symbol)
+	} else {
+		buf = append(buf, 0)
+	}
+	writeString(&buf, TradingSessionId)
+	buf = append(buf, byte(Status.ToValue()))
+	HaltReason_v := uint8(0)
+	if HaltReason != nil {
+		HaltReason_v = byte(HaltReason.ToValue())
+	}
+	buf = append(buf, HaltReason_v)
+	if HaltReason != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for TradingSessionStatus: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func TradingSessionStatusDecoderDecode(buf []byte) (TradingSessionStatus, int, error) {
+	if len(buf) < 8 {
+		return TradingSessionStatus{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return TradingSessionStatus{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 56 {
+		return TradingSessionStatus{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var symbol *string
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	trading_session_id := readString(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := TradingSessionStatusStatusFromValue(status_raw)
+	if status_err != nil {
+		return TradingSessionStatus{}, pos, status_err
+	}
+	halt_reason_raw := readU8(buf, &pos)
+	var halt_reason *TradingSessionStatusHaltReason
+	if buf[pos] == 1 {
+		pos++
+		e, halt_reason_err := TradingSessionStatusHaltReasonFromValue(halt_reason_raw)
+		if halt_reason_err != nil {
+			return TradingSessionStatus{}, pos, halt_reason_err
+		}
+		halt_reason = &e
+	} else {
+		pos++
+		halt_reason = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := TradingSessionStatus{
+		Symbol:           symbol,
+		TradingSessionId: trading_session_id,
+		Status:           status,
+		HaltReason:       halt_reason,
+		Timestamp:        timestamp,
+		IsSnapshot:       is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message SecurityStatusRequest
+type SecurityStatusRequest struct {
+	Symbol string
+}
+
+// SBE body encoder for SecurityStatusRequest (fields only, no header).
+type SecurityStatusRequestBodyEncoder struct{}
+
+func (SecurityStatusRequestBodyEncoder) Encode(value SecurityStatusRequest, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	*buf = local
+}
+
+// SBE body decoder for SecurityStatusRequest: reads fields at pos, returns the value and the new offset.
+func SecurityStatusRequestBodyDecoderDecode(buf []byte, pos int) (SecurityStatusRequest, int, error) {
+	symbol := readString(buf, &pos)
+	value := SecurityStatusRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for SecurityStatusRequest
+type SecurityStatusRequestEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (SecurityStatusRequestEncoder) Encode(Symbol string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 57)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeString(&buf, Symbol)
+	return buf, nil
+}
+
+// SBE decoder for SecurityStatusRequest: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func SecurityStatusRequestDecoderDecode(buf []byte) (SecurityStatusRequest, int, error) {
+	if len(buf) < 8 {
+		return SecurityStatusRequest{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return SecurityStatusRequest{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 57 {
+		return SecurityStatusRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	value := SecurityStatusRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE message SecurityStatus
+type SecurityStatus struct {
+	Symbol     string
+	Status     SecurityStatusStatus
+	HaltReason *SecurityStatusHaltReason
+	Timestamp  int64
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for SecurityStatus (fields only, no header).
+type SecurityStatusBodyEncoder struct{}
+
+func (SecurityStatusBodyEncoder) Encode(value SecurityStatus, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	local = append(local, byte(value.Status.ToValue()))
+	value_HaltReason_v := uint8(0)
+	if value.HaltReason != nil {
+		value_HaltReason_v = byte(value.HaltReason.ToValue())
+	}
+	local = append(local, value_HaltReason_v)
+	if value.HaltReason != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for SecurityStatus: reads fields at pos, returns the value and the new offset.
+func SecurityStatusBodyDecoderDecode(buf []byte, pos int) (SecurityStatus, int, error) {
+	symbol := readString(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := SecurityStatusStatusFromValue(status_raw)
+	if status_err != nil {
+		return SecurityStatus{}, pos, status_err
+	}
+	halt_reason_raw := readU8(buf, &pos)
+	var halt_reason *SecurityStatusHaltReason
+	if buf[pos] == 1 {
+		pos++
+		e, halt_reason_err := SecurityStatusHaltReasonFromValue(halt_reason_raw)
+		if halt_reason_err != nil {
+			return SecurityStatus{}, pos, halt_reason_err
+		}
+		halt_reason = &e
+	} else {
+		pos++
+		halt_reason = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := SecurityStatus{
+		Symbol:     symbol,
+		Status:     status,
+		HaltReason: halt_reason,
+		Timestamp:  timestamp,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for SecurityStatus
+type SecurityStatusEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (SecurityStatusEncoder) Encode(Symbol string, Status SecurityStatusStatus, HaltReason *SecurityStatusHaltReason, Timestamp int64, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 58)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 11)
+	writeString(&buf, Symbol)
+	buf = append(buf, byte(Status.ToValue()))
+	HaltReason_v := uint8(0)
+	if HaltReason != nil {
+		HaltReason_v = byte(HaltReason.ToValue())
+	}
+	buf = append(buf, HaltReason_v)
+	if HaltReason != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for SecurityStatus: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func SecurityStatusDecoderDecode(buf []byte) (SecurityStatus, int, error) {
+	if len(buf) < 8 {
+		return SecurityStatus{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return SecurityStatus{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 58 {
+		return SecurityStatus{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := SecurityStatusStatusFromValue(status_raw)
+	if status_err != nil {
+		return SecurityStatus{}, pos, status_err
+	}
+	halt_reason_raw := readU8(buf, &pos)
+	var halt_reason *SecurityStatusHaltReason
+	if buf[pos] == 1 {
+		pos++
+		e, halt_reason_err := SecurityStatusHaltReasonFromValue(halt_reason_raw)
+		if halt_reason_err != nil {
+			return SecurityStatus{}, pos, halt_reason_err
+		}
+		halt_reason = &e
+	} else {
+		pos++
+		halt_reason = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := SecurityStatus{
+		Symbol:     symbol,
+		Status:     status,
+		HaltReason: halt_reason,
+		Timestamp:  timestamp,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message MassCancelRequest
+type MassCancelRequest struct {
+	ClOrdId string
+	Account string
+	Symbol  *string
+	Side    *MassCancelRequestSide
+}
+
+// SBE body encoder for MassCancelRequest (fields only, no header).
+type MassCancelRequestBodyEncoder struct{}
+
+func (MassCancelRequestBodyEncoder) Encode(value MassCancelRequest, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.ClOrdId)
+	writeString(&local, value.Account)
+	if value.Symbol != nil {
+		local = append(local, 1)
+		writeString(&local, *value.Symbol)
+	} else {
+		local = append(local, 0)
+	}
+	value_Side_v := uint8(0)
+	if value.Side != nil {
+		value_Side_v = byte(value.Side.ToValue())
+	}
+	local = append(local, value_Side_v)
+	if value.Side != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for MassCancelRequest: reads fields at pos, returns the value and the new offset.
+func MassCancelRequestBodyDecoderDecode(buf []byte, pos int) (MassCancelRequest, int, error) {
+	var symbol *string
+	cl_ord_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	side_raw := readU8(buf, &pos)
+	var side *MassCancelRequestSide
+	if buf[pos] == 1 {
+		pos++
+		e, side_err := MassCancelRequestSideFromValue(side_raw)
+		if side_err != nil {
+			return MassCancelRequest{}, pos, side_err
+		}
+		side = &e
+	} else {
+		pos++
+		side = nil
+	}
+	value := MassCancelRequest{
+		ClOrdId: cl_ord_id,
+		Account: account,
+		Symbol:  symbol,
+		Side:    side,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for MassCancelRequest
+type MassCancelRequestEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (MassCancelRequestEncoder) Encode(ClOrdId string, Account string, Symbol *string, Side *MassCancelRequestSide) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 59)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, ClOrdId)
+	writeString(&buf, Account)
+	if Symbol != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *Symbol)
+	} else {
+		buf = append(buf, 0)
+	}
+	Side_v := uint8(0)
+	if Side != nil {
+		Side_v = byte(Side.ToValue())
+	}
+	buf = append(buf, Side_v)
+	if Side != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for MassCancelRequest: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func MassCancelRequestDecoderDecode(buf []byte) (MassCancelRequest, int, error) {
+	if len(buf) < 8 {
+		return MassCancelRequest{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return MassCancelRequest{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 59 {
+		return MassCancelRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var symbol *string
+	cl_ord_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	side_raw := readU8(buf, &pos)
+	var side *MassCancelRequestSide
+	if buf[pos] == 1 {
+		pos++
+		e, side_err := MassCancelRequestSideFromValue(side_raw)
+		if side_err != nil {
+			return MassCancelRequest{}, pos, side_err
+		}
+		side = &e
+	} else {
+		pos++
+		side = nil
+	}
+	value := MassCancelRequest{
+		ClOrdId: cl_ord_id,
+		Account: account,
+		Symbol:  symbol,
+		Side:    side,
+	}
+	return value, pos, nil
+}
+
+// SBE message MassCancelReport
+type MassCancelReport struct {
+	ClOrdId       string
+	Account       string
+	Symbol        *string
+	TotalAffected uint32
+	Status        MassCancelReportStatus
+	Timestamp     int64
+}
+
+// SBE body encoder for MassCancelReport (fields only, no header).
+type MassCancelReportBodyEncoder struct{}
+
+func (MassCancelReportBodyEncoder) Encode(value MassCancelReport, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.ClOrdId)
+	writeString(&local, value.Account)
+	if value.Symbol != nil {
+		local = append(local, 1)
+		writeString(&local, *value.Symbol)
+	} else {
+		local = append(local, 0)
+	}
+	writeU32BE(&local, uint32(value.TotalAffected))
+	local = append(local, byte(value.Status.ToValue()))
+	writeU64BE(&local, uint64(value.Timestamp))
+	*buf = local
+}
+
+// SBE body decoder for MassCancelReport: reads fields at pos, returns the value and the new offset.
+func MassCancelReportBodyDecoderDecode(buf []byte, pos int) (MassCancelReport, int, error) {
+	var symbol *string
+	cl_ord_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	total_affected := readU32BE(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := MassCancelReportStatusFromValue(status_raw)
+	if status_err != nil {
+		return MassCancelReport{}, pos, status_err
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	value := MassCancelReport{
+		ClOrdId:       cl_ord_id,
+		Account:       account,
+		Symbol:        symbol,
+		TotalAffected: total_affected,
+		Status:        status,
+		Timestamp:     timestamp,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for MassCancelReport
+type MassCancelReportEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (MassCancelReportEncoder) Encode(ClOrdId string, Account string, Symbol *string, TotalAffected uint32, Status MassCancelReportStatus, Timestamp int64) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 60)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 13)
+	writeString(&buf, ClOrdId)
+	writeString(&buf, Account)
+	if Symbol != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *Symbol)
+	} else {
+		buf = append(buf, 0)
+	}
+	writeU32BE(&buf, uint32(TotalAffected))
+	buf = append(buf, byte(Status.ToValue()))
+	writeU64BE(&buf, uint64(Timestamp))
+	return buf, nil
+}
+
+// SBE decoder for MassCancelReport: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func MassCancelReportDecoderDecode(buf []byte) (MassCancelReport, int, error) {
+	if len(buf) < 8 {
+		return MassCancelReport{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return MassCancelReport{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 60 {
+		return MassCancelReport{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var symbol *string
+	cl_ord_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		symbol = &s
+	} else {
+		pos++
+	}
+	total_affected := readU32BE(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := MassCancelReportStatusFromValue(status_raw)
+	if status_err != nil {
+		return MassCancelReport{}, pos, status_err
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	value := MassCancelReport{
+		ClOrdId:       cl_ord_id,
+		Account:       account,
+		Symbol:        symbol,
+		TotalAffected: total_affected,
+		Status:        status,
+		Timestamp:     timestamp,
 	}
 	return value, pos, nil
 }

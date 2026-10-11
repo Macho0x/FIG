@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>One encrypted connection for orders, market data, and private account streams.</b><br>
-  A schema-native binary protocol for trading systems, with FIX / REST / WebSocket gateways for migration.
+  A schema-native binary protocol for trading systems, with FIX / REST / WebSocket / OUCH / ITCH gateways for migration.
 </p>
 
 <p align="center">
@@ -101,7 +101,7 @@ flowchart LR
   S --> O["trading/accounts/{acct}/orders<br/>→ ExecutionReport"]
   S --> M["marketdata/AAPL/candles/5m<br/>→ CandleBarEvent"]
   S --> B["accounts/{acct}/balances<br/>→ BalanceSnapshot · BalanceUpdate"]
-  L["Legacy FIX / REST / WS clients"] --> G["fig-gateway"] --> S
+  L["Legacy FIX / REST / WS / OUCH / ITCH clients"] --> G["fig-gateway"] --> S
 ```
 
 Public market data needs no token. Private paths carry `AUTH_TOKEN` and are scoped to the
@@ -159,7 +159,7 @@ until a given binding's generated-SBE coverage matches Rust ([TODO.md](TODO.md))
 You do not have to move every client at once, and nothing about FIG is exchange-specific — the same
 wire serves any venue.
 
-1. **Day 1 — gateway.** Legacy FIX / REST / WebSocket clients keep working; `fig-gateway` translates
+1. **Day 1 — gateway.** Legacy FIX / REST / WebSocket / OUCH / ITCH clients keep working; `fig-gateway` translates
    their shapes into native FIG and proxies to your backend.
 2. **Day 2 — native.** Performance clients connect directly over TREE with SBE/CBOR; the gateway
    shrinks to stragglers.
@@ -201,7 +201,7 @@ Report a vulnerability: [SECURITY.md](SECURITY.md).
 | [docs/TUTORIAL.md](docs/TUTORIAL.md) | Getting started end to end |
 | [docs/PROTOCOL.md](docs/PROTOCOL.md) | Worked sequences and integration patterns |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA, TLS/PKI, configuration |
-| [docs/GATEWAY.md](docs/GATEWAY.md) | FIX / REST / WebSocket migration |
+| [docs/GATEWAY.md](docs/GATEWAY.md) | FIX / REST / WebSocket / OUCH / ITCH migration |
 | [docs/API.md](docs/API.md) | Crate and module map |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Methodology and tail latencies |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Build, FSL workflow, conventions |
@@ -217,7 +217,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.3.2** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+Latest release **1.4.0** ([release notes](CHANGELOG.md)). The wire format is **frozen**
 ([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
 your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).

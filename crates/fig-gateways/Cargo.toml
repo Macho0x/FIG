@@ -3,7 +3,7 @@ name = "fig-gateways"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Gateway adapters for FIG — translate FIX, REST, and WebSocket to/from FIG frames"
+description = "Gateway adapters for FIG — translate FIX, REST, WebSocket, OUCH, and ITCH to/from FIG frames"
 
 [[bin]]
 name = "fig-gateway"

@@ -76,6 +76,8 @@ Check("sbe.mark_price_request.demo", Fig.Sbe.MarkPriceRequestEncoder.Encode("AAP
 Check("sbe.mark_price_update.demo", Fig.Sbe.MarkPriceUpdateEncoder.Encode("AAPL", 100.01, 100.0, 0.0001, 1700000000000000000L, (byte)1));
 Check("sbe.market_data_incremental_refresh.demo", Fig.Sbe.MarketDataIncrementalRefreshEncoder.Encode("AAPL", new List<Fig.Sbe.MarketDataUpdate> { new Fig.Sbe.MarketDataUpdate { Side = Fig.Sbe.MarketDataUpdateSide.Sell, Action = Fig.Sbe.MarketDataUpdateAction.Change, Price = 103.0, Qty = 9.0 }, new Fig.Sbe.MarketDataUpdate { Side = Fig.Sbe.MarketDataUpdateSide.Sell, Action = Fig.Sbe.MarketDataUpdateAction.Change, Price = 104.0, Qty = 10.0 } }, 1700000000000000002L, 10UL));
 Check("sbe.market_data_snapshot.demo", Fig.Sbe.MarketDataSnapshotEncoder.Encode("AAPL", "SIM", new List<Fig.Sbe.PriceLevel> { new Fig.Sbe.PriceLevel { Price = 100.0, Qty = 5.0, OrderCount = 1u } }, new List<Fig.Sbe.PriceLevel>(), 1700000000000000000L, 42UL, (byte)1));
+Check("sbe.mass_cancel_report.demo", Fig.Sbe.MassCancelReportEncoder.Encode("MC-001", "DEMO", "AAPL", 2u, Fig.Sbe.MassCancelReportStatus.Completed, 1700000000000000000L));
+Check("sbe.mass_cancel_request.demo", Fig.Sbe.MassCancelRequestEncoder.Encode("MC-001", "DEMO", "AAPL", Fig.Sbe.MassCancelRequestSide.Buy));
 Check("sbe.mini_ticker.demo", Fig.Sbe.MiniTickerEncoder.Encode("AAPL", 100.0, 50.0, 1700000000000000000L, (byte)1));
 Check("sbe.new_order_single.limit_buy", Fig.Sbe.NewOrderSingleEncoder.Encode("CONF-001", Fig.Sbe.NewOrderSingleSide.Buy, 100.0, 50.25, null, "AAPL", Fig.Sbe.NewOrderSingleOrderType.Limit, Fig.Sbe.NewOrderSingleTimeInForce.Day, null, null, null, null, null, null, null, null));
 Check("sbe.open_orders_request.demo", Fig.Sbe.OpenOrdersRequestEncoder.Encode("ACC-1", "MSFT"));
@@ -91,9 +93,13 @@ Check("sbe.position_snapshot.demo", Fig.Sbe.PositionSnapshotEncoder.Encode("ACC-
 Check("sbe.position_update.demo", Fig.Sbe.PositionUpdateEncoder.Encode("DEMO", "AAPL", 10.0, 100.0, 0.0));
 Check("sbe.public_trade_batch.demo", Fig.Sbe.PublicTradeBatchEncoder.Encode("AAPL", new List<Fig.Sbe.PublicTrade> { new Fig.Sbe.PublicTrade { Symbol = "MSFT", TradeId = "TRADE-ID-3", Price = 103.0, Qty = 9.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000006L }, new Fig.Sbe.PublicTrade { Symbol = "AAPL", TradeId = "TRADE-ID-4", Price = 104.0, Qty = 10.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000007L } }, (byte)1, "NEXT-2"));
 Check("sbe.public_trade_event.demo", Fig.Sbe.PublicTradeEventEncoder.Encode(new Fig.Sbe.PublicTrade { Symbol = "AAPL", TradeId = "TRADE-ID-2", Price = 102.0, Qty = 8.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000005L }));
+Check("sbe.security_status.demo", Fig.Sbe.SecurityStatusEncoder.Encode("AAPL", Fig.Sbe.SecurityStatusStatus.Trading, Fig.Sbe.SecurityStatusHaltReason.None, 1700000000000000000L, (byte)1));
+Check("sbe.security_status_request.demo", Fig.Sbe.SecurityStatusRequestEncoder.Encode("AAPL"));
 Check("sbe.symbol_ticker.demo", Fig.Sbe.SymbolTickerEncoder.Encode("AAPL", 150.5, 0.5, 0.33, 1000.0, 151.0, 149.5, 150.0, 1700000000000000000L, (byte)1));
 Check("sbe.ticker_request.demo", Fig.Sbe.TickerRequestEncoder.Encode("AAPL"));
 Check("sbe.trade_history_request.demo", Fig.Sbe.TradeHistoryRequestEncoder.Encode("AAPL", 1700000000000000001L, 1700000000000000002L, 4u, "CUR-1"));
+Check("sbe.trading_session_status.demo", Fig.Sbe.TradingSessionStatusEncoder.Encode("AAPL", "REG", Fig.Sbe.TradingSessionStatusStatus.Open, Fig.Sbe.TradingSessionStatusHaltReason.News, 1700000000000000000L, (byte)1));
+Check("sbe.trading_session_status_request.demo", Fig.Sbe.TradingSessionStatusRequestEncoder.Encode("AAPL"));
 Check("sbe.user_liquidation.demo", Fig.Sbe.UserLiquidationEncoder.Encode("ACC-1", "MSFT", 7.0, 103.0, 1700000000000000004L));
 
 Console.WriteLine("fig-csharp generated SBE parity OK");
