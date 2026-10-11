@@ -62,8 +62,12 @@ Work **top-down**. Never add Layer 3 without Layer 2 existing.
 - **Small query:** `REQUEST` → `RESPONSE`
 - **Large history:** `REQUEST` → `STREAM_ITEM` × N → `STREAM_CLOSE`
 
-Gateway REST and WebSocket are **translation only** — they map legacy wire formats
-to the same FSL payloads and `CHANNEL_PATH` values. They never define new semantics.
+Gateway REST, WebSocket, FIX, OUCH, and ITCH are **translation only** — they map
+legacy wire formats to the same FSL payloads and `CHANNEL_PATH` values. They
+never define new semantics. OUCH (`--ouch-addr`) and ITCH (`--itch-addr`,
+`--itch-multicast`) are opt-in named adapters
+([ADR 0008](docs/adr/0008-named-gateway-adapters.md),
+[ADR 0009](docs/adr/0009-market-data-plane.md)).
 
 ---
 
@@ -127,8 +131,9 @@ Follow this order for every broker/API change:
 2. **Native path** — register `CHANNEL_PATH` in SPEC §9.1 and query/streaming docs.
 3. **Reference broker** — implement subscribe and/or query in `fig-exchange-sim`
    (`broker_api`, `account_state`, `market_data`).
-4. **Gateway aliases** — map legacy REST/WS/FIX shapes in `fig-gateways` (translation
-   only; round-trip through native FIG).
+4. **Gateway aliases** — map legacy REST/WS/FIX/OUCH/ITCH shapes in `fig-gateways`
+   (translation only; round-trip through native FIG). OUCH and ITCH are opt-in
+   listeners, not new `CHANNEL_PATH`s.
 5. **Conformance** — add native wire vectors in `tests/conformance/` (CBOR/SBE
    frames, not JSON).
 6. **Client SDK** — extend `fig-client` and bindings with native `subscribe()` /
@@ -179,13 +184,15 @@ Do **not**:
 |-------|--------------|
 | Conformance | Native FIG wire — `tests/conformance/vectors/` |
 | Broker | Native `SUBSCRIBE` / `REQUEST` on TREE |
-| Gateway | Legacy JSON in → native FIG frame → legacy JSON out |
+| Gateway | Legacy JSON/FIX/OUCH in → native FIG frame → legacy out; ITCH is L2 egress |
 | Legacy alias fixtures | `gateway_legacy_ws_alias_e2e.rs` — Binance/HL WS, FIX orders, REST GET |
+| OUCH / ITCH | `gateway_ouch_itch_e2e.rs` |
 
 ```bash
 cargo test --workspace
 cargo test -p fig-conformance
 cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e
+cargo test -p fig-gateways --test gateway_ouch_itch_e2e
 cargo run -p xtask -- check-gateway   # gateway parity
 ```
 
@@ -199,6 +206,8 @@ cargo run -p xtask -- check-gateway   # gateway parity
 | Add channel path | [SPEC.md §9.1](SPEC.md), then `fig-exchange-sim` |
 | Add REST alias | `crates/fig-gateways/src/rest_query.rs` |
 | Add WS alias | `crates/fig-gateways/src/ws_catalog.rs` |
+| OUCH / SoupBin order entry | `crates/fig-gateways/src/ouch.rs`, `soupbin.rs` |
+| ITCH L2 egress | `crates/fig-gateways/src/itch.rs` |
 | Reference broker handler | `crates/fig-exchange-sim/src/broker_api.rs` |
 | Client subscribe / request | `crates/fig-client/` |
 | Live subscribe (FFI / Python / Go / C++ / C# / Java) | `crates/fig-ffi/include/fig.h` (`fig_client_subscribe`), then `fig-python`, then `bindings/{go,cpp,csharp,java}` |

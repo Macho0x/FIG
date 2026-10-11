@@ -25,6 +25,8 @@ services:
     depends_on:
       - redis
 
+  # REST :8080, WebSocket :8090, FIX :9876. OUCH and ITCH stay off unless
+  # --ouch-addr / --itch-addr / --itch-multicast are added and those ports published.
   gateway:
     build:
       context: .

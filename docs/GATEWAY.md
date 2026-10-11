@@ -1,6 +1,6 @@
 # Gateway Deployment Guide
 
-How to run FIG alongside legacy FIX and REST infrastructure.
+How to run FIG alongside legacy FIX, REST, WebSocket, OUCH, and ITCH clients.
 
 ## Overview
 
@@ -126,6 +126,10 @@ Login username (SoupBin 6-byte field) is the FIG account; `AUTH_TOKEN` is
 Opt-in `--itch-addr` (SoupBin replay) and/or `--itch-multicast` (MoldUDP64).
 Price-level only — no Add/Delete order references ([ADR 0009](adr/0009-market-data-plane.md)).
 
+With `--fig-backend`, the adapter subscribes to `book` and `trades` for
+`AAPL`, `BTC`, `ETH`, and `BTCUSDT`, plus `marketdata/session`. Other symbols
+are not egressed.
+
 | Type | Meaning |
 |---|---|
 | `S` | System event (`O` start, `S` open, `H` halt, `C` close) |
@@ -180,13 +184,16 @@ See [Dockerfile](../Dockerfile) for the multi-stage build definition.
 ## Venue adoption — Day 1 gateway
 
 Every exchange/broker follows the same track ([AGENTS.md](../AGENTS.md)): **native FIG
-is canonical**. The gateway translates legacy wire formats (FIX, REST, WebSocket JSON)
-to the same FSL payloads and `CHANNEL_PATH` values — there is no per-venue protocol fork.
+is canonical**. The gateway translates legacy wire formats (FIX, REST, WebSocket JSON,
+OUCH, ITCH L2) to the same FSL payloads and `CHANNEL_PATH` values — there is no
+per-venue protocol fork. OUCH and ITCH are named adapters ([ADR 0008](adr/0008-named-gateway-adapters.md),
+[ADR 0009](adr/0009-market-data-plane.md)), not extra native paths.
 
 ```text
-Legacy clients (any venue) ──► fig-gateway :8090 ──► FIG backend (TREE :8443)
-                                        │
-                    ws_catalog.rs / rest_query.rs = alias mappers only
+Legacy clients ──► fig-gateway ──► FIG backend (TREE :8443)
+  REST :8080 · WebSocket :8090 · FIX :9876          on by default
+  OUCH --ouch-addr · ITCH --itch-addr / --itch-multicast   off by default
+  mappers: ws_catalog.rs, rest_query.rs, ouch.rs, itch.rs
 ```
 
 Binance `@kline_5m` and Hyperliquid `subscription.type` JSON are **reference aliases**
@@ -199,8 +206,13 @@ pointing at the same native paths documented in [SPEC.md §9.1](../SPEC.md).
 # Terminal 1: venue FIG backend (or exchange-sim for testing)
 cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
-# Terminal 2: gateway proxies legacy JSON/FIX to native FIG
-FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+# Terminal 2: gateway proxies legacy JSON/FIX to native FIG.
+# Add --ouch-addr / --itch-addr / --itch-multicast to turn the binary edges on.
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- \
+  --fig-backend 127.0.0.1:8443 \
+  --ouch-addr 127.0.0.1:9877 \
+  --itch-addr 127.0.0.1:9878 \
+  --itch-multicast 239.255.0.1:9879
 ```
 
 ### Reference WebSocket alias coverage

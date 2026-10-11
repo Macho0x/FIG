@@ -12,8 +12,10 @@ streaming over a single multiplexed TREE transport. Key goals:
 - **Schema-native payloads** — CBOR for flexibility, SBE for zero-alloc hot paths.
 - **Channel isolation** — each logical stream maps to a TREE bidirectional or
   unidirectional stream with independent sequence numbers.
-- **Native FIG first** — REST and WebSocket are gateway edges over the same FSL
-  types; see [ADR 0006](adr/0006-broker-api-parity.md).
+- **Native FIG first** — REST, WebSocket, FIX, OUCH, and ITCH L2 are gateway
+  edges over the same FSL types; see [ADR 0006](adr/0006-broker-api-parity.md)
+  and [ADR 0008](adr/0008-named-gateway-adapters.md). OUCH and ITCH listeners
+  are off unless `--ouch-addr` / `--itch-addr` / `--itch-multicast` are set.
 
 ## Connection Lifecycle
 
@@ -221,7 +223,7 @@ See [QUERY.md](QUERY.md) for REST gateway mapping and pagination fields.
 - [QUERY.md](QUERY.md) — historical REQUEST paths and REST GET mapping
 - [GATEWAY.md](GATEWAY.md) — legacy protocol deployment (Day 1 gateway)
 - [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md) — colo SBE order entry
-- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md), [0006: broker API parity](adr/0006-broker-api-parity.md), [0007: crypto instruments](adr/0007-crypto-instrument-model.md))
+- [adr/](adr/) — architecture decision records ([0004: FSL source of truth](adr/0004-fsl-single-source-of-truth.md), [0006: broker API parity](adr/0006-broker-api-parity.md), [0007: crypto instruments](adr/0007-crypto-instrument-model.md), [0008: named adapters](adr/0008-named-gateway-adapters.md), [0009: market-data plane](adr/0009-market-data-plane.md))
 
 ## Gateway alias mapping (reference venues)
 
@@ -240,3 +242,12 @@ implementations in `fig-gateways`; venues do not fork the protocol.
 | `marketdata/ticker/all` | `@miniTicker` | `allMids` | — |
 
 Alias round-trip: `cargo test -p fig-gateways --test gateway_legacy_ws_alias_e2e`.
+
+OUCH and ITCH are session adapters, not extra rows in that alias table.
+`--ouch-addr` maps SoupBin enter/cancel/replace onto
+`trading/accounts/{account}/orders` (and `…/cancel`, `…/replace`).
+`--itch-addr` and `--itch-multicast` egress `book` and `trades` for `AAPL`,
+`BTC`, `ETH`, and `BTCUSDT`, plus `marketdata/session`, as L2 price levels.
+FIG OUCH is 4.2-shaped, not NASDAQ byte-identical. ITCH here is not TotalView.
+Layouts: [GATEWAY.md](GATEWAY.md). Round-trip:
+`cargo test -p fig-gateways --test gateway_ouch_itch_e2e`.

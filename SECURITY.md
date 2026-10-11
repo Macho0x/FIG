@@ -41,7 +41,7 @@ published crates.io artifacts yet — fixes are delivered as repository commits.
 | TREE transport configuration | TLS verification, 0-RTT handling, replay |
 | Session resumption tokens | Forgery, replay, cross-node acceptance |
 | Wire auth (`AUTH_TOKEN`, JWT, path scoping, mTLS) | Bypass, timing, algorithm confusion |
-| Gateways (FIX/REST/WebSocket) | Parsing of untrusted legacy input, auth translation |
+| Gateways (FIX/REST/WebSocket/OUCH/ITCH) | Parsing of untrusted legacy input, auth translation |
 | C ABI (`fig-ffi`) and bindings | Memory safety, ownership across the boundary |
 
 ## What is out of scope

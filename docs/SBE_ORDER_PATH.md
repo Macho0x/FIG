@@ -11,6 +11,11 @@ development, scripting, and gateway JSON migration.
 | Fixed-layout latency-sensitive entry | REST gateway JSON bodies |
 | Template IDs already in `fig-core::sbe` | Exploratory integration |
 
+Incumbent SoupBin clients do not speak SBE. Point them at `fig-gateway
+--ouch-addr` (4.2-shaped OUCH, not NASDAQ byte-identical). L2 plants that
+can consume price levels use `--itch-addr` / `--itch-multicast`. Both are
+off by default. See [GATEWAY.md](GATEWAY.md).
+
 ## Wire checklist
 
 1. **Transport:** TREE (QUIC) to venue FIG backend — not the REST gateway port.

@@ -30,7 +30,7 @@ cargo run -p fig-fsl --bin ftlc -- compile schemas/orders.fsl --lang rust --out 
 ```
 fig-core          — Wire format, channels, sessions, TREE transport, SBE/CBOR codec
 fig-fsl           — FSL schema language parser, multi-target codegen, ftlc CLI
-fig-gateways      — FIX, REST, WebSocket, and SSE gateway adapters
+fig-gateways      — FIX, REST, WebSocket, SSE, SoupBin OUCH, and ITCH L2 adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
 fig-cli           — Native FIG demo client (seven validated flows)
 fig-bench         — Criterion microbenches + fig-latency tail harness
@@ -43,7 +43,7 @@ for the user reading order (SUBSCRIBE vs REQUEST).
 
 1. **Schema-native** — Every frame carries a Schema ID. Messages are validated at the protocol layer.
 2. **Multiplexed** — Channels are TREE streams. Up to 65535 per connection.
-3. **Backwards compatible** — Gateway adapters translate to/from FIX, REST, and WebSocket.
+3. **Backwards compatible** — Gateway adapters translate to/from FIX, REST, WebSocket, OUCH, and ITCH L2. OUCH/ITCH are opt-in listeners (`--ouch-addr`, `--itch-addr`, `--itch-multicast`), not the FIG wire.
 4. **Zero-RTT** — Sessions survive disconnects. Reconnect with 0-RTT and resume channels.
 5. **Observable** — Trace ID, Correlation ID, and timestamps in the fixed header.
 

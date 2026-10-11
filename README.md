@@ -68,12 +68,28 @@ certificate, so you never have to disable verification (in production you point 
 The simulator is a **reference venue** — in-memory matching and dev tokens, not production
 infrastructure. Walkthrough: [docs/TUTORIAL.md](docs/TUTORIAL.md).
 
-Keep legacy clients on day 1 — run the gateway in front of the same backend
-(REST `:8080`, WebSocket `:8090`, FIX `:9876`):
+Keep legacy clients on day 1 — run the gateway in front of the same backend.
+REST `:8080`, WebSocket `:8090`, and FIX `:9876` listen by default:
 
 ```bash
 FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
 ```
+
+OUCH and ITCH are the same binary, off until you name a listen address.
+`--ouch-addr` is SoupBinTCP order entry (**4.2-shaped, not NASDAQ byte-identical**).
+`--itch-addr` is SoupBin replay and `--itch-multicast` is MoldUDP64; both egress
+**L2 price levels** for `AAPL`, `BTC`, `ETH`, and `BTCUSDT` (plus session
+events), not TotalView:
+
+```bash
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- \
+  --fig-backend 127.0.0.1:8443 \
+  --ouch-addr 127.0.0.1:9877 \
+  --itch-addr 127.0.0.1:9878 \
+  --itch-multicast 239.255.0.1:9879
+```
+
+Field layouts and what is not implemented: [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ---
 
@@ -148,6 +164,7 @@ for later `STREAM_ITEM`s. `send_and_read` is REQUEST-only and will hang on a liv
 | Python | `pip install maturin && maturin develop -m crates/fig-python/Cargo.toml`, then `import fig` | [crates/fig-python](crates/fig-python/) · [docs/PUBLISHING.md](docs/PUBLISHING.md) |
 | Go · C# · TypeScript · Java · OCaml · Zig · C++ | `cargo build -p fig-ffi` + the per-language wrapper over [`fig.h`](crates/fig-ffi/include/fig.h) | [bindings/README.md](bindings/README.md) |
 | Browser / no FFI | `fig-gateway` REST + WebSocket | [docs/GATEWAY.md](docs/GATEWAY.md) |
+| Colo SoupBin | `fig-gateway --ouch-addr` (order entry) · `--itch-addr` / `--itch-multicast` (L2 egress) | [docs/GATEWAY.md](docs/GATEWAY.md) |
 
 Bindings share the C ABI for connect, request, subscribe, and SBE codecs. Prefer the FFI wire codecs
 until a given binding's generated-SBE coverage matches Rust ([TODO.md](TODO.md)).
@@ -160,7 +177,9 @@ You do not have to move every client at once, and nothing about FIG is exchange-
 wire serves any venue.
 
 1. **Day 1 — gateway.** Legacy FIX / REST / WebSocket / OUCH / ITCH clients keep working; `fig-gateway` translates
-   their shapes into native FIG and proxies to your backend.
+   their shapes into native FIG and proxies to your backend. REST, WebSocket, and FIX listen by default.
+   `--ouch-addr`, `--itch-addr`, and `--itch-multicast` stay off until set. Optional FIX drop-copy is
+   `--fix-dropcopy-account`.
 2. **Day 2 — native.** Performance clients connect directly over TREE with SBE/CBOR; the gateway
    shrinks to stragglers.
 3. **Day 3 — extensions.** Venue-specific products extend FSL and `CapabilitiesResponse` — never a
@@ -217,7 +236,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.0** ([release notes](CHANGELOG.md)). The wire format is **frozen**
+Latest release **1.4.1** ([release notes](CHANGELOG.md)). The wire format is **frozen**
 ([SPEC.md](SPEC.md) 1.0.0, *Stable*); Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
 your CI ([docs/PUBLISHING.md](docs/PUBLISHING.md)). Open work is tracked in [TODO.md](TODO.md).

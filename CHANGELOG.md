@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to the FIG repository.
+
+## 1.4.1
+
+### Changed
+- README, tutorial, deployment, SPEC §12, and the gateway guides now name the
+  opt-in OUCH and ITCH listeners (`--ouch-addr`, `--itch-addr`, `--itch-multicast`)
+  and what they do not implement: OUCH is 4.2-shaped, not NASDAQ byte-identical;
+  ITCH is L2 price-level egress for `AAPL`, `BTC`, `ETH`, and `BTCUSDT` plus
+  `marketdata/session`, not TotalView.
+
 ## 1.4.0
 
 ### Added

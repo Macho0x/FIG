@@ -25,8 +25,10 @@ streaming) into a single wire format.
   timestamps are protocol-level header fields.
 - **Zero-RTT session continuity.** Sessions survive disconnects and
   resume with TREE 0-RTT.
-- **Backwards compatible.** Gateways translate to/from FIX, REST, and
-  WebSocket for migration.
+- **Backwards compatible.** Gateways translate to/from FIX, REST,
+  WebSocket, OUCH (SoupBinTCP), and ITCH L2 for migration. Those adapters
+  are not the FIG wire; see §12 and
+  [ADR 0008](docs/adr/0008-named-gateway-adapters.md).
 
 ### 1.2 Terminology
 
@@ -384,10 +386,11 @@ channel://broker.example.com:8443/analytics/risk/VaR?portfolio=main&type=request
 
 **Native FIG is canonical.** Every broker capability must exist as native FIG
 frames on TREE first (`SUBSCRIBE` for live push, `REQUEST`/`RESPONSE` or
-`REQUEST`/`STREAM_ITEM` for historical pulls). REST GET and WebSocket topics
-are **gateway adapters** that translate to and from the same FSL payloads —
-they must not introduce queries or streams that native FIG lacks. See
-[ADR 0006](docs/adr/0006-broker-api-parity.md).
+`REQUEST`/`STREAM_ITEM` for historical pulls). REST, WebSocket, FIX, OUCH,
+and ITCH are **gateway adapters** that translate to and from the same FSL
+payloads — they must not introduce queries or streams that native FIG lacks.
+See [ADR 0006](docs/adr/0006-broker-api-parity.md) and
+[ADR 0008](docs/adr/0008-named-gateway-adapters.md).
 
 **Routing rules:**
 - If CHANNEL_PATH is present → route to the path handler.
@@ -404,6 +407,11 @@ paths, types, schemas).
 Paths below are implemented by the reference broker (`fig-exchange-sim`) and
 mapped by `fig-gateways` when `--fig-backend` is set. Gateway WS aliases refer
 to Binance-style topics; Hyperliquid JSON subscriptions map via `ws_catalog.rs`.
+OUCH (`--ouch-addr`) maps enter, cancel, and replace onto the order paths
+below. ITCH (`--itch-addr`, `--itch-multicast`) egresses `book` and `trades`
+for `AAPL`, `BTC`, `ETH`, and `BTCUSDT`, plus `marketdata/session`, as L2
+price-level messages. Byte layouts live in
+[docs/GATEWAY.md](docs/GATEWAY.md), not in this specification.
 
 #### Public market data (no auth)
 
@@ -751,6 +759,37 @@ the protocol's identity.
 | Close frame | STREAM_CLOSE |
 | Ping/Pong | CONTROL(PING/PONG) |
 
+### 12.4 OUCH ↔ FIG (named adapter)
+
+Not part of the FIG wire. `fig-gateway --ouch-addr` speaks SoupBinTCP and a
+**4.2-shaped** OUCH payload. It is not NASDAQ byte-identical. The SoupBin
+login username is the FIG account; the reference adapter injects
+`AUTH_TOKEN` `fig-dev-{account}`. Order bodies are not signed. Field layout:
+[docs/GATEWAY.md](docs/GATEWAY.md). Decision:
+[ADR 0008](docs/adr/0008-named-gateway-adapters.md).
+
+| OUCH | FIG |
+|---|---|
+| Enter `O` | POST `trading/accounts/{account}/orders` (`NewOrderSingle`) |
+| Cancel `X` | POST `trading/accounts/{account}/orders/{cl_ord_id}/cancel` |
+| Replace `U` | POST `trading/accounts/{account}/orders/{cl_ord_id}/replace` |
+| Accepted `A`, Executed `E`, Canceled `C`, Rejected `J` | `ExecutionReport` |
+
+### 12.5 ITCH L2 ↔ FIG (named adapter)
+
+Not part of the FIG wire, and not NASDAQ TotalView. `--itch-addr` (SoupBinTCP
+replay) and `--itch-multicast` (MoldUDP64, session `FIGITCH01`) carry the
+same price-level payloads. The adapter does not invent per-order references.
+With `--fig-backend` it subscribes to `book` and `trades` for `AAPL`, `BTC`,
+`ETH`, and `BTCUSDT`, plus `marketdata/session`. Decision:
+[ADR 0009](docs/adr/0009-market-data-plane.md).
+
+| ITCH | FIG source |
+|---|---|
+| `R` stock directory, `L` price level | `marketdata/{symbol}/book` (`OrderBookSnapshot`, `OrderBookDelta`) |
+| `T` trade | `marketdata/{symbol}/trades` (`PublicTradeEvent`) |
+| `S` system event | `marketdata/session` (`TradingSessionStatus`) |
+
 ---
 
 ## 13. Compliance Tiers
@@ -796,6 +835,8 @@ Servers advertise their tier during CONNECT via SETTINGS.
 - FIX Protocol 4.4 / 5.0 SP2 / FIXT.1.1
 - FIX Simple Binary Encoding (SBE) Standard
 - RFC 6455 — The WebSocket Protocol
+- [ADR 0008](docs/adr/0008-named-gateway-adapters.md) — named gateway adapters (FIX, REST, WebSocket, OUCH, ITCH)
+- [ADR 0009](docs/adr/0009-market-data-plane.md) — native MD stays TREE L2; ITCH is L2 egress
 
 ---
 

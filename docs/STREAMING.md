@@ -1,8 +1,13 @@
 # FIG Streaming Guide
 
 Native FIG live data uses **TREE channels**, `SUBSCRIBE` frames, and `STREAM_ITEM`
-payloads. WebSocket and SSE are gateway edges that map to the same FSL types.
-Native FIG is the source of truth — see [ADR 0006](adr/0006-broker-api-parity.md).
+payloads. WebSocket, SSE, and ITCH L2 are gateway edges that map to the same
+FSL types. Native FIG is the source of truth — see
+[ADR 0006](adr/0006-broker-api-parity.md). ITCH (`--itch-addr` SoupBin replay,
+`--itch-multicast` MoldUDP64) republishes book and trades for `AAPL`, `BTC`,
+`ETH`, and `BTCUSDT`, plus `marketdata/session`, as price-level messages
+(`L`, `T`, `S`). It is not an order-by-order feed
+([ADR 0009](adr/0009-market-data-plane.md), [GATEWAY.md](GATEWAY.md)).
 
 ## Interaction pattern
 

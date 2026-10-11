@@ -83,21 +83,30 @@ For later `STREAM_ITEM`s, use `subscribe_live` — see [STREAMING.md](STREAMING.
 
 ## 3. Run the legacy gateway (optional)
 
-Translate FIX, REST, and WebSocket into native FIG frames:
+Translate FIX, REST, WebSocket, and (opt-in) OUCH / ITCH into native FIG frames:
 
 ```bash
 # Terminal 1: backend
 cargo run -p fig-exchange-sim -- --print-ca .fig/dev-ca.pem
 
-# Terminal 2: gateway with backend proxy
+# Terminal 2: gateway with backend proxy (FIX / REST / WebSocket)
 FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- --fig-backend 127.0.0.1:8443
+
+# Same process, plus SoupBin OUCH and ITCH L2 egress
+FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- \
+  --fig-backend 127.0.0.1:8443 \
+  --ouch-addr 127.0.0.1:9877 \
+  --itch-addr 127.0.0.1:9878 \
+  --itch-multicast 239.255.0.1:9879
 ```
 
 | Listener | Address | Purpose |
 |---|---|---|
 | REST | `http://127.0.0.1:8080` | HTTP GET → FIG `REQUEST` (with `--fig-backend`) |
 | WebSocket | `ws://127.0.0.1:8090` | Legacy subscribe JSON → FIG `SUBSCRIBE` |
-| FIX | `tcp://127.0.0.1:9876` | FIX 4.4 → FIG trading frames |
+| FIX | `tcp://127.0.0.1:9876` | FIX 4.4 → FIG trading frames. Optional `--fix-dropcopy-account` egresses 35=8 |
+| OUCH | `--ouch-addr` (example `127.0.0.1:9877`) | SoupBinTCP + OUCH 4.2-shaped enter/cancel/replace. Off unless set. Not NASDAQ byte-identical |
+| ITCH | `--itch-addr` / `--itch-multicast` | L2 price-level egress (SoupBin replay and/or MoldUDP64). Off unless set. Not TotalView |
 
 See [GATEWAY.md](GATEWAY.md), [STREAMING.md](STREAMING.md), and [QUERY.md](QUERY.md).
 
@@ -260,7 +269,11 @@ The container's simulator presents a self-signed certificate. Local clients eith
 ## 10. Broker API stream and query inventory
 
 Native FIG paths implemented by `fig-exchange-sim`. Gateway WS/REST columns show
-legacy aliases when running `fig-gateway --fig-backend`.
+legacy aliases when running `fig-gateway --fig-backend`. OUCH (`--ouch-addr`)
+enters, cancels, and replaces on `trading/accounts/{acct}/orders`. ITCH
+(`--itch-addr`, `--itch-multicast`) egresses `book` and `trades` for `AAPL`,
+`BTC`, `ETH`, and `BTCUSDT`, plus `marketdata/session`, as L2 price levels.
+Neither adapter adds a native path.
 
 ### Live streams (`SUBSCRIBE` → `STREAM_ITEM`)
 
@@ -275,7 +288,9 @@ legacy aliases when running `fig-gateway --fig-backend`.
 | All mids | `marketdata/ticker/all` | `MiniTicker` | `@miniTicker` |
 | Mark price | `marketdata/{sym}/mark` | `MarkPriceUpdate` | `@markPrice` |
 | Public liq | `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
-| Executions | `trading/accounts/{acct}/executions` | `ExecutionReport` | HL `orderUpdates` |
+| Trading session | `marketdata/session` | `TradingSessionStatus` | FIX 35=h; ITCH `S` |
+| Security status | `marketdata/{sym}/status` | `SecurityStatus` | FIX 35=f |
+| Executions | `trading/accounts/{acct}/executions` | `ExecutionReport` | HL `orderUpdates`; FIX drop-copy 35=8 |
 | Balances | `accounts/{acct}/balances` | `BalanceSnapshot`, `BalanceUpdate` | HL `spotState` |
 | Positions | `accounts/{acct}/positions` | `PositionSnapshot`, `PositionUpdate` | HL `clearinghouseState` |
 | Margin | `accounts/{acct}/margin` | `MarginUpdate` | HL `margin` |
@@ -300,7 +315,10 @@ Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
 | Ticker | `marketdata/{sym}/ticker` | `TickerRequest` → `SymbolTicker` |
 | Account | `accounts/{acct}` | GET → `AccountSummary` |
 | Margin | `accounts/{acct}/margin` | GET → `MarginSummary` |
+| Trading session | `marketdata/session` | `TradingSessionStatusRequest` → `TradingSessionStatus` |
+| Security status | `marketdata/{sym}/status` | `SecurityStatusRequest` → `SecurityStatus` |
 | Open orders | `trading/accounts/{acct}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` |
+| Mass cancel | `trading/accounts/{acct}/orders/masscancel` | `MassCancelRequest` → `MassCancelReport` (FIX 35=q / 35=r; not an OUCH message) |
 | Order history | `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` (stream if large) |
 | Fills | `accounts/{acct}/fills` | `FillHistoryRequest` → `FillHistoryBatch` |
 | Funding hist | `accounts/{acct}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` |

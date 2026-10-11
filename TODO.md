@@ -1266,7 +1266,9 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | REST SSE → STREAM_ITEM streaming | Low | `sse` module: parse_sse_chunk / sse_to_fig_stream_item |
 | ✅ | Historical / query REST gateway mappings | High | See **§17.0b**, **§17.5** — `rest_query.rs` + `--fig-backend` proxy |
 | ✅ | Full WS stream catalog (MD + user data) | High | See **§17.8** — `ws_catalog.rs` Binance/Hyperliquid → FIG `SUBSCRIBE` |
-| ✅ | Gateway process (standalone binary) | Medium | fig-gateway binary: REST + FIX TCP listeners |
+| ✅ | Gateway process (standalone binary) | Medium | `fig-gateway`: REST `:8080`, WS `:8090`, FIX `:9876`; OUCH/ITCH opt-in |
+| ✅ | SoupBinTCP + OUCH 4.2-shaped order entry | High | `--ouch-addr`; not NASDAQ byte-identical — [ADR 0008](docs/adr/0008-named-gateway-adapters.md) |
+| ✅ | ITCH L2 price-level egress | High | `--itch-addr` SoupBin, `--itch-multicast` MoldUDP64 — [ADR 0009](docs/adr/0009-market-data-plane.md) |
 
 ---
 

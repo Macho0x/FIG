@@ -83,6 +83,9 @@ curl 'http://127.0.0.1:8080/.well-known/instruments'
 ```
 
 Without `--fig-backend`, the gateway returns a translation demo (no live data).
+Binary order entry is not this HTTP surface: `--ouch-addr` (SoupBin OUCH,
+4.2-shaped) posts to the same order paths. ITCH is egress only. See
+[GATEWAY.md](GATEWAY.md).
 
 ## Native SDK (same paths, no HTTP)
 

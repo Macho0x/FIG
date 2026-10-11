@@ -19,6 +19,9 @@ and account portals.
   FIX :9876 ──► fig-gateway ────────┘                         │
   REST :8080 ──► fig-gateway ──► --fig-backend host:8443     │
   WS :8090 ────► fig-gateway                                 │
+  OUCH ────────► --ouch-addr          (off unless set)      │
+  ITCH ────────► --itch-addr          (SoupBin replay)      │
+                 --itch-multicast     (MoldUDP64 L2 egress) │
          └───────────────────────────────────────────────────┘
 
   Prometheus ──scrape──► fig-gateway --metrics-addr :9091
@@ -40,6 +43,10 @@ docker compose up
 ```
 
 `FIG_DEV_OPEN=1` is set on the compose **demo** sim only — never in production.
+The compose gateway publishes REST `:8080`, WebSocket `:8090`, and FIX `:9876`.
+OUCH and ITCH stay off in that stack. To turn them on, add `--ouch-addr`,
+`--itch-addr`, and/or `--itch-multicast` to the gateway command and publish
+those ports. Layouts and limits: [GATEWAY.md](GATEWAY.md).
 
 Live `SUBSCRIBE` holds the TREE stream open: snapshot/ack is written immediately,
 then later `STREAM_ITEM`s are pushed on that same subscriber connection. REQUEST
