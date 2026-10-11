@@ -105,6 +105,46 @@ async fn sdk_helpers_request_and_subscribe_smoke() {
     assert_eq!(limits.symbol, "AAPL");
     assert!(limits.lower_limit.is_none());
     assert!(limits.upper_limit.is_none());
+
+    let batch = sdk
+        .post_batch(
+            "TEST",
+            &fig_core::messages::BatchRequest {
+                batch_id: "SDK-BAT-1".into(),
+                account: "TEST".into(),
+                actions: vec![fig_core::messages::BatchAction {
+                    kind: fig_core::messages::BatchActionKind::NewOrder,
+                    new_order: Some(fig_core::messages::NewOrderSingle {
+                        cl_ord_id: "SDK-BAT-A".into(),
+                        side: fig_core::messages::Side::Buy,
+                        order_qty: fig_core::messages::Quantity(1.0),
+                        price: Some(fig_core::messages::Price(10.0)),
+                        stop_price: None,
+                        symbol: "AAPL".into(),
+                        order_type: fig_core::messages::OrderType::Limit,
+                        time_in_force: fig_core::messages::TimeInForce::Day,
+                        expire_time: None,
+                        account: Some("TEST".into()),
+                        strategy_id: None,
+                        security_id: None,
+                        id_source: None,
+                        security_exchange: None,
+                        post_only: Some(true),
+                        reduce_only: None,
+                    }),
+                    cancel: None,
+                    replace: None,
+                }],
+            },
+            19,
+        )
+        .await
+        .expect("batch");
+    assert_eq!(
+        batch.outcome,
+        fig_core::messages::BatchReportOutcome::Applied
+    );
+
     let raw = sdk
         .request(12, 0x01, "marketdata/session", "GET", None, None)
         .await

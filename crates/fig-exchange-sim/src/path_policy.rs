@@ -35,6 +35,7 @@ fn is_subscribe_forbidden_path(path: &str) -> bool {
         || parse_instruments_path(path)
         || parse_order_history_path(path).is_some()
         || crate::broker_session::parse_mass_cancel_path(path).is_some()
+        || crate::broker_session::parse_batch_path(path).is_some()
         || path.ends_with("/fills")
         || (path.starts_with("accounts/") && path.matches('/').count() == 1)
 }
@@ -66,7 +67,9 @@ pub fn expected_interaction(path: &str) -> Interaction {
     if parse_order_history_path(path).is_some() {
         return Interaction::RequestGet;
     }
-    if crate::broker_session::parse_mass_cancel_path(path).is_some() {
+    if crate::broker_session::parse_mass_cancel_path(path).is_some()
+        || crate::broker_session::parse_batch_path(path).is_some()
+    {
         return Interaction::RequestPost;
     }
     if path.contains("/orders")
@@ -258,6 +261,17 @@ mod tests {
                 "marketdata/AAPL/limits",
             ))
             .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn post_allowed_for_batch() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "trading/accounts/DEMO/batch",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "POST"));
         assert!(validate_interaction(&frame).is_none());
     }
 

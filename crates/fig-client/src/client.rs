@@ -5,13 +5,13 @@ use std::time::Duration;
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
 use fig_core::messages::{
-    AccountSummary, AllMidsBatch, AllMidsRequest, BestBidOffer, CandleBarBatch, CandleBarRequest,
-    CapabilitiesResponse, ExecutionReport, FillHistoryBatch, FillHistoryRequest,
-    FundingHistoryBatch, FundingHistoryRequest, FundingPayment, InstrumentCatalogResponse,
-    LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, MarkPriceUpdate, MiniTicker,
-    NewOrderSingle, OpenOrdersSnapshot, OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch,
-    OrderHistoryRequest, PositionSnapshot, PublicTradeBatch, PublicTradeEvent, SymbolTicker,
-    TradeHistoryRequest, UserLiquidation,
+    AccountSummary, AllMidsBatch, AllMidsRequest, BatchReport, BatchRequest, BestBidOffer,
+    CandleBarBatch, CandleBarRequest, CapabilitiesResponse, ExecutionReport, FillHistoryBatch,
+    FillHistoryRequest, FundingHistoryBatch, FundingHistoryRequest, FundingPayment,
+    InstrumentCatalogResponse, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate,
+    MarkPriceUpdate, MiniTicker, NewOrderSingle, OpenOrdersSnapshot, OrderBookRequest,
+    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, PositionSnapshot, PublicTradeBatch,
+    PublicTradeEvent, SymbolTicker, TradeHistoryRequest, UserLiquidation,
 };
 use fig_core::messages::{AggregateTradeEvent, LiquidationTradeEvent};
 use quinn::Connection;
@@ -257,6 +257,26 @@ impl<'a> FigSdkClient<'a> {
         let payload = encode_cbor(&req).map_err(|e| ClientError::Codec(e.to_string()))?;
         let frames = self
             .request(channel_id, 0x01, &path, "GET", Some(payload), Some(&token))
+            .await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
+    pub async fn post_batch(
+        &self,
+        account: &str,
+        req: &BatchRequest,
+        channel_id: u16,
+    ) -> Result<BatchReport, ClientError> {
+        let path = format!("trading/accounts/{account}/batch");
+        let token = dev_auth_token(account);
+        let payload = encode_cbor(req).map_err(|e| ClientError::Codec(e.to_string()))?;
+        let frames = self
+            .request(channel_id, 0x01, &path, "POST", Some(payload), Some(&token))
             .await?;
         for f in frames {
             if f.frame_type == FrameType::Response {

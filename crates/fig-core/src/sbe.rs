@@ -3,8 +3,8 @@
 use crate::generated::sbe_wire::*;
 use crate::messages::{
     AccountSummary, AggregateTradeBatch, AggregateTradeEvent, AggregateTradeRequest, AllMidsBatch,
-    AllMidsRequest, BalanceSnapshot, BalanceUpdate, BestBidOffer, CancelReject,
-    CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch, CandleBarEvent,
+    AllMidsRequest, BalanceSnapshot, BalanceUpdate, BatchReport, BatchRequest, BestBidOffer,
+    CancelReject, CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch, CandleBarEvent,
     CandleBarRequest, CapabilitiesRequest, ExecutionReport, FillHistoryBatch, FillHistoryRequest,
     FundingHistoryBatch, FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest,
     InstrumentCatalogResponse, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate,
@@ -754,4 +754,42 @@ pub fn encode_price_limits(m: &PriceLimits) -> Vec<u8> {
         m.timestamp,
         m.is_snapshot,
     )
+}
+
+/// Encode a `BatchRequest` SBE message (template 63).
+pub fn encode_batch_request(m: &BatchRequest) -> Vec<u8> {
+    BatchRequestEncoder::encode(m.batch_id.clone(), m.account.clone(), m.actions.clone())
+}
+
+/// Decode a `BatchRequest` SBE message (template 63).
+pub fn decode_batch_request(buf: &[u8]) -> Result<BatchRequest, SbeError> {
+    let d = BatchRequestDecoder::decode(buf).map_err(decode_err)?;
+    Ok(BatchRequest {
+        batch_id: d.batch_id,
+        account: d.account,
+        actions: d.actions,
+    })
+}
+
+/// Encode a `BatchReport` SBE message (template 64).
+pub fn encode_batch_report(m: &BatchReport) -> Vec<u8> {
+    BatchReportEncoder::encode(
+        m.batch_id.clone(),
+        m.account.clone(),
+        m.outcome,
+        m.results.clone(),
+        m.timestamp,
+    )
+}
+
+/// Decode a `BatchReport` SBE message (template 64).
+pub fn decode_batch_report(buf: &[u8]) -> Result<BatchReport, SbeError> {
+    let d = BatchReportDecoder::decode(buf).map_err(decode_err)?;
+    Ok(BatchReport {
+        batch_id: d.batch_id,
+        account: d.account,
+        outcome: d.outcome,
+        results: d.results,
+        timestamp: d.timestamp,
+    })
 }

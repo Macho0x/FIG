@@ -68,7 +68,7 @@ impl Ord for OrderedFloat {
 }
 
 /// The full L3 order book for a single instrument.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrderBook {
     pub symbol: Symbol,
     pub bids: BookSide,

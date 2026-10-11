@@ -73,6 +73,10 @@ never define new semantics. OUCH (`--ouch-addr`) and ITCH (`--itch-addr`,
 
 ## Venue adoption track
 
+The active P3 track is **crypto-perps** ([TODO.md §20](TODO.md),
+[ADR 0010](docs/adr/0010-batch-request.md)). Institutional FIX dialect work
+is parked until a named OMS appears.
+
 Every exchange/broker follows the same path ([TODO.md §20](TODO.md)):
 
 1. **Day 1 — Gateway:** Legacy JSON WS/REST/FIX/OUCH/ITCH clients hit `fig-gateway`;
@@ -202,7 +206,7 @@ cargo run -p xtask -- check-gateway   # gateway parity
 
 | Task | Start here |
 |------|------------|
-| Add message type | `schemas/*.fsl` |
+| Add message type | `schemas/*.fsl` (append-only for SBE template IDs; see `batch.fsl`) |
 | Add channel path | [SPEC.md §9.1](SPEC.md), then `fig-exchange-sim` |
 | Add REST alias | `crates/fig-gateways/src/rest_query.rs` |
 | Add WS alias | `crates/fig-gateways/src/ws_catalog.rs` |

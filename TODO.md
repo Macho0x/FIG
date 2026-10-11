@@ -30,6 +30,10 @@ Detail sections (§18–21) add context; do not duplicate status here.
 **Tracks:** `both` = any adopter · `crypto` = Hyperliquid-shaped (§20) ·
 `institutional` = CME-shaped (§21) · `process` = human sign-off, not code.
 
+**Active P3 track: crypto-perps** ([§0.5](#05-p3--crypto-perps-track-pick-one-track-at-a-time) /
+[§20](#20-venue-adoption--hyperliquid-shaped-crypto-perps)). Institutional
+([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) is parked.
+
 ### 0.1 P0 — Ship FIG 1.0
 
 | Status | Item | Track | Detail |
@@ -82,10 +86,11 @@ Detail sections (§18–21) add context; do not duplicate status here.
 ### 0.5 P3 — Crypto-perps track (pick one track at a time)
 
 **Deferred to Full §20.1** (venue product surface, not protocol forks): TWAP,
-vault/strategy accounts, builder codes, batch multi-action `REQUEST`, chain/L1
-streams. Per-order wallet signatures are venue issuance, not a FIG work item —
-session auth is `AUTH_TOKEN` / JWT / mTLS ([SPEC.md §9.3](SPEC.md),
-[ADR 0008](docs/adr/0008-named-gateway-adapters.md)).
+vault/strategy accounts, builder codes, chain/L1 streams. Per-order wallet
+signatures are venue issuance, not a FIG work item — session auth is
+`AUTH_TOKEN` / JWT / mTLS ([SPEC.md §9.3](SPEC.md),
+[ADR 0008](docs/adr/0008-named-gateway-adapters.md)). Batch / atomic
+`REQUEST` is [ADR 0010](docs/adr/0010-batch-request.md).
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
@@ -93,7 +98,7 @@ session auth is `AUTH_TOKEN` / JWT / mTLS ([SPEC.md §9.3](SPEC.md),
 | ✅ | Gateway legacy alias E2E (Binance/HL/FIX/REST fixtures) | crypto | `gateway_legacy_ws_alias_e2e.rs` |
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
-| ⬜ | Batch / atomic multi-action `REQUEST` contract | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
+| ✅ | Batch / atomic multi-action `REQUEST` contract | crypto | [ADR 0010](docs/adr/0010-batch-request.md) — `trading/accounts/{account}/batch` |
 | ⬜ | Chain / L1 event stream domain in FSL | crypto | [§20.1](#201-fig-project--wire-and-protocol-gaps) |
 | ✅ | Post-only, reduce-only, venue policy flags in SPEC | crypto | SPEC §9.4, `schemas/orders.fsl`, exchange-sim matcher |
 
@@ -354,7 +359,7 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 |---|---|---|---|
 | ⬜ | FSL: TWAP, vault/strategy accounts, spot vs perp products | High | Not in `schemas/*.fsl` |
 | ⬜ | FSL: builder codes, referral tiers, bridge deposit/withdraw events | Medium | HL product surface |
-| ⬜ | Batch / atomic multi-action `REQUEST` contract | Medium | HL batches L1 actions; FIG is frame-per-request |
+| ✅ | Batch / atomic multi-action `REQUEST` contract | Medium | [ADR 0010](docs/adr/0010-batch-request.md) — `BatchRequest` / `BatchReport` on `trading/accounts/{account}/batch`; atomic all-or-nothing |
 | ⬜ | Chain / L1 event stream domain in FSL | Medium | Block height, finality, deposit confirmation, withdrawal status |
 | ✅ | Extended instrument model (long symbols, perp identifiers, margin asset metadata) | High | `schemas/instruments.fsl`, ADR 0007, `Symbol` max_len 32 |
 | ✅ | Post-only, reduce-only, venue policy flags + surveillance hooks in SPEC | Medium | SPEC §9.4, exchange-sim matcher |
@@ -380,7 +385,7 @@ for colocated market makers → **Day 3 FSL extensions** for venue-specific prod
 |---|---|---|---|
 | **P1** | Gateway in front of existing JSON API | ✅ `fig-gateway` + `--fig-backend`, HL alias E2E | Proxy to real matching engine |
 | **P2** | Native FIG/TREE + SBE for colo MMs | ✅ SBE order path doc + demo, instrument model, order flags | Production order entry SLA |
-| **P3** | Venue-specific products on FIG wire | §20.1 FSL (deferred) | Vaults, chain events |
+| **P3** | Venue-specific products on FIG wire | ✅ batch `REQUEST` ([ADR 0010](docs/adr/0010-batch-request.md)). Remaining §20.1 FSL (TWAP/vaults/chain) deferred | Vaults, chain events |
 
 **Rough effort:** §17 API surface ~70% for Binance/Hyperliquid-shaped perps;
 production venue **12–24+ months** venue engineering on top of §19.
@@ -561,8 +566,8 @@ integration tests are the reference behavior.
 > parameters, C# namespace-level constants/helpers and nullable-reference optionals, and
 > `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
-> **Vector coverage is complete.** Every message in the catalog has an SBE vector (87 vectors
-> total, including eight market-state messages). Each sample is authored to exercise the non-degenerate paths —
+> **Vector coverage is complete.** Every message in the catalog has an SBE vector (89 vectors
+> total, including eight market-state messages and the batch envelope). Each sample is authored to exercise the non-degenerate paths —
 > optionals present, lists with two distinct elements, enums at a non-first variant, non-empty
 > strings, timestamps in the `i64` range — and the runner re-encodes every sample and compares it
 > to the pinned hex, so a codec regression fails CI rather than silently re-pinning.
@@ -1065,7 +1070,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
 | ✅ | SBE templates for hot-path streams | High | `fig_core::sbe` encoders (templates 9, 20, 22, 27, 33) |
 | ✅ | CBOR golden vectors per message | High | 17 CBOR vectors in `tests/conformance/vectors/v1.json` (snapshot/delta, paginated history, instrument catalog, post-only) |
-| ✅ | SBE golden vectors per message | High | 63 SBE vectors in the same file, including trading-session, security-status, mass-cancel, and price-limits. File total is 87 (63 SBE, 17 CBOR, 6 frame, 1 channel). |
+| ✅ | SBE golden vectors per message | High | 65 SBE vectors in the same file, including trading-session, security-status, mass-cancel, price-limits, and batch. File total is 89 (65 SBE, 17 CBOR, 6 frame, 1 channel). |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
 | ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE via `ContentType`; `multi_codec.rs` + integration test |
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |

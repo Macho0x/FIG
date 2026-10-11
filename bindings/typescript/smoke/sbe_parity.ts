@@ -9,6 +9,8 @@ import {
   AllMidsRequestEncoderEncode,
   BalanceSnapshotEncoderEncode,
   BalanceUpdateEncoderEncode,
+  BatchReportEncoderEncode,
+  BatchRequestEncoderEncode,
   BestBidOfferEncoderEncode,
   CancelRejectEncoderEncode,
   CancelReplaceRequestEncoderEncode,
@@ -66,6 +68,10 @@ import {
   NewOrderSingleDecoderDecode,
   AggregateTradeSide,
   BalanceUpdateReason,
+  BatchActionKind,
+  BatchReportOutcome,
+  BatchResultKind,
+  BatchResultStatus,
   CancelRejectRejectReason,
   CancelReplaceRequestSide,
   CancelRequestSide,
@@ -142,6 +148,18 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
   const got = BalanceUpdateEncoderEncode("ACC-1", "ASSET-2", 3.0, 4.0, 5.0, BalanceUpdateReason.Deposit);
   if (hex(got) !== want("sbe.balance_update.demo")) {
     throw new Error("sbe.balance_update.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.balance_update.demo"));
+  }
+}
+{
+  const got = BatchReportEncoderEncode("BAT-001", "DEMO", BatchReportOutcome.Applied, [{index: 0, kind: BatchResultKind.NewOrder, cl_ord_id: "BAT-ORD-1", status: BatchResultStatus.Applied, reject_reason: null}, {index: 1, kind: BatchResultKind.Cancel, cl_ord_id: "CL-ORD-ID-1", status: BatchResultStatus.Applied, reject_reason: null}], 1700000000000000000n);
+  if (hex(got) !== want("sbe.batch_report.demo")) {
+    throw new Error("sbe.batch_report.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.batch_report.demo"));
+  }
+}
+{
+  const got = BatchRequestEncoderEncode("BAT-001", "DEMO", [{kind: BatchActionKind.NewOrder, new_order: {cl_ord_id: "BAT-ORD-1", side: NewOrderSingleSide.Buy, order_qty: 1.0, price: 10.0, stop_price: null, symbol: "AAPL", order_type: NewOrderSingleOrderType.Limit, time_in_force: NewOrderSingleTimeInForce.Day, expire_time: null, account: "DEMO", strategy_id: null, security_id: null, id_source: null, security_exchange: null, post_only: 1, reduce_only: null}, cancel: null, replace: null}, {kind: BatchActionKind.Cancel, new_order: null, cancel: {cl_ord_id: "CL-ORD-ID-1", orig_cl_ord_id: "ORIG-CL-ORD-ID-2", symbol: "AAPL", side: CancelRequestSide.Sell, order_qty: 9.0}, replace: null}]);
+  if (hex(got) !== want("sbe.batch_request.demo")) {
+    throw new Error("sbe.batch_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.batch_request.demo"));
   }
 }
 {

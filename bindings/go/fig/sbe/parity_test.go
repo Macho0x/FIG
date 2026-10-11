@@ -55,6 +55,14 @@ func TestAllSbeMessagesMatchConformanceVectors(t *testing.T) {
 		got, err := BalanceUpdateEncoder{}.Encode("ACC-1", "ASSET-2", 3.0, 4.0, 5.0, BalanceUpdateReasonDeposit)
 		check(t, "sbe.balance_update.demo", "000100220000001900054143432d31000741535345542d3240080000000000004010000000000000401400000000000002", got, err)
 	})
+	t.Run("sbe.batch_report.demo", func(t *testing.T) {
+		got, err := BatchReportEncoder{}.Encode("BAT-001", "DEMO", BatchReportOutcomeApplied, []BatchResult{BatchResult{Index: uint32(0), Kind: BatchResultKindNewOrder, ClOrdId: "BAT-ORD-1", Status: BatchResultStatusApplied, RejectReason: nil}, BatchResult{Index: uint32(1), Kind: BatchResultKindCancel, ClOrdId: "CL-ORD-ID-1", Status: BatchResultStatusApplied, RejectReason: nil}}, int64(1700000000000000000))
+		check(t, "sbe.batch_report.demo", "000100400000000900074241542d303031000444454d4f010000000200000012000000000100094241542d4f52442d310100000000140000000102000b434c2d4f52442d49442d31010017979cfe362a0000", got, err)
+	})
+	t.Run("sbe.batch_request.demo", func(t *testing.T) {
+		got, err := BatchRequestEncoder{}.Encode("BAT-001", "DEMO", []BatchAction{BatchAction{Kind: BatchActionKindNewOrder, NewOrder: ptr(NewOrderSingle{ClOrdId: "BAT-ORD-1", Side: NewOrderSingleSideBuy, OrderQty: 1.0, Price: ptr(10.0), StopPrice: nil, Symbol: "AAPL", OrderType: NewOrderSingleOrderTypeLimit, TimeInForce: NewOrderSingleTimeInForceDay, ExpireTime: nil, Account: ptr("DEMO"), StrategyId: nil, SecurityId: nil, IdSource: nil, SecurityExchange: nil, PostOnly: ptr(uint8(1)), ReduceOnly: nil}), Cancel: nil, Replace: nil}, BatchAction{Kind: BatchActionKindCancel, NewOrder: nil, Cancel: ptr(CancelRequest{ClOrdId: "CL-ORD-ID-1", OrigClOrdId: "ORIG-CL-ORD-ID-2", Symbol: "AAPL", Side: CancelRequestSideSell, OrderQty: ptr(9.0)}), Replace: nil}})
+		check(t, "sbe.batch_request.demo", "0001003f0000000000074241542d303031000444454d4f000000020000004b010100094241542d4f52442d31013ff000000000000040240000000000000100000000000000000000044141504c020100000000000000000001000444454d4f000000000001010000000000000033020001000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c0240220000000000000100", got, err)
+	})
 	t.Run("sbe.best_bid_offer.demo", func(t *testing.T) {
 		got, err := BestBidOfferEncoder{}.Encode("AAPL", ptr(101.0), ptr(7.0), ptr(103.0), ptr(9.0), int64(1700000000000000005), ptr(uint8(1)))
 		check(t, "sbe.best_bid_offer.demo", "0001001a0000002900044141504c405940000000000001401c000000000000014059c000000000000140220000000000000117979cfe362a00050101", got, err)

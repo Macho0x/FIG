@@ -49,7 +49,183 @@ pub struct MatchResult {
     pub reject_reason: Option<String>,
 }
 
+/// Outcome of [`MatchingEngine::process_batch`].
+#[derive(Debug, Clone)]
+pub struct BatchApply {
+    pub report: BatchReport,
+    pub fills: Vec<Fill>,
+    pub reports: Vec<ExecutionReport>,
+    pub symbols: Vec<String>,
+}
+
+struct BatchStep {
+    result: BatchResult,
+    fills: Vec<Fill>,
+    reports: Vec<ExecutionReport>,
+    symbol: Option<String>,
+}
+
+fn action_identity(action: &BatchAction) -> (BatchResultKind, String) {
+    let kind = match action.kind {
+        BatchActionKind::NewOrder => BatchResultKind::NewOrder,
+        BatchActionKind::Cancel => BatchResultKind::Cancel,
+        BatchActionKind::Replace => BatchResultKind::Replace,
+    };
+    let cl_ord_id = match action.kind {
+        BatchActionKind::NewOrder => action
+            .new_order
+            .as_ref()
+            .map(|o| o.cl_ord_id.clone())
+            .unwrap_or_default(),
+        BatchActionKind::Cancel => action
+            .cancel
+            .as_ref()
+            .map(|o| o.cl_ord_id.clone())
+            .unwrap_or_default(),
+        BatchActionKind::Replace => action
+            .replace
+            .as_ref()
+            .map(|o| o.cl_ord_id.clone())
+            .unwrap_or_default(),
+    };
+    (kind, cl_ord_id)
+}
+
+fn cancel_reason(reason: CancelRejectReason) -> String {
+    match reason {
+        CancelRejectReason::OrderNotFound => "ORDER_NOT_FOUND".into(),
+        CancelRejectReason::AlreadyCanceled => "ALREADY_CANCELED".into(),
+        CancelRejectReason::AlreadyFilled => "ALREADY_FILLED".into(),
+        CancelRejectReason::TooLateToCancel => "TOO_LATE_TO_CANCEL".into(),
+    }
+}
+
+fn apply_one(
+    engine: &mut MatchingEngine,
+    action: &BatchAction,
+    index: u32,
+) -> Result<BatchStep, String> {
+    let (kind, cl_ord_id) = action_identity(action);
+    match action.kind {
+        BatchActionKind::NewOrder => {
+            let order = action
+                .new_order
+                .as_ref()
+                .ok_or_else(|| "BATCH_ACTION_INVALID".to_string())?;
+            let matched = engine.process_new_order(order);
+            if let Some(reason) = matched.reject_reason {
+                return Err(reason);
+            }
+            let mut reports = Vec::new();
+            for fill in &matched.fills {
+                reports.push(ExecutionReport {
+                    cl_ord_id: order.cl_ord_id.clone(),
+                    order_id: fill.fill_id.clone(),
+                    exec_id: format!("EX-{}", fill.fill_id),
+                    exec_type: fill.exec_type,
+                    ord_status: fill.ord_status,
+                    side: fill.side,
+                    last_qty: Some(fill.fill_qty.clone()),
+                    last_price: Some(fill.fill_price.clone()),
+                    leaves_qty: fill.leaves_qty.clone(),
+                    cum_qty: fill.cum_qty.clone(),
+                    avg_price: fill.avg_price.clone(),
+                    symbol: fill.symbol.clone(),
+                    transact_time: MatchingEngine::now_nanos(),
+                });
+            }
+            if let Some(resting) = &matched.resting_order {
+                reports.push(resting_to_report(resting));
+            }
+            Ok(BatchStep {
+                result: BatchResult {
+                    index,
+                    kind,
+                    cl_ord_id,
+                    status: BatchResultStatus::Applied,
+                    reject_reason: None,
+                },
+                fills: matched.fills,
+                reports,
+                symbol: Some(order.symbol.clone()),
+            })
+        }
+        BatchActionKind::Cancel => {
+            let cancel = action
+                .cancel
+                .as_ref()
+                .ok_or_else(|| "BATCH_ACTION_INVALID".to_string())?;
+            match engine.process_cancel(cancel) {
+                CancelOutcome::Cancelled(order) => {
+                    let mut report = resting_to_report(&order);
+                    report.cl_ord_id = cancel.cl_ord_id.clone();
+                    report.exec_type = ExecType::Canceled;
+                    report.ord_status = OrdStatus::Canceled;
+                    report.leaves_qty = Quantity(0.0);
+                    Ok(BatchStep {
+                        result: BatchResult {
+                            index,
+                            kind,
+                            cl_ord_id,
+                            status: BatchResultStatus::Applied,
+                            reject_reason: None,
+                        },
+                        fills: Vec::new(),
+                        reports: vec![report],
+                        symbol: Some(cancel.symbol.clone()),
+                    })
+                }
+                CancelOutcome::Rejected(reason) => Err(cancel_reason(reason)),
+            }
+        }
+        BatchActionKind::Replace => {
+            let replace = action
+                .replace
+                .as_ref()
+                .ok_or_else(|| "BATCH_ACTION_INVALID".to_string())?;
+            let matched = engine.process_replace(replace);
+            if let Some(reason) = matched.reject_reason {
+                return Err(reason);
+            }
+            let mut reports = Vec::new();
+            for fill in &matched.fills {
+                reports.push(ExecutionReport {
+                    cl_ord_id: replace.cl_ord_id.clone(),
+                    order_id: fill.fill_id.clone(),
+                    exec_id: format!("EX-{}", fill.fill_id),
+                    exec_type: fill.exec_type,
+                    ord_status: fill.ord_status,
+                    side: fill.side,
+                    last_qty: Some(fill.fill_qty.clone()),
+                    last_price: Some(fill.fill_price.clone()),
+                    leaves_qty: fill.leaves_qty.clone(),
+                    cum_qty: fill.cum_qty.clone(),
+                    avg_price: fill.avg_price.clone(),
+                    symbol: fill.symbol.clone(),
+                    transact_time: MatchingEngine::now_nanos(),
+                });
+            }
+            if let Some(resting) = &matched.resting_order {
+                reports.push(resting_to_report(resting));
+            }
+            Ok(BatchStep {
+                result: BatchResult {
+                    index,
+                    kind,
+                    cl_ord_id,
+                    status: BatchResultStatus::Applied,
+                    reject_reason: None,
+                },
+                fills: matched.fills,
+                reports,
+                symbol: Some(replace.symbol.clone()),
+            })
+        }
+    }
+}
+
 /// The matching engine, holding one order book per symbol.
+#[derive(Clone)]
 pub struct MatchingEngine {
     books: HashMap<Symbol, OrderBook>,
     order_index: HashMap<ClientOrderId, Symbol>,
@@ -520,6 +696,11 @@ impl MatchingEngine {
         self.books.keys().cloned().collect()
     }
 
+    /// Working order present (resting or pending stop).
+    pub fn has_working(&self, cl_ord_id: &str) -> bool {
+        self.order_index.contains_key(cl_ord_id)
+    }
+
     /// Record an execution report in per-account order history.
     pub fn record_execution(&mut self, account: &str, report: ExecutionReport) {
         self.order_history.push((account.to_string(), report));
@@ -557,6 +738,84 @@ impl MatchingEngine {
             }
         }
         (affected, reports)
+    }
+
+    /// Max actions the reference broker accepts in one `BatchRequest` (ADR 0010).
+    pub const MAX_BATCH_ACTIONS: usize = 16;
+
+    /// Apply an atomic trading batch. On any item reject, restore pre-batch state.
+    pub fn process_batch(&mut self, req: &BatchRequest) -> BatchApply {
+        let snapshot = self.clone();
+        let mut results = Vec::with_capacity(req.actions.len());
+        let mut fills = Vec::new();
+        let mut reports = Vec::new();
+        let mut fill_symbols: Vec<String> = Vec::new();
+        let mut fail_at: Option<(usize, String)> = None;
+
+        for (index, action) in req.actions.iter().enumerate() {
+            match apply_one(self, action, index as u32) {
+                Ok(step) => {
+                    fills.extend(step.fills);
+                    reports.extend(step.reports);
+                    if let Some(sym) = step.symbol {
+                        if !fill_symbols.iter().any(|s| s == &sym) {
+                            fill_symbols.push(sym);
+                        }
+                    }
+                    results.push(step.result);
+                }
+                Err(reason) => {
+                    fail_at = Some((index, reason));
+                    break;
+                }
+            }
+        }
+
+        let now = Self::now_nanos();
+        if let Some((fail_index, reason)) = fail_at {
+            *self = snapshot;
+            let mut rolled = Vec::with_capacity(req.actions.len());
+            for (index, action) in req.actions.iter().enumerate() {
+                let (kind, cl_ord_id) = action_identity(action);
+                let reject = if index == fail_index {
+                    reason.clone()
+                } else {
+                    "BATCH_ROLLED_BACK".to_string()
+                };
+                rolled.push(BatchResult {
+                    index: index as u32,
+                    kind,
+                    cl_ord_id,
+                    status: BatchResultStatus::Rejected,
+                    reject_reason: Some(reject),
+                });
+            }
+            BatchApply {
+                report: BatchReport {
+                    batch_id: req.batch_id.clone(),
+                    account: req.account.clone(),
+                    outcome: BatchReportOutcome::Rejected,
+                    results: rolled,
+                    timestamp: now,
+                },
+                fills: Vec::new(),
+                reports: Vec::new(),
+                symbols: Vec::new(),
+            }
+        } else {
+            BatchApply {
+                report: BatchReport {
+                    batch_id: req.batch_id.clone(),
+                    account: req.account.clone(),
+                    outcome: BatchReportOutcome::Applied,
+                    results,
+                    timestamp: now,
+                },
+                fills,
+                reports,
+                symbols: fill_symbols,
+            }
+        }
     }
 
     /// Working orders for an account (optionally filtered by symbol).
@@ -757,6 +1016,70 @@ mod tests {
         assert!(result.fills.is_empty());
         assert!(result.resting_order.is_some());
         assert!(result.reject_reason.is_none());
+    }
+
+    #[test]
+    fn batch_two_limits_apply() {
+        let mut engine = MatchingEngine::new();
+        let req = BatchRequest {
+            batch_id: "BAT-1".into(),
+            account: "TEST".into(),
+            actions: vec![
+                BatchAction {
+                    kind: BatchActionKind::NewOrder,
+                    new_order: Some(make_limit_order("B1", Side::Buy, "AAPL", 100.0, 10.0)),
+                    cancel: None,
+                    replace: None,
+                },
+                BatchAction {
+                    kind: BatchActionKind::NewOrder,
+                    new_order: Some(make_limit_order("B2", Side::Buy, "AAPL", 99.0, 10.0)),
+                    cancel: None,
+                    replace: None,
+                },
+            ],
+        };
+        let out = engine.process_batch(&req);
+        assert_eq!(out.report.outcome, BatchReportOutcome::Applied);
+        assert!(engine.has_working("B1"));
+        assert!(engine.has_working("B2"));
+    }
+
+    #[test]
+    fn batch_rolls_back_on_second_reject() {
+        let mut engine = MatchingEngine::new();
+        let req = BatchRequest {
+            batch_id: "BAT-2".into(),
+            account: "TEST".into(),
+            actions: vec![
+                BatchAction {
+                    kind: BatchActionKind::NewOrder,
+                    new_order: Some(make_limit_order("OK", Side::Buy, "AAPL", 100.0, 10.0)),
+                    cancel: None,
+                    replace: None,
+                },
+                BatchAction {
+                    kind: BatchActionKind::Cancel,
+                    new_order: None,
+                    cancel: Some(CancelRequest {
+                        cl_ord_id: "CXL".into(),
+                        orig_cl_ord_id: "MISSING".into(),
+                        symbol: "AAPL".into(),
+                        side: Side::Buy,
+                        order_qty: None,
+                    }),
+                    replace: None,
+                },
+            ],
+        };
+        let out = engine.process_batch(&req);
+        assert_eq!(out.report.outcome, BatchReportOutcome::Rejected);
+        assert!(!engine.has_working("OK"));
+        assert_eq!(
+            out.report.results[0].reject_reason.as_deref(),
+            Some("BATCH_ROLLED_BACK")
+        );
+        assert_eq!(out.report.results[1].status, BatchResultStatus::Rejected);
     }
 
     #[test]

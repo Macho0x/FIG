@@ -4,24 +4,26 @@
 use crate::messages::{
     AccountSummary, AggregateTrade, AggregateTradeBatch, AggregateTradeEvent,
     AggregateTradeRequest, AllMidsBatch, AllMidsRequest, BalanceEntry, BalanceSnapshot,
-    BalanceUpdate, BalanceUpdateReason, BestBidOffer, CancelReject, CancelRejectReason,
-    CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch, CandleBarEvent,
-    CandleBarRequest, CandleInterval, CapabilitiesRequest, CapabilitiesResponse, CapabilityPath,
-    CapabilityPathPattern, ClientOrderId, ExecType, ExecutionReport, FillHistoryBatch,
-    FillHistoryRequest, FundingHistoryBatch, FundingHistoryRequest, FundingPayment,
-    InstrumentCatalogRequest, InstrumentCatalogResponse, InstrumentMetadata, LedgerHistoryBatch,
-    LedgerHistoryRequest, LedgerUpdate, LedgerUpdateKind, LiquidationTrade, LiquidationTradeEvent,
-    MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate, MarketDataAction,
-    MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate, MassCancelReport,
-    MassCancelReportStatus, MassCancelRequest, MiniTicker, NewOrderSingle, OpenOrdersRequest,
-    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest, OrderBookSnapshot,
-    OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
-    PageInfo, PositionEntry, PositionRequest, PositionSnapshot, PositionUpdate, Price, PriceLevel,
-    PriceLimits, PriceLimitsRequest, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
-    SecurityIdSource, SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest,
-    SecurityStatusStatus, Side, Symbol, SymbolTicker, TickerRequest, TimeInForce,
-    TradeHistoryRequest, TradeTimestamp, TradingSessionStatus, TradingSessionStatusHaltReason,
-    TradingSessionStatusRequest, TradingSessionStatusStatus, UserLiquidation,
+    BalanceUpdate, BalanceUpdateReason, BatchAction, BatchActionKind, BatchReport,
+    BatchReportOutcome, BatchRequest, BatchResult, BatchResultKind, BatchResultStatus,
+    BestBidOffer, CancelReject, CancelRejectReason, CancelReplaceRequest, CancelRequest, CandleBar,
+    CandleBarBatch, CandleBarEvent, CandleBarRequest, CandleInterval, CapabilitiesRequest,
+    CapabilitiesResponse, CapabilityPath, CapabilityPathPattern, ClientOrderId, ExecType,
+    ExecutionReport, FillHistoryBatch, FillHistoryRequest, FundingHistoryBatch,
+    FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest, InstrumentCatalogResponse,
+    InstrumentMetadata, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, LedgerUpdateKind,
+    LiquidationTrade, LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest,
+    MarkPriceUpdate, MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot,
+    MarketDataUpdate, MassCancelReport, MassCancelReportStatus, MassCancelRequest, MiniTicker,
+    NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
+    OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
+    OrderListStatusStatus, OrderType, PageInfo, PositionEntry, PositionRequest, PositionSnapshot,
+    PositionUpdate, Price, PriceLevel, PriceLimits, PriceLimitsRequest, PublicTrade,
+    PublicTradeBatch, PublicTradeEvent, Quantity, SecurityIdSource, SecurityStatus,
+    SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side, Symbol,
+    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradeTimestamp,
+    TradingSessionStatus, TradingSessionStatusHaltReason, TradingSessionStatusRequest,
+    TradingSessionStatusStatus, UserLiquidation,
 };
 
 // --- Bounds-checked SBE decode helpers ---
@@ -949,6 +951,135 @@ impl CapabilityPathDecoder {
                 path,
                 pattern,
                 auth_required,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for BatchAction
+pub struct BatchActionEncoder;
+
+impl BatchActionEncoder {
+    pub fn encode(value: &BatchAction, buf: &mut Vec<u8>) {
+        buf.push(value.kind.to_value());
+        buf.push(u8::from(value.new_order.is_some()));
+        if let Some(ref v) = value.new_order {
+            NewOrderSingleBodyEncoder::encode(v, buf);
+        }
+        buf.push(u8::from(value.cancel.is_some()));
+        if let Some(ref v) = value.cancel {
+            CancelRequestBodyEncoder::encode(v, buf);
+        }
+        buf.push(u8::from(value.replace.is_some()));
+        if let Some(ref v) = value.replace {
+            CancelReplaceRequestBodyEncoder::encode(v, buf);
+        }
+    }
+}
+
+/// SBE body decoder for BatchAction
+pub struct BatchActionDecoder;
+
+impl BatchActionDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(BatchAction, usize), String> {
+        let mut pos: usize = 0;
+
+        let kind_raw = sbe_u8(buf, &mut pos)?;
+        let kind = BatchActionKind::from_value(kind_raw)
+            .ok_or_else(|| format!("invalid BatchActionKind value: {}", kind_raw))?;
+        let new_order = if sbe_u8(buf, &mut pos)? == 1 {
+            let rest = buf
+                .get(pos..)
+                .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+            let (item, n) = NewOrderSingleBodyDecoder::decode(rest)?;
+            pos += n;
+            Some(item)
+        } else {
+            None
+        };
+        let cancel = if sbe_u8(buf, &mut pos)? == 1 {
+            let rest = buf
+                .get(pos..)
+                .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+            let (item, n) = CancelRequestBodyDecoder::decode(rest)?;
+            pos += n;
+            Some(item)
+        } else {
+            None
+        };
+        let replace = if sbe_u8(buf, &mut pos)? == 1 {
+            let rest = buf
+                .get(pos..)
+                .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
+            let (item, n) = CancelReplaceRequestBodyDecoder::decode(rest)?;
+            pos += n;
+            Some(item)
+        } else {
+            None
+        };
+
+        Ok((
+            BatchAction {
+                kind,
+                new_order,
+                cancel,
+                replace,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for BatchResult
+pub struct BatchResultEncoder;
+
+impl BatchResultEncoder {
+    pub fn encode(value: &BatchResult, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(&value.index.to_be_bytes());
+        buf.push(value.kind.to_value());
+        let cl_ord_id_bytes = value.cl_ord_id.as_bytes();
+        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(cl_ord_id_bytes);
+        buf.push(value.status.to_value());
+        buf.push(if value.reject_reason.is_some() { 1 } else { 0 });
+        if let Some(ref s) = value.reject_reason {
+            let b = s.as_bytes();
+            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
+            buf.extend_from_slice(b);
+        }
+    }
+}
+
+/// SBE body decoder for BatchResult
+pub struct BatchResultDecoder;
+
+impl BatchResultDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(BatchResult, usize), String> {
+        let mut pos: usize = 0;
+
+        let index_raw = sbe_u32(buf, &mut pos)?;
+        let index = index_raw;
+        let kind_raw = sbe_u8(buf, &mut pos)?;
+        let kind = BatchResultKind::from_value(kind_raw)
+            .ok_or_else(|| format!("invalid BatchResultKind value: {}", kind_raw))?;
+        let cl_ord_id = sbe_str(buf, &mut pos)?;
+        let status_raw = sbe_u8(buf, &mut pos)?;
+        let status = BatchResultStatus::from_value(status_raw)
+            .ok_or_else(|| format!("invalid BatchResultStatus value: {}", status_raw))?;
+        let reject_reason = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(sbe_str(buf, &mut pos)?)
+        } else {
+            None
+        };
+
+        Ok((
+            BatchResult {
+                index,
+                kind,
+                cl_ord_id,
+                status,
+                reject_reason,
             },
             pos,
         ))
@@ -4532,6 +4663,127 @@ impl PriceLimitsBodyDecoder {
                 reference_price,
                 timestamp,
                 is_snapshot,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested BatchRequest
+pub struct BatchRequestBodyEncoder;
+
+impl BatchRequestBodyEncoder {
+    pub fn encode(value: &BatchRequest, buf: &mut Vec<u8>) {
+        let batch_id_bytes = value.batch_id.as_bytes();
+        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(batch_id_bytes);
+        let account_bytes = value.account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&(value.actions.len() as u32).to_be_bytes());
+        for item in &value.actions {
+            let mut item_buf = Vec::new();
+            BatchActionEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+    }
+}
+
+/// SBE body decoder for nested BatchRequest
+pub struct BatchRequestBodyDecoder;
+
+impl BatchRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(BatchRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        let batch_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let actions_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut actions =
+            Vec::with_capacity(sbe_capacity(actions_count, buf.len().saturating_sub(pos)));
+        for _ in 0..actions_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BatchActionDecoder::decode(item_bytes)?;
+            if n != item_len {
+                return Err(format!(
+                    "BatchAction length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            actions.push(item);
+        }
+
+        Ok((
+            BatchRequest {
+                batch_id,
+                account,
+                actions,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested BatchReport
+pub struct BatchReportBodyEncoder;
+
+impl BatchReportBodyEncoder {
+    pub fn encode(value: &BatchReport, buf: &mut Vec<u8>) {
+        let batch_id_bytes = value.batch_id.as_bytes();
+        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(batch_id_bytes);
+        let account_bytes = value.account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(value.outcome.to_value());
+        buf.extend_from_slice(&(value.results.len() as u32).to_be_bytes());
+        for item in &value.results {
+            let mut item_buf = Vec::new();
+            BatchResultEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+        buf.extend_from_slice(&value.timestamp.to_be_bytes());
+    }
+}
+
+/// SBE body decoder for nested BatchReport
+pub struct BatchReportBodyDecoder;
+
+impl BatchReportBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(BatchReport, usize), String> {
+        let mut pos: usize = 0;
+
+        let batch_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let outcome_raw = sbe_u8(buf, &mut pos)?;
+        let outcome = BatchReportOutcome::from_value(outcome_raw)
+            .ok_or_else(|| format!("invalid BatchReportOutcome value: {}", outcome_raw))?;
+        let results_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut results =
+            Vec::with_capacity(sbe_capacity(results_count, buf.len().saturating_sub(pos)));
+        for _ in 0..results_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BatchResultDecoder::decode(item_bytes)?;
+            if n != item_len {
+                return Err(format!(
+                    "BatchResult length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            results.push(item);
+        }
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+
+        Ok((
+            BatchReport {
+                batch_id,
+                account,
+                outcome,
+                results,
+                timestamp,
             },
             pos,
         ))
@@ -10449,6 +10701,199 @@ impl PriceLimitsDecoder {
             reference_price,
             timestamp,
             is_snapshot,
+        })
+    }
+}
+
+/// SBE encoder for BatchRequest
+pub struct BatchRequestEncoder;
+
+impl BatchRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(batch_id: ClientOrderId, account: String, actions: Vec<BatchAction>) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&63u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let batch_id_bytes = batch_id.as_bytes();
+        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(batch_id_bytes);
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.extend_from_slice(&(actions.len() as u32).to_be_bytes());
+        for item in &actions {
+            let mut item_buf = Vec::new();
+            BatchActionEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+
+        buf
+    }
+}
+
+/// SBE decoder for BatchRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct BatchRequestDecoder {
+    pub batch_id: ClientOrderId,
+    pub account: String,
+    pub actions: Vec<BatchAction>,
+}
+
+impl BatchRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 63 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let batch_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let actions_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut actions =
+            Vec::with_capacity(sbe_capacity(actions_count, buf.len().saturating_sub(pos)));
+        for _ in 0..actions_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BatchActionDecoder::decode(item_bytes)?;
+            if n != item_len {
+                return Err(format!(
+                    "BatchAction length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            actions.push(item);
+        }
+
+        Ok(Self {
+            batch_id,
+            account,
+            actions,
+        })
+    }
+}
+
+/// SBE encoder for BatchReport
+pub struct BatchReportEncoder;
+
+impl BatchReportEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        batch_id: ClientOrderId,
+        account: String,
+        outcome: BatchReportOutcome,
+        results: Vec<BatchResult>,
+        timestamp: TradeTimestamp,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&64u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&9u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let batch_id_bytes = batch_id.as_bytes();
+        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(batch_id_bytes);
+        let account_bytes = account.as_bytes();
+        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(account_bytes);
+        buf.push(outcome.to_value());
+        buf.extend_from_slice(&(results.len() as u32).to_be_bytes());
+        for item in &results {
+            let mut item_buf = Vec::new();
+            BatchResultEncoder::encode(&item, &mut item_buf);
+            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
+            buf.extend_from_slice(&item_buf);
+        }
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+
+        buf
+    }
+}
+
+/// SBE decoder for BatchReport
+#[derive(Debug, Clone, PartialEq)]
+pub struct BatchReportDecoder {
+    pub batch_id: ClientOrderId,
+    pub account: String,
+    pub outcome: BatchReportOutcome,
+    pub results: Vec<BatchResult>,
+    pub timestamp: TradeTimestamp,
+}
+
+impl BatchReportDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 64 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let batch_id = sbe_str(buf, &mut pos)?;
+        let account = sbe_str(buf, &mut pos)?;
+        let outcome_raw = sbe_u8(buf, &mut pos)?;
+        let outcome = BatchReportOutcome::from_value(outcome_raw)
+            .ok_or_else(|| format!("invalid BatchReportOutcome value: {}", outcome_raw))?;
+        let results_count = sbe_u32(buf, &mut pos)? as usize;
+        let mut results =
+            Vec::with_capacity(sbe_capacity(results_count, buf.len().saturating_sub(pos)));
+        for _ in 0..results_count {
+            let item_len = sbe_u32(buf, &mut pos)? as usize;
+            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
+            let (item, n) = BatchResultDecoder::decode(item_bytes)?;
+            if n != item_len {
+                return Err(format!(
+                    "BatchResult length mismatch: expected {item_len}, got {n}"
+                ));
+            }
+            results.push(item);
+        }
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+
+        Ok(Self {
+            batch_id,
+            account,
+            outcome,
+            results,
+            timestamp,
         })
     }
 }

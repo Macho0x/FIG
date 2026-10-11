@@ -831,6 +831,7 @@ pub fn load_merged_trading_schema() -> Schema {
         "instruments.fsl",
         "account.fsl",
         "marketstate.fsl",
+        "batch.fsl",
     ];
     let mut schemas = Vec::new();
     for name in fragments {

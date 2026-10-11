@@ -457,7 +457,9 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
 
     info!("Trading request: {} {}", method, channel_path);
 
-    let result = if crate::broker_session::parse_mass_cancel_path(&channel_path).is_some() {
+    let result = if crate::broker_session::parse_batch_path(&channel_path).is_some() {
+        handle_batch_request(frame, state).await
+    } else if crate::broker_session::parse_mass_cancel_path(&channel_path).is_some() {
         match codec::decode_cbor::<MassCancelRequest>(&frame.payload) {
             Ok(req) => {
                 if let Some(err) = crate::auth::authorize_private(&frame, &req.account) {
@@ -1002,6 +1004,155 @@ pub async fn build_market_data_push(state: &Arc<ExchangeState>, symbol: &str) ->
 /// Push order book depth snapshots to all subscribers when the book changes.
 pub async fn push_book_depth(state: &Arc<ExchangeState>, symbol: &str) -> Vec<Frame> {
     build_market_data_push(state, symbol).await
+}
+
+async fn handle_batch_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Frame> {
+    let channel_path = frame
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ChannelPath)
+        .and_then(|e| e.value.as_text())
+        .unwrap_or("")
+        .to_string();
+    let path_account = crate::broker_session::parse_batch_path(&channel_path);
+
+    let req: BatchRequest = match codec::decode_cbor(&frame.payload) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("Failed to decode BatchRequest: {e}");
+            return vec![make_error_frame(
+                frame.channel_id,
+                frame.stream_seq,
+                "DECODE_ERROR",
+            )];
+        }
+    };
+
+    if let Some(err) = crate::auth::authorize_private(&frame, &req.account) {
+        return vec![err];
+    }
+    if let Some(path_acct) = path_account {
+        if path_acct != req.account {
+            return vec![make_error_frame(
+                frame.channel_id,
+                frame.stream_seq,
+                "ACCOUNT_MISMATCH",
+            )];
+        }
+    }
+    if req.actions.is_empty() {
+        return vec![make_error_frame(
+            frame.channel_id,
+            frame.stream_seq,
+            "BATCH_EMPTY",
+        )];
+    }
+    if req.actions.len() > crate::matching::MatchingEngine::MAX_BATCH_ACTIONS {
+        return vec![make_error_frame(
+            frame.channel_id,
+            frame.stream_seq,
+            "BATCH_TOO_LARGE",
+        )];
+    }
+    for action in &req.actions {
+        let ok = match action.kind {
+            BatchActionKind::NewOrder => action.new_order.is_some(),
+            BatchActionKind::Cancel => action.cancel.is_some(),
+            BatchActionKind::Replace => action.replace.is_some(),
+        };
+        if !ok {
+            return vec![make_error_frame(
+                frame.channel_id,
+                frame.stream_seq,
+                "BATCH_ACTION_INVALID",
+            )];
+        }
+        if let Some(order) = &action.new_order {
+            if let Some(acct) = order.account.as_deref() {
+                if acct != req.account {
+                    return vec![make_error_frame(
+                        frame.channel_id,
+                        frame.stream_seq,
+                        "ACCOUNT_MISMATCH",
+                    )];
+                }
+            }
+            let ms = state.market_state.lock().await;
+            if let Err(code) = ms.orders_allowed(&order.symbol) {
+                return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+            }
+            if let Err(code) = ms.price_allowed(
+                &order.symbol,
+                order.price.as_ref().map(|p| p.0),
+                order.stop_price.as_ref().map(|p| p.0),
+            ) {
+                return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+            }
+        }
+        if let Some(replace) = &action.replace {
+            let ms = state.market_state.lock().await;
+            if let Err(code) = ms.orders_allowed(&replace.symbol) {
+                return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+            }
+            if let Err(code) =
+                ms.price_allowed(&replace.symbol, replace.price.as_ref().map(|p| p.0), None)
+            {
+                return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+            }
+        }
+    }
+
+    let mut engine = state.engine.lock().await;
+    let applied = engine.process_batch(&req);
+    if applied.report.outcome == BatchReportOutcome::Applied {
+        for report in &applied.reports {
+            engine.record_execution(&req.account, report.clone());
+        }
+    }
+    drop(engine);
+
+    let mut responses = Vec::new();
+    if let Ok(payload) = codec::encode_cbor(&applied.report) {
+        responses.push(
+            Frame::new(FrameType::Response, frame.channel_id)
+                .with_seq(frame.stream_seq)
+                .with_schema_id(schema_id::TRADING_ORDERS)
+                .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+                .with_payload(payload),
+        );
+    } else {
+        return vec![make_error_frame(
+            frame.channel_id,
+            frame.stream_seq,
+            "ENCODE_ERROR",
+        )];
+    }
+
+    if applied.report.outcome == BatchReportOutcome::Applied {
+        if !applied.reports.is_empty() {
+            responses.extend(
+                crate::broker_api::post_execution_reports(state, &req.account, &applied.reports)
+                    .await,
+            );
+        }
+        if !applied.fills.is_empty() {
+            let sym = applied.fills[0].symbol.clone();
+            responses.extend(
+                crate::broker_api::post_fill_updates(
+                    state,
+                    &sym,
+                    &req.account,
+                    &applied.fills,
+                    &applied.reports,
+                )
+                .await,
+            );
+        }
+        for sym in &applied.symbols {
+            responses.extend(push_book_depth(state, sym).await);
+        }
+    }
+    responses
 }
 
 pub fn make_error_frame(channel_id: u16, stream_seq: u32, message: &str) -> Frame {

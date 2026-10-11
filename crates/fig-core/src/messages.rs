@@ -47,6 +47,7 @@ pub mod channel_path {
     pub const SECURITY_STATUS: &str = "marketdata/{symbol}/status";
     pub const PRICE_LIMITS: &str = "marketdata/{symbol}/limits";
     pub const MASS_CANCEL: &str = "trading/accounts/{account}/orders/masscancel";
+    pub const BATCH: &str = "trading/accounts/{account}/batch";
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ and consequences** for choices with long-term impact.
 | 0007 | [Crypto Instrument Model](0007-crypto-instrument-model.md) | Accepted |
 | 0008 | [Named Gateway Adapters](0008-named-gateway-adapters.md) | Accepted |
 | 0009 | [Market-Data Plane](0009-market-data-plane.md) | Accepted |
+| 0010 | [Batch / atomic multi-action REQUEST](0010-batch-request.md) | Accepted |
 
 ---
 

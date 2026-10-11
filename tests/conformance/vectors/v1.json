@@ -981,6 +981,26 @@
       "channel": null
     },
     {
+      "id": "sbe.batch_request.demo",
+      "category": "sbe",
+      "description": "BatchRequest SBE (template 63)",
+      "message_type": "BatchRequest",
+      "expected_hex": "0001003f0000000000074241542d303031000444454d4f000000020000004b010100094241542d4f52442d31013ff000000000000040240000000000000100000000000000000000044141504c020100000000000000000001000444454d4f000000000001010000000000000033020001000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c0240220000000000000100",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
+      "id": "sbe.batch_report.demo",
+      "category": "sbe",
+      "description": "BatchReport SBE (template 64)",
+      "message_type": "BatchReport",
+      "expected_hex": "000100400000000900074241542d303031000444454d4f010000000200000012000000000100094241542d4f52442d310100000000140000000102000b434c2d4f52442d49442d31010017979cfe362a0000",
+      "frame": null,
+      "payload": null,
+      "channel": null
+    },
+    {
       "id": "sbe.capabilities_response.demo",
       "category": "sbe",
       "description": "CapabilitiesResponse SBE (template 51) — list<uint8>, list<Symbol>, list<CandleInterval>",

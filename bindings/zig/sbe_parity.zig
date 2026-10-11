@@ -65,6 +65,16 @@ pub fn main() !void {
         try check(allocator, "sbe.balance_update.demo", got, "000100220000001900054143432d31000741535345542d3240080000000000004010000000000000401400000000000002");
     }
     {
+        const got = try sbe.BatchReportEncoder.encode(allocator, "BAT-001", "DEMO", .Applied, &.{ sbe.BatchResult{ .index = 0, .kind = .NewOrder, .cl_ord_id = "BAT-ORD-1", .status = .Applied, .reject_reason = null }, sbe.BatchResult{ .index = 1, .kind = .Cancel, .cl_ord_id = "CL-ORD-ID-1", .status = .Applied, .reject_reason = null } }, 1700000000000000000);
+        defer allocator.free(got);
+        try check(allocator, "sbe.batch_report.demo", got, "000100400000000900074241542d303031000444454d4f010000000200000012000000000100094241542d4f52442d310100000000140000000102000b434c2d4f52442d49442d31010017979cfe362a0000");
+    }
+    {
+        const got = try sbe.BatchRequestEncoder.encode(allocator, "BAT-001", "DEMO", &.{ sbe.BatchAction{ .kind = .NewOrder, .new_order = sbe.NewOrderSingle{ .cl_ord_id = "BAT-ORD-1", .side = .Buy, .order_qty = 1.0, .price = 10.0, .stop_price = null, .symbol = "AAPL", .order_type = .Limit, .time_in_force = .Day, .expire_time = null, .account = "DEMO", .strategy_id = null, .security_id = null, .id_source = null, .security_exchange = null, .post_only = 1, .reduce_only = null }, .cancel = null, .replace = null }, sbe.BatchAction{ .kind = .Cancel, .new_order = null, .cancel = sbe.CancelRequest{ .cl_ord_id = "CL-ORD-ID-1", .orig_cl_ord_id = "ORIG-CL-ORD-ID-2", .symbol = "AAPL", .side = .Sell, .order_qty = 9.0 }, .replace = null } });
+        defer allocator.free(got);
+        try check(allocator, "sbe.batch_request.demo", got, "0001003f0000000000074241542d303031000444454d4f000000020000004b010100094241542d4f52442d31013ff000000000000040240000000000000100000000000000000000044141504c020100000000000000000001000444454d4f000000000001010000000000000033020001000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c0240220000000000000100");
+    }
+    {
         const got = try sbe.BestBidOfferEncoder.encode(allocator, "AAPL", 101.0, 7.0, 103.0, 9.0, 1700000000000000005, 1);
         defer allocator.free(got);
         try check(allocator, "sbe.best_bid_offer.demo", got, "0001001a0000002900044141504c405940000000000001401c000000000000014059c000000000000140220000000000000117979cfe362a00050101");

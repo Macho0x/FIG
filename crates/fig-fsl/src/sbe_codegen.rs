@@ -43,12 +43,12 @@ pub fn generate_sbe(schema: &Schema) -> String {
         if let Some(fields) = &td.fields {
             for field in fields {
                 if let FieldType::Enum(enum_def) = &field.field_type {
+                    let enum_name = format!("{}{}", td.name, pascal_case(&field.name));
                     let canonical = canonical_enum_name(&field.name, &td.name);
-                    if is_shared_messages_enum(&canonical) {
+                    if is_shared_messages_enum(&canonical) || enum_name == canonical {
                         imported_message_enums.insert(canonical);
                         continue;
                     }
-                    let enum_name = format!("{}{}", td.name, pascal_case(&field.name));
                     if seen_enums.insert(enum_name.clone()) {
                         enum_types.push((enum_name, enum_def.variants.clone()));
                     }
@@ -778,7 +778,7 @@ pub(crate) fn generate_decode_field(
             let wire_enum = format!("{context}{}", pascal_case(field_name));
             let use_shared = matches!(enum_style, SbeEnumStyle::MessagesShared)
                 && is_shared_messages_enum(&canonical);
-            let use_messages_enum = is_shared_messages_enum(&canonical) && wire_enum == canonical;
+            let use_messages_enum = wire_enum == canonical;
             let type_name = if use_shared || use_messages_enum {
                 canonical
             } else {
@@ -804,18 +804,44 @@ pub(crate) fn generate_decode_field(
             }
         }
         FieldType::Named(n) if is_struct_type(n, struct_names) => {
-            out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
-            out.push_str(&format!(
-                "        let ({field_name}, {field_name}_n) = {n}Decoder::decode(rest)?;\n"
-            ));
-            out.push_str(&format!("        pos += {field_name}_n;\n"));
+            if optional {
+                out.push_str(&format!(
+                    "        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n"
+                ));
+                out.push_str("            let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
+                out.push_str(&format!(
+                    "            let (item, n) = {n}Decoder::decode(rest)?;\n"
+                ));
+                out.push_str("            pos += n;\n");
+                out.push_str("            Some(item)\n");
+                out.push_str("        } else {\n            None\n        };\n");
+            } else {
+                out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
+                out.push_str(&format!(
+                    "        let ({field_name}, {field_name}_n) = {n}Decoder::decode(rest)?;\n"
+                ));
+                out.push_str(&format!("        pos += {field_name}_n;\n"));
+            }
         }
         FieldType::Named(n) if is_message_type(n, message_names) => {
-            out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
-            out.push_str(&format!(
-                "        let ({field_name}, {field_name}_n) = {n}BodyDecoder::decode(rest)?;\n"
-            ));
-            out.push_str(&format!("        pos += {field_name}_n;\n"));
+            if optional {
+                out.push_str(&format!(
+                    "        let {field_name} = if sbe_u8(buf, &mut pos)? == 1 {{\n"
+                ));
+                out.push_str("            let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
+                out.push_str(&format!(
+                    "            let (item, n) = {n}BodyDecoder::decode(rest)?;\n"
+                ));
+                out.push_str("            pos += n;\n");
+                out.push_str("            Some(item)\n");
+                out.push_str("        } else {\n            None\n        };\n");
+            } else {
+                out.push_str("        let rest = buf.get(pos..).ok_or_else(|| format!(\"sbe: offset {} out of range\", pos))?;\n");
+                out.push_str(&format!(
+                    "        let ({field_name}, {field_name}_n) = {n}BodyDecoder::decode(rest)?;\n"
+                ));
+                out.push_str(&format!("        pos += {field_name}_n;\n"));
+            }
         }
         ft @ (FieldType::Named(_) | FieldType::InlineBase(_, _)) => {
             let bt = if let FieldType::Named(n) = ft {
@@ -999,8 +1025,13 @@ pub(crate) fn generate_decode_field(
         }
     }
 
-    // Handle optional presence flags for string fields
+    // Handle optional presence flags for string fields (not nested messages/structs).
     if optional {
+        if let FieldType::Named(n) = &field.field_type {
+            if is_struct_type(n, struct_names) || is_message_type(n, message_names) {
+                return out;
+            }
+        }
         if let ft @ (FieldType::Named(_) | FieldType::InlineBase(_, _)) = &field.field_type {
             let bt = if let FieldType::Named(n) = ft {
                 sbe_named_type_to_wire_type(n)
@@ -1078,14 +1109,34 @@ pub(crate) fn generate_encode_field(
             }
         }
         FieldType::Named(n) if is_struct_type(n, struct_names) => {
-            out.push_str(&format!(
-                "        {n}Encoder::encode(&{ref_name}, {mut_buf});\n"
-            ));
+            if optional {
+                out.push_str(&format!(
+                    "        {buf_var}.push(u8::from({ref_name}.is_some()));\n"
+                ));
+                out.push_str(&format!("        if let Some(ref v) = {ref_name} {{\n"));
+                out.push_str(&format!("            {n}Encoder::encode(v, {mut_buf});\n"));
+                out.push_str("        }\n");
+            } else {
+                out.push_str(&format!(
+                    "        {n}Encoder::encode(&{ref_name}, {mut_buf});\n"
+                ));
+            }
         }
         FieldType::Named(n) if is_message_type(n, message_names) => {
-            out.push_str(&format!(
-                "        {n}BodyEncoder::encode(&{ref_name}, {mut_buf});\n"
-            ));
+            if optional {
+                out.push_str(&format!(
+                    "        {buf_var}.push(u8::from({ref_name}.is_some()));\n"
+                ));
+                out.push_str(&format!("        if let Some(ref v) = {ref_name} {{\n"));
+                out.push_str(&format!(
+                    "            {n}BodyEncoder::encode(v, {mut_buf});\n"
+                ));
+                out.push_str("        }\n");
+            } else {
+                out.push_str(&format!(
+                    "        {n}BodyEncoder::encode(&{ref_name}, {mut_buf});\n"
+                ));
+            }
         }
         ft @ (FieldType::Named(_) | FieldType::InlineBase(_, _)) => {
             let bt = if let FieldType::Named(n) = ft {
@@ -1509,5 +1560,20 @@ mod tests {
         ];
         // u32 = 4 bytes + enum = 1 byte = 5 total
         assert_eq!(compute_block_length(&fields), 5);
+    }
+
+    #[test]
+    fn test_generate_sbe_nested_optional_batch_action() {
+        let schema = crate::load_merged_trading_schema();
+        let code = generate_sbe(&schema);
+        assert!(code.contains("BatchRequestEncoder"));
+        assert!(code.contains("NewOrderSingleBodyEncoder::encode"));
+        assert!(code.contains("if let Some(ref v) = value.new_order"));
+        assert!(
+            !code.contains("pub enum BatchActionKind"),
+            "BatchActionKind must come from messages, not a duplicate wire enum"
+        );
+        assert!(code.contains("tmpl_id != 63"), "BatchRequest template 63");
+        assert!(code.contains("tmpl_id != 64"), "BatchReport template 64");
     }
 }

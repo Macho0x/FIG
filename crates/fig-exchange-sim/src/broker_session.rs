@@ -72,6 +72,7 @@ pub fn capabilities_response() -> CapabilitiesResponse {
                 RequestResponse,
                 true,
             ),
+            cap("trading/accounts/{account}/batch", RequestResponse, true),
             cap("accounts/{account}", RequestResponse, true),
             cap("accounts/{account}/balances", PubSub, true),
             cap("accounts/{account}/positions", PubSub, true),
@@ -424,6 +425,14 @@ fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {
         .to_string()
 }
 
+pub fn parse_batch_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 4 && parts[0] == "trading" && parts[1] == "accounts" && parts[3] == "batch" {
+        return Some(parts[2].to_string());
+    }
+    None
+}
+
 pub fn parse_mass_cancel_path(path: &str) -> Option<String> {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() >= 5
@@ -535,6 +544,7 @@ mod tests {
                 RequestResponse,
                 true,
             ),
+            ("trading/accounts/{account}/batch", RequestResponse, true),
             ("accounts/{account}", RequestResponse, true),
             ("accounts/{account}/balances", PubSub, true),
             ("accounts/{account}/positions", PubSub, true),

@@ -158,6 +158,29 @@ pub struct CapabilityPath {
     pub auth_required: bool,
 }
 
+/// Struct type: BatchAction
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchAction {
+    pub kind: BatchActionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_order: Option<NewOrderSingle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cancel: Option<CancelRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replace: Option<CancelReplaceRequest>,
+}
+
+/// Struct type: BatchResult
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchResult {
+    pub index: u32,
+    pub kind: BatchResultKind,
+    pub cl_ord_id: ClientOrderId,
+    pub status: BatchResultStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reject_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum BalanceUpdateReason {
     Trade = 1,
@@ -175,6 +198,90 @@ impl BalanceUpdateReason {
             3 => Some(BalanceUpdateReason::Withdrawal),
             4 => Some(BalanceUpdateReason::Transfer),
             5 => Some(BalanceUpdateReason::Fee),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum BatchActionKind {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+}
+
+impl BatchActionKind {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(BatchActionKind::NewOrder),
+            2 => Some(BatchActionKind::Cancel),
+            3 => Some(BatchActionKind::Replace),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum BatchReportOutcome {
+    Applied = 1,
+    Rejected = 2,
+}
+
+impl BatchReportOutcome {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(BatchReportOutcome::Applied),
+            2 => Some(BatchReportOutcome::Rejected),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum BatchResultKind {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+}
+
+impl BatchResultKind {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(BatchResultKind::NewOrder),
+            2 => Some(BatchResultKind::Cancel),
+            3 => Some(BatchResultKind::Replace),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(self) -> u8 {
+        self as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum BatchResultStatus {
+    Applied = 1,
+    Rejected = 2,
+}
+
+impl BatchResultStatus {
+    pub fn from_value(v: u8) -> Option<Self> {
+        match v {
+            1 => Some(BatchResultStatus::Applied),
+            2 => Some(BatchResultStatus::Rejected),
             _ => None,
         }
     }
@@ -1850,6 +1957,48 @@ pub struct PriceLimits {
 impl PriceLimits {
     /// Channel type for this message
     pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: BatchRequest (channel: RequestResponse, priority: Medium)
+/// Correlation field: batch_id
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchRequest {
+    pub batch_id: ClientOrderId,
+    pub account: String,
+    pub actions: Vec<BatchAction>,
+}
+
+impl BatchRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Correlation field name
+    pub const CORRELATION_FIELD: &str = "batch_id";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: BatchReport (channel: RequestResponse, priority: Medium)
+/// Correlation field: batch_id
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchReport {
+    pub batch_id: ClientOrderId,
+    pub account: String,
+    pub outcome: BatchReportOutcome,
+    pub results: Vec<BatchResult>,
+    pub timestamp: TradeTimestamp,
+}
+
+impl BatchReport {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Correlation field name
+    pub const CORRELATION_FIELD: &str = "batch_id";
     /// Priority level
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent

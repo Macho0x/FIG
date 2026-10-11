@@ -23,6 +23,7 @@ bindings caveats), start at [README.md](README.md) in this folder.
 | [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
 | [adr/0008-named-gateway-adapters.md](adr/0008-named-gateway-adapters.md) | FIX/REST/WS/OUCH/ITCH as named adapters |
 | [adr/0009-market-data-plane.md](adr/0009-market-data-plane.md) | TREE L2 native; ITCH is L2 egress |
+| [adr/0010-batch-request.md](adr/0010-batch-request.md) | Atomic multi-action `REQUEST` |
 | [../SPEC.md](../SPEC.md) | Normative wire format specification |
 | [../TODO.md](../TODO.md) | Implementation roadmap |
 

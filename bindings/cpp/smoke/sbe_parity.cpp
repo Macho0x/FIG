@@ -74,6 +74,16 @@ int main() {
         "000100220000001900054143432d31000741535345542d3240080000000000004010000000000000401400000000000002");
 
     bad += check(
+        "sbe.batch_report.demo",
+        fig::sbe::BatchReportEncoder::encode("BAT-001", "DEMO", fig::sbe::BatchReportOutcome::Applied, std::vector<fig::sbe::BatchResult>{fig::sbe::BatchResult{.index = uint32_t{0}, .kind = fig::sbe::BatchResultKind::NewOrder, .cl_ord_id = "BAT-ORD-1", .status = fig::sbe::BatchResultStatus::Applied, .reject_reason = std::nullopt}, fig::sbe::BatchResult{.index = uint32_t{1}, .kind = fig::sbe::BatchResultKind::Cancel, .cl_ord_id = "CL-ORD-ID-1", .status = fig::sbe::BatchResultStatus::Applied, .reject_reason = std::nullopt}}, 1700000000000000000LL),
+        "000100400000000900074241542d303031000444454d4f010000000200000012000000000100094241542d4f52442d310100000000140000000102000b434c2d4f52442d49442d31010017979cfe362a0000");
+
+    bad += check(
+        "sbe.batch_request.demo",
+        fig::sbe::BatchRequestEncoder::encode("BAT-001", "DEMO", std::vector<fig::sbe::BatchAction>{fig::sbe::BatchAction{.kind = fig::sbe::BatchActionKind::NewOrder, .new_order = fig::sbe::NewOrderSingle{.cl_ord_id = "BAT-ORD-1", .side = fig::sbe::NewOrderSingleSide::Buy, .order_qty = 1.0, .price = 10.0, .stop_price = std::nullopt, .symbol = "AAPL", .order_type = fig::sbe::NewOrderSingleOrderType::Limit, .time_in_force = fig::sbe::NewOrderSingleTimeInForce::Day, .expire_time = std::nullopt, .account = "DEMO", .strategy_id = std::nullopt, .security_id = std::nullopt, .id_source = std::nullopt, .security_exchange = std::nullopt, .post_only = uint8_t{1}, .reduce_only = std::nullopt}, .cancel = std::nullopt, .replace = std::nullopt}, fig::sbe::BatchAction{.kind = fig::sbe::BatchActionKind::Cancel, .new_order = std::nullopt, .cancel = fig::sbe::CancelRequest{.cl_ord_id = "CL-ORD-ID-1", .orig_cl_ord_id = "ORIG-CL-ORD-ID-2", .symbol = "AAPL", .side = fig::sbe::CancelRequestSide::Sell, .order_qty = 9.0}, .replace = std::nullopt}}),
+        "0001003f0000000000074241542d303031000444454d4f000000020000004b010100094241542d4f52442d31013ff000000000000040240000000000000100000000000000000000044141504c020100000000000000000001000444454d4f000000000001010000000000000033020001000b434c2d4f52442d49442d3100104f5249472d434c2d4f52442d49442d3200044141504c0240220000000000000100");
+
+    bad += check(
         "sbe.best_bid_offer.demo",
         fig::sbe::BestBidOfferEncoder::encode("AAPL", 101.0, 7.0, 103.0, 9.0, 1700000000000000005LL, uint8_t{1}),
         "0001001a0000002900044141504c405940000000000001401c000000000000014059c000000000000140220000000000000117979cfe362a00050101");

@@ -441,6 +441,7 @@ Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 | `trading/accounts/{account}/orders/open` | GET | `OpenOrdersSnapshot` | Snapshot query |
 | `trading/accounts/{account}/orders` | GET (+ stream) | `OrderHistoryBatch` | `request_stream` when >50 rows |
 | `trading/accounts/{account}/orders/masscancel` | POST | `MassCancelRequest` → `MassCancelReport` | FIX 35=q / 35=r |
+| `trading/accounts/{account}/batch` | POST | `BatchRequest` → `BatchReport` | Atomic multi-action (ADR 0010); not OrderList, not mass cancel |
 | `accounts/{account}` | GET | `AccountSummary` | Account snapshot |
 | `accounts/{account}/balances` | pub/sub | `BalanceSnapshot`, `BalanceUpdate` | Snapshot on subscribe |
 | `accounts/{account}/positions` | pub/sub | `PositionSnapshot`, `PositionUpdate` | Delta on fill |
@@ -575,6 +576,25 @@ When `PriceLimits` are published for a symbol, limit and stop prices MUST sit
 inside the collar. The reference broker rejects new orders outside the band
 with `STREAM_ERROR` / `PRICE_LIMIT_EXCEEDED`. Absent limits mean no collar.
 Market orders with no price are not collared.
+
+### 9.5 Batch REQUEST (atomic multi-action)
+
+A venue MAY accept several trading actions as **one** `REQUEST` on
+`trading/accounts/{account}/batch` ([ADR 0010](docs/adr/0010-batch-request.md)).
+This is additive under SPEC `1.0.0`. It is not a new frame type.
+
+| Rule | Requirement |
+|---|---|
+| Frame | One `REQUEST` → exactly one `RESPONSE` (`BatchReport`) or `STREAM_ERROR` |
+| Actions | Ordered `NewOrderSingle`, `CancelRequest`, `CancelReplaceRequest` only |
+| Atomicity | All-or-nothing. Later actions observe earlier ones in the same batch. On any trading reject the venue restores pre-batch state |
+| Report | `outcome = applied` or `rejected`. The failing item has the concrete reason; others `BATCH_ROLLED_BACK` |
+| Envelope errors | Empty list, over max, decode, auth, account mismatch, `kind`/payload mismatch → `STREAM_ERROR` (`BATCH_EMPTY`, `BATCH_TOO_LARGE`, `DECODE_ERROR`, `BATCH_ACTION_INVALID`, …) |
+| Correlation | Envelope `batch_id`; each action keeps `cl_ord_id`. Applied actions still fan out `ExecutionReport` |
+| Not batch | Mass cancel, OrderList/OCO, queries, `SUBSCRIBE`, mixed accounts |
+| Gateways | REST POST maps to this path. FIX/OUCH/ITCH stay 1:1 — do not fold or split |
+
+Reference sim cap: 16 actions. Single-action paths remain valid.
 
 Gateway REST POST bodies pass these fields through JSON → CBOR unchanged
 (`"post_only": true`, `"reduce_only": true`). Native SBE/CBOR clients set them on

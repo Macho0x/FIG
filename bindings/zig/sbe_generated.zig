@@ -430,6 +430,21 @@ pub fn MassCancelReportStatusFromValue(v: u8) !MassCancelReportStatus {
 
 pub fn MassCancelReportStatusToValue(e: MassCancelReportStatus) u8 { return @intFromEnum(e); }
 
+pub const BatchReportOutcome = enum(u8) {
+    Applied = 1,
+    Rejected = 2,
+};
+
+pub fn BatchReportOutcomeFromValue(v: u8) !BatchReportOutcome {
+    return switch (v) {
+        1 => .Applied,
+        2 => .Rejected,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn BatchReportOutcomeToValue(e: BatchReportOutcome) u8 { return @intFromEnum(e); }
+
 pub const AggregateTradeSide = enum(u8) {
     Buy = 1,
     Sell = 2,
@@ -523,6 +538,55 @@ pub fn CapabilityPathPatternFromValue(v: u8) !CapabilityPathPattern {
 }
 
 pub fn CapabilityPathPatternToValue(e: CapabilityPathPattern) u8 { return @intFromEnum(e); }
+
+pub const BatchActionKind = enum(u8) {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+};
+
+pub fn BatchActionKindFromValue(v: u8) !BatchActionKind {
+    return switch (v) {
+        1 => .NewOrder,
+        2 => .Cancel,
+        3 => .Replace,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn BatchActionKindToValue(e: BatchActionKind) u8 { return @intFromEnum(e); }
+
+pub const BatchResultKind = enum(u8) {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+};
+
+pub fn BatchResultKindFromValue(v: u8) !BatchResultKind {
+    return switch (v) {
+        1 => .NewOrder,
+        2 => .Cancel,
+        3 => .Replace,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn BatchResultKindToValue(e: BatchResultKind) u8 { return @intFromEnum(e); }
+
+pub const BatchResultStatus = enum(u8) {
+    Applied = 1,
+    Rejected = 2,
+};
+
+pub fn BatchResultStatusFromValue(v: u8) !BatchResultStatus {
+    return switch (v) {
+        1 => .Applied,
+        2 => .Rejected,
+        else => error.InvalidEnumValue,
+    };
+}
+
+pub fn BatchResultStatusToValue(e: BatchResultStatus) u8 { return @intFromEnum(e); }
 
 /// SBE struct AggregateTrade
 pub const AggregateTrade = struct {
@@ -923,6 +987,45 @@ pub const CapabilityPath = struct {
         value.path = path;
         value.pattern = pattern;
         value.auth_required = auth_required;
+        return value;
+    }
+};
+
+/// SBE struct BatchResult
+pub const BatchResult = struct {
+    index: u32,
+    kind: BatchResultKind,
+    cl_ord_id: []const u8,
+    status: BatchResultStatus,
+    reject_reason: ?[]const u8,
+
+    pub fn encode(allocator: std.mem.Allocator, value: BatchResult, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeU32BE(buf, @intCast(value.index));
+        try buf.append(BatchResultKindToValue(value.kind));
+        try writeString(buf, value.cl_ord_id);
+        try buf.append(BatchResultStatusToValue(value.status));
+        if (value.reject_reason) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BatchResult {
+        var value: BatchResult = undefined;
+        var reject_reason: ?[]u8 = null;
+        const index = readU32BE(buf, &pos);
+        const kind = try BatchResultKindFromValue(readU8(buf, &pos));
+        const cl_ord_id = try readString(buf, &pos, allocator);
+        const status = try BatchResultStatusFromValue(readU8(buf, &pos));
+        if (buf[pos] == 1) {
+            pos += 1;
+            reject_reason = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.index = index;
+        value.kind = kind;
+        value.cl_ord_id = cl_ord_id;
+        value.status = status;
+        value.reject_reason = reject_reason;
         return value;
     }
 };
@@ -1598,293 +1701,6 @@ pub const CancelRejectDecoder = struct {
     }
 };
 
-/// SBE message MarketDataSnapshot
-pub const MarketDataSnapshot = struct {
-    symbol: []const u8,
-    exchange: []const u8,
-    bids: []PriceLevel,
-    asks: []PriceLevel,
-    timestamp: i64,
-    sequence: ?u64,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for MarketDataSnapshot (fields only, no header).
-pub const MarketDataSnapshotBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: MarketDataSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeString(buf, value.exchange);
-        try writeU32BE(buf, @intCast(value.bids.len));
-        for (value.bids) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(value.asks.len));
-        for (value.asks) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
-        try writeU64BE(buf, @intCast(value.sequence orelse 0));
-        try buf.append(if (value.sequence != null) 1 else 0);
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for MarketDataSnapshot: reads fields at `pos`.
-pub const MarketDataSnapshotBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataSnapshot {
-        var value: MarketDataSnapshot = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const exchange = try readString(buf, &pos, allocator);
-        const bids_count = readU32BE(buf, &pos);
-        var bids = try allocator.alloc(PriceLevel, bids_count);
-        var bids_idx: usize = 0;
-        while (bids_idx < bids_count) : (bids_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            bids[bids_idx] = item;
-        }
-        const asks_count = readU32BE(buf, &pos);
-        var asks = try allocator.alloc(PriceLevel, asks_count);
-        var asks_idx: usize = 0;
-        while (asks_idx < asks_count) : (asks_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            asks[asks_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.exchange = exchange;
-        value.bids = bids;
-        value.asks = asks;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for MarketDataSnapshot
-pub const MarketDataSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 6);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 17);
-        try writeString(buf, symbol);
-        try writeString(buf, exchange);
-        try writeU32BE(buf, @intCast(bids.len));
-        for (bids) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(asks.len));
-        for (asks) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
-        try writeU64BE(buf, @intCast(sequence orelse 0));
-        try buf.append(if (sequence != null) 1 else 0);
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
-pub const MarketDataSnapshotDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarketDataSnapshot {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 6) return error.InvalidTemplateId;
-        var value: MarketDataSnapshot = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const exchange = try readString(buf, &pos, allocator);
-        const bids_count = readU32BE(buf, &pos);
-        var bids = try allocator.alloc(PriceLevel, bids_count);
-        var bids_idx: usize = 0;
-        while (bids_idx < bids_count) : (bids_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            bids[bids_idx] = item;
-        }
-        const asks_count = readU32BE(buf, &pos);
-        var asks = try allocator.alloc(PriceLevel, asks_count);
-        var asks_idx: usize = 0;
-        while (asks_idx < asks_count) : (asks_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            asks[asks_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.exchange = exchange;
-        value.bids = bids;
-        value.asks = asks;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE message MarketDataIncrementalRefresh
-pub const MarketDataIncrementalRefresh = struct {
-    symbol: []const u8,
-    updates: []MarketDataUpdate,
-    timestamp: i64,
-    sequence: ?u64,
-};
-
-/// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
-pub const MarketDataIncrementalRefreshBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: MarketDataIncrementalRefresh, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeU32BE(buf, @intCast(value.updates.len));
-        for (value.updates) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
-        try writeU64BE(buf, @intCast(value.sequence orelse 0));
-        try buf.append(if (value.sequence != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for MarketDataIncrementalRefresh: reads fields at `pos`.
-pub const MarketDataIncrementalRefreshBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataIncrementalRefresh {
-        var value: MarketDataIncrementalRefresh = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const updates_count = readU32BE(buf, &pos);
-        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
-        var updates_idx: usize = 0;
-        while (updates_idx < updates_count) : (updates_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
-            pos = item_end;
-            updates[updates_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.updates = updates;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        return value;
-    }
-};
-
-/// SBE encoder for MarketDataIncrementalRefresh
-pub const MarketDataIncrementalRefreshEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 7);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 16);
-        try writeString(buf, symbol);
-        try writeU32BE(buf, @intCast(updates.len));
-        for (updates) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
-        try writeU64BE(buf, @intCast(sequence orelse 0));
-        try buf.append(if (sequence != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
-pub const MarketDataIncrementalRefreshDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarketDataIncrementalRefresh {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 7) return error.InvalidTemplateId;
-        var value: MarketDataIncrementalRefresh = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const updates_count = readU32BE(buf, &pos);
-        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
-        var updates_idx: usize = 0;
-        while (updates_idx < updates_count) : (updates_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
-            pos = item_end;
-            updates[updates_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.updates = updates;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        return value;
-    }
-};
-
 /// SBE message OrderBookRequest
 pub const OrderBookRequest = struct {
     symbol: []const u8,
@@ -1963,348 +1779,6 @@ pub const OrderBookRequestDecoder = struct {
         value.symbol = symbol;
         value.depth = depth;
         value.at_time = at_time;
-        return value;
-    }
-};
-
-/// SBE message OrderBookSnapshot
-pub const OrderBookSnapshot = struct {
-    symbol: []const u8,
-    exchange: []const u8,
-    bids: []PriceLevel,
-    asks: []PriceLevel,
-    timestamp: i64,
-    sequence: ?u64,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for OrderBookSnapshot (fields only, no header).
-pub const OrderBookSnapshotBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: OrderBookSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeString(buf, value.exchange);
-        try writeU32BE(buf, @intCast(value.bids.len));
-        for (value.bids) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(value.asks.len));
-        for (value.asks) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
-        try writeU64BE(buf, @intCast(value.sequence orelse 0));
-        try buf.append(if (value.sequence != null) 1 else 0);
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for OrderBookSnapshot: reads fields at `pos`.
-pub const OrderBookSnapshotBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderBookSnapshot {
-        var value: OrderBookSnapshot = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const exchange = try readString(buf, &pos, allocator);
-        const bids_count = readU32BE(buf, &pos);
-        var bids = try allocator.alloc(PriceLevel, bids_count);
-        var bids_idx: usize = 0;
-        while (bids_idx < bids_count) : (bids_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            bids[bids_idx] = item;
-        }
-        const asks_count = readU32BE(buf, &pos);
-        var asks = try allocator.alloc(PriceLevel, asks_count);
-        var asks_idx: usize = 0;
-        while (asks_idx < asks_count) : (asks_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            asks[asks_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.exchange = exchange;
-        value.bids = bids;
-        value.asks = asks;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for OrderBookSnapshot
-pub const OrderBookSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 9);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 17);
-        try writeString(buf, symbol);
-        try writeString(buf, exchange);
-        try writeU32BE(buf, @intCast(bids.len));
-        for (bids) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(asks.len));
-        for (asks) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PriceLevel.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
-        try writeU64BE(buf, @intCast(sequence orelse 0));
-        try buf.append(if (sequence != null) 1 else 0);
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
-pub const OrderBookSnapshotDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderBookSnapshot {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 9) return error.InvalidTemplateId;
-        var value: OrderBookSnapshot = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const exchange = try readString(buf, &pos, allocator);
-        const bids_count = readU32BE(buf, &pos);
-        var bids = try allocator.alloc(PriceLevel, bids_count);
-        var bids_idx: usize = 0;
-        while (bids_idx < bids_count) : (bids_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            bids[bids_idx] = item;
-        }
-        const asks_count = readU32BE(buf, &pos);
-        var asks = try allocator.alloc(PriceLevel, asks_count);
-        var asks_idx: usize = 0;
-        while (asks_idx < asks_count) : (asks_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PriceLevel.decode(allocator, buf, &pos);
-            pos = item_end;
-            asks[asks_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.exchange = exchange;
-        value.bids = bids;
-        value.asks = asks;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE message OrderBookDelta
-pub const OrderBookDelta = struct {
-    symbol: []const u8,
-    updates: []MarketDataUpdate,
-    timestamp: i64,
-    sequence: ?u64,
-};
-
-/// SBE body encoder for OrderBookDelta (fields only, no header).
-pub const OrderBookDeltaBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: OrderBookDelta, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeU32BE(buf, @intCast(value.updates.len));
-        for (value.updates) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
-        try writeU64BE(buf, @intCast(value.sequence orelse 0));
-        try buf.append(if (value.sequence != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for OrderBookDelta: reads fields at `pos`.
-pub const OrderBookDeltaBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderBookDelta {
-        var value: OrderBookDelta = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const updates_count = readU32BE(buf, &pos);
-        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
-        var updates_idx: usize = 0;
-        while (updates_idx < updates_count) : (updates_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
-            pos = item_end;
-            updates[updates_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.updates = updates;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        return value;
-    }
-};
-
-/// SBE encoder for OrderBookDelta
-pub const OrderBookDeltaEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 10);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 16);
-        try writeString(buf, symbol);
-        try writeU32BE(buf, @intCast(updates.len));
-        for (updates) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MarketDataUpdate.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
-        try writeU64BE(buf, @intCast(sequence orelse 0));
-        try buf.append(if (sequence != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for OrderBookDelta: validates the header and reads the body.
-pub const OrderBookDeltaDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderBookDelta {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 10) return error.InvalidTemplateId;
-        var value: OrderBookDelta = undefined;
-        const symbol = try readString(buf, &pos, allocator);
-        const updates_count = readU32BE(buf, &pos);
-        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
-        var updates_idx: usize = 0;
-        while (updates_idx < updates_count) : (updates_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
-            pos = item_end;
-            updates[updates_idx] = item;
-        }
-        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
-        const sequence_v = readU64BE(buf, &pos);
-        var sequence: ?u64 = null;
-        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
-        value.symbol = symbol;
-        value.updates = updates;
-        value.timestamp = timestamp;
-        value.sequence = sequence;
-        return value;
-    }
-};
-
-/// SBE message AggregateTradeEvent
-pub const AggregateTradeEvent = struct {
-    trade: AggregateTrade,
-};
-
-/// SBE body encoder for AggregateTradeEvent (fields only, no header).
-pub const AggregateTradeEventBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try AggregateTrade.encode(allocator, value.trade, buf);
-    }
-};
-
-/// SBE body decoder for AggregateTradeEvent: reads fields at `pos`.
-pub const AggregateTradeEventBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AggregateTradeEvent {
-        var value: AggregateTradeEvent = undefined;
-        const trade = try AggregateTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
-        return value;
-    }
-};
-
-/// SBE encoder for AggregateTradeEvent
-pub const AggregateTradeEventEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, trade: AggregateTrade) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 11);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try AggregateTrade.encode(allocator, trade, buf);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
-pub const AggregateTradeEventDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AggregateTradeEvent {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 11) return error.InvalidTemplateId;
-        var value: AggregateTradeEvent = undefined;
-        const trade = try AggregateTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
         return value;
     }
 };
@@ -2419,126 +1893,6 @@ pub const AggregateTradeRequestDecoder = struct {
         value.end_time = end_time;
         value.limit = limit;
         value.cursor = cursor;
-        return value;
-    }
-};
-
-/// SBE message AggregateTradeBatch
-pub const AggregateTradeBatch = struct {
-    symbol: []const u8,
-    trades: []AggregateTrade,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for AggregateTradeBatch (fields only, no header).
-pub const AggregateTradeBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeU32BE(buf, @intCast(value.trades.len));
-        for (value.trades) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try AggregateTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for AggregateTradeBatch: reads fields at `pos`.
-pub const AggregateTradeBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AggregateTradeBatch {
-        var value: AggregateTradeBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const trades_count = readU32BE(buf, &pos);
-        var trades = try allocator.alloc(AggregateTrade, trades_count);
-        var trades_idx: usize = 0;
-        while (trades_idx < trades_count) : (trades_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try AggregateTrade.decode(allocator, buf, &pos);
-            pos = item_end;
-            trades[trades_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.trades = trades;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for AggregateTradeBatch
-pub const AggregateTradeBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const AggregateTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 13);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, symbol);
-        try writeU32BE(buf, @intCast(trades.len));
-        for (trades) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try AggregateTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
-pub const AggregateTradeBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AggregateTradeBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 13) return error.InvalidTemplateId;
-        var value: AggregateTradeBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const trades_count = readU32BE(buf, &pos);
-        var trades = try allocator.alloc(AggregateTrade, trades_count);
-        var trades_idx: usize = 0;
-        while (trades_idx < trades_count) : (trades_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try AggregateTrade.decode(allocator, buf, &pos);
-            pos = item_end;
-            trades[trades_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.trades = trades;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
         return value;
     }
 };
@@ -2684,93 +2038,6 @@ pub const AllMidsRequestDecoder = struct {
         if (tmpl_id != 15) return error.InvalidTemplateId;
         _ = allocator;
         const value: AllMidsRequest = undefined;
-        return value;
-    }
-};
-
-/// SBE message AllMidsBatch
-pub const AllMidsBatch = struct {
-    tickers: []MiniTicker,
-};
-
-/// SBE body encoder for AllMidsBatch (fields only, no header).
-pub const AllMidsBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: AllMidsBatch, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(buf, @intCast(value.tickers.len));
-        for (value.tickers) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-    }
-};
-
-/// SBE body decoder for AllMidsBatch: reads fields at `pos`.
-pub const AllMidsBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AllMidsBatch {
-        var value: AllMidsBatch = undefined;
-        const tickers_count = readU32BE(buf, &pos);
-        var tickers = try allocator.alloc(MiniTicker, tickers_count);
-        var tickers_idx: usize = 0;
-        while (tickers_idx < tickers_count) : (tickers_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MiniTickerBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            tickers[tickers_idx] = item;
-        }
-        value.tickers = tickers;
-        return value;
-    }
-};
-
-/// SBE encoder for AllMidsBatch
-pub const AllMidsBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, tickers: []const MiniTicker) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 16);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try writeU32BE(buf, @intCast(tickers.len));
-        for (tickers) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for AllMidsBatch: validates the header and reads the body.
-pub const AllMidsBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AllMidsBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 16) return error.InvalidTemplateId;
-        var value: AllMidsBatch = undefined;
-        const tickers_count = readU32BE(buf, &pos);
-        var tickers = try allocator.alloc(MiniTicker, tickers_count);
-        var tickers_idx: usize = 0;
-        while (tickers_idx < tickers_count) : (tickers_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try MiniTickerBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            tickers[tickers_idx] = item;
-        }
-        value.tickers = tickers;
         return value;
     }
 };
@@ -2940,116 +2207,6 @@ pub const MarkPriceRequestDecoder = struct {
     }
 };
 
-/// SBE message LiquidationTradeEvent
-pub const LiquidationTradeEvent = struct {
-    trade: LiquidationTrade,
-};
-
-/// SBE body encoder for LiquidationTradeEvent (fields only, no header).
-pub const LiquidationTradeEventBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: LiquidationTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try LiquidationTrade.encode(allocator, value.trade, buf);
-    }
-};
-
-/// SBE body decoder for LiquidationTradeEvent: reads fields at `pos`.
-pub const LiquidationTradeEventBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LiquidationTradeEvent {
-        var value: LiquidationTradeEvent = undefined;
-        const trade = try LiquidationTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
-        return value;
-    }
-};
-
-/// SBE encoder for LiquidationTradeEvent
-pub const LiquidationTradeEventEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, trade: LiquidationTrade) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 19);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try LiquidationTrade.encode(allocator, trade, buf);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
-pub const LiquidationTradeEventDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !LiquidationTradeEvent {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 19) return error.InvalidTemplateId;
-        var value: LiquidationTradeEvent = undefined;
-        const trade = try LiquidationTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
-        return value;
-    }
-};
-
-/// SBE message CandleBarEvent
-pub const CandleBarEvent = struct {
-    bar: CandleBar,
-};
-
-/// SBE body encoder for CandleBarEvent (fields only, no header).
-pub const CandleBarEventBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: CandleBarEvent, buf: *std.ArrayList(u8)) !void {
-        try CandleBar.encode(allocator, value.bar, buf);
-    }
-};
-
-/// SBE body decoder for CandleBarEvent: reads fields at `pos`.
-pub const CandleBarEventBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CandleBarEvent {
-        var value: CandleBarEvent = undefined;
-        const bar = try CandleBar.decode(allocator, buf, &pos);
-        value.bar = bar;
-        return value;
-    }
-};
-
-/// SBE encoder for CandleBarEvent
-pub const CandleBarEventEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, bar: CandleBar) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 20);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try CandleBar.encode(allocator, bar, buf);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for CandleBarEvent: validates the header and reads the body.
-pub const CandleBarEventDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CandleBarEvent {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 20) return error.InvalidTemplateId;
-        var value: CandleBarEvent = undefined;
-        const bar = try CandleBar.decode(allocator, buf, &pos);
-        value.bar = bar;
-        return value;
-    }
-};
-
 /// SBE message CandleBarRequest
 pub const CandleBarRequest = struct {
     symbol: []const u8,
@@ -3171,188 +2328,6 @@ pub const CandleBarRequestDecoder = struct {
     }
 };
 
-/// SBE message CandleBarBatch
-pub const CandleBarBatch = struct {
-    symbol: []const u8,
-    interval: []const u8,
-    bars: []CandleBar,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for CandleBarBatch (fields only, no header).
-pub const CandleBarBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: CandleBarBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeString(buf, value.interval);
-        try writeU32BE(buf, @intCast(value.bars.len));
-        for (value.bars) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try CandleBar.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for CandleBarBatch: reads fields at `pos`.
-pub const CandleBarBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CandleBarBatch {
-        var value: CandleBarBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const interval = try readString(buf, &pos, allocator);
-        const bars_count = readU32BE(buf, &pos);
-        var bars = try allocator.alloc(CandleBar, bars_count);
-        var bars_idx: usize = 0;
-        while (bars_idx < bars_count) : (bars_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try CandleBar.decode(allocator, buf, &pos);
-            pos = item_end;
-            bars[bars_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.interval = interval;
-        value.bars = bars;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for CandleBarBatch
-pub const CandleBarBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, bars: []const CandleBar, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 22);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, symbol);
-        try writeString(buf, interval);
-        try writeU32BE(buf, @intCast(bars.len));
-        for (bars) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try CandleBar.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for CandleBarBatch: validates the header and reads the body.
-pub const CandleBarBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CandleBarBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 22) return error.InvalidTemplateId;
-        var value: CandleBarBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const interval = try readString(buf, &pos, allocator);
-        const bars_count = readU32BE(buf, &pos);
-        var bars = try allocator.alloc(CandleBar, bars_count);
-        var bars_idx: usize = 0;
-        while (bars_idx < bars_count) : (bars_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try CandleBar.decode(allocator, buf, &pos);
-            pos = item_end;
-            bars[bars_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.interval = interval;
-        value.bars = bars;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE message PublicTradeEvent
-pub const PublicTradeEvent = struct {
-    trade: PublicTrade,
-};
-
-/// SBE body encoder for PublicTradeEvent (fields only, no header).
-pub const PublicTradeEventBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: PublicTradeEvent, buf: *std.ArrayList(u8)) !void {
-        try PublicTrade.encode(allocator, value.trade, buf);
-    }
-};
-
-/// SBE body decoder for PublicTradeEvent: reads fields at `pos`.
-pub const PublicTradeEventBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PublicTradeEvent {
-        var value: PublicTradeEvent = undefined;
-        const trade = try PublicTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
-        return value;
-    }
-};
-
-/// SBE encoder for PublicTradeEvent
-pub const PublicTradeEventEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, trade: PublicTrade) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 23);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try PublicTrade.encode(allocator, trade, buf);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for PublicTradeEvent: validates the header and reads the body.
-pub const PublicTradeEventDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PublicTradeEvent {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 23) return error.InvalidTemplateId;
-        var value: PublicTradeEvent = undefined;
-        const trade = try PublicTrade.decode(allocator, buf, &pos);
-        value.trade = trade;
-        return value;
-    }
-};
-
 /// SBE message TradeHistoryRequest
 pub const TradeHistoryRequest = struct {
     symbol: []const u8,
@@ -3463,126 +2438,6 @@ pub const TradeHistoryRequestDecoder = struct {
         value.end_time = end_time;
         value.limit = limit;
         value.cursor = cursor;
-        return value;
-    }
-};
-
-/// SBE message PublicTradeBatch
-pub const PublicTradeBatch = struct {
-    symbol: []const u8,
-    trades: []PublicTrade,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for PublicTradeBatch (fields only, no header).
-pub const PublicTradeBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: PublicTradeBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.symbol);
-        try writeU32BE(buf, @intCast(value.trades.len));
-        for (value.trades) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PublicTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for PublicTradeBatch: reads fields at `pos`.
-pub const PublicTradeBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PublicTradeBatch {
-        var value: PublicTradeBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const trades_count = readU32BE(buf, &pos);
-        var trades = try allocator.alloc(PublicTrade, trades_count);
-        var trades_idx: usize = 0;
-        while (trades_idx < trades_count) : (trades_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PublicTrade.decode(allocator, buf, &pos);
-            pos = item_end;
-            trades[trades_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.trades = trades;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for PublicTradeBatch
-pub const PublicTradeBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const PublicTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 25);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, symbol);
-        try writeU32BE(buf, @intCast(trades.len));
-        for (trades) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PublicTrade.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for PublicTradeBatch: validates the header and reads the body.
-pub const PublicTradeBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PublicTradeBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 25) return error.InvalidTemplateId;
-        var value: PublicTradeBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const symbol = try readString(buf, &pos, allocator);
-        const trades_count = readU32BE(buf, &pos);
-        var trades = try allocator.alloc(PublicTrade, trades_count);
-        var trades_idx: usize = 0;
-        while (trades_idx < trades_count) : (trades_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PublicTrade.decode(allocator, buf, &pos);
-            pos = item_end;
-            trades[trades_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.symbol = symbol;
-        value.trades = trades;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
         return value;
     }
 };
@@ -3951,93 +2806,6 @@ pub const InstrumentCatalogRequestDecoder = struct {
     }
 };
 
-/// SBE message InstrumentCatalogResponse
-pub const InstrumentCatalogResponse = struct {
-    instruments: []InstrumentMetadata,
-};
-
-/// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
-pub const InstrumentCatalogResponseBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: InstrumentCatalogResponse, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(buf, @intCast(value.instruments.len));
-        for (value.instruments) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try InstrumentMetadata.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-    }
-};
-
-/// SBE body decoder for InstrumentCatalogResponse: reads fields at `pos`.
-pub const InstrumentCatalogResponseBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !InstrumentCatalogResponse {
-        var value: InstrumentCatalogResponse = undefined;
-        const instruments_count = readU32BE(buf, &pos);
-        var instruments = try allocator.alloc(InstrumentMetadata, instruments_count);
-        var instruments_idx: usize = 0;
-        while (instruments_idx < instruments_count) : (instruments_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try InstrumentMetadata.decode(allocator, buf, &pos);
-            pos = item_end;
-            instruments[instruments_idx] = item;
-        }
-        value.instruments = instruments;
-        return value;
-    }
-};
-
-/// SBE encoder for InstrumentCatalogResponse
-pub const InstrumentCatalogResponseEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, instruments: []const InstrumentMetadata) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 30);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try writeU32BE(buf, @intCast(instruments.len));
-        for (instruments) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try InstrumentMetadata.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
-pub const InstrumentCatalogResponseDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !InstrumentCatalogResponse {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 30) return error.InvalidTemplateId;
-        var value: InstrumentCatalogResponse = undefined;
-        const instruments_count = readU32BE(buf, &pos);
-        var instruments = try allocator.alloc(InstrumentMetadata, instruments_count);
-        var instruments_idx: usize = 0;
-        while (instruments_idx < instruments_count) : (instruments_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try InstrumentMetadata.decode(allocator, buf, &pos);
-            pos = item_end;
-            instruments[instruments_idx] = item;
-        }
-        value.instruments = instruments;
-        return value;
-    }
-};
-
 /// SBE message AccountSummary
 pub const AccountSummary = struct {
     account: []const u8,
@@ -4213,113 +2981,6 @@ pub const MarginSummaryDecoder = struct {
     }
 };
 
-/// SBE message BalanceSnapshot
-pub const BalanceSnapshot = struct {
-    account: []const u8,
-    balances: []BalanceEntry,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for BalanceSnapshot (fields only, no header).
-pub const BalanceSnapshotBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: BalanceSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.balances.len));
-        for (value.balances) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try BalanceEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for BalanceSnapshot: reads fields at `pos`.
-pub const BalanceSnapshotBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BalanceSnapshot {
-        var value: BalanceSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const balances_count = readU32BE(buf, &pos);
-        var balances = try allocator.alloc(BalanceEntry, balances_count);
-        var balances_idx: usize = 0;
-        while (balances_idx < balances_count) : (balances_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try BalanceEntry.decode(allocator, buf, &pos);
-            pos = item_end;
-            balances[balances_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.balances = balances;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for BalanceSnapshot
-pub const BalanceSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, balances: []const BalanceEntry, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 33);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(balances.len));
-        for (balances) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try BalanceEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for BalanceSnapshot: validates the header and reads the body.
-pub const BalanceSnapshotDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !BalanceSnapshot {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 33) return error.InvalidTemplateId;
-        var value: BalanceSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const balances_count = readU32BE(buf, &pos);
-        var balances = try allocator.alloc(BalanceEntry, balances_count);
-        var balances_idx: usize = 0;
-        while (balances_idx < balances_count) : (balances_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try BalanceEntry.decode(allocator, buf, &pos);
-            pos = item_end;
-            balances[balances_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.balances = balances;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
 /// SBE message BalanceUpdate
 pub const BalanceUpdate = struct {
     account: []const u8,
@@ -4411,113 +3072,6 @@ pub const BalanceUpdateDecoder = struct {
     }
 };
 
-/// SBE message PositionSnapshot
-pub const PositionSnapshot = struct {
-    account: []const u8,
-    positions: []PositionEntry,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for PositionSnapshot (fields only, no header).
-pub const PositionSnapshotBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: PositionSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.positions.len));
-        for (value.positions) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PositionEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for PositionSnapshot: reads fields at `pos`.
-pub const PositionSnapshotBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PositionSnapshot {
-        var value: PositionSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const positions_count = readU32BE(buf, &pos);
-        var positions = try allocator.alloc(PositionEntry, positions_count);
-        var positions_idx: usize = 0;
-        while (positions_idx < positions_count) : (positions_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PositionEntry.decode(allocator, buf, &pos);
-            pos = item_end;
-            positions[positions_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.positions = positions;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for PositionSnapshot
-pub const PositionSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, positions: []const PositionEntry, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 35);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(positions.len));
-        for (positions) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try PositionEntry.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for PositionSnapshot: validates the header and reads the body.
-pub const PositionSnapshotDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PositionSnapshot {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 35) return error.InvalidTemplateId;
-        var value: PositionSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const positions_count = readU32BE(buf, &pos);
-        var positions = try allocator.alloc(PositionEntry, positions_count);
-        var positions_idx: usize = 0;
-        while (positions_idx < positions_count) : (positions_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try PositionEntry.decode(allocator, buf, &pos);
-            pos = item_end;
-            positions[positions_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.positions = positions;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
 /// SBE message PositionUpdate
 pub const PositionUpdate = struct {
     account: []const u8,
@@ -4598,81 +3152,6 @@ pub const PositionUpdateDecoder = struct {
         value.qty = qty;
         value.entry_price = entry_price;
         value.unrealized_pnl = unrealized_pnl;
-        return value;
-    }
-};
-
-/// SBE message MarginUpdate
-pub const MarginUpdate = struct {
-    account: []const u8,
-    summary: MarginSummary,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for MarginUpdate (fields only, no header).
-pub const MarginUpdateBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: MarginUpdate, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try MarginSummaryBodyEncoder.encode(allocator, value.summary, buf);
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for MarginUpdate: reads fields at `pos`.
-pub const MarginUpdateBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarginUpdate {
-        var value: MarginUpdate = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const summary = try MarginSummaryBodyDecoder.decode(allocator, buf, &pos);
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.summary = summary;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for MarginUpdate
-pub const MarginUpdateEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, summary: MarginSummary, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 37);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try MarginSummaryBodyEncoder.encode(allocator, summary, buf);
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for MarginUpdate: validates the header and reads the body.
-pub const MarginUpdateDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarginUpdate {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 37) return error.InvalidTemplateId;
-        var value: MarginUpdate = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const summary = try MarginSummaryBodyDecoder.decode(allocator, buf, &pos);
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.summary = summary;
-        value.is_snapshot = is_snapshot;
         return value;
     }
 };
@@ -4983,126 +3462,6 @@ pub const FillHistoryRequestDecoder = struct {
     }
 };
 
-/// SBE message FillHistoryBatch
-pub const FillHistoryBatch = struct {
-    account: []const u8,
-    fills: []ExecutionReport,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for FillHistoryBatch (fields only, no header).
-pub const FillHistoryBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: FillHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.fills.len));
-        for (value.fills) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for FillHistoryBatch: reads fields at `pos`.
-pub const FillHistoryBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !FillHistoryBatch {
-        var value: FillHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const fills_count = readU32BE(buf, &pos);
-        var fills = try allocator.alloc(ExecutionReport, fills_count);
-        var fills_idx: usize = 0;
-        while (fills_idx < fills_count) : (fills_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            fills[fills_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.fills = fills;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for FillHistoryBatch
-pub const FillHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, fills: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 41);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(fills.len));
-        for (fills) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for FillHistoryBatch: validates the header and reads the body.
-pub const FillHistoryBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !FillHistoryBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 41) return error.InvalidTemplateId;
-        var value: FillHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const fills_count = readU32BE(buf, &pos);
-        var fills = try allocator.alloc(ExecutionReport, fills_count);
-        var fills_idx: usize = 0;
-        while (fills_idx < fills_count) : (fills_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            fills[fills_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.fills = fills;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
 /// SBE message FundingPayment
 pub const FundingPayment = struct {
     account: []const u8,
@@ -5309,126 +3668,6 @@ pub const FundingHistoryRequestDecoder = struct {
         value.end_time = end_time;
         value.limit = limit;
         value.cursor = cursor;
-        return value;
-    }
-};
-
-/// SBE message FundingHistoryBatch
-pub const FundingHistoryBatch = struct {
-    account: []const u8,
-    payments: []FundingPayment,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for FundingHistoryBatch (fields only, no header).
-pub const FundingHistoryBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: FundingHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.payments.len));
-        for (value.payments) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for FundingHistoryBatch: reads fields at `pos`.
-pub const FundingHistoryBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !FundingHistoryBatch {
-        var value: FundingHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const payments_count = readU32BE(buf, &pos);
-        var payments = try allocator.alloc(FundingPayment, payments_count);
-        var payments_idx: usize = 0;
-        while (payments_idx < payments_count) : (payments_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try FundingPaymentBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            payments[payments_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.payments = payments;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for FundingHistoryBatch
-pub const FundingHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, payments: []const FundingPayment, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 44);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(payments.len));
-        for (payments) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
-pub const FundingHistoryBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !FundingHistoryBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 44) return error.InvalidTemplateId;
-        var value: FundingHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const payments_count = readU32BE(buf, &pos);
-        var payments = try allocator.alloc(FundingPayment, payments_count);
-        var payments_idx: usize = 0;
-        while (payments_idx < payments_count) : (payments_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try FundingPaymentBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            payments[payments_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.payments = payments;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
         return value;
     }
 };
@@ -5650,126 +3889,6 @@ pub const LedgerHistoryRequestDecoder = struct {
     }
 };
 
-/// SBE message LedgerHistoryBatch
-pub const LedgerHistoryBatch = struct {
-    account: []const u8,
-    entries: []LedgerUpdate,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for LedgerHistoryBatch (fields only, no header).
-pub const LedgerHistoryBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: LedgerHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.entries.len));
-        for (value.entries) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for LedgerHistoryBatch: reads fields at `pos`.
-pub const LedgerHistoryBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LedgerHistoryBatch {
-        var value: LedgerHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const entries_count = readU32BE(buf, &pos);
-        var entries = try allocator.alloc(LedgerUpdate, entries_count);
-        var entries_idx: usize = 0;
-        while (entries_idx < entries_count) : (entries_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try LedgerUpdateBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            entries[entries_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.entries = entries;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for LedgerHistoryBatch
-pub const LedgerHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, entries: []const LedgerUpdate, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 47);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(entries.len));
-        for (entries) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
-pub const LedgerHistoryBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !LedgerHistoryBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 47) return error.InvalidTemplateId;
-        var value: LedgerHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const entries_count = readU32BE(buf, &pos);
-        var entries = try allocator.alloc(LedgerUpdate, entries_count);
-        var entries_idx: usize = 0;
-        while (entries_idx < entries_count) : (entries_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try LedgerUpdateBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            entries[entries_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.entries = entries;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
 /// SBE message OpenOrdersRequest
 pub const OpenOrdersRequest = struct {
     account: []const u8,
@@ -5841,113 +3960,6 @@ pub const OpenOrdersRequestDecoder = struct {
         }
         value.account = account;
         value.symbol = symbol;
-        return value;
-    }
-};
-
-/// SBE message OpenOrdersSnapshot
-pub const OpenOrdersSnapshot = struct {
-    account: []const u8,
-    orders: []ExecutionReport,
-    is_snapshot: ?u8,
-};
-
-/// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
-pub const OpenOrdersSnapshotBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: OpenOrdersSnapshot, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.orders.len));
-        for (value.orders) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.is_snapshot orelse 0));
-        try buf.append(if (value.is_snapshot != null) 1 else 0);
-    }
-};
-
-/// SBE body decoder for OpenOrdersSnapshot: reads fields at `pos`.
-pub const OpenOrdersSnapshotBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OpenOrdersSnapshot {
-        var value: OpenOrdersSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const orders_count = readU32BE(buf, &pos);
-        var orders = try allocator.alloc(ExecutionReport, orders_count);
-        var orders_idx: usize = 0;
-        while (orders_idx < orders_count) : (orders_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            orders[orders_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.orders = orders;
-        value.is_snapshot = is_snapshot;
-        return value;
-    }
-};
-
-/// SBE encoder for OpenOrdersSnapshot
-pub const OpenOrdersSnapshotEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, is_snapshot: ?u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 49);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(orders.len));
-        for (orders) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(is_snapshot orelse 0));
-        try buf.append(if (is_snapshot != null) 1 else 0);
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
-pub const OpenOrdersSnapshotDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OpenOrdersSnapshot {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 49) return error.InvalidTemplateId;
-        var value: OpenOrdersSnapshot = undefined;
-        const account = try readString(buf, &pos, allocator);
-        const orders_count = readU32BE(buf, &pos);
-        var orders = try allocator.alloc(ExecutionReport, orders_count);
-        var orders_idx: usize = 0;
-        while (orders_idx < orders_count) : (orders_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            orders[orders_idx] = item;
-        }
-        const is_snapshot_v = readU8(buf, &pos);
-        var is_snapshot: ?u8 = null;
-        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
-        value.account = account;
-        value.orders = orders;
-        value.is_snapshot = is_snapshot;
         return value;
     }
 };
@@ -6085,126 +4097,6 @@ pub const OrderHistoryRequestDecoder = struct {
     }
 };
 
-/// SBE message OrderHistoryBatch
-pub const OrderHistoryBatch = struct {
-    account: []const u8,
-    orders: []ExecutionReport,
-    has_more: u8,
-    next_cursor: ?[]const u8,
-};
-
-/// SBE body encoder for OrderHistoryBatch (fields only, no header).
-pub const OrderHistoryBatchBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: OrderHistoryBatch, buf: *std.ArrayList(u8)) !void {
-        try writeString(buf, value.account);
-        try writeU32BE(buf, @intCast(value.orders.len));
-        for (value.orders) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(value.has_more));
-        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-    }
-};
-
-/// SBE body decoder for OrderHistoryBatch: reads fields at `pos`.
-pub const OrderHistoryBatchBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderHistoryBatch {
-        var value: OrderHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const orders_count = readU32BE(buf, &pos);
-        var orders = try allocator.alloc(ExecutionReport, orders_count);
-        var orders_idx: usize = 0;
-        while (orders_idx < orders_count) : (orders_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            orders[orders_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.orders = orders;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
-/// SBE encoder for OrderHistoryBatch
-pub const OrderHistoryBatchEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 51);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 1);
-        try writeString(buf, account);
-        try writeU32BE(buf, @intCast(orders.len));
-        for (orders) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try buf.append(@intCast(has_more));
-        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
-pub const OrderHistoryBatchDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderHistoryBatch {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 51) return error.InvalidTemplateId;
-        var value: OrderHistoryBatch = undefined;
-        var next_cursor: ?[]u8 = null;
-        const account = try readString(buf, &pos, allocator);
-        const orders_count = readU32BE(buf, &pos);
-        var orders = try allocator.alloc(ExecutionReport, orders_count);
-        var orders_idx: usize = 0;
-        while (orders_idx < orders_count) : (orders_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
-            pos = item_end;
-            orders[orders_idx] = item;
-        }
-        const has_more = readU8(buf, &pos);
-        if (buf[pos] == 1) {
-            pos += 1;
-            next_cursor = try readString(buf, &pos, allocator);
-        } else {
-            pos += 1;
-        }
-        value.account = account;
-        value.orders = orders;
-        value.has_more = has_more;
-        value.next_cursor = next_cursor;
-        return value;
-    }
-};
-
 /// SBE message CapabilitiesRequest
 pub const CapabilitiesRequest = struct {
 };
@@ -6256,162 +4148,6 @@ pub const CapabilitiesRequestDecoder = struct {
         if (tmpl_id != 52) return error.InvalidTemplateId;
         _ = allocator;
         const value: CapabilitiesRequest = undefined;
-        return value;
-    }
-};
-
-/// SBE message CapabilitiesResponse
-pub const CapabilitiesResponse = struct {
-    schema_ids: []u8,
-    paths: []CapabilityPath,
-    symbols: [][]const u8,
-    intervals: [][]const u8,
-};
-
-/// SBE body encoder for CapabilitiesResponse (fields only, no header).
-pub const CapabilitiesResponseBodyEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, value: CapabilitiesResponse, buf: *std.ArrayList(u8)) !void {
-        try writeU32BE(buf, @intCast(value.schema_ids.len));
-        for (value.schema_ids) |item| {
-        try buf.append(@intCast(item));
-        }
-        try writeU32BE(buf, @intCast(value.paths.len));
-        for (value.paths) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try CapabilityPath.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(value.symbols.len));
-        for (value.symbols) |item| {
-            try writeStringU32(buf, item);
-        }
-        try writeU32BE(buf, @intCast(value.intervals.len));
-        for (value.intervals) |item| {
-            try writeStringU32(buf, item);
-        }
-    }
-};
-
-/// SBE body decoder for CapabilitiesResponse: reads fields at `pos`.
-pub const CapabilitiesResponseBodyDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CapabilitiesResponse {
-        var value: CapabilitiesResponse = undefined;
-        const schema_ids_count = readU32BE(buf, &pos);
-        var schema_ids = try allocator.alloc(u8, schema_ids_count);
-        var schema_ids_idx: usize = 0;
-        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
-            schema_ids[schema_ids_idx] = readU8(buf, &pos);
-        }
-        const paths_count = readU32BE(buf, &pos);
-        var paths = try allocator.alloc(CapabilityPath, paths_count);
-        var paths_idx: usize = 0;
-        while (paths_idx < paths_count) : (paths_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try CapabilityPath.decode(allocator, buf, &pos);
-            pos = item_end;
-            paths[paths_idx] = item;
-        }
-        const symbols_count = readU32BE(buf, &pos);
-        var symbols = try allocator.alloc([]const u8, symbols_count);
-        var symbols_idx: usize = 0;
-        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
-            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
-        }
-        const intervals_count = readU32BE(buf, &pos);
-        var intervals = try allocator.alloc([]const u8, intervals_count);
-        var intervals_idx: usize = 0;
-        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
-            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
-        }
-        value.schema_ids = schema_ids;
-        value.paths = paths;
-        value.symbols = symbols;
-        value.intervals = intervals;
-        return value;
-    }
-};
-
-/// SBE encoder for CapabilitiesResponse
-pub const CapabilitiesResponseEncoder = struct {
-    pub fn encode(allocator: std.mem.Allocator, schema_ids: []const u8, paths: []const CapabilityPath, symbols: []const []const u8, intervals: []const []const u8) ![]u8 {
-        var list = std.ArrayList(u8).init(allocator);
-        defer list.deinit();
-        const buf = &list;
-        try writeU16BE(buf, SCHEMA_ID);
-        try writeU16BE(buf, 53);
-        try writeU16BE(buf, 0);
-        try writeU16BE(buf, 0);
-        try writeU32BE(buf, @intCast(schema_ids.len));
-        for (schema_ids) |item| {
-        try buf.append(@intCast(item));
-        }
-        try writeU32BE(buf, @intCast(paths.len));
-        for (paths) |item| {
-            var item_buf = std.ArrayList(u8).init(allocator);
-            defer item_buf.deinit();
-            try CapabilityPath.encode(allocator, item, &item_buf);
-            try writeU32BE(buf, @intCast(item_buf.items.len));
-            try buf.appendSlice(item_buf.items);
-        }
-        try writeU32BE(buf, @intCast(symbols.len));
-        for (symbols) |item| {
-            try writeStringU32(buf, item);
-        }
-        try writeU32BE(buf, @intCast(intervals.len));
-        for (intervals) |item| {
-            try writeStringU32(buf, item);
-        }
-        return buf.toOwnedSlice();
-    }
-};
-
-/// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
-pub const CapabilitiesResponseDecoder = struct {
-    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CapabilitiesResponse {
-        if (buf.len < 8) return error.BufferTooShort;
-        var pos: usize = 0;
-        const schema_id = readU16BE(buf, &pos);
-        const tmpl_id = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        _ = readU16BE(buf, &pos);
-        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
-        if (tmpl_id != 53) return error.InvalidTemplateId;
-        var value: CapabilitiesResponse = undefined;
-        const schema_ids_count = readU32BE(buf, &pos);
-        var schema_ids = try allocator.alloc(u8, schema_ids_count);
-        var schema_ids_idx: usize = 0;
-        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
-            schema_ids[schema_ids_idx] = readU8(buf, &pos);
-        }
-        const paths_count = readU32BE(buf, &pos);
-        var paths = try allocator.alloc(CapabilityPath, paths_count);
-        var paths_idx: usize = 0;
-        while (paths_idx < paths_count) : (paths_idx += 1) {
-            const item_len = readU32BE(buf, &pos);
-            const item_end = pos + item_len;
-            const item = try CapabilityPath.decode(allocator, buf, &pos);
-            pos = item_end;
-            paths[paths_idx] = item;
-        }
-        const symbols_count = readU32BE(buf, &pos);
-        var symbols = try allocator.alloc([]const u8, symbols_count);
-        var symbols_idx: usize = 0;
-        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
-            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
-        }
-        const intervals_count = readU32BE(buf, &pos);
-        var intervals = try allocator.alloc([]const u8, intervals_count);
-        var intervals_idx: usize = 0;
-        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
-            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
-        }
-        value.schema_ids = schema_ids;
-        value.paths = paths;
-        value.symbols = symbols;
-        value.intervals = intervals;
         return value;
     }
 };
@@ -7202,6 +4938,2638 @@ pub const PriceLimitsDecoder = struct {
         value.reference_price = reference_price;
         value.timestamp = timestamp;
         value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message AggregateTradeEvent
+pub const AggregateTradeEvent = struct {
+    trade: AggregateTrade,
+};
+
+/// SBE body encoder for AggregateTradeEvent (fields only, no header).
+pub const AggregateTradeEventBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeEvent, buf: *std.ArrayList(u8)) !void {
+        try AggregateTrade.encode(allocator, value.trade, buf);
+    }
+};
+
+/// SBE body decoder for AggregateTradeEvent: reads fields at `pos`.
+pub const AggregateTradeEventBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AggregateTradeEvent {
+        var value: AggregateTradeEvent = undefined;
+        const trade = try AggregateTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE encoder for AggregateTradeEvent
+pub const AggregateTradeEventEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, trade: AggregateTrade) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 11);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try AggregateTrade.encode(allocator, trade, buf);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
+pub const AggregateTradeEventDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AggregateTradeEvent {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 11) return error.InvalidTemplateId;
+        var value: AggregateTradeEvent = undefined;
+        const trade = try AggregateTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE message AggregateTradeBatch
+pub const AggregateTradeBatch = struct {
+    symbol: []const u8,
+    trades: []AggregateTrade,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for AggregateTradeBatch (fields only, no header).
+pub const AggregateTradeBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: AggregateTradeBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.trades.len));
+        for (value.trades) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try AggregateTrade.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for AggregateTradeBatch: reads fields at `pos`.
+pub const AggregateTradeBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AggregateTradeBatch {
+        var value: AggregateTradeBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const trades_count = readU32BE(buf, &pos);
+        var trades = try allocator.alloc(AggregateTrade, trades_count);
+        var trades_idx: usize = 0;
+        while (trades_idx < trades_count) : (trades_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try AggregateTrade.decode(allocator, buf, &pos);
+            pos = item_end;
+            trades[trades_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.trades = trades;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for AggregateTradeBatch
+pub const AggregateTradeBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const AggregateTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 13);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(trades.len));
+        for (trades) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try AggregateTrade.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
+pub const AggregateTradeBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AggregateTradeBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 13) return error.InvalidTemplateId;
+        var value: AggregateTradeBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const trades_count = readU32BE(buf, &pos);
+        var trades = try allocator.alloc(AggregateTrade, trades_count);
+        var trades_idx: usize = 0;
+        while (trades_idx < trades_count) : (trades_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try AggregateTrade.decode(allocator, buf, &pos);
+            pos = item_end;
+            trades[trades_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.trades = trades;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message LiquidationTradeEvent
+pub const LiquidationTradeEvent = struct {
+    trade: LiquidationTrade,
+};
+
+/// SBE body encoder for LiquidationTradeEvent (fields only, no header).
+pub const LiquidationTradeEventBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: LiquidationTradeEvent, buf: *std.ArrayList(u8)) !void {
+        try LiquidationTrade.encode(allocator, value.trade, buf);
+    }
+};
+
+/// SBE body decoder for LiquidationTradeEvent: reads fields at `pos`.
+pub const LiquidationTradeEventBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LiquidationTradeEvent {
+        var value: LiquidationTradeEvent = undefined;
+        const trade = try LiquidationTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE encoder for LiquidationTradeEvent
+pub const LiquidationTradeEventEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, trade: LiquidationTrade) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 19);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try LiquidationTrade.encode(allocator, trade, buf);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
+pub const LiquidationTradeEventDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !LiquidationTradeEvent {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 19) return error.InvalidTemplateId;
+        var value: LiquidationTradeEvent = undefined;
+        const trade = try LiquidationTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE message MarketDataSnapshot
+pub const MarketDataSnapshot = struct {
+    symbol: []const u8,
+    exchange: []const u8,
+    bids: []PriceLevel,
+    asks: []PriceLevel,
+    timestamp: i64,
+    sequence: ?u64,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for MarketDataSnapshot (fields only, no header).
+pub const MarketDataSnapshotBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: MarketDataSnapshot, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.exchange);
+        try writeU32BE(buf, @intCast(value.bids.len));
+        for (value.bids) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(value.asks.len));
+        for (value.asks) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
+        try buf.append(if (value.sequence != null) 1 else 0);
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for MarketDataSnapshot: reads fields at `pos`.
+pub const MarketDataSnapshotBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataSnapshot {
+        var value: MarketDataSnapshot = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const exchange = try readString(buf, &pos, allocator);
+        const bids_count = readU32BE(buf, &pos);
+        var bids = try allocator.alloc(PriceLevel, bids_count);
+        var bids_idx: usize = 0;
+        while (bids_idx < bids_count) : (bids_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            bids[bids_idx] = item;
+        }
+        const asks_count = readU32BE(buf, &pos);
+        var asks = try allocator.alloc(PriceLevel, asks_count);
+        var asks_idx: usize = 0;
+        while (asks_idx < asks_count) : (asks_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            asks[asks_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.exchange = exchange;
+        value.bids = bids;
+        value.asks = asks;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for MarketDataSnapshot
+pub const MarketDataSnapshotEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 6);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, symbol);
+        try writeString(buf, exchange);
+        try writeU32BE(buf, @intCast(bids.len));
+        for (bids) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(asks.len));
+        for (asks) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
+        try buf.append(if (sequence != null) 1 else 0);
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
+pub const MarketDataSnapshotDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarketDataSnapshot {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 6) return error.InvalidTemplateId;
+        var value: MarketDataSnapshot = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const exchange = try readString(buf, &pos, allocator);
+        const bids_count = readU32BE(buf, &pos);
+        var bids = try allocator.alloc(PriceLevel, bids_count);
+        var bids_idx: usize = 0;
+        while (bids_idx < bids_count) : (bids_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            bids[bids_idx] = item;
+        }
+        const asks_count = readU32BE(buf, &pos);
+        var asks = try allocator.alloc(PriceLevel, asks_count);
+        var asks_idx: usize = 0;
+        while (asks_idx < asks_count) : (asks_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            asks[asks_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.exchange = exchange;
+        value.bids = bids;
+        value.asks = asks;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message OrderBookSnapshot
+pub const OrderBookSnapshot = struct {
+    symbol: []const u8,
+    exchange: []const u8,
+    bids: []PriceLevel,
+    asks: []PriceLevel,
+    timestamp: i64,
+    sequence: ?u64,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for OrderBookSnapshot (fields only, no header).
+pub const OrderBookSnapshotBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: OrderBookSnapshot, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.exchange);
+        try writeU32BE(buf, @intCast(value.bids.len));
+        for (value.bids) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(value.asks.len));
+        for (value.asks) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
+        try buf.append(if (value.sequence != null) 1 else 0);
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for OrderBookSnapshot: reads fields at `pos`.
+pub const OrderBookSnapshotBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderBookSnapshot {
+        var value: OrderBookSnapshot = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const exchange = try readString(buf, &pos, allocator);
+        const bids_count = readU32BE(buf, &pos);
+        var bids = try allocator.alloc(PriceLevel, bids_count);
+        var bids_idx: usize = 0;
+        while (bids_idx < bids_count) : (bids_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            bids[bids_idx] = item;
+        }
+        const asks_count = readU32BE(buf, &pos);
+        var asks = try allocator.alloc(PriceLevel, asks_count);
+        var asks_idx: usize = 0;
+        while (asks_idx < asks_count) : (asks_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            asks[asks_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.exchange = exchange;
+        value.bids = bids;
+        value.asks = asks;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for OrderBookSnapshot
+pub const OrderBookSnapshotEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, exchange: []const u8, bids: []const PriceLevel, asks: []const PriceLevel, timestamp: i64, sequence: ?u64, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 9);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 17);
+        try writeString(buf, symbol);
+        try writeString(buf, exchange);
+        try writeU32BE(buf, @intCast(bids.len));
+        for (bids) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(asks.len));
+        for (asks) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PriceLevel.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
+        try buf.append(if (sequence != null) 1 else 0);
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
+pub const OrderBookSnapshotDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderBookSnapshot {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 9) return error.InvalidTemplateId;
+        var value: OrderBookSnapshot = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const exchange = try readString(buf, &pos, allocator);
+        const bids_count = readU32BE(buf, &pos);
+        var bids = try allocator.alloc(PriceLevel, bids_count);
+        var bids_idx: usize = 0;
+        while (bids_idx < bids_count) : (bids_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            bids[bids_idx] = item;
+        }
+        const asks_count = readU32BE(buf, &pos);
+        var asks = try allocator.alloc(PriceLevel, asks_count);
+        var asks_idx: usize = 0;
+        while (asks_idx < asks_count) : (asks_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PriceLevel.decode(allocator, buf, &pos);
+            pos = item_end;
+            asks[asks_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.exchange = exchange;
+        value.bids = bids;
+        value.asks = asks;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message MarketDataIncrementalRefresh
+pub const MarketDataIncrementalRefresh = struct {
+    symbol: []const u8,
+    updates: []MarketDataUpdate,
+    timestamp: i64,
+    sequence: ?u64,
+};
+
+/// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
+pub const MarketDataIncrementalRefreshBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: MarketDataIncrementalRefresh, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.updates.len));
+        for (value.updates) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MarketDataUpdate.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
+        try buf.append(if (value.sequence != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for MarketDataIncrementalRefresh: reads fields at `pos`.
+pub const MarketDataIncrementalRefreshBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarketDataIncrementalRefresh {
+        var value: MarketDataIncrementalRefresh = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const updates_count = readU32BE(buf, &pos);
+        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
+        var updates_idx: usize = 0;
+        while (updates_idx < updates_count) : (updates_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
+            pos = item_end;
+            updates[updates_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.updates = updates;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        return value;
+    }
+};
+
+/// SBE encoder for MarketDataIncrementalRefresh
+pub const MarketDataIncrementalRefreshEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 7);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 16);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(updates.len));
+        for (updates) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MarketDataUpdate.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
+        try buf.append(if (sequence != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
+pub const MarketDataIncrementalRefreshDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarketDataIncrementalRefresh {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 7) return error.InvalidTemplateId;
+        var value: MarketDataIncrementalRefresh = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const updates_count = readU32BE(buf, &pos);
+        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
+        var updates_idx: usize = 0;
+        while (updates_idx < updates_count) : (updates_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
+            pos = item_end;
+            updates[updates_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.updates = updates;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        return value;
+    }
+};
+
+/// SBE message OrderBookDelta
+pub const OrderBookDelta = struct {
+    symbol: []const u8,
+    updates: []MarketDataUpdate,
+    timestamp: i64,
+    sequence: ?u64,
+};
+
+/// SBE body encoder for OrderBookDelta (fields only, no header).
+pub const OrderBookDeltaBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: OrderBookDelta, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.updates.len));
+        for (value.updates) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MarketDataUpdate.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try writeU64BE(buf, @intCast(value.sequence orelse 0));
+        try buf.append(if (value.sequence != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for OrderBookDelta: reads fields at `pos`.
+pub const OrderBookDeltaBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderBookDelta {
+        var value: OrderBookDelta = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const updates_count = readU32BE(buf, &pos);
+        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
+        var updates_idx: usize = 0;
+        while (updates_idx < updates_count) : (updates_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
+            pos = item_end;
+            updates[updates_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.updates = updates;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        return value;
+    }
+};
+
+/// SBE encoder for OrderBookDelta
+pub const OrderBookDeltaEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, updates: []const MarketDataUpdate, timestamp: i64, sequence: ?u64) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 10);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 16);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(updates.len));
+        for (updates) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MarketDataUpdate.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try writeU64BE(buf, @intCast(sequence orelse 0));
+        try buf.append(if (sequence != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for OrderBookDelta: validates the header and reads the body.
+pub const OrderBookDeltaDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderBookDelta {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 10) return error.InvalidTemplateId;
+        var value: OrderBookDelta = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const updates_count = readU32BE(buf, &pos);
+        var updates = try allocator.alloc(MarketDataUpdate, updates_count);
+        var updates_idx: usize = 0;
+        while (updates_idx < updates_count) : (updates_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MarketDataUpdate.decode(allocator, buf, &pos);
+            pos = item_end;
+            updates[updates_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const sequence_v = readU64BE(buf, &pos);
+        var sequence: ?u64 = null;
+        if (buf[pos] == 1) { pos += 1; sequence = sequence_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.updates = updates;
+        value.timestamp = timestamp;
+        value.sequence = sequence;
+        return value;
+    }
+};
+
+/// SBE message CandleBarEvent
+pub const CandleBarEvent = struct {
+    bar: CandleBar,
+};
+
+/// SBE body encoder for CandleBarEvent (fields only, no header).
+pub const CandleBarEventBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: CandleBarEvent, buf: *std.ArrayList(u8)) !void {
+        try CandleBar.encode(allocator, value.bar, buf);
+    }
+};
+
+/// SBE body decoder for CandleBarEvent: reads fields at `pos`.
+pub const CandleBarEventBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CandleBarEvent {
+        var value: CandleBarEvent = undefined;
+        const bar = try CandleBar.decode(allocator, buf, &pos);
+        value.bar = bar;
+        return value;
+    }
+};
+
+/// SBE encoder for CandleBarEvent
+pub const CandleBarEventEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, bar: CandleBar) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 20);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try CandleBar.encode(allocator, bar, buf);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for CandleBarEvent: validates the header and reads the body.
+pub const CandleBarEventDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CandleBarEvent {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 20) return error.InvalidTemplateId;
+        var value: CandleBarEvent = undefined;
+        const bar = try CandleBar.decode(allocator, buf, &pos);
+        value.bar = bar;
+        return value;
+    }
+};
+
+/// SBE message CandleBarBatch
+pub const CandleBarBatch = struct {
+    symbol: []const u8,
+    interval: []const u8,
+    bars: []CandleBar,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for CandleBarBatch (fields only, no header).
+pub const CandleBarBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: CandleBarBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeString(buf, value.interval);
+        try writeU32BE(buf, @intCast(value.bars.len));
+        for (value.bars) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try CandleBar.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for CandleBarBatch: reads fields at `pos`.
+pub const CandleBarBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CandleBarBatch {
+        var value: CandleBarBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const interval = try readString(buf, &pos, allocator);
+        const bars_count = readU32BE(buf, &pos);
+        var bars = try allocator.alloc(CandleBar, bars_count);
+        var bars_idx: usize = 0;
+        while (bars_idx < bars_count) : (bars_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try CandleBar.decode(allocator, buf, &pos);
+            pos = item_end;
+            bars[bars_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.interval = interval;
+        value.bars = bars;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for CandleBarBatch
+pub const CandleBarBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, interval: []const u8, bars: []const CandleBar, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 22);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeString(buf, interval);
+        try writeU32BE(buf, @intCast(bars.len));
+        for (bars) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try CandleBar.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for CandleBarBatch: validates the header and reads the body.
+pub const CandleBarBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CandleBarBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 22) return error.InvalidTemplateId;
+        var value: CandleBarBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const interval = try readString(buf, &pos, allocator);
+        const bars_count = readU32BE(buf, &pos);
+        var bars = try allocator.alloc(CandleBar, bars_count);
+        var bars_idx: usize = 0;
+        while (bars_idx < bars_count) : (bars_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try CandleBar.decode(allocator, buf, &pos);
+            pos = item_end;
+            bars[bars_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.interval = interval;
+        value.bars = bars;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message PublicTradeEvent
+pub const PublicTradeEvent = struct {
+    trade: PublicTrade,
+};
+
+/// SBE body encoder for PublicTradeEvent (fields only, no header).
+pub const PublicTradeEventBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: PublicTradeEvent, buf: *std.ArrayList(u8)) !void {
+        try PublicTrade.encode(allocator, value.trade, buf);
+    }
+};
+
+/// SBE body decoder for PublicTradeEvent: reads fields at `pos`.
+pub const PublicTradeEventBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PublicTradeEvent {
+        var value: PublicTradeEvent = undefined;
+        const trade = try PublicTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE encoder for PublicTradeEvent
+pub const PublicTradeEventEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, trade: PublicTrade) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 23);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try PublicTrade.encode(allocator, trade, buf);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for PublicTradeEvent: validates the header and reads the body.
+pub const PublicTradeEventDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PublicTradeEvent {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 23) return error.InvalidTemplateId;
+        var value: PublicTradeEvent = undefined;
+        const trade = try PublicTrade.decode(allocator, buf, &pos);
+        value.trade = trade;
+        return value;
+    }
+};
+
+/// SBE message PublicTradeBatch
+pub const PublicTradeBatch = struct {
+    symbol: []const u8,
+    trades: []PublicTrade,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for PublicTradeBatch (fields only, no header).
+pub const PublicTradeBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: PublicTradeBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.symbol);
+        try writeU32BE(buf, @intCast(value.trades.len));
+        for (value.trades) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PublicTrade.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for PublicTradeBatch: reads fields at `pos`.
+pub const PublicTradeBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PublicTradeBatch {
+        var value: PublicTradeBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const trades_count = readU32BE(buf, &pos);
+        var trades = try allocator.alloc(PublicTrade, trades_count);
+        var trades_idx: usize = 0;
+        while (trades_idx < trades_count) : (trades_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PublicTrade.decode(allocator, buf, &pos);
+            pos = item_end;
+            trades[trades_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.trades = trades;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for PublicTradeBatch
+pub const PublicTradeBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, trades: []const PublicTrade, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 25);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, symbol);
+        try writeU32BE(buf, @intCast(trades.len));
+        for (trades) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PublicTrade.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for PublicTradeBatch: validates the header and reads the body.
+pub const PublicTradeBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PublicTradeBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 25) return error.InvalidTemplateId;
+        var value: PublicTradeBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const symbol = try readString(buf, &pos, allocator);
+        const trades_count = readU32BE(buf, &pos);
+        var trades = try allocator.alloc(PublicTrade, trades_count);
+        var trades_idx: usize = 0;
+        while (trades_idx < trades_count) : (trades_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PublicTrade.decode(allocator, buf, &pos);
+            pos = item_end;
+            trades[trades_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.symbol = symbol;
+        value.trades = trades;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message InstrumentCatalogResponse
+pub const InstrumentCatalogResponse = struct {
+    instruments: []InstrumentMetadata,
+};
+
+/// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
+pub const InstrumentCatalogResponseBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: InstrumentCatalogResponse, buf: *std.ArrayList(u8)) !void {
+        try writeU32BE(buf, @intCast(value.instruments.len));
+        for (value.instruments) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try InstrumentMetadata.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+    }
+};
+
+/// SBE body decoder for InstrumentCatalogResponse: reads fields at `pos`.
+pub const InstrumentCatalogResponseBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !InstrumentCatalogResponse {
+        var value: InstrumentCatalogResponse = undefined;
+        const instruments_count = readU32BE(buf, &pos);
+        var instruments = try allocator.alloc(InstrumentMetadata, instruments_count);
+        var instruments_idx: usize = 0;
+        while (instruments_idx < instruments_count) : (instruments_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try InstrumentMetadata.decode(allocator, buf, &pos);
+            pos = item_end;
+            instruments[instruments_idx] = item;
+        }
+        value.instruments = instruments;
+        return value;
+    }
+};
+
+/// SBE encoder for InstrumentCatalogResponse
+pub const InstrumentCatalogResponseEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, instruments: []const InstrumentMetadata) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 30);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(instruments.len));
+        for (instruments) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try InstrumentMetadata.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
+pub const InstrumentCatalogResponseDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !InstrumentCatalogResponse {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 30) return error.InvalidTemplateId;
+        var value: InstrumentCatalogResponse = undefined;
+        const instruments_count = readU32BE(buf, &pos);
+        var instruments = try allocator.alloc(InstrumentMetadata, instruments_count);
+        var instruments_idx: usize = 0;
+        while (instruments_idx < instruments_count) : (instruments_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try InstrumentMetadata.decode(allocator, buf, &pos);
+            pos = item_end;
+            instruments[instruments_idx] = item;
+        }
+        value.instruments = instruments;
+        return value;
+    }
+};
+
+/// SBE message BalanceSnapshot
+pub const BalanceSnapshot = struct {
+    account: []const u8,
+    balances: []BalanceEntry,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for BalanceSnapshot (fields only, no header).
+pub const BalanceSnapshotBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: BalanceSnapshot, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.balances.len));
+        for (value.balances) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BalanceEntry.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for BalanceSnapshot: reads fields at `pos`.
+pub const BalanceSnapshotBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BalanceSnapshot {
+        var value: BalanceSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const balances_count = readU32BE(buf, &pos);
+        var balances = try allocator.alloc(BalanceEntry, balances_count);
+        var balances_idx: usize = 0;
+        while (balances_idx < balances_count) : (balances_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BalanceEntry.decode(allocator, buf, &pos);
+            pos = item_end;
+            balances[balances_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.balances = balances;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for BalanceSnapshot
+pub const BalanceSnapshotEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, balances: []const BalanceEntry, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 33);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(balances.len));
+        for (balances) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BalanceEntry.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for BalanceSnapshot: validates the header and reads the body.
+pub const BalanceSnapshotDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !BalanceSnapshot {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 33) return error.InvalidTemplateId;
+        var value: BalanceSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const balances_count = readU32BE(buf, &pos);
+        var balances = try allocator.alloc(BalanceEntry, balances_count);
+        var balances_idx: usize = 0;
+        while (balances_idx < balances_count) : (balances_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BalanceEntry.decode(allocator, buf, &pos);
+            pos = item_end;
+            balances[balances_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.balances = balances;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message PositionSnapshot
+pub const PositionSnapshot = struct {
+    account: []const u8,
+    positions: []PositionEntry,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for PositionSnapshot (fields only, no header).
+pub const PositionSnapshotBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: PositionSnapshot, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.positions.len));
+        for (value.positions) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PositionEntry.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for PositionSnapshot: reads fields at `pos`.
+pub const PositionSnapshotBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PositionSnapshot {
+        var value: PositionSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const positions_count = readU32BE(buf, &pos);
+        var positions = try allocator.alloc(PositionEntry, positions_count);
+        var positions_idx: usize = 0;
+        while (positions_idx < positions_count) : (positions_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PositionEntry.decode(allocator, buf, &pos);
+            pos = item_end;
+            positions[positions_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.positions = positions;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for PositionSnapshot
+pub const PositionSnapshotEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, positions: []const PositionEntry, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 35);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(positions.len));
+        for (positions) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try PositionEntry.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for PositionSnapshot: validates the header and reads the body.
+pub const PositionSnapshotDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PositionSnapshot {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 35) return error.InvalidTemplateId;
+        var value: PositionSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const positions_count = readU32BE(buf, &pos);
+        var positions = try allocator.alloc(PositionEntry, positions_count);
+        var positions_idx: usize = 0;
+        while (positions_idx < positions_count) : (positions_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try PositionEntry.decode(allocator, buf, &pos);
+            pos = item_end;
+            positions[positions_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.positions = positions;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message CapabilitiesResponse
+pub const CapabilitiesResponse = struct {
+    schema_ids: []u8,
+    paths: []CapabilityPath,
+    symbols: [][]const u8,
+    intervals: [][]const u8,
+};
+
+/// SBE body encoder for CapabilitiesResponse (fields only, no header).
+pub const CapabilitiesResponseBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: CapabilitiesResponse, buf: *std.ArrayList(u8)) !void {
+        try writeU32BE(buf, @intCast(value.schema_ids.len));
+        for (value.schema_ids) |item| {
+        try buf.append(@intCast(item));
+        }
+        try writeU32BE(buf, @intCast(value.paths.len));
+        for (value.paths) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try CapabilityPath.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(value.symbols.len));
+        for (value.symbols) |item| {
+            try writeStringU32(buf, item);
+        }
+        try writeU32BE(buf, @intCast(value.intervals.len));
+        for (value.intervals) |item| {
+            try writeStringU32(buf, item);
+        }
+    }
+};
+
+/// SBE body decoder for CapabilitiesResponse: reads fields at `pos`.
+pub const CapabilitiesResponseBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !CapabilitiesResponse {
+        var value: CapabilitiesResponse = undefined;
+        const schema_ids_count = readU32BE(buf, &pos);
+        var schema_ids = try allocator.alloc(u8, schema_ids_count);
+        var schema_ids_idx: usize = 0;
+        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
+            schema_ids[schema_ids_idx] = readU8(buf, &pos);
+        }
+        const paths_count = readU32BE(buf, &pos);
+        var paths = try allocator.alloc(CapabilityPath, paths_count);
+        var paths_idx: usize = 0;
+        while (paths_idx < paths_count) : (paths_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try CapabilityPath.decode(allocator, buf, &pos);
+            pos = item_end;
+            paths[paths_idx] = item;
+        }
+        const symbols_count = readU32BE(buf, &pos);
+        var symbols = try allocator.alloc([]const u8, symbols_count);
+        var symbols_idx: usize = 0;
+        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
+            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
+        }
+        const intervals_count = readU32BE(buf, &pos);
+        var intervals = try allocator.alloc([]const u8, intervals_count);
+        var intervals_idx: usize = 0;
+        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
+            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
+        }
+        value.schema_ids = schema_ids;
+        value.paths = paths;
+        value.symbols = symbols;
+        value.intervals = intervals;
+        return value;
+    }
+};
+
+/// SBE encoder for CapabilitiesResponse
+pub const CapabilitiesResponseEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, schema_ids: []const u8, paths: []const CapabilityPath, symbols: []const []const u8, intervals: []const []const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 53);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(schema_ids.len));
+        for (schema_ids) |item| {
+        try buf.append(@intCast(item));
+        }
+        try writeU32BE(buf, @intCast(paths.len));
+        for (paths) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try CapabilityPath.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU32BE(buf, @intCast(symbols.len));
+        for (symbols) |item| {
+            try writeStringU32(buf, item);
+        }
+        try writeU32BE(buf, @intCast(intervals.len));
+        for (intervals) |item| {
+            try writeStringU32(buf, item);
+        }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
+pub const CapabilitiesResponseDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !CapabilitiesResponse {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 53) return error.InvalidTemplateId;
+        var value: CapabilitiesResponse = undefined;
+        const schema_ids_count = readU32BE(buf, &pos);
+        var schema_ids = try allocator.alloc(u8, schema_ids_count);
+        var schema_ids_idx: usize = 0;
+        while (schema_ids_idx < schema_ids_count) : (schema_ids_idx += 1) {
+            schema_ids[schema_ids_idx] = readU8(buf, &pos);
+        }
+        const paths_count = readU32BE(buf, &pos);
+        var paths = try allocator.alloc(CapabilityPath, paths_count);
+        var paths_idx: usize = 0;
+        while (paths_idx < paths_count) : (paths_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try CapabilityPath.decode(allocator, buf, &pos);
+            pos = item_end;
+            paths[paths_idx] = item;
+        }
+        const symbols_count = readU32BE(buf, &pos);
+        var symbols = try allocator.alloc([]const u8, symbols_count);
+        var symbols_idx: usize = 0;
+        while (symbols_idx < symbols_count) : (symbols_idx += 1) {
+            symbols[symbols_idx] = try readStringU32(buf, &pos, allocator);
+        }
+        const intervals_count = readU32BE(buf, &pos);
+        var intervals = try allocator.alloc([]const u8, intervals_count);
+        var intervals_idx: usize = 0;
+        while (intervals_idx < intervals_count) : (intervals_idx += 1) {
+            intervals[intervals_idx] = try readStringU32(buf, &pos, allocator);
+        }
+        value.schema_ids = schema_ids;
+        value.paths = paths;
+        value.symbols = symbols;
+        value.intervals = intervals;
+        return value;
+    }
+};
+
+/// SBE message BatchReport
+pub const BatchReport = struct {
+    batch_id: []const u8,
+    account: []const u8,
+    outcome: BatchReportOutcome,
+    results: []BatchResult,
+    timestamp: i64,
+};
+
+/// SBE body encoder for BatchReport (fields only, no header).
+pub const BatchReportBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: BatchReport, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.batch_id);
+        try writeString(buf, value.account);
+        try buf.append(BatchReportOutcomeToValue(value.outcome));
+        try writeU32BE(buf, @intCast(value.results.len));
+        for (value.results) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BatchResult.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+    }
+};
+
+/// SBE body decoder for BatchReport: reads fields at `pos`.
+pub const BatchReportBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BatchReport {
+        var value: BatchReport = undefined;
+        const batch_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        const outcome = try BatchReportOutcomeFromValue(readU8(buf, &pos));
+        const results_count = readU32BE(buf, &pos);
+        var results = try allocator.alloc(BatchResult, results_count);
+        var results_idx: usize = 0;
+        while (results_idx < results_count) : (results_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BatchResult.decode(allocator, buf, &pos);
+            pos = item_end;
+            results[results_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        value.batch_id = batch_id;
+        value.account = account;
+        value.outcome = outcome;
+        value.results = results;
+        value.timestamp = timestamp;
+        return value;
+    }
+};
+
+/// SBE encoder for BatchReport
+pub const BatchReportEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, batch_id: []const u8, account: []const u8, outcome: BatchReportOutcome, results: []const BatchResult, timestamp: i64) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 64);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 9);
+        try writeString(buf, batch_id);
+        try writeString(buf, account);
+        try buf.append(BatchReportOutcomeToValue(outcome));
+        try writeU32BE(buf, @intCast(results.len));
+        for (results) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BatchResult.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for BatchReport: validates the header and reads the body.
+pub const BatchReportDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !BatchReport {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 64) return error.InvalidTemplateId;
+        var value: BatchReport = undefined;
+        const batch_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        const outcome = try BatchReportOutcomeFromValue(readU8(buf, &pos));
+        const results_count = readU32BE(buf, &pos);
+        var results = try allocator.alloc(BatchResult, results_count);
+        var results_idx: usize = 0;
+        while (results_idx < results_count) : (results_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BatchResult.decode(allocator, buf, &pos);
+            pos = item_end;
+            results[results_idx] = item;
+        }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        value.batch_id = batch_id;
+        value.account = account;
+        value.outcome = outcome;
+        value.results = results;
+        value.timestamp = timestamp;
+        return value;
+    }
+};
+
+/// SBE struct BatchAction
+pub const BatchAction = struct {
+    kind: BatchActionKind,
+    new_order: ?NewOrderSingle,
+    cancel: ?CancelRequest,
+    replace: ?CancelReplaceRequest,
+
+    pub fn encode(allocator: std.mem.Allocator, value: BatchAction, buf: *std.ArrayList(u8)) !void {
+        try buf.append(BatchActionKindToValue(value.kind));
+        try buf.append(if (value.new_order != null) 1 else 0);
+        if (value.new_order != null) {
+        try NewOrderSingleBodyEncoder.encode(allocator, value.new_order.?, buf);
+        }
+        try buf.append(if (value.cancel != null) 1 else 0);
+        if (value.cancel != null) {
+        try CancelRequestBodyEncoder.encode(allocator, value.cancel.?, buf);
+        }
+        try buf.append(if (value.replace != null) 1 else 0);
+        if (value.replace != null) {
+        try CancelReplaceRequestBodyEncoder.encode(allocator, value.replace.?, buf);
+        }
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BatchAction {
+        var value: BatchAction = undefined;
+        const kind = try BatchActionKindFromValue(readU8(buf, &pos));
+        var new_order: ?NewOrderSingle = null;
+        if (readU8(buf, &pos) == 1) {
+        const new_order_inner = try NewOrderSingleBodyDecoder.decode(allocator, buf, &pos);
+            new_order = new_order_inner;
+        }
+        var cancel: ?CancelRequest = null;
+        if (readU8(buf, &pos) == 1) {
+        const cancel_inner = try CancelRequestBodyDecoder.decode(allocator, buf, &pos);
+            cancel = cancel_inner;
+        }
+        var replace: ?CancelReplaceRequest = null;
+        if (readU8(buf, &pos) == 1) {
+        const replace_inner = try CancelReplaceRequestBodyDecoder.decode(allocator, buf, &pos);
+            replace = replace_inner;
+        }
+        value.kind = kind;
+        value.new_order = new_order;
+        value.cancel = cancel;
+        value.replace = replace;
+        return value;
+    }
+};
+
+/// SBE message FillHistoryBatch
+pub const FillHistoryBatch = struct {
+    account: []const u8,
+    fills: []ExecutionReport,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for FillHistoryBatch (fields only, no header).
+pub const FillHistoryBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: FillHistoryBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.fills.len));
+        for (value.fills) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for FillHistoryBatch: reads fields at `pos`.
+pub const FillHistoryBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !FillHistoryBatch {
+        var value: FillHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const fills_count = readU32BE(buf, &pos);
+        var fills = try allocator.alloc(ExecutionReport, fills_count);
+        var fills_idx: usize = 0;
+        while (fills_idx < fills_count) : (fills_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            fills[fills_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.fills = fills;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for FillHistoryBatch
+pub const FillHistoryBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, fills: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 41);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(fills.len));
+        for (fills) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for FillHistoryBatch: validates the header and reads the body.
+pub const FillHistoryBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !FillHistoryBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 41) return error.InvalidTemplateId;
+        var value: FillHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const fills_count = readU32BE(buf, &pos);
+        var fills = try allocator.alloc(ExecutionReport, fills_count);
+        var fills_idx: usize = 0;
+        while (fills_idx < fills_count) : (fills_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            fills[fills_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.fills = fills;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message OpenOrdersSnapshot
+pub const OpenOrdersSnapshot = struct {
+    account: []const u8,
+    orders: []ExecutionReport,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
+pub const OpenOrdersSnapshotBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: OpenOrdersSnapshot, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.orders.len));
+        for (value.orders) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for OpenOrdersSnapshot: reads fields at `pos`.
+pub const OpenOrdersSnapshotBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OpenOrdersSnapshot {
+        var value: OpenOrdersSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const orders_count = readU32BE(buf, &pos);
+        var orders = try allocator.alloc(ExecutionReport, orders_count);
+        var orders_idx: usize = 0;
+        while (orders_idx < orders_count) : (orders_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            orders[orders_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.orders = orders;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for OpenOrdersSnapshot
+pub const OpenOrdersSnapshotEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 49);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(orders.len));
+        for (orders) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
+pub const OpenOrdersSnapshotDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OpenOrdersSnapshot {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 49) return error.InvalidTemplateId;
+        var value: OpenOrdersSnapshot = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const orders_count = readU32BE(buf, &pos);
+        var orders = try allocator.alloc(ExecutionReport, orders_count);
+        var orders_idx: usize = 0;
+        while (orders_idx < orders_count) : (orders_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            orders[orders_idx] = item;
+        }
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.orders = orders;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message OrderHistoryBatch
+pub const OrderHistoryBatch = struct {
+    account: []const u8,
+    orders: []ExecutionReport,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for OrderHistoryBatch (fields only, no header).
+pub const OrderHistoryBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: OrderHistoryBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.orders.len));
+        for (value.orders) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for OrderHistoryBatch: reads fields at `pos`.
+pub const OrderHistoryBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !OrderHistoryBatch {
+        var value: OrderHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const orders_count = readU32BE(buf, &pos);
+        var orders = try allocator.alloc(ExecutionReport, orders_count);
+        var orders_idx: usize = 0;
+        while (orders_idx < orders_count) : (orders_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            orders[orders_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.orders = orders;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for OrderHistoryBatch
+pub const OrderHistoryBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, orders: []const ExecutionReport, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 51);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(orders.len));
+        for (orders) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try ExecutionReportBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
+pub const OrderHistoryBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !OrderHistoryBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 51) return error.InvalidTemplateId;
+        var value: OrderHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const orders_count = readU32BE(buf, &pos);
+        var orders = try allocator.alloc(ExecutionReport, orders_count);
+        var orders_idx: usize = 0;
+        while (orders_idx < orders_count) : (orders_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try ExecutionReportBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            orders[orders_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.orders = orders;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message AllMidsBatch
+pub const AllMidsBatch = struct {
+    tickers: []MiniTicker,
+};
+
+/// SBE body encoder for AllMidsBatch (fields only, no header).
+pub const AllMidsBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: AllMidsBatch, buf: *std.ArrayList(u8)) !void {
+        try writeU32BE(buf, @intCast(value.tickers.len));
+        for (value.tickers) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+    }
+};
+
+/// SBE body decoder for AllMidsBatch: reads fields at `pos`.
+pub const AllMidsBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !AllMidsBatch {
+        var value: AllMidsBatch = undefined;
+        const tickers_count = readU32BE(buf, &pos);
+        var tickers = try allocator.alloc(MiniTicker, tickers_count);
+        var tickers_idx: usize = 0;
+        while (tickers_idx < tickers_count) : (tickers_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MiniTickerBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            tickers[tickers_idx] = item;
+        }
+        value.tickers = tickers;
+        return value;
+    }
+};
+
+/// SBE encoder for AllMidsBatch
+pub const AllMidsBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, tickers: []const MiniTicker) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 16);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeU32BE(buf, @intCast(tickers.len));
+        for (tickers) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try MiniTickerBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for AllMidsBatch: validates the header and reads the body.
+pub const AllMidsBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !AllMidsBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 16) return error.InvalidTemplateId;
+        var value: AllMidsBatch = undefined;
+        const tickers_count = readU32BE(buf, &pos);
+        var tickers = try allocator.alloc(MiniTicker, tickers_count);
+        var tickers_idx: usize = 0;
+        while (tickers_idx < tickers_count) : (tickers_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try MiniTickerBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            tickers[tickers_idx] = item;
+        }
+        value.tickers = tickers;
+        return value;
+    }
+};
+
+/// SBE message MarginUpdate
+pub const MarginUpdate = struct {
+    account: []const u8,
+    summary: MarginSummary,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for MarginUpdate (fields only, no header).
+pub const MarginUpdateBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: MarginUpdate, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try MarginSummaryBodyEncoder.encode(allocator, value.summary, buf);
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for MarginUpdate: reads fields at `pos`.
+pub const MarginUpdateBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !MarginUpdate {
+        var value: MarginUpdate = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const summary = try MarginSummaryBodyDecoder.decode(allocator, buf, &pos);
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.summary = summary;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for MarginUpdate
+pub const MarginUpdateEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, summary: MarginSummary, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 37);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try MarginSummaryBodyEncoder.encode(allocator, summary, buf);
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for MarginUpdate: validates the header and reads the body.
+pub const MarginUpdateDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !MarginUpdate {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 37) return error.InvalidTemplateId;
+        var value: MarginUpdate = undefined;
+        const account = try readString(buf, &pos, allocator);
+        const summary = try MarginSummaryBodyDecoder.decode(allocator, buf, &pos);
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.account = account;
+        value.summary = summary;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE message FundingHistoryBatch
+pub const FundingHistoryBatch = struct {
+    account: []const u8,
+    payments: []FundingPayment,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for FundingHistoryBatch (fields only, no header).
+pub const FundingHistoryBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: FundingHistoryBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.payments.len));
+        for (value.payments) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for FundingHistoryBatch: reads fields at `pos`.
+pub const FundingHistoryBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !FundingHistoryBatch {
+        var value: FundingHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const payments_count = readU32BE(buf, &pos);
+        var payments = try allocator.alloc(FundingPayment, payments_count);
+        var payments_idx: usize = 0;
+        while (payments_idx < payments_count) : (payments_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try FundingPaymentBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            payments[payments_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.payments = payments;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for FundingHistoryBatch
+pub const FundingHistoryBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, payments: []const FundingPayment, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 44);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(payments.len));
+        for (payments) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try FundingPaymentBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
+pub const FundingHistoryBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !FundingHistoryBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 44) return error.InvalidTemplateId;
+        var value: FundingHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const payments_count = readU32BE(buf, &pos);
+        var payments = try allocator.alloc(FundingPayment, payments_count);
+        var payments_idx: usize = 0;
+        while (payments_idx < payments_count) : (payments_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try FundingPaymentBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            payments[payments_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.payments = payments;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message LedgerHistoryBatch
+pub const LedgerHistoryBatch = struct {
+    account: []const u8,
+    entries: []LedgerUpdate,
+    has_more: u8,
+    next_cursor: ?[]const u8,
+};
+
+/// SBE body encoder for LedgerHistoryBatch (fields only, no header).
+pub const LedgerHistoryBatchBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: LedgerHistoryBatch, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.entries.len));
+        for (value.entries) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(value.has_more));
+        if (value.next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+    }
+};
+
+/// SBE body decoder for LedgerHistoryBatch: reads fields at `pos`.
+pub const LedgerHistoryBatchBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !LedgerHistoryBatch {
+        var value: LedgerHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const entries_count = readU32BE(buf, &pos);
+        var entries = try allocator.alloc(LedgerUpdate, entries_count);
+        var entries_idx: usize = 0;
+        while (entries_idx < entries_count) : (entries_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try LedgerUpdateBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            entries[entries_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.entries = entries;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE encoder for LedgerHistoryBatch
+pub const LedgerHistoryBatchEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, account: []const u8, entries: []const LedgerUpdate, has_more: u8, next_cursor: ?[]const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 47);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 1);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(entries.len));
+        for (entries) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try LedgerUpdateBodyEncoder.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        try buf.append(@intCast(has_more));
+        if (next_cursor) |s| { try buf.append(1); try writeString(buf, s); } else { try buf.append(0); }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
+pub const LedgerHistoryBatchDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !LedgerHistoryBatch {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 47) return error.InvalidTemplateId;
+        var value: LedgerHistoryBatch = undefined;
+        var next_cursor: ?[]u8 = null;
+        const account = try readString(buf, &pos, allocator);
+        const entries_count = readU32BE(buf, &pos);
+        var entries = try allocator.alloc(LedgerUpdate, entries_count);
+        var entries_idx: usize = 0;
+        while (entries_idx < entries_count) : (entries_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try LedgerUpdateBodyDecoder.decode(allocator, buf, &pos);
+            pos = item_end;
+            entries[entries_idx] = item;
+        }
+        const has_more = readU8(buf, &pos);
+        if (buf[pos] == 1) {
+            pos += 1;
+            next_cursor = try readString(buf, &pos, allocator);
+        } else {
+            pos += 1;
+        }
+        value.account = account;
+        value.entries = entries;
+        value.has_more = has_more;
+        value.next_cursor = next_cursor;
+        return value;
+    }
+};
+
+/// SBE message BatchRequest
+pub const BatchRequest = struct {
+    batch_id: []const u8,
+    account: []const u8,
+    actions: []BatchAction,
+};
+
+/// SBE body encoder for BatchRequest (fields only, no header).
+pub const BatchRequestBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: BatchRequest, buf: *std.ArrayList(u8)) !void {
+        try writeString(buf, value.batch_id);
+        try writeString(buf, value.account);
+        try writeU32BE(buf, @intCast(value.actions.len));
+        for (value.actions) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BatchAction.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+    }
+};
+
+/// SBE body decoder for BatchRequest: reads fields at `pos`.
+pub const BatchRequestBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !BatchRequest {
+        var value: BatchRequest = undefined;
+        const batch_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        const actions_count = readU32BE(buf, &pos);
+        var actions = try allocator.alloc(BatchAction, actions_count);
+        var actions_idx: usize = 0;
+        while (actions_idx < actions_count) : (actions_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BatchAction.decode(allocator, buf, &pos);
+            pos = item_end;
+            actions[actions_idx] = item;
+        }
+        value.batch_id = batch_id;
+        value.account = account;
+        value.actions = actions;
+        return value;
+    }
+};
+
+/// SBE encoder for BatchRequest
+pub const BatchRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, batch_id: []const u8, account: []const u8, actions: []const BatchAction) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 63);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, batch_id);
+        try writeString(buf, account);
+        try writeU32BE(buf, @intCast(actions.len));
+        for (actions) |item| {
+            var item_buf = std.ArrayList(u8).init(allocator);
+            defer item_buf.deinit();
+            try BatchAction.encode(allocator, item, &item_buf);
+            try writeU32BE(buf, @intCast(item_buf.items.len));
+            try buf.appendSlice(item_buf.items);
+        }
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for BatchRequest: validates the header and reads the body.
+pub const BatchRequestDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !BatchRequest {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 63) return error.InvalidTemplateId;
+        var value: BatchRequest = undefined;
+        const batch_id = try readString(buf, &pos, allocator);
+        const account = try readString(buf, &pos, allocator);
+        const actions_count = readU32BE(buf, &pos);
+        var actions = try allocator.alloc(BatchAction, actions_count);
+        var actions_idx: usize = 0;
+        while (actions_idx < actions_count) : (actions_idx += 1) {
+            const item_len = readU32BE(buf, &pos);
+            const item_end = pos + item_len;
+            const item = try BatchAction.decode(allocator, buf, &pos);
+            pos = item_end;
+            actions[actions_idx] = item;
+        }
+        value.batch_id = batch_id;
+        value.account = account;
+        value.actions = actions;
         return value;
     }
 };

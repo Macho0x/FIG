@@ -339,7 +339,75 @@ pub async fn run_demos(conn: &Connection) -> Result<()> {
         limits.symbol, limits.lower_limit, limits.upper_limit
     );
 
-    info!("=== Demo 8: PING/PONG ===");
+    info!("=== Demo 8: atomic batch REQUEST ===");
+    let batch = client
+        .post_batch(
+            ACCOUNT,
+            &BatchRequest {
+                batch_id: "CLI-BAT-1".to_string(),
+                account: ACCOUNT.to_string(),
+                actions: vec![
+                    BatchAction {
+                        kind: BatchActionKind::NewOrder,
+                        new_order: Some(NewOrderSingle {
+                            cl_ord_id: "CLI-BAT-A".to_string(),
+                            side: Side::Buy,
+                            order_qty: Quantity(1.0),
+                            price: Some(Price(10.0)),
+                            stop_price: None,
+                            symbol: "AAPL".to_string(),
+                            order_type: OrderType::Limit,
+                            time_in_force: TimeInForce::Day,
+                            expire_time: None,
+                            account: Some(ACCOUNT.to_string()),
+                            strategy_id: None,
+                            security_id: None,
+                            id_source: None,
+                            security_exchange: None,
+                            post_only: Some(true),
+                            reduce_only: None,
+                        }),
+                        cancel: None,
+                        replace: None,
+                    },
+                    BatchAction {
+                        kind: BatchActionKind::NewOrder,
+                        new_order: Some(NewOrderSingle {
+                            cl_ord_id: "CLI-BAT-B".to_string(),
+                            side: Side::Buy,
+                            order_qty: Quantity(1.0),
+                            price: Some(Price(9.0)),
+                            stop_price: None,
+                            symbol: "AAPL".to_string(),
+                            order_type: OrderType::Limit,
+                            time_in_force: TimeInForce::Day,
+                            expire_time: None,
+                            account: Some(ACCOUNT.to_string()),
+                            strategy_id: None,
+                            security_id: None,
+                            id_source: None,
+                            security_exchange: None,
+                            post_only: Some(true),
+                            reduce_only: None,
+                        }),
+                        cancel: None,
+                        replace: None,
+                    },
+                ],
+            },
+            18,
+        )
+        .await?;
+    if batch.outcome != BatchReportOutcome::Applied {
+        bail!("batch: expected applied, got {:?}", batch.outcome);
+    }
+    info!(
+        "  Batch {}: {} actions applied",
+        batch.batch_id,
+        batch.results.len()
+    );
+
+    info!("=== Demo 9: PING/PONG ===");
     let ping_frames = client.send_and_read(Frame::ping()).await?;
     log_frames("ping", &ping_frames);
     assert_pong("ping", &ping_frames)?;

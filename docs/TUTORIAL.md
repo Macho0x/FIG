@@ -321,6 +321,7 @@ Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
 | Price limits | `marketdata/{sym}/limits` | `PriceLimitsRequest` → `PriceLimits` |
 | Open orders | `trading/accounts/{acct}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` |
 | Mass cancel | `trading/accounts/{acct}/orders/masscancel` | `MassCancelRequest` → `MassCancelReport` (FIX 35=q / 35=r; not an OUCH message) |
+| Atomic batch | `trading/accounts/{acct}/batch` | `BatchRequest` → `BatchReport` (ADR 0010; not OrderList; FIX/OUCH stay 1:1) |
 | Order history | `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` (stream if large) |
 | Fills | `accounts/{acct}/fills` | `FillHistoryRequest` → `FillHistoryBatch` |
 | Funding hist | `accounts/{acct}/funding` | `FundingHistoryRequest` → `FundingHistoryBatch` |

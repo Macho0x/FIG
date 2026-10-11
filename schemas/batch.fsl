@@ -1,0 +1,51 @@
+// FIG Schema Language — Atomic multi-action REQUEST (ADR 0010)
+// Merged last by `cargo xtask codegen` so SBE template IDs append.
+// Not OrderList/OCO and not mass cancel.
+
+schema trading.orders v1.0.0 {
+    description: "Atomic batch REQUEST envelope (§9.5)"
+    well_known_id: 0x01
+
+    type ClientOrderId: string(max_len: 20, pattern: "[A-Za-z0-9\\-]+")
+    type TradeTimestamp: int64
+
+    type BatchAction {
+        kind: enum { new_order, cancel, replace }
+        new_order: NewOrderSingle optional
+        cancel: CancelRequest optional
+        replace: CancelReplaceRequest optional
+    }
+
+    type BatchResult {
+        index: uint32
+        kind: enum { new_order, cancel, replace }
+        cl_ord_id: ClientOrderId
+        status: enum { applied, rejected }
+        reject_reason: string(max_len: 64) optional
+    }
+
+    message BatchRequest {
+        channel_type: request_response
+        correlation_field: batch_id
+
+        batch_id: ClientOrderId @1
+        account: string(max_len: 32) @2
+        actions: list<BatchAction> @3
+    }
+
+    message BatchReport {
+        channel_type: request_response
+        correlation_field: batch_id
+
+        batch_id: ClientOrderId @1
+        account: string(max_len: 32) @2
+        outcome: enum { applied, rejected } @3
+        results: list<BatchResult> @4
+        timestamp: TradeTimestamp @5
+    }
+
+    gateway rest {
+        message BatchRequest -> method: POST path: "/trading/accounts/{account}/batch"
+        message BatchReport -> method: POST path: "/trading/accounts/{account}/batch"
+    }
+}

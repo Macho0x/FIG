@@ -643,6 +643,26 @@ func MassCancelReportStatusFromValue(v uint8) (MassCancelReportStatus, error) {
 
 func (e MassCancelReportStatus) ToValue() uint8 { return uint8(e) }
 
+type BatchReportOutcome uint8
+
+const (
+	BatchReportOutcomeApplied  BatchReportOutcome = 1
+	BatchReportOutcomeRejected BatchReportOutcome = 2
+)
+
+func BatchReportOutcomeFromValue(v uint8) (BatchReportOutcome, error) {
+	switch v {
+	case 1:
+		return BatchReportOutcomeApplied, nil
+	case 2:
+		return BatchReportOutcomeRejected, nil
+	default:
+		return 0, fmt.Errorf("invalid BatchReportOutcome value: %d", v)
+	}
+}
+
+func (e BatchReportOutcome) ToValue() uint8 { return uint8(e) }
+
 type AggregateTradeSide uint8
 
 const (
@@ -768,6 +788,72 @@ func CapabilityPathPatternFromValue(v uint8) (CapabilityPathPattern, error) {
 }
 
 func (e CapabilityPathPattern) ToValue() uint8 { return uint8(e) }
+
+type BatchActionKind uint8
+
+const (
+	BatchActionKindNewOrder BatchActionKind = 1
+	BatchActionKindCancel   BatchActionKind = 2
+	BatchActionKindReplace  BatchActionKind = 3
+)
+
+func BatchActionKindFromValue(v uint8) (BatchActionKind, error) {
+	switch v {
+	case 1:
+		return BatchActionKindNewOrder, nil
+	case 2:
+		return BatchActionKindCancel, nil
+	case 3:
+		return BatchActionKindReplace, nil
+	default:
+		return 0, fmt.Errorf("invalid BatchActionKind value: %d", v)
+	}
+}
+
+func (e BatchActionKind) ToValue() uint8 { return uint8(e) }
+
+type BatchResultKind uint8
+
+const (
+	BatchResultKindNewOrder BatchResultKind = 1
+	BatchResultKindCancel   BatchResultKind = 2
+	BatchResultKindReplace  BatchResultKind = 3
+)
+
+func BatchResultKindFromValue(v uint8) (BatchResultKind, error) {
+	switch v {
+	case 1:
+		return BatchResultKindNewOrder, nil
+	case 2:
+		return BatchResultKindCancel, nil
+	case 3:
+		return BatchResultKindReplace, nil
+	default:
+		return 0, fmt.Errorf("invalid BatchResultKind value: %d", v)
+	}
+}
+
+func (e BatchResultKind) ToValue() uint8 { return uint8(e) }
+
+type BatchResultStatus uint8
+
+const (
+	BatchResultStatusApplied  BatchResultStatus = 1
+	BatchResultStatusRejected BatchResultStatus = 2
+)
+
+func BatchResultStatusFromValue(v uint8) (BatchResultStatus, error) {
+	switch v {
+	case 1:
+		return BatchResultStatusApplied, nil
+	case 2:
+		return BatchResultStatusRejected, nil
+	default:
+		return 0, fmt.Errorf("invalid BatchResultStatus value: %d", v)
+	}
+}
+
+func (e BatchResultStatus) ToValue() uint8 { return uint8(e) }
 
 // SBE struct AggregateTrade
 type AggregateTrade struct {
@@ -1330,6 +1416,65 @@ func CapabilityPathDecoderDecode(buf []byte, pos int) (CapabilityPath, int, erro
 		Path:         path,
 		Pattern:      pattern,
 		AuthRequired: auth_required,
+	}
+	return value, pos, nil
+}
+
+// SBE struct BatchResult
+type BatchResult struct {
+	Index        uint32
+	Kind         BatchResultKind
+	ClOrdId      string
+	Status       BatchResultStatus
+	RejectReason *string
+}
+
+// Encode writes BatchResult fields (no header) into buf.
+type BatchResultEncoder struct{}
+
+func (BatchResultEncoder) Encode(value BatchResult, buf *[]byte) {
+	local := *buf
+	writeU32BE(&local, uint32(value.Index))
+	local = append(local, byte(value.Kind.ToValue()))
+	writeString(&local, value.ClOrdId)
+	local = append(local, byte(value.Status.ToValue()))
+	if value.RejectReason != nil {
+		local = append(local, 1)
+		writeString(&local, *value.RejectReason)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// DecodeBatchResultDecoder reads BatchResult fields starting at pos and returns the new offset.
+func BatchResultDecoderDecode(buf []byte, pos int) (BatchResult, int, error) {
+	var reject_reason *string
+	index := readU32BE(buf, &pos)
+	kind_raw := readU8(buf, &pos)
+	kind, kind_err := BatchResultKindFromValue(kind_raw)
+	if kind_err != nil {
+		return BatchResult{}, pos, kind_err
+	}
+	cl_ord_id := readString(buf, &pos)
+	status_raw := readU8(buf, &pos)
+	status, status_err := BatchResultStatusFromValue(status_raw)
+	if status_err != nil {
+		return BatchResult{}, pos, status_err
+	}
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		reject_reason = &s
+	} else {
+		pos++
+	}
+	value := BatchResult{
+		Index:        index,
+		Kind:         kind,
+		ClOrdId:      cl_ord_id,
+		Status:       status,
+		RejectReason: reject_reason,
 	}
 	return value, pos, nil
 }
@@ -2428,395 +2573,6 @@ func CancelRejectDecoderDecode(buf []byte) (CancelReject, int, error) {
 	return value, pos, nil
 }
 
-// SBE message MarketDataSnapshot
-type MarketDataSnapshot struct {
-	Symbol     string
-	Exchange   string
-	Bids       []PriceLevel
-	Asks       []PriceLevel
-	Timestamp  int64
-	Sequence   *uint64
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for MarketDataSnapshot (fields only, no header).
-type MarketDataSnapshotBodyEncoder struct{}
-
-func (MarketDataSnapshotBodyEncoder) Encode(value MarketDataSnapshot, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeString(&local, value.Exchange)
-	writeU32BE(&local, uint32(len(value.Bids)))
-	for _, item := range value.Bids {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU32BE(&local, uint32(len(value.Asks)))
-	for _, item := range value.Asks {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU64BE(&local, uint64(value.Timestamp))
-	var value_Sequence_v uint64
-	if value.Sequence != nil {
-		value_Sequence_v = *value.Sequence
-	}
-	writeU64BE(&local, uint64(value_Sequence_v))
-	if value.Sequence != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for MarketDataSnapshot: reads fields at pos, returns the value and the new offset.
-func MarketDataSnapshotBodyDecoderDecode(buf []byte, pos int) (MarketDataSnapshot, int, error) {
-	symbol := readString(buf, &pos)
-	exchange := readString(buf, &pos)
-	bids_count := readU32BE(buf, &pos)
-	bids := make([]PriceLevel, 0, bids_count)
-	for i := 0; i < int(bids_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataSnapshot{}, pos, err
-		}
-		pos = item_end
-		bids = append(bids, item)
-	}
-	asks_count := readU32BE(buf, &pos)
-	asks := make([]PriceLevel, 0, asks_count)
-	for i := 0; i < int(asks_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataSnapshot{}, pos, err
-		}
-		pos = item_end
-		asks = append(asks, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := MarketDataSnapshot{
-		Symbol:     symbol,
-		Exchange:   exchange,
-		Bids:       bids,
-		Asks:       asks,
-		Timestamp:  timestamp,
-		Sequence:   sequence,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for MarketDataSnapshot
-type MarketDataSnapshotEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (MarketDataSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []PriceLevel, Asks []PriceLevel, Timestamp int64, Sequence *uint64, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 6)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 17)
-	writeString(&buf, Symbol)
-	writeString(&buf, Exchange)
-	writeU32BE(&buf, uint32(len(Bids)))
-	for _, item := range Bids {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU32BE(&buf, uint32(len(Asks)))
-	for _, item := range Asks {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU64BE(&buf, uint64(Timestamp))
-	var Sequence_v uint64
-	if Sequence != nil {
-		Sequence_v = *Sequence
-	}
-	writeU64BE(&buf, uint64(Sequence_v))
-	if Sequence != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func MarketDataSnapshotDecoderDecode(buf []byte) (MarketDataSnapshot, int, error) {
-	if len(buf) < 8 {
-		return MarketDataSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return MarketDataSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 6 {
-		return MarketDataSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	symbol := readString(buf, &pos)
-	exchange := readString(buf, &pos)
-	bids_count := readU32BE(buf, &pos)
-	bids := make([]PriceLevel, 0, bids_count)
-	for i := 0; i < int(bids_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataSnapshot{}, pos, err
-		}
-		pos = item_end
-		bids = append(bids, item)
-	}
-	asks_count := readU32BE(buf, &pos)
-	asks := make([]PriceLevel, 0, asks_count)
-	for i := 0; i < int(asks_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataSnapshot{}, pos, err
-		}
-		pos = item_end
-		asks = append(asks, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := MarketDataSnapshot{
-		Symbol:     symbol,
-		Exchange:   exchange,
-		Bids:       bids,
-		Asks:       asks,
-		Timestamp:  timestamp,
-		Sequence:   sequence,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE message MarketDataIncrementalRefresh
-type MarketDataIncrementalRefresh struct {
-	Symbol    string
-	Updates   []MarketDataUpdate
-	Timestamp int64
-	Sequence  *uint64
-}
-
-// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
-type MarketDataIncrementalRefreshBodyEncoder struct{}
-
-func (MarketDataIncrementalRefreshBodyEncoder) Encode(value MarketDataIncrementalRefresh, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeU32BE(&local, uint32(len(value.Updates)))
-	for _, item := range value.Updates {
-		var item_buf []byte
-		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU64BE(&local, uint64(value.Timestamp))
-	var value_Sequence_v uint64
-	if value.Sequence != nil {
-		value_Sequence_v = *value.Sequence
-	}
-	writeU64BE(&local, uint64(value_Sequence_v))
-	if value.Sequence != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for MarketDataIncrementalRefresh: reads fields at pos, returns the value and the new offset.
-func MarketDataIncrementalRefreshBodyDecoderDecode(buf []byte, pos int) (MarketDataIncrementalRefresh, int, error) {
-	symbol := readString(buf, &pos)
-	updates_count := readU32BE(buf, &pos)
-	updates := make([]MarketDataUpdate, 0, updates_count)
-	for i := 0; i < int(updates_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataIncrementalRefresh{}, pos, err
-		}
-		pos = item_end
-		updates = append(updates, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	value := MarketDataIncrementalRefresh{
-		Symbol:    symbol,
-		Updates:   updates,
-		Timestamp: timestamp,
-		Sequence:  sequence,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for MarketDataIncrementalRefresh
-type MarketDataIncrementalRefreshEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (MarketDataIncrementalRefreshEncoder) Encode(Symbol string, Updates []MarketDataUpdate, Timestamp int64, Sequence *uint64) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 7)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 16)
-	writeString(&buf, Symbol)
-	writeU32BE(&buf, uint32(len(Updates)))
-	for _, item := range Updates {
-		var item_buf []byte
-		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU64BE(&buf, uint64(Timestamp))
-	var Sequence_v uint64
-	if Sequence != nil {
-		Sequence_v = *Sequence
-	}
-	writeU64BE(&buf, uint64(Sequence_v))
-	if Sequence != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func MarketDataIncrementalRefreshDecoderDecode(buf []byte) (MarketDataIncrementalRefresh, int, error) {
-	if len(buf) < 8 {
-		return MarketDataIncrementalRefresh{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return MarketDataIncrementalRefresh{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 7 {
-		return MarketDataIncrementalRefresh{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	symbol := readString(buf, &pos)
-	updates_count := readU32BE(buf, &pos)
-	updates := make([]MarketDataUpdate, 0, updates_count)
-	for i := 0; i < int(updates_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
-		if err != nil {
-			return MarketDataIncrementalRefresh{}, pos, err
-		}
-		pos = item_end
-		updates = append(updates, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	value := MarketDataIncrementalRefresh{
-		Symbol:    symbol,
-		Updates:   updates,
-		Timestamp: timestamp,
-		Sequence:  sequence,
-	}
-	return value, pos, nil
-}
-
 // SBE message OrderBookRequest
 type OrderBookRequest struct {
 	Symbol string
@@ -2956,464 +2712,6 @@ func OrderBookRequestDecoderDecode(buf []byte) (OrderBookRequest, int, error) {
 		Symbol: symbol,
 		Depth:  depth,
 		AtTime: at_time,
-	}
-	return value, pos, nil
-}
-
-// SBE message OrderBookSnapshot
-type OrderBookSnapshot struct {
-	Symbol     string
-	Exchange   string
-	Bids       []PriceLevel
-	Asks       []PriceLevel
-	Timestamp  int64
-	Sequence   *uint64
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for OrderBookSnapshot (fields only, no header).
-type OrderBookSnapshotBodyEncoder struct{}
-
-func (OrderBookSnapshotBodyEncoder) Encode(value OrderBookSnapshot, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeString(&local, value.Exchange)
-	writeU32BE(&local, uint32(len(value.Bids)))
-	for _, item := range value.Bids {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU32BE(&local, uint32(len(value.Asks)))
-	for _, item := range value.Asks {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU64BE(&local, uint64(value.Timestamp))
-	var value_Sequence_v uint64
-	if value.Sequence != nil {
-		value_Sequence_v = *value.Sequence
-	}
-	writeU64BE(&local, uint64(value_Sequence_v))
-	if value.Sequence != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for OrderBookSnapshot: reads fields at pos, returns the value and the new offset.
-func OrderBookSnapshotBodyDecoderDecode(buf []byte, pos int) (OrderBookSnapshot, int, error) {
-	symbol := readString(buf, &pos)
-	exchange := readString(buf, &pos)
-	bids_count := readU32BE(buf, &pos)
-	bids := make([]PriceLevel, 0, bids_count)
-	for i := 0; i < int(bids_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookSnapshot{}, pos, err
-		}
-		pos = item_end
-		bids = append(bids, item)
-	}
-	asks_count := readU32BE(buf, &pos)
-	asks := make([]PriceLevel, 0, asks_count)
-	for i := 0; i < int(asks_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookSnapshot{}, pos, err
-		}
-		pos = item_end
-		asks = append(asks, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := OrderBookSnapshot{
-		Symbol:     symbol,
-		Exchange:   exchange,
-		Bids:       bids,
-		Asks:       asks,
-		Timestamp:  timestamp,
-		Sequence:   sequence,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for OrderBookSnapshot
-type OrderBookSnapshotEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (OrderBookSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []PriceLevel, Asks []PriceLevel, Timestamp int64, Sequence *uint64, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 9)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 17)
-	writeString(&buf, Symbol)
-	writeString(&buf, Exchange)
-	writeU32BE(&buf, uint32(len(Bids)))
-	for _, item := range Bids {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU32BE(&buf, uint32(len(Asks)))
-	for _, item := range Asks {
-		var item_buf []byte
-		PriceLevelEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU64BE(&buf, uint64(Timestamp))
-	var Sequence_v uint64
-	if Sequence != nil {
-		Sequence_v = *Sequence
-	}
-	writeU64BE(&buf, uint64(Sequence_v))
-	if Sequence != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func OrderBookSnapshotDecoderDecode(buf []byte) (OrderBookSnapshot, int, error) {
-	if len(buf) < 8 {
-		return OrderBookSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return OrderBookSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 9 {
-		return OrderBookSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	symbol := readString(buf, &pos)
-	exchange := readString(buf, &pos)
-	bids_count := readU32BE(buf, &pos)
-	bids := make([]PriceLevel, 0, bids_count)
-	for i := 0; i < int(bids_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookSnapshot{}, pos, err
-		}
-		pos = item_end
-		bids = append(bids, item)
-	}
-	asks_count := readU32BE(buf, &pos)
-	asks := make([]PriceLevel, 0, asks_count)
-	for i := 0; i < int(asks_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PriceLevelDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookSnapshot{}, pos, err
-		}
-		pos = item_end
-		asks = append(asks, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := OrderBookSnapshot{
-		Symbol:     symbol,
-		Exchange:   exchange,
-		Bids:       bids,
-		Asks:       asks,
-		Timestamp:  timestamp,
-		Sequence:   sequence,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE message OrderBookDelta
-type OrderBookDelta struct {
-	Symbol    string
-	Updates   []MarketDataUpdate
-	Timestamp int64
-	Sequence  *uint64
-}
-
-// SBE body encoder for OrderBookDelta (fields only, no header).
-type OrderBookDeltaBodyEncoder struct{}
-
-func (OrderBookDeltaBodyEncoder) Encode(value OrderBookDelta, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeU32BE(&local, uint32(len(value.Updates)))
-	for _, item := range value.Updates {
-		var item_buf []byte
-		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU64BE(&local, uint64(value.Timestamp))
-	var value_Sequence_v uint64
-	if value.Sequence != nil {
-		value_Sequence_v = *value.Sequence
-	}
-	writeU64BE(&local, uint64(value_Sequence_v))
-	if value.Sequence != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for OrderBookDelta: reads fields at pos, returns the value and the new offset.
-func OrderBookDeltaBodyDecoderDecode(buf []byte, pos int) (OrderBookDelta, int, error) {
-	symbol := readString(buf, &pos)
-	updates_count := readU32BE(buf, &pos)
-	updates := make([]MarketDataUpdate, 0, updates_count)
-	for i := 0; i < int(updates_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookDelta{}, pos, err
-		}
-		pos = item_end
-		updates = append(updates, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	value := OrderBookDelta{
-		Symbol:    symbol,
-		Updates:   updates,
-		Timestamp: timestamp,
-		Sequence:  sequence,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for OrderBookDelta
-type OrderBookDeltaEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (OrderBookDeltaEncoder) Encode(Symbol string, Updates []MarketDataUpdate, Timestamp int64, Sequence *uint64) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 10)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 16)
-	writeString(&buf, Symbol)
-	writeU32BE(&buf, uint32(len(Updates)))
-	for _, item := range Updates {
-		var item_buf []byte
-		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU64BE(&buf, uint64(Timestamp))
-	var Sequence_v uint64
-	if Sequence != nil {
-		Sequence_v = *Sequence
-	}
-	writeU64BE(&buf, uint64(Sequence_v))
-	if Sequence != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for OrderBookDelta: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func OrderBookDeltaDecoderDecode(buf []byte) (OrderBookDelta, int, error) {
-	if len(buf) < 8 {
-		return OrderBookDelta{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return OrderBookDelta{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 10 {
-		return OrderBookDelta{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	symbol := readString(buf, &pos)
-	updates_count := readU32BE(buf, &pos)
-	updates := make([]MarketDataUpdate, 0, updates_count)
-	for i := 0; i < int(updates_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderBookDelta{}, pos, err
-		}
-		pos = item_end
-		updates = append(updates, item)
-	}
-	timestamp := int64(readU64BE(buf, &pos))
-	sequence_v := readU64BE(buf, &pos)
-	var sequence *uint64
-	if buf[pos] == 1 {
-		pos++
-		sequence = &sequence_v
-	} else {
-		pos++
-		sequence = nil
-	}
-	value := OrderBookDelta{
-		Symbol:    symbol,
-		Updates:   updates,
-		Timestamp: timestamp,
-		Sequence:  sequence,
-	}
-	return value, pos, nil
-}
-
-// SBE message AggregateTradeEvent
-type AggregateTradeEvent struct {
-	Trade AggregateTrade
-}
-
-// SBE body encoder for AggregateTradeEvent (fields only, no header).
-type AggregateTradeEventBodyEncoder struct{}
-
-func (AggregateTradeEventBodyEncoder) Encode(value AggregateTradeEvent, buf *[]byte) {
-	local := *buf
-	AggregateTradeEncoder{}.Encode(value.Trade, &local)
-	*buf = local
-}
-
-// SBE body decoder for AggregateTradeEvent: reads fields at pos, returns the value and the new offset.
-func AggregateTradeEventBodyDecoderDecode(buf []byte, pos int) (AggregateTradeEvent, int, error) {
-	trade, trade_pos, trade_err := AggregateTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return AggregateTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := AggregateTradeEvent{
-		Trade: trade,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for AggregateTradeEvent
-type AggregateTradeEventEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (AggregateTradeEventEncoder) Encode(Trade AggregateTrade) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 11)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	AggregateTradeEncoder{}.Encode(Trade, &buf)
-	return buf, nil
-}
-
-// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func AggregateTradeEventDecoderDecode(buf []byte) (AggregateTradeEvent, int, error) {
-	if len(buf) < 8 {
-		return AggregateTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return AggregateTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 11 {
-		return AggregateTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	trade, trade_pos, trade_err := AggregateTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return AggregateTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := AggregateTradeEvent{
-		Trade: trade,
 	}
 	return value, pos, nil
 }
@@ -3633,146 +2931,6 @@ func AggregateTradeRequestDecoderDecode(buf []byte) (AggregateTradeRequest, int,
 	return value, pos, nil
 }
 
-// SBE message AggregateTradeBatch
-type AggregateTradeBatch struct {
-	Symbol     string
-	Trades     []AggregateTrade
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for AggregateTradeBatch (fields only, no header).
-type AggregateTradeBatchBodyEncoder struct{}
-
-func (AggregateTradeBatchBodyEncoder) Encode(value AggregateTradeBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeU32BE(&local, uint32(len(value.Trades)))
-	for _, item := range value.Trades {
-		var item_buf []byte
-		AggregateTradeEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for AggregateTradeBatch: reads fields at pos, returns the value and the new offset.
-func AggregateTradeBatchBodyDecoderDecode(buf []byte, pos int) (AggregateTradeBatch, int, error) {
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	trades_count := readU32BE(buf, &pos)
-	trades := make([]AggregateTrade, 0, trades_count)
-	for i := 0; i < int(trades_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := AggregateTradeDecoderDecode(buf, pos)
-		if err != nil {
-			return AggregateTradeBatch{}, pos, err
-		}
-		pos = item_end
-		trades = append(trades, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := AggregateTradeBatch{
-		Symbol:     symbol,
-		Trades:     trades,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for AggregateTradeBatch
-type AggregateTradeBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (AggregateTradeBatchEncoder) Encode(Symbol string, Trades []AggregateTrade, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 13)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Symbol)
-	writeU32BE(&buf, uint32(len(Trades)))
-	for _, item := range Trades {
-		var item_buf []byte
-		AggregateTradeEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func AggregateTradeBatchDecoderDecode(buf []byte) (AggregateTradeBatch, int, error) {
-	if len(buf) < 8 {
-		return AggregateTradeBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return AggregateTradeBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 13 {
-		return AggregateTradeBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	trades_count := readU32BE(buf, &pos)
-	trades := make([]AggregateTrade, 0, trades_count)
-	for i := 0; i < int(trades_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := AggregateTradeDecoderDecode(buf, pos)
-		if err != nil {
-			return AggregateTradeBatch{}, pos, err
-		}
-		pos = item_end
-		trades = append(trades, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := AggregateTradeBatch{
-		Symbol:     symbol,
-		Trades:     trades,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
 // SBE message MiniTicker
 type MiniTicker struct {
 	Symbol     string
@@ -3945,101 +3103,6 @@ func AllMidsRequestDecoderDecode(buf []byte) (AllMidsRequest, int, error) {
 		return AllMidsRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	value := AllMidsRequest{}
-	return value, pos, nil
-}
-
-// SBE message AllMidsBatch
-type AllMidsBatch struct {
-	Tickers []MiniTicker
-}
-
-// SBE body encoder for AllMidsBatch (fields only, no header).
-type AllMidsBatchBodyEncoder struct{}
-
-func (AllMidsBatchBodyEncoder) Encode(value AllMidsBatch, buf *[]byte) {
-	local := *buf
-	writeU32BE(&local, uint32(len(value.Tickers)))
-	for _, item := range value.Tickers {
-		var item_buf []byte
-		MiniTickerBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	*buf = local
-}
-
-// SBE body decoder for AllMidsBatch: reads fields at pos, returns the value and the new offset.
-func AllMidsBatchBodyDecoderDecode(buf []byte, pos int) (AllMidsBatch, int, error) {
-	tickers_count := readU32BE(buf, &pos)
-	tickers := make([]MiniTicker, 0, tickers_count)
-	for i := 0; i < int(tickers_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MiniTickerBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return AllMidsBatch{}, pos, err
-		}
-		pos = item_end
-		tickers = append(tickers, item)
-	}
-	value := AllMidsBatch{
-		Tickers: tickers,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for AllMidsBatch
-type AllMidsBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (AllMidsBatchEncoder) Encode(Tickers []MiniTicker) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 16)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	writeU32BE(&buf, uint32(len(Tickers)))
-	for _, item := range Tickers {
-		var item_buf []byte
-		MiniTickerBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	return buf, nil
-}
-
-// SBE decoder for AllMidsBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func AllMidsBatchDecoderDecode(buf []byte) (AllMidsBatch, int, error) {
-	if len(buf) < 8 {
-		return AllMidsBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return AllMidsBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 16 {
-		return AllMidsBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	tickers_count := readU32BE(buf, &pos)
-	tickers := make([]MiniTicker, 0, tickers_count)
-	for i := 0; i < int(tickers_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := MiniTickerBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return AllMidsBatch{}, pos, err
-		}
-		pos = item_end
-		tickers = append(tickers, item)
-	}
-	value := AllMidsBatch{
-		Tickers: tickers,
-	}
 	return value, pos, nil
 }
 
@@ -4302,144 +3365,6 @@ func MarkPriceRequestDecoderDecode(buf []byte) (MarkPriceRequest, int, error) {
 	return value, pos, nil
 }
 
-// SBE message LiquidationTradeEvent
-type LiquidationTradeEvent struct {
-	Trade LiquidationTrade
-}
-
-// SBE body encoder for LiquidationTradeEvent (fields only, no header).
-type LiquidationTradeEventBodyEncoder struct{}
-
-func (LiquidationTradeEventBodyEncoder) Encode(value LiquidationTradeEvent, buf *[]byte) {
-	local := *buf
-	LiquidationTradeEncoder{}.Encode(value.Trade, &local)
-	*buf = local
-}
-
-// SBE body decoder for LiquidationTradeEvent: reads fields at pos, returns the value and the new offset.
-func LiquidationTradeEventBodyDecoderDecode(buf []byte, pos int) (LiquidationTradeEvent, int, error) {
-	trade, trade_pos, trade_err := LiquidationTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return LiquidationTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := LiquidationTradeEvent{
-		Trade: trade,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for LiquidationTradeEvent
-type LiquidationTradeEventEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (LiquidationTradeEventEncoder) Encode(Trade LiquidationTrade) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 19)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	LiquidationTradeEncoder{}.Encode(Trade, &buf)
-	return buf, nil
-}
-
-// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func LiquidationTradeEventDecoderDecode(buf []byte) (LiquidationTradeEvent, int, error) {
-	if len(buf) < 8 {
-		return LiquidationTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return LiquidationTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 19 {
-		return LiquidationTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	trade, trade_pos, trade_err := LiquidationTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return LiquidationTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := LiquidationTradeEvent{
-		Trade: trade,
-	}
-	return value, pos, nil
-}
-
-// SBE message CandleBarEvent
-type CandleBarEvent struct {
-	Bar CandleBar
-}
-
-// SBE body encoder for CandleBarEvent (fields only, no header).
-type CandleBarEventBodyEncoder struct{}
-
-func (CandleBarEventBodyEncoder) Encode(value CandleBarEvent, buf *[]byte) {
-	local := *buf
-	CandleBarEncoder{}.Encode(value.Bar, &local)
-	*buf = local
-}
-
-// SBE body decoder for CandleBarEvent: reads fields at pos, returns the value and the new offset.
-func CandleBarEventBodyDecoderDecode(buf []byte, pos int) (CandleBarEvent, int, error) {
-	bar, bar_pos, bar_err := CandleBarDecoderDecode(buf, pos)
-	if bar_err != nil {
-		return CandleBarEvent{}, pos, bar_err
-	}
-	pos = bar_pos
-	value := CandleBarEvent{
-		Bar: bar,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for CandleBarEvent
-type CandleBarEventEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (CandleBarEventEncoder) Encode(Bar CandleBar) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 20)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	CandleBarEncoder{}.Encode(Bar, &buf)
-	return buf, nil
-}
-
-// SBE decoder for CandleBarEvent: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func CandleBarEventDecoderDecode(buf []byte) (CandleBarEvent, int, error) {
-	if len(buf) < 8 {
-		return CandleBarEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return CandleBarEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 20 {
-		return CandleBarEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	bar, bar_pos, bar_err := CandleBarDecoderDecode(buf, pos)
-	if bar_err != nil {
-		return CandleBarEvent{}, pos, bar_err
-	}
-	pos = bar_pos
-	value := CandleBarEvent{
-		Bar: bar,
-	}
-	return value, pos, nil
-}
-
 // SBE message CandleBarRequest
 type CandleBarRequest struct {
 	Symbol    string
@@ -4662,222 +3587,6 @@ func CandleBarRequestDecoderDecode(buf []byte) (CandleBarRequest, int, error) {
 	return value, pos, nil
 }
 
-// SBE message CandleBarBatch
-type CandleBarBatch struct {
-	Symbol     string
-	Interval   string
-	Bars       []CandleBar
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for CandleBarBatch (fields only, no header).
-type CandleBarBatchBodyEncoder struct{}
-
-func (CandleBarBatchBodyEncoder) Encode(value CandleBarBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeString(&local, value.Interval)
-	writeU32BE(&local, uint32(len(value.Bars)))
-	for _, item := range value.Bars {
-		var item_buf []byte
-		CandleBarEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for CandleBarBatch: reads fields at pos, returns the value and the new offset.
-func CandleBarBatchBodyDecoderDecode(buf []byte, pos int) (CandleBarBatch, int, error) {
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	interval := readString(buf, &pos)
-	bars_count := readU32BE(buf, &pos)
-	bars := make([]CandleBar, 0, bars_count)
-	for i := 0; i < int(bars_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := CandleBarDecoderDecode(buf, pos)
-		if err != nil {
-			return CandleBarBatch{}, pos, err
-		}
-		pos = item_end
-		bars = append(bars, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := CandleBarBatch{
-		Symbol:     symbol,
-		Interval:   interval,
-		Bars:       bars,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for CandleBarBatch
-type CandleBarBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (CandleBarBatchEncoder) Encode(Symbol string, Interval string, Bars []CandleBar, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 22)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Symbol)
-	writeString(&buf, Interval)
-	writeU32BE(&buf, uint32(len(Bars)))
-	for _, item := range Bars {
-		var item_buf []byte
-		CandleBarEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for CandleBarBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func CandleBarBatchDecoderDecode(buf []byte) (CandleBarBatch, int, error) {
-	if len(buf) < 8 {
-		return CandleBarBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return CandleBarBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 22 {
-		return CandleBarBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	interval := readString(buf, &pos)
-	bars_count := readU32BE(buf, &pos)
-	bars := make([]CandleBar, 0, bars_count)
-	for i := 0; i < int(bars_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := CandleBarDecoderDecode(buf, pos)
-		if err != nil {
-			return CandleBarBatch{}, pos, err
-		}
-		pos = item_end
-		bars = append(bars, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := CandleBarBatch{
-		Symbol:     symbol,
-		Interval:   interval,
-		Bars:       bars,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE message PublicTradeEvent
-type PublicTradeEvent struct {
-	Trade PublicTrade
-}
-
-// SBE body encoder for PublicTradeEvent (fields only, no header).
-type PublicTradeEventBodyEncoder struct{}
-
-func (PublicTradeEventBodyEncoder) Encode(value PublicTradeEvent, buf *[]byte) {
-	local := *buf
-	PublicTradeEncoder{}.Encode(value.Trade, &local)
-	*buf = local
-}
-
-// SBE body decoder for PublicTradeEvent: reads fields at pos, returns the value and the new offset.
-func PublicTradeEventBodyDecoderDecode(buf []byte, pos int) (PublicTradeEvent, int, error) {
-	trade, trade_pos, trade_err := PublicTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return PublicTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := PublicTradeEvent{
-		Trade: trade,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for PublicTradeEvent
-type PublicTradeEventEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (PublicTradeEventEncoder) Encode(Trade PublicTrade) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 23)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	PublicTradeEncoder{}.Encode(Trade, &buf)
-	return buf, nil
-}
-
-// SBE decoder for PublicTradeEvent: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func PublicTradeEventDecoderDecode(buf []byte) (PublicTradeEvent, int, error) {
-	if len(buf) < 8 {
-		return PublicTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return PublicTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 23 {
-		return PublicTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	trade, trade_pos, trade_err := PublicTradeDecoderDecode(buf, pos)
-	if trade_err != nil {
-		return PublicTradeEvent{}, pos, trade_err
-	}
-	pos = trade_pos
-	value := PublicTradeEvent{
-		Trade: trade,
-	}
-	return value, pos, nil
-}
-
 // SBE message TradeHistoryRequest
 type TradeHistoryRequest struct {
 	Symbol    string
@@ -5089,146 +3798,6 @@ func TradeHistoryRequestDecoderDecode(buf []byte) (TradeHistoryRequest, int, err
 		EndTime:   end_time,
 		Limit:     limit,
 		Cursor:    cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE message PublicTradeBatch
-type PublicTradeBatch struct {
-	Symbol     string
-	Trades     []PublicTrade
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for PublicTradeBatch (fields only, no header).
-type PublicTradeBatchBodyEncoder struct{}
-
-func (PublicTradeBatchBodyEncoder) Encode(value PublicTradeBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Symbol)
-	writeU32BE(&local, uint32(len(value.Trades)))
-	for _, item := range value.Trades {
-		var item_buf []byte
-		PublicTradeEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for PublicTradeBatch: reads fields at pos, returns the value and the new offset.
-func PublicTradeBatchBodyDecoderDecode(buf []byte, pos int) (PublicTradeBatch, int, error) {
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	trades_count := readU32BE(buf, &pos)
-	trades := make([]PublicTrade, 0, trades_count)
-	for i := 0; i < int(trades_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PublicTradeDecoderDecode(buf, pos)
-		if err != nil {
-			return PublicTradeBatch{}, pos, err
-		}
-		pos = item_end
-		trades = append(trades, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := PublicTradeBatch{
-		Symbol:     symbol,
-		Trades:     trades,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for PublicTradeBatch
-type PublicTradeBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (PublicTradeBatchEncoder) Encode(Symbol string, Trades []PublicTrade, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 25)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Symbol)
-	writeU32BE(&buf, uint32(len(Trades)))
-	for _, item := range Trades {
-		var item_buf []byte
-		PublicTradeEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for PublicTradeBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func PublicTradeBatchDecoderDecode(buf []byte) (PublicTradeBatch, int, error) {
-	if len(buf) < 8 {
-		return PublicTradeBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return PublicTradeBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 25 {
-		return PublicTradeBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	symbol := readString(buf, &pos)
-	trades_count := readU32BE(buf, &pos)
-	trades := make([]PublicTrade, 0, trades_count)
-	for i := 0; i < int(trades_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PublicTradeDecoderDecode(buf, pos)
-		if err != nil {
-			return PublicTradeBatch{}, pos, err
-		}
-		pos = item_end
-		trades = append(trades, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := PublicTradeBatch{
-		Symbol:     symbol,
-		Trades:     trades,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
 	}
 	return value, pos, nil
 }
@@ -5777,101 +4346,6 @@ func InstrumentCatalogRequestDecoderDecode(buf []byte) (InstrumentCatalogRequest
 	return value, pos, nil
 }
 
-// SBE message InstrumentCatalogResponse
-type InstrumentCatalogResponse struct {
-	Instruments []InstrumentMetadata
-}
-
-// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
-type InstrumentCatalogResponseBodyEncoder struct{}
-
-func (InstrumentCatalogResponseBodyEncoder) Encode(value InstrumentCatalogResponse, buf *[]byte) {
-	local := *buf
-	writeU32BE(&local, uint32(len(value.Instruments)))
-	for _, item := range value.Instruments {
-		var item_buf []byte
-		InstrumentMetadataEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	*buf = local
-}
-
-// SBE body decoder for InstrumentCatalogResponse: reads fields at pos, returns the value and the new offset.
-func InstrumentCatalogResponseBodyDecoderDecode(buf []byte, pos int) (InstrumentCatalogResponse, int, error) {
-	instruments_count := readU32BE(buf, &pos)
-	instruments := make([]InstrumentMetadata, 0, instruments_count)
-	for i := 0; i < int(instruments_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := InstrumentMetadataDecoderDecode(buf, pos)
-		if err != nil {
-			return InstrumentCatalogResponse{}, pos, err
-		}
-		pos = item_end
-		instruments = append(instruments, item)
-	}
-	value := InstrumentCatalogResponse{
-		Instruments: instruments,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for InstrumentCatalogResponse
-type InstrumentCatalogResponseEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (InstrumentCatalogResponseEncoder) Encode(Instruments []InstrumentMetadata) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 30)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	writeU32BE(&buf, uint32(len(Instruments)))
-	for _, item := range Instruments {
-		var item_buf []byte
-		InstrumentMetadataEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	return buf, nil
-}
-
-// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func InstrumentCatalogResponseDecoderDecode(buf []byte) (InstrumentCatalogResponse, int, error) {
-	if len(buf) < 8 {
-		return InstrumentCatalogResponse{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return InstrumentCatalogResponse{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 30 {
-		return InstrumentCatalogResponse{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	instruments_count := readU32BE(buf, &pos)
-	instruments := make([]InstrumentMetadata, 0, instruments_count)
-	for i := 0; i < int(instruments_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := InstrumentMetadataDecoderDecode(buf, pos)
-		if err != nil {
-			return InstrumentCatalogResponse{}, pos, err
-		}
-		pos = item_end
-		instruments = append(instruments, item)
-	}
-	value := InstrumentCatalogResponse{
-		Instruments: instruments,
-	}
-	return value, pos, nil
-}
-
 // SBE message AccountSummary
 type AccountSummary struct {
 	Account     string
@@ -6057,149 +4531,6 @@ func MarginSummaryDecoderDecode(buf []byte) (MarginSummary, int, error) {
 	return value, pos, nil
 }
 
-// SBE message BalanceSnapshot
-type BalanceSnapshot struct {
-	Account    string
-	Balances   []BalanceEntry
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for BalanceSnapshot (fields only, no header).
-type BalanceSnapshotBodyEncoder struct{}
-
-func (BalanceSnapshotBodyEncoder) Encode(value BalanceSnapshot, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Balances)))
-	for _, item := range value.Balances {
-		var item_buf []byte
-		BalanceEntryEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for BalanceSnapshot: reads fields at pos, returns the value and the new offset.
-func BalanceSnapshotBodyDecoderDecode(buf []byte, pos int) (BalanceSnapshot, int, error) {
-	account := readString(buf, &pos)
-	balances_count := readU32BE(buf, &pos)
-	balances := make([]BalanceEntry, 0, balances_count)
-	for i := 0; i < int(balances_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := BalanceEntryDecoderDecode(buf, pos)
-		if err != nil {
-			return BalanceSnapshot{}, pos, err
-		}
-		pos = item_end
-		balances = append(balances, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := BalanceSnapshot{
-		Account:    account,
-		Balances:   balances,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for BalanceSnapshot
-type BalanceSnapshotEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (BalanceSnapshotEncoder) Encode(Account string, Balances []BalanceEntry, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 33)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Balances)))
-	for _, item := range Balances {
-		var item_buf []byte
-		BalanceEntryEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for BalanceSnapshot: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func BalanceSnapshotDecoderDecode(buf []byte) (BalanceSnapshot, int, error) {
-	if len(buf) < 8 {
-		return BalanceSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return BalanceSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 33 {
-		return BalanceSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	account := readString(buf, &pos)
-	balances_count := readU32BE(buf, &pos)
-	balances := make([]BalanceEntry, 0, balances_count)
-	for i := 0; i < int(balances_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := BalanceEntryDecoderDecode(buf, pos)
-		if err != nil {
-			return BalanceSnapshot{}, pos, err
-		}
-		pos = item_end
-		balances = append(balances, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := BalanceSnapshot{
-		Account:    account,
-		Balances:   balances,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
 // SBE message BalanceUpdate
 type BalanceUpdate struct {
 	Account   string
@@ -6304,149 +4635,6 @@ func BalanceUpdateDecoderDecode(buf []byte) (BalanceUpdate, int, error) {
 	return value, pos, nil
 }
 
-// SBE message PositionSnapshot
-type PositionSnapshot struct {
-	Account    string
-	Positions  []PositionEntry
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for PositionSnapshot (fields only, no header).
-type PositionSnapshotBodyEncoder struct{}
-
-func (PositionSnapshotBodyEncoder) Encode(value PositionSnapshot, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Positions)))
-	for _, item := range value.Positions {
-		var item_buf []byte
-		PositionEntryEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for PositionSnapshot: reads fields at pos, returns the value and the new offset.
-func PositionSnapshotBodyDecoderDecode(buf []byte, pos int) (PositionSnapshot, int, error) {
-	account := readString(buf, &pos)
-	positions_count := readU32BE(buf, &pos)
-	positions := make([]PositionEntry, 0, positions_count)
-	for i := 0; i < int(positions_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PositionEntryDecoderDecode(buf, pos)
-		if err != nil {
-			return PositionSnapshot{}, pos, err
-		}
-		pos = item_end
-		positions = append(positions, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := PositionSnapshot{
-		Account:    account,
-		Positions:  positions,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for PositionSnapshot
-type PositionSnapshotEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (PositionSnapshotEncoder) Encode(Account string, Positions []PositionEntry, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 35)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Positions)))
-	for _, item := range Positions {
-		var item_buf []byte
-		PositionEntryEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for PositionSnapshot: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func PositionSnapshotDecoderDecode(buf []byte) (PositionSnapshot, int, error) {
-	if len(buf) < 8 {
-		return PositionSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return PositionSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 35 {
-		return PositionSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	account := readString(buf, &pos)
-	positions_count := readU32BE(buf, &pos)
-	positions := make([]PositionEntry, 0, positions_count)
-	for i := 0; i < int(positions_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := PositionEntryDecoderDecode(buf, pos)
-		if err != nil {
-			return PositionSnapshot{}, pos, err
-		}
-		pos = item_end
-		positions = append(positions, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := PositionSnapshot{
-		Account:    account,
-		Positions:  positions,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
 // SBE message PositionUpdate
 type PositionUpdate struct {
 	Account       string
@@ -6532,123 +4720,6 @@ func PositionUpdateDecoderDecode(buf []byte) (PositionUpdate, int, error) {
 		Qty:           qty,
 		EntryPrice:    entry_price,
 		UnrealizedPnl: unrealized_pnl,
-	}
-	return value, pos, nil
-}
-
-// SBE message MarginUpdate
-type MarginUpdate struct {
-	Account    string
-	Summary    MarginSummary
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for MarginUpdate (fields only, no header).
-type MarginUpdateBodyEncoder struct{}
-
-func (MarginUpdateBodyEncoder) Encode(value MarginUpdate, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	MarginSummaryBodyEncoder{}.Encode(value.Summary, &local)
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for MarginUpdate: reads fields at pos, returns the value and the new offset.
-func MarginUpdateBodyDecoderDecode(buf []byte, pos int) (MarginUpdate, int, error) {
-	account := readString(buf, &pos)
-	summary, summary_pos, summary_err := MarginSummaryBodyDecoderDecode(buf, pos)
-	if summary_err != nil {
-		return MarginUpdate{}, pos, summary_err
-	}
-	pos = summary_pos
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := MarginUpdate{
-		Account:    account,
-		Summary:    summary,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for MarginUpdate
-type MarginUpdateEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (MarginUpdateEncoder) Encode(Account string, Summary MarginSummary, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 37)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	MarginSummaryBodyEncoder{}.Encode(Summary, &buf)
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for MarginUpdate: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func MarginUpdateDecoderDecode(buf []byte) (MarginUpdate, int, error) {
-	if len(buf) < 8 {
-		return MarginUpdate{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return MarginUpdate{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 37 {
-		return MarginUpdate{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	account := readString(buf, &pos)
-	summary, summary_pos, summary_err := MarginSummaryBodyDecoderDecode(buf, pos)
-	if summary_err != nil {
-		return MarginUpdate{}, pos, summary_err
-	}
-	pos = summary_pos
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := MarginUpdate{
-		Account:    account,
-		Summary:    summary,
-		IsSnapshot: is_snapshot,
 	}
 	return value, pos, nil
 }
@@ -7102,146 +5173,6 @@ func FillHistoryRequestDecoderDecode(buf []byte) (FillHistoryRequest, int, error
 	return value, pos, nil
 }
 
-// SBE message FillHistoryBatch
-type FillHistoryBatch struct {
-	Account    string
-	Fills      []ExecutionReport
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for FillHistoryBatch (fields only, no header).
-type FillHistoryBatchBodyEncoder struct{}
-
-func (FillHistoryBatchBodyEncoder) Encode(value FillHistoryBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Fills)))
-	for _, item := range value.Fills {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for FillHistoryBatch: reads fields at pos, returns the value and the new offset.
-func FillHistoryBatchBodyDecoderDecode(buf []byte, pos int) (FillHistoryBatch, int, error) {
-	var next_cursor *string
-	account := readString(buf, &pos)
-	fills_count := readU32BE(buf, &pos)
-	fills := make([]ExecutionReport, 0, fills_count)
-	for i := 0; i < int(fills_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return FillHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		fills = append(fills, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := FillHistoryBatch{
-		Account:    account,
-		Fills:      fills,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for FillHistoryBatch
-type FillHistoryBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (FillHistoryBatchEncoder) Encode(Account string, Fills []ExecutionReport, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 41)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Fills)))
-	for _, item := range Fills {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for FillHistoryBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func FillHistoryBatchDecoderDecode(buf []byte) (FillHistoryBatch, int, error) {
-	if len(buf) < 8 {
-		return FillHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return FillHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 41 {
-		return FillHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	account := readString(buf, &pos)
-	fills_count := readU32BE(buf, &pos)
-	fills := make([]ExecutionReport, 0, fills_count)
-	for i := 0; i < int(fills_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return FillHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		fills = append(fills, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := FillHistoryBatch{
-		Account:    account,
-		Fills:      fills,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
 // SBE message FundingPayment
 type FundingPayment struct {
 	Account   string
@@ -7566,146 +5497,6 @@ func FundingHistoryRequestDecoderDecode(buf []byte) (FundingHistoryRequest, int,
 		EndTime:   end_time,
 		Limit:     limit,
 		Cursor:    cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE message FundingHistoryBatch
-type FundingHistoryBatch struct {
-	Account    string
-	Payments   []FundingPayment
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for FundingHistoryBatch (fields only, no header).
-type FundingHistoryBatchBodyEncoder struct{}
-
-func (FundingHistoryBatchBodyEncoder) Encode(value FundingHistoryBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Payments)))
-	for _, item := range value.Payments {
-		var item_buf []byte
-		FundingPaymentBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for FundingHistoryBatch: reads fields at pos, returns the value and the new offset.
-func FundingHistoryBatchBodyDecoderDecode(buf []byte, pos int) (FundingHistoryBatch, int, error) {
-	var next_cursor *string
-	account := readString(buf, &pos)
-	payments_count := readU32BE(buf, &pos)
-	payments := make([]FundingPayment, 0, payments_count)
-	for i := 0; i < int(payments_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := FundingPaymentBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return FundingHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		payments = append(payments, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := FundingHistoryBatch{
-		Account:    account,
-		Payments:   payments,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for FundingHistoryBatch
-type FundingHistoryBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (FundingHistoryBatchEncoder) Encode(Account string, Payments []FundingPayment, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 44)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Payments)))
-	for _, item := range Payments {
-		var item_buf []byte
-		FundingPaymentBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func FundingHistoryBatchDecoderDecode(buf []byte) (FundingHistoryBatch, int, error) {
-	if len(buf) < 8 {
-		return FundingHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return FundingHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 44 {
-		return FundingHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	account := readString(buf, &pos)
-	payments_count := readU32BE(buf, &pos)
-	payments := make([]FundingPayment, 0, payments_count)
-	for i := 0; i < int(payments_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := FundingPaymentBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return FundingHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		payments = append(payments, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := FundingHistoryBatch{
-		Account:    account,
-		Payments:   payments,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
 	}
 	return value, pos, nil
 }
@@ -8053,146 +5844,6 @@ func LedgerHistoryRequestDecoderDecode(buf []byte) (LedgerHistoryRequest, int, e
 	return value, pos, nil
 }
 
-// SBE message LedgerHistoryBatch
-type LedgerHistoryBatch struct {
-	Account    string
-	Entries    []LedgerUpdate
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for LedgerHistoryBatch (fields only, no header).
-type LedgerHistoryBatchBodyEncoder struct{}
-
-func (LedgerHistoryBatchBodyEncoder) Encode(value LedgerHistoryBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Entries)))
-	for _, item := range value.Entries {
-		var item_buf []byte
-		LedgerUpdateBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for LedgerHistoryBatch: reads fields at pos, returns the value and the new offset.
-func LedgerHistoryBatchBodyDecoderDecode(buf []byte, pos int) (LedgerHistoryBatch, int, error) {
-	var next_cursor *string
-	account := readString(buf, &pos)
-	entries_count := readU32BE(buf, &pos)
-	entries := make([]LedgerUpdate, 0, entries_count)
-	for i := 0; i < int(entries_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := LedgerUpdateBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return LedgerHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		entries = append(entries, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := LedgerHistoryBatch{
-		Account:    account,
-		Entries:    entries,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for LedgerHistoryBatch
-type LedgerHistoryBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (LedgerHistoryBatchEncoder) Encode(Account string, Entries []LedgerUpdate, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 47)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Entries)))
-	for _, item := range Entries {
-		var item_buf []byte
-		LedgerUpdateBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func LedgerHistoryBatchDecoderDecode(buf []byte) (LedgerHistoryBatch, int, error) {
-	if len(buf) < 8 {
-		return LedgerHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return LedgerHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 47 {
-		return LedgerHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	account := readString(buf, &pos)
-	entries_count := readU32BE(buf, &pos)
-	entries := make([]LedgerUpdate, 0, entries_count)
-	for i := 0; i < int(entries_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := LedgerUpdateBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return LedgerHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		entries = append(entries, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := LedgerHistoryBatch{
-		Account:    account,
-		Entries:    entries,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
 // SBE message OpenOrdersRequest
 type OpenOrdersRequest struct {
 	Account string
@@ -8281,149 +5932,6 @@ func OpenOrdersRequestDecoderDecode(buf []byte) (OpenOrdersRequest, int, error) 
 	value := OpenOrdersRequest{
 		Account: account,
 		Symbol:  symbol,
-	}
-	return value, pos, nil
-}
-
-// SBE message OpenOrdersSnapshot
-type OpenOrdersSnapshot struct {
-	Account    string
-	Orders     []ExecutionReport
-	IsSnapshot *uint8
-}
-
-// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
-type OpenOrdersSnapshotBodyEncoder struct{}
-
-func (OpenOrdersSnapshotBodyEncoder) Encode(value OpenOrdersSnapshot, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Orders)))
-	for _, item := range value.Orders {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	var value_IsSnapshot_v uint8
-	if value.IsSnapshot != nil {
-		value_IsSnapshot_v = *value.IsSnapshot
-	}
-	local = append(local, uint8(value_IsSnapshot_v))
-	if value.IsSnapshot != nil {
-		local = append(local, 1)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for OpenOrdersSnapshot: reads fields at pos, returns the value and the new offset.
-func OpenOrdersSnapshotBodyDecoderDecode(buf []byte, pos int) (OpenOrdersSnapshot, int, error) {
-	account := readString(buf, &pos)
-	orders_count := readU32BE(buf, &pos)
-	orders := make([]ExecutionReport, 0, orders_count)
-	for i := 0; i < int(orders_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return OpenOrdersSnapshot{}, pos, err
-		}
-		pos = item_end
-		orders = append(orders, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := OpenOrdersSnapshot{
-		Account:    account,
-		Orders:     orders,
-		IsSnapshot: is_snapshot,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for OpenOrdersSnapshot
-type OpenOrdersSnapshotEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (OpenOrdersSnapshotEncoder) Encode(Account string, Orders []ExecutionReport, IsSnapshot *uint8) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 49)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Orders)))
-	for _, item := range Orders {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	var IsSnapshot_v uint8
-	if IsSnapshot != nil {
-		IsSnapshot_v = *IsSnapshot
-	}
-	buf = append(buf, uint8(IsSnapshot_v))
-	if IsSnapshot != nil {
-		buf = append(buf, 1)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func OpenOrdersSnapshotDecoderDecode(buf []byte) (OpenOrdersSnapshot, int, error) {
-	if len(buf) < 8 {
-		return OpenOrdersSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return OpenOrdersSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 49 {
-		return OpenOrdersSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	account := readString(buf, &pos)
-	orders_count := readU32BE(buf, &pos)
-	orders := make([]ExecutionReport, 0, orders_count)
-	for i := 0; i < int(orders_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return OpenOrdersSnapshot{}, pos, err
-		}
-		pos = item_end
-		orders = append(orders, item)
-	}
-	is_snapshot_v := readU8(buf, &pos)
-	var is_snapshot *uint8
-	if buf[pos] == 1 {
-		pos++
-		is_snapshot = &is_snapshot_v
-	} else {
-		pos++
-		is_snapshot = nil
-	}
-	value := OpenOrdersSnapshot{
-		Account:    account,
-		Orders:     orders,
-		IsSnapshot: is_snapshot,
 	}
 	return value, pos, nil
 }
@@ -8674,146 +6182,6 @@ func OrderHistoryRequestDecoderDecode(buf []byte) (OrderHistoryRequest, int, err
 	return value, pos, nil
 }
 
-// SBE message OrderHistoryBatch
-type OrderHistoryBatch struct {
-	Account    string
-	Orders     []ExecutionReport
-	HasMore    uint8
-	NextCursor *string
-}
-
-// SBE body encoder for OrderHistoryBatch (fields only, no header).
-type OrderHistoryBatchBodyEncoder struct{}
-
-func (OrderHistoryBatchBodyEncoder) Encode(value OrderHistoryBatch, buf *[]byte) {
-	local := *buf
-	writeString(&local, value.Account)
-	writeU32BE(&local, uint32(len(value.Orders)))
-	for _, item := range value.Orders {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	local = append(local, uint8(value.HasMore))
-	if value.NextCursor != nil {
-		local = append(local, 1)
-		writeString(&local, *value.NextCursor)
-	} else {
-		local = append(local, 0)
-	}
-	*buf = local
-}
-
-// SBE body decoder for OrderHistoryBatch: reads fields at pos, returns the value and the new offset.
-func OrderHistoryBatchBodyDecoderDecode(buf []byte, pos int) (OrderHistoryBatch, int, error) {
-	var next_cursor *string
-	account := readString(buf, &pos)
-	orders_count := readU32BE(buf, &pos)
-	orders := make([]ExecutionReport, 0, orders_count)
-	for i := 0; i < int(orders_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		orders = append(orders, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := OrderHistoryBatch{
-		Account:    account,
-		Orders:     orders,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for OrderHistoryBatch
-type OrderHistoryBatchEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (OrderHistoryBatchEncoder) Encode(Account string, Orders []ExecutionReport, HasMore uint8, NextCursor *string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 51)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 1)
-	writeString(&buf, Account)
-	writeU32BE(&buf, uint32(len(Orders)))
-	for _, item := range Orders {
-		var item_buf []byte
-		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	buf = append(buf, uint8(HasMore))
-	if NextCursor != nil {
-		buf = append(buf, 1)
-		writeString(&buf, *NextCursor)
-	} else {
-		buf = append(buf, 0)
-	}
-	return buf, nil
-}
-
-// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func OrderHistoryBatchDecoderDecode(buf []byte) (OrderHistoryBatch, int, error) {
-	if len(buf) < 8 {
-		return OrderHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return OrderHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 51 {
-		return OrderHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	var next_cursor *string
-	account := readString(buf, &pos)
-	orders_count := readU32BE(buf, &pos)
-	orders := make([]ExecutionReport, 0, orders_count)
-	for i := 0; i < int(orders_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
-		if err != nil {
-			return OrderHistoryBatch{}, pos, err
-		}
-		pos = item_end
-		orders = append(orders, item)
-	}
-	has_more := readU8(buf, &pos)
-	if buf[pos] == 1 {
-		pos++
-		s := readString(buf, &pos)
-		next_cursor = &s
-	} else {
-		pos++
-	}
-	value := OrderHistoryBatch{
-		Account:    account,
-		Orders:     orders,
-		HasMore:    has_more,
-		NextCursor: next_cursor,
-	}
-	return value, pos, nil
-}
-
 // SBE message CapabilitiesRequest
 type CapabilitiesRequest struct {
 }
@@ -8863,164 +6231,6 @@ func CapabilitiesRequestDecoderDecode(buf []byte) (CapabilitiesRequest, int, err
 		return CapabilitiesRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
 	}
 	value := CapabilitiesRequest{}
-	return value, pos, nil
-}
-
-// SBE message CapabilitiesResponse
-type CapabilitiesResponse struct {
-	SchemaIds []uint8
-	Paths     []CapabilityPath
-	Symbols   []string
-	Intervals []string
-}
-
-// SBE body encoder for CapabilitiesResponse (fields only, no header).
-type CapabilitiesResponseBodyEncoder struct{}
-
-func (CapabilitiesResponseBodyEncoder) Encode(value CapabilitiesResponse, buf *[]byte) {
-	local := *buf
-	writeU32BE(&local, uint32(len(value.SchemaIds)))
-	for _, item := range value.SchemaIds {
-		local = append(local, uint8(item))
-	}
-	writeU32BE(&local, uint32(len(value.Paths)))
-	for _, item := range value.Paths {
-		var item_buf []byte
-		CapabilityPathEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&local, uint32(len(item_buf)))
-		local = append(local, item_buf...)
-	}
-	writeU32BE(&local, uint32(len(value.Symbols)))
-	for _, item := range value.Symbols {
-		writeStringU32(&local, item)
-	}
-	writeU32BE(&local, uint32(len(value.Intervals)))
-	for _, item := range value.Intervals {
-		writeStringU32(&local, item)
-	}
-	*buf = local
-}
-
-// SBE body decoder for CapabilitiesResponse: reads fields at pos, returns the value and the new offset.
-func CapabilitiesResponseBodyDecoderDecode(buf []byte, pos int) (CapabilitiesResponse, int, error) {
-	schema_ids_count := readU32BE(buf, &pos)
-	schema_ids := make([]uint8, 0, schema_ids_count)
-	for i := 0; i < int(schema_ids_count); i++ {
-		schema_ids = append(schema_ids, readU8(buf, &pos))
-	}
-	paths_count := readU32BE(buf, &pos)
-	paths := make([]CapabilityPath, 0, paths_count)
-	for i := 0; i < int(paths_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := CapabilityPathDecoderDecode(buf, pos)
-		if err != nil {
-			return CapabilitiesResponse{}, pos, err
-		}
-		pos = item_end
-		paths = append(paths, item)
-	}
-	symbols_count := readU32BE(buf, &pos)
-	symbols := make([]string, 0, symbols_count)
-	for i := 0; i < int(symbols_count); i++ {
-		symbols = append(symbols, readStringU32(buf, &pos))
-	}
-	intervals_count := readU32BE(buf, &pos)
-	intervals := make([]string, 0, intervals_count)
-	for i := 0; i < int(intervals_count); i++ {
-		intervals = append(intervals, readStringU32(buf, &pos))
-	}
-	value := CapabilitiesResponse{
-		SchemaIds: schema_ids,
-		Paths:     paths,
-		Symbols:   symbols,
-		Intervals: intervals,
-	}
-	return value, pos, nil
-}
-
-// SBE encoder for CapabilitiesResponse
-type CapabilitiesResponseEncoder struct{}
-
-// Encode builds a complete message (header + body).
-func (CapabilitiesResponseEncoder) Encode(SchemaIds []uint8, Paths []CapabilityPath, Symbols []string, Intervals []string) ([]byte, error) {
-	buf := make([]byte, 0, 256)
-	writeU16BE(&buf, SCHEMA_ID)
-	writeU16BE(&buf, 53)
-	writeU16BE(&buf, 0)
-	writeU16BE(&buf, 0)
-	writeU32BE(&buf, uint32(len(SchemaIds)))
-	for _, item := range SchemaIds {
-		buf = append(buf, uint8(item))
-	}
-	writeU32BE(&buf, uint32(len(Paths)))
-	for _, item := range Paths {
-		var item_buf []byte
-		CapabilityPathEncoder{}.Encode(item, &item_buf)
-		writeU32BE(&buf, uint32(len(item_buf)))
-		buf = append(buf, item_buf...)
-	}
-	writeU32BE(&buf, uint32(len(Symbols)))
-	for _, item := range Symbols {
-		writeStringU32(&buf, item)
-	}
-	writeU32BE(&buf, uint32(len(Intervals)))
-	for _, item := range Intervals {
-		writeStringU32(&buf, item)
-	}
-	return buf, nil
-}
-
-// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
-// Returns the value, the offset just past the message, and an error.
-func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponse, int, error) {
-	if len(buf) < 8 {
-		return CapabilitiesResponse{}, 0, fmt.Errorf("buffer too short for SBE header")
-	}
-	pos := 0
-	schemaID := readU16BE(buf, &pos)
-	tmplID := readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	_ = readU16BE(buf, &pos)
-	if schemaID != SCHEMA_ID {
-		return CapabilitiesResponse{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
-	}
-	if tmplID != 53 {
-		return CapabilitiesResponse{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
-	}
-	schema_ids_count := readU32BE(buf, &pos)
-	schema_ids := make([]uint8, 0, schema_ids_count)
-	for i := 0; i < int(schema_ids_count); i++ {
-		schema_ids = append(schema_ids, readU8(buf, &pos))
-	}
-	paths_count := readU32BE(buf, &pos)
-	paths := make([]CapabilityPath, 0, paths_count)
-	for i := 0; i < int(paths_count); i++ {
-		item_len := int(readU32BE(buf, &pos))
-		item_end := pos + item_len
-		item, _, err := CapabilityPathDecoderDecode(buf, pos)
-		if err != nil {
-			return CapabilitiesResponse{}, pos, err
-		}
-		pos = item_end
-		paths = append(paths, item)
-	}
-	symbols_count := readU32BE(buf, &pos)
-	symbols := make([]string, 0, symbols_count)
-	for i := 0; i < int(symbols_count); i++ {
-		symbols = append(symbols, readStringU32(buf, &pos))
-	}
-	intervals_count := readU32BE(buf, &pos)
-	intervals := make([]string, 0, intervals_count)
-	for i := 0; i < int(intervals_count); i++ {
-		intervals = append(intervals, readStringU32(buf, &pos))
-	}
-	value := CapabilitiesResponse{
-		SchemaIds: schema_ids,
-		Paths:     paths,
-		Symbols:   symbols,
-		Intervals: intervals,
-	}
 	return value, pos, nil
 }
 
@@ -10173,6 +7383,3271 @@ func PriceLimitsDecoderDecode(buf []byte) (PriceLimits, int, error) {
 		ReferencePrice: reference_price,
 		Timestamp:      timestamp,
 		IsSnapshot:     is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message AggregateTradeEvent
+type AggregateTradeEvent struct {
+	Trade AggregateTrade
+}
+
+// SBE body encoder for AggregateTradeEvent (fields only, no header).
+type AggregateTradeEventBodyEncoder struct{}
+
+func (AggregateTradeEventBodyEncoder) Encode(value AggregateTradeEvent, buf *[]byte) {
+	local := *buf
+	AggregateTradeEncoder{}.Encode(value.Trade, &local)
+	*buf = local
+}
+
+// SBE body decoder for AggregateTradeEvent: reads fields at pos, returns the value and the new offset.
+func AggregateTradeEventBodyDecoderDecode(buf []byte, pos int) (AggregateTradeEvent, int, error) {
+	trade, trade_pos, trade_err := AggregateTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return AggregateTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := AggregateTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for AggregateTradeEvent
+type AggregateTradeEventEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (AggregateTradeEventEncoder) Encode(Trade AggregateTrade) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 11)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	AggregateTradeEncoder{}.Encode(Trade, &buf)
+	return buf, nil
+}
+
+// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func AggregateTradeEventDecoderDecode(buf []byte) (AggregateTradeEvent, int, error) {
+	if len(buf) < 8 {
+		return AggregateTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return AggregateTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 11 {
+		return AggregateTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	trade, trade_pos, trade_err := AggregateTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return AggregateTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := AggregateTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE message AggregateTradeBatch
+type AggregateTradeBatch struct {
+	Symbol     string
+	Trades     []AggregateTrade
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for AggregateTradeBatch (fields only, no header).
+type AggregateTradeBatchBodyEncoder struct{}
+
+func (AggregateTradeBatchBodyEncoder) Encode(value AggregateTradeBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeU32BE(&local, uint32(len(value.Trades)))
+	for _, item := range value.Trades {
+		var item_buf []byte
+		AggregateTradeEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for AggregateTradeBatch: reads fields at pos, returns the value and the new offset.
+func AggregateTradeBatchBodyDecoderDecode(buf []byte, pos int) (AggregateTradeBatch, int, error) {
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	trades_count := readU32BE(buf, &pos)
+	trades := make([]AggregateTrade, 0, trades_count)
+	for i := 0; i < int(trades_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := AggregateTradeDecoderDecode(buf, pos)
+		if err != nil {
+			return AggregateTradeBatch{}, pos, err
+		}
+		pos = item_end
+		trades = append(trades, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := AggregateTradeBatch{
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for AggregateTradeBatch
+type AggregateTradeBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (AggregateTradeBatchEncoder) Encode(Symbol string, Trades []AggregateTrade, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 13)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Symbol)
+	writeU32BE(&buf, uint32(len(Trades)))
+	for _, item := range Trades {
+		var item_buf []byte
+		AggregateTradeEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func AggregateTradeBatchDecoderDecode(buf []byte) (AggregateTradeBatch, int, error) {
+	if len(buf) < 8 {
+		return AggregateTradeBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return AggregateTradeBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 13 {
+		return AggregateTradeBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	trades_count := readU32BE(buf, &pos)
+	trades := make([]AggregateTrade, 0, trades_count)
+	for i := 0; i < int(trades_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := AggregateTradeDecoderDecode(buf, pos)
+		if err != nil {
+			return AggregateTradeBatch{}, pos, err
+		}
+		pos = item_end
+		trades = append(trades, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := AggregateTradeBatch{
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message LiquidationTradeEvent
+type LiquidationTradeEvent struct {
+	Trade LiquidationTrade
+}
+
+// SBE body encoder for LiquidationTradeEvent (fields only, no header).
+type LiquidationTradeEventBodyEncoder struct{}
+
+func (LiquidationTradeEventBodyEncoder) Encode(value LiquidationTradeEvent, buf *[]byte) {
+	local := *buf
+	LiquidationTradeEncoder{}.Encode(value.Trade, &local)
+	*buf = local
+}
+
+// SBE body decoder for LiquidationTradeEvent: reads fields at pos, returns the value and the new offset.
+func LiquidationTradeEventBodyDecoderDecode(buf []byte, pos int) (LiquidationTradeEvent, int, error) {
+	trade, trade_pos, trade_err := LiquidationTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return LiquidationTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := LiquidationTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for LiquidationTradeEvent
+type LiquidationTradeEventEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (LiquidationTradeEventEncoder) Encode(Trade LiquidationTrade) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 19)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	LiquidationTradeEncoder{}.Encode(Trade, &buf)
+	return buf, nil
+}
+
+// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func LiquidationTradeEventDecoderDecode(buf []byte) (LiquidationTradeEvent, int, error) {
+	if len(buf) < 8 {
+		return LiquidationTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return LiquidationTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 19 {
+		return LiquidationTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	trade, trade_pos, trade_err := LiquidationTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return LiquidationTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := LiquidationTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE message MarketDataSnapshot
+type MarketDataSnapshot struct {
+	Symbol     string
+	Exchange   string
+	Bids       []PriceLevel
+	Asks       []PriceLevel
+	Timestamp  int64
+	Sequence   *uint64
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for MarketDataSnapshot (fields only, no header).
+type MarketDataSnapshotBodyEncoder struct{}
+
+func (MarketDataSnapshotBodyEncoder) Encode(value MarketDataSnapshot, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeString(&local, value.Exchange)
+	writeU32BE(&local, uint32(len(value.Bids)))
+	for _, item := range value.Bids {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU32BE(&local, uint32(len(value.Asks)))
+	for _, item := range value.Asks {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_Sequence_v uint64
+	if value.Sequence != nil {
+		value_Sequence_v = *value.Sequence
+	}
+	writeU64BE(&local, uint64(value_Sequence_v))
+	if value.Sequence != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for MarketDataSnapshot: reads fields at pos, returns the value and the new offset.
+func MarketDataSnapshotBodyDecoderDecode(buf []byte, pos int) (MarketDataSnapshot, int, error) {
+	symbol := readString(buf, &pos)
+	exchange := readString(buf, &pos)
+	bids_count := readU32BE(buf, &pos)
+	bids := make([]PriceLevel, 0, bids_count)
+	for i := 0; i < int(bids_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataSnapshot{}, pos, err
+		}
+		pos = item_end
+		bids = append(bids, item)
+	}
+	asks_count := readU32BE(buf, &pos)
+	asks := make([]PriceLevel, 0, asks_count)
+	for i := 0; i < int(asks_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataSnapshot{}, pos, err
+		}
+		pos = item_end
+		asks = append(asks, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := MarketDataSnapshot{
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for MarketDataSnapshot
+type MarketDataSnapshotEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (MarketDataSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []PriceLevel, Asks []PriceLevel, Timestamp int64, Sequence *uint64, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 6)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 17)
+	writeString(&buf, Symbol)
+	writeString(&buf, Exchange)
+	writeU32BE(&buf, uint32(len(Bids)))
+	for _, item := range Bids {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU32BE(&buf, uint32(len(Asks)))
+	for _, item := range Asks {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var Sequence_v uint64
+	if Sequence != nil {
+		Sequence_v = *Sequence
+	}
+	writeU64BE(&buf, uint64(Sequence_v))
+	if Sequence != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func MarketDataSnapshotDecoderDecode(buf []byte) (MarketDataSnapshot, int, error) {
+	if len(buf) < 8 {
+		return MarketDataSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return MarketDataSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 6 {
+		return MarketDataSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	exchange := readString(buf, &pos)
+	bids_count := readU32BE(buf, &pos)
+	bids := make([]PriceLevel, 0, bids_count)
+	for i := 0; i < int(bids_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataSnapshot{}, pos, err
+		}
+		pos = item_end
+		bids = append(bids, item)
+	}
+	asks_count := readU32BE(buf, &pos)
+	asks := make([]PriceLevel, 0, asks_count)
+	for i := 0; i < int(asks_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataSnapshot{}, pos, err
+		}
+		pos = item_end
+		asks = append(asks, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := MarketDataSnapshot{
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message OrderBookSnapshot
+type OrderBookSnapshot struct {
+	Symbol     string
+	Exchange   string
+	Bids       []PriceLevel
+	Asks       []PriceLevel
+	Timestamp  int64
+	Sequence   *uint64
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for OrderBookSnapshot (fields only, no header).
+type OrderBookSnapshotBodyEncoder struct{}
+
+func (OrderBookSnapshotBodyEncoder) Encode(value OrderBookSnapshot, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeString(&local, value.Exchange)
+	writeU32BE(&local, uint32(len(value.Bids)))
+	for _, item := range value.Bids {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU32BE(&local, uint32(len(value.Asks)))
+	for _, item := range value.Asks {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_Sequence_v uint64
+	if value.Sequence != nil {
+		value_Sequence_v = *value.Sequence
+	}
+	writeU64BE(&local, uint64(value_Sequence_v))
+	if value.Sequence != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for OrderBookSnapshot: reads fields at pos, returns the value and the new offset.
+func OrderBookSnapshotBodyDecoderDecode(buf []byte, pos int) (OrderBookSnapshot, int, error) {
+	symbol := readString(buf, &pos)
+	exchange := readString(buf, &pos)
+	bids_count := readU32BE(buf, &pos)
+	bids := make([]PriceLevel, 0, bids_count)
+	for i := 0; i < int(bids_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookSnapshot{}, pos, err
+		}
+		pos = item_end
+		bids = append(bids, item)
+	}
+	asks_count := readU32BE(buf, &pos)
+	asks := make([]PriceLevel, 0, asks_count)
+	for i := 0; i < int(asks_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookSnapshot{}, pos, err
+		}
+		pos = item_end
+		asks = append(asks, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := OrderBookSnapshot{
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for OrderBookSnapshot
+type OrderBookSnapshotEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (OrderBookSnapshotEncoder) Encode(Symbol string, Exchange string, Bids []PriceLevel, Asks []PriceLevel, Timestamp int64, Sequence *uint64, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 9)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 17)
+	writeString(&buf, Symbol)
+	writeString(&buf, Exchange)
+	writeU32BE(&buf, uint32(len(Bids)))
+	for _, item := range Bids {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU32BE(&buf, uint32(len(Asks)))
+	for _, item := range Asks {
+		var item_buf []byte
+		PriceLevelEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var Sequence_v uint64
+	if Sequence != nil {
+		Sequence_v = *Sequence
+	}
+	writeU64BE(&buf, uint64(Sequence_v))
+	if Sequence != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func OrderBookSnapshotDecoderDecode(buf []byte) (OrderBookSnapshot, int, error) {
+	if len(buf) < 8 {
+		return OrderBookSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return OrderBookSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 9 {
+		return OrderBookSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	exchange := readString(buf, &pos)
+	bids_count := readU32BE(buf, &pos)
+	bids := make([]PriceLevel, 0, bids_count)
+	for i := 0; i < int(bids_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookSnapshot{}, pos, err
+		}
+		pos = item_end
+		bids = append(bids, item)
+	}
+	asks_count := readU32BE(buf, &pos)
+	asks := make([]PriceLevel, 0, asks_count)
+	for i := 0; i < int(asks_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PriceLevelDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookSnapshot{}, pos, err
+		}
+		pos = item_end
+		asks = append(asks, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := OrderBookSnapshot{
+		Symbol:     symbol,
+		Exchange:   exchange,
+		Bids:       bids,
+		Asks:       asks,
+		Timestamp:  timestamp,
+		Sequence:   sequence,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message MarketDataIncrementalRefresh
+type MarketDataIncrementalRefresh struct {
+	Symbol    string
+	Updates   []MarketDataUpdate
+	Timestamp int64
+	Sequence  *uint64
+}
+
+// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
+type MarketDataIncrementalRefreshBodyEncoder struct{}
+
+func (MarketDataIncrementalRefreshBodyEncoder) Encode(value MarketDataIncrementalRefresh, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeU32BE(&local, uint32(len(value.Updates)))
+	for _, item := range value.Updates {
+		var item_buf []byte
+		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_Sequence_v uint64
+	if value.Sequence != nil {
+		value_Sequence_v = *value.Sequence
+	}
+	writeU64BE(&local, uint64(value_Sequence_v))
+	if value.Sequence != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for MarketDataIncrementalRefresh: reads fields at pos, returns the value and the new offset.
+func MarketDataIncrementalRefreshBodyDecoderDecode(buf []byte, pos int) (MarketDataIncrementalRefresh, int, error) {
+	symbol := readString(buf, &pos)
+	updates_count := readU32BE(buf, &pos)
+	updates := make([]MarketDataUpdate, 0, updates_count)
+	for i := 0; i < int(updates_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataIncrementalRefresh{}, pos, err
+		}
+		pos = item_end
+		updates = append(updates, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	value := MarketDataIncrementalRefresh{
+		Symbol:    symbol,
+		Updates:   updates,
+		Timestamp: timestamp,
+		Sequence:  sequence,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for MarketDataIncrementalRefresh
+type MarketDataIncrementalRefreshEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (MarketDataIncrementalRefreshEncoder) Encode(Symbol string, Updates []MarketDataUpdate, Timestamp int64, Sequence *uint64) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 7)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 16)
+	writeString(&buf, Symbol)
+	writeU32BE(&buf, uint32(len(Updates)))
+	for _, item := range Updates {
+		var item_buf []byte
+		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var Sequence_v uint64
+	if Sequence != nil {
+		Sequence_v = *Sequence
+	}
+	writeU64BE(&buf, uint64(Sequence_v))
+	if Sequence != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func MarketDataIncrementalRefreshDecoderDecode(buf []byte) (MarketDataIncrementalRefresh, int, error) {
+	if len(buf) < 8 {
+		return MarketDataIncrementalRefresh{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return MarketDataIncrementalRefresh{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 7 {
+		return MarketDataIncrementalRefresh{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	updates_count := readU32BE(buf, &pos)
+	updates := make([]MarketDataUpdate, 0, updates_count)
+	for i := 0; i < int(updates_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
+		if err != nil {
+			return MarketDataIncrementalRefresh{}, pos, err
+		}
+		pos = item_end
+		updates = append(updates, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	value := MarketDataIncrementalRefresh{
+		Symbol:    symbol,
+		Updates:   updates,
+		Timestamp: timestamp,
+		Sequence:  sequence,
+	}
+	return value, pos, nil
+}
+
+// SBE message OrderBookDelta
+type OrderBookDelta struct {
+	Symbol    string
+	Updates   []MarketDataUpdate
+	Timestamp int64
+	Sequence  *uint64
+}
+
+// SBE body encoder for OrderBookDelta (fields only, no header).
+type OrderBookDeltaBodyEncoder struct{}
+
+func (OrderBookDeltaBodyEncoder) Encode(value OrderBookDelta, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeU32BE(&local, uint32(len(value.Updates)))
+	for _, item := range value.Updates {
+		var item_buf []byte
+		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_Sequence_v uint64
+	if value.Sequence != nil {
+		value_Sequence_v = *value.Sequence
+	}
+	writeU64BE(&local, uint64(value_Sequence_v))
+	if value.Sequence != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for OrderBookDelta: reads fields at pos, returns the value and the new offset.
+func OrderBookDeltaBodyDecoderDecode(buf []byte, pos int) (OrderBookDelta, int, error) {
+	symbol := readString(buf, &pos)
+	updates_count := readU32BE(buf, &pos)
+	updates := make([]MarketDataUpdate, 0, updates_count)
+	for i := 0; i < int(updates_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookDelta{}, pos, err
+		}
+		pos = item_end
+		updates = append(updates, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	value := OrderBookDelta{
+		Symbol:    symbol,
+		Updates:   updates,
+		Timestamp: timestamp,
+		Sequence:  sequence,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for OrderBookDelta
+type OrderBookDeltaEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (OrderBookDeltaEncoder) Encode(Symbol string, Updates []MarketDataUpdate, Timestamp int64, Sequence *uint64) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 10)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 16)
+	writeString(&buf, Symbol)
+	writeU32BE(&buf, uint32(len(Updates)))
+	for _, item := range Updates {
+		var item_buf []byte
+		MarketDataUpdateEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var Sequence_v uint64
+	if Sequence != nil {
+		Sequence_v = *Sequence
+	}
+	writeU64BE(&buf, uint64(Sequence_v))
+	if Sequence != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for OrderBookDelta: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func OrderBookDeltaDecoderDecode(buf []byte) (OrderBookDelta, int, error) {
+	if len(buf) < 8 {
+		return OrderBookDelta{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return OrderBookDelta{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 10 {
+		return OrderBookDelta{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	updates_count := readU32BE(buf, &pos)
+	updates := make([]MarketDataUpdate, 0, updates_count)
+	for i := 0; i < int(updates_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MarketDataUpdateDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderBookDelta{}, pos, err
+		}
+		pos = item_end
+		updates = append(updates, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	sequence_v := readU64BE(buf, &pos)
+	var sequence *uint64
+	if buf[pos] == 1 {
+		pos++
+		sequence = &sequence_v
+	} else {
+		pos++
+		sequence = nil
+	}
+	value := OrderBookDelta{
+		Symbol:    symbol,
+		Updates:   updates,
+		Timestamp: timestamp,
+		Sequence:  sequence,
+	}
+	return value, pos, nil
+}
+
+// SBE message CandleBarEvent
+type CandleBarEvent struct {
+	Bar CandleBar
+}
+
+// SBE body encoder for CandleBarEvent (fields only, no header).
+type CandleBarEventBodyEncoder struct{}
+
+func (CandleBarEventBodyEncoder) Encode(value CandleBarEvent, buf *[]byte) {
+	local := *buf
+	CandleBarEncoder{}.Encode(value.Bar, &local)
+	*buf = local
+}
+
+// SBE body decoder for CandleBarEvent: reads fields at pos, returns the value and the new offset.
+func CandleBarEventBodyDecoderDecode(buf []byte, pos int) (CandleBarEvent, int, error) {
+	bar, bar_pos, bar_err := CandleBarDecoderDecode(buf, pos)
+	if bar_err != nil {
+		return CandleBarEvent{}, pos, bar_err
+	}
+	pos = bar_pos
+	value := CandleBarEvent{
+		Bar: bar,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for CandleBarEvent
+type CandleBarEventEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (CandleBarEventEncoder) Encode(Bar CandleBar) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 20)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	CandleBarEncoder{}.Encode(Bar, &buf)
+	return buf, nil
+}
+
+// SBE decoder for CandleBarEvent: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func CandleBarEventDecoderDecode(buf []byte) (CandleBarEvent, int, error) {
+	if len(buf) < 8 {
+		return CandleBarEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return CandleBarEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 20 {
+		return CandleBarEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	bar, bar_pos, bar_err := CandleBarDecoderDecode(buf, pos)
+	if bar_err != nil {
+		return CandleBarEvent{}, pos, bar_err
+	}
+	pos = bar_pos
+	value := CandleBarEvent{
+		Bar: bar,
+	}
+	return value, pos, nil
+}
+
+// SBE message CandleBarBatch
+type CandleBarBatch struct {
+	Symbol     string
+	Interval   string
+	Bars       []CandleBar
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for CandleBarBatch (fields only, no header).
+type CandleBarBatchBodyEncoder struct{}
+
+func (CandleBarBatchBodyEncoder) Encode(value CandleBarBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeString(&local, value.Interval)
+	writeU32BE(&local, uint32(len(value.Bars)))
+	for _, item := range value.Bars {
+		var item_buf []byte
+		CandleBarEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for CandleBarBatch: reads fields at pos, returns the value and the new offset.
+func CandleBarBatchBodyDecoderDecode(buf []byte, pos int) (CandleBarBatch, int, error) {
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	interval := readString(buf, &pos)
+	bars_count := readU32BE(buf, &pos)
+	bars := make([]CandleBar, 0, bars_count)
+	for i := 0; i < int(bars_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := CandleBarDecoderDecode(buf, pos)
+		if err != nil {
+			return CandleBarBatch{}, pos, err
+		}
+		pos = item_end
+		bars = append(bars, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := CandleBarBatch{
+		Symbol:     symbol,
+		Interval:   interval,
+		Bars:       bars,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for CandleBarBatch
+type CandleBarBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (CandleBarBatchEncoder) Encode(Symbol string, Interval string, Bars []CandleBar, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 22)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Symbol)
+	writeString(&buf, Interval)
+	writeU32BE(&buf, uint32(len(Bars)))
+	for _, item := range Bars {
+		var item_buf []byte
+		CandleBarEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for CandleBarBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func CandleBarBatchDecoderDecode(buf []byte) (CandleBarBatch, int, error) {
+	if len(buf) < 8 {
+		return CandleBarBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return CandleBarBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 22 {
+		return CandleBarBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	interval := readString(buf, &pos)
+	bars_count := readU32BE(buf, &pos)
+	bars := make([]CandleBar, 0, bars_count)
+	for i := 0; i < int(bars_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := CandleBarDecoderDecode(buf, pos)
+		if err != nil {
+			return CandleBarBatch{}, pos, err
+		}
+		pos = item_end
+		bars = append(bars, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := CandleBarBatch{
+		Symbol:     symbol,
+		Interval:   interval,
+		Bars:       bars,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message PublicTradeEvent
+type PublicTradeEvent struct {
+	Trade PublicTrade
+}
+
+// SBE body encoder for PublicTradeEvent (fields only, no header).
+type PublicTradeEventBodyEncoder struct{}
+
+func (PublicTradeEventBodyEncoder) Encode(value PublicTradeEvent, buf *[]byte) {
+	local := *buf
+	PublicTradeEncoder{}.Encode(value.Trade, &local)
+	*buf = local
+}
+
+// SBE body decoder for PublicTradeEvent: reads fields at pos, returns the value and the new offset.
+func PublicTradeEventBodyDecoderDecode(buf []byte, pos int) (PublicTradeEvent, int, error) {
+	trade, trade_pos, trade_err := PublicTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return PublicTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := PublicTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for PublicTradeEvent
+type PublicTradeEventEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (PublicTradeEventEncoder) Encode(Trade PublicTrade) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 23)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	PublicTradeEncoder{}.Encode(Trade, &buf)
+	return buf, nil
+}
+
+// SBE decoder for PublicTradeEvent: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func PublicTradeEventDecoderDecode(buf []byte) (PublicTradeEvent, int, error) {
+	if len(buf) < 8 {
+		return PublicTradeEvent{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return PublicTradeEvent{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 23 {
+		return PublicTradeEvent{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	trade, trade_pos, trade_err := PublicTradeDecoderDecode(buf, pos)
+	if trade_err != nil {
+		return PublicTradeEvent{}, pos, trade_err
+	}
+	pos = trade_pos
+	value := PublicTradeEvent{
+		Trade: trade,
+	}
+	return value, pos, nil
+}
+
+// SBE message PublicTradeBatch
+type PublicTradeBatch struct {
+	Symbol     string
+	Trades     []PublicTrade
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for PublicTradeBatch (fields only, no header).
+type PublicTradeBatchBodyEncoder struct{}
+
+func (PublicTradeBatchBodyEncoder) Encode(value PublicTradeBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	writeU32BE(&local, uint32(len(value.Trades)))
+	for _, item := range value.Trades {
+		var item_buf []byte
+		PublicTradeEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for PublicTradeBatch: reads fields at pos, returns the value and the new offset.
+func PublicTradeBatchBodyDecoderDecode(buf []byte, pos int) (PublicTradeBatch, int, error) {
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	trades_count := readU32BE(buf, &pos)
+	trades := make([]PublicTrade, 0, trades_count)
+	for i := 0; i < int(trades_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PublicTradeDecoderDecode(buf, pos)
+		if err != nil {
+			return PublicTradeBatch{}, pos, err
+		}
+		pos = item_end
+		trades = append(trades, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := PublicTradeBatch{
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for PublicTradeBatch
+type PublicTradeBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (PublicTradeBatchEncoder) Encode(Symbol string, Trades []PublicTrade, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 25)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Symbol)
+	writeU32BE(&buf, uint32(len(Trades)))
+	for _, item := range Trades {
+		var item_buf []byte
+		PublicTradeEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for PublicTradeBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func PublicTradeBatchDecoderDecode(buf []byte) (PublicTradeBatch, int, error) {
+	if len(buf) < 8 {
+		return PublicTradeBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return PublicTradeBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 25 {
+		return PublicTradeBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	symbol := readString(buf, &pos)
+	trades_count := readU32BE(buf, &pos)
+	trades := make([]PublicTrade, 0, trades_count)
+	for i := 0; i < int(trades_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PublicTradeDecoderDecode(buf, pos)
+		if err != nil {
+			return PublicTradeBatch{}, pos, err
+		}
+		pos = item_end
+		trades = append(trades, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := PublicTradeBatch{
+		Symbol:     symbol,
+		Trades:     trades,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message InstrumentCatalogResponse
+type InstrumentCatalogResponse struct {
+	Instruments []InstrumentMetadata
+}
+
+// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
+type InstrumentCatalogResponseBodyEncoder struct{}
+
+func (InstrumentCatalogResponseBodyEncoder) Encode(value InstrumentCatalogResponse, buf *[]byte) {
+	local := *buf
+	writeU32BE(&local, uint32(len(value.Instruments)))
+	for _, item := range value.Instruments {
+		var item_buf []byte
+		InstrumentMetadataEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	*buf = local
+}
+
+// SBE body decoder for InstrumentCatalogResponse: reads fields at pos, returns the value and the new offset.
+func InstrumentCatalogResponseBodyDecoderDecode(buf []byte, pos int) (InstrumentCatalogResponse, int, error) {
+	instruments_count := readU32BE(buf, &pos)
+	instruments := make([]InstrumentMetadata, 0, instruments_count)
+	for i := 0; i < int(instruments_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := InstrumentMetadataDecoderDecode(buf, pos)
+		if err != nil {
+			return InstrumentCatalogResponse{}, pos, err
+		}
+		pos = item_end
+		instruments = append(instruments, item)
+	}
+	value := InstrumentCatalogResponse{
+		Instruments: instruments,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for InstrumentCatalogResponse
+type InstrumentCatalogResponseEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (InstrumentCatalogResponseEncoder) Encode(Instruments []InstrumentMetadata) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 30)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeU32BE(&buf, uint32(len(Instruments)))
+	for _, item := range Instruments {
+		var item_buf []byte
+		InstrumentMetadataEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	return buf, nil
+}
+
+// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func InstrumentCatalogResponseDecoderDecode(buf []byte) (InstrumentCatalogResponse, int, error) {
+	if len(buf) < 8 {
+		return InstrumentCatalogResponse{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return InstrumentCatalogResponse{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 30 {
+		return InstrumentCatalogResponse{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	instruments_count := readU32BE(buf, &pos)
+	instruments := make([]InstrumentMetadata, 0, instruments_count)
+	for i := 0; i < int(instruments_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := InstrumentMetadataDecoderDecode(buf, pos)
+		if err != nil {
+			return InstrumentCatalogResponse{}, pos, err
+		}
+		pos = item_end
+		instruments = append(instruments, item)
+	}
+	value := InstrumentCatalogResponse{
+		Instruments: instruments,
+	}
+	return value, pos, nil
+}
+
+// SBE message BalanceSnapshot
+type BalanceSnapshot struct {
+	Account    string
+	Balances   []BalanceEntry
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for BalanceSnapshot (fields only, no header).
+type BalanceSnapshotBodyEncoder struct{}
+
+func (BalanceSnapshotBodyEncoder) Encode(value BalanceSnapshot, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Balances)))
+	for _, item := range value.Balances {
+		var item_buf []byte
+		BalanceEntryEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for BalanceSnapshot: reads fields at pos, returns the value and the new offset.
+func BalanceSnapshotBodyDecoderDecode(buf []byte, pos int) (BalanceSnapshot, int, error) {
+	account := readString(buf, &pos)
+	balances_count := readU32BE(buf, &pos)
+	balances := make([]BalanceEntry, 0, balances_count)
+	for i := 0; i < int(balances_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BalanceEntryDecoderDecode(buf, pos)
+		if err != nil {
+			return BalanceSnapshot{}, pos, err
+		}
+		pos = item_end
+		balances = append(balances, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := BalanceSnapshot{
+		Account:    account,
+		Balances:   balances,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for BalanceSnapshot
+type BalanceSnapshotEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (BalanceSnapshotEncoder) Encode(Account string, Balances []BalanceEntry, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 33)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Balances)))
+	for _, item := range Balances {
+		var item_buf []byte
+		BalanceEntryEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for BalanceSnapshot: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func BalanceSnapshotDecoderDecode(buf []byte) (BalanceSnapshot, int, error) {
+	if len(buf) < 8 {
+		return BalanceSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return BalanceSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 33 {
+		return BalanceSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	account := readString(buf, &pos)
+	balances_count := readU32BE(buf, &pos)
+	balances := make([]BalanceEntry, 0, balances_count)
+	for i := 0; i < int(balances_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BalanceEntryDecoderDecode(buf, pos)
+		if err != nil {
+			return BalanceSnapshot{}, pos, err
+		}
+		pos = item_end
+		balances = append(balances, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := BalanceSnapshot{
+		Account:    account,
+		Balances:   balances,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message PositionSnapshot
+type PositionSnapshot struct {
+	Account    string
+	Positions  []PositionEntry
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for PositionSnapshot (fields only, no header).
+type PositionSnapshotBodyEncoder struct{}
+
+func (PositionSnapshotBodyEncoder) Encode(value PositionSnapshot, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Positions)))
+	for _, item := range value.Positions {
+		var item_buf []byte
+		PositionEntryEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for PositionSnapshot: reads fields at pos, returns the value and the new offset.
+func PositionSnapshotBodyDecoderDecode(buf []byte, pos int) (PositionSnapshot, int, error) {
+	account := readString(buf, &pos)
+	positions_count := readU32BE(buf, &pos)
+	positions := make([]PositionEntry, 0, positions_count)
+	for i := 0; i < int(positions_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PositionEntryDecoderDecode(buf, pos)
+		if err != nil {
+			return PositionSnapshot{}, pos, err
+		}
+		pos = item_end
+		positions = append(positions, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := PositionSnapshot{
+		Account:    account,
+		Positions:  positions,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for PositionSnapshot
+type PositionSnapshotEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (PositionSnapshotEncoder) Encode(Account string, Positions []PositionEntry, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 35)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Positions)))
+	for _, item := range Positions {
+		var item_buf []byte
+		PositionEntryEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for PositionSnapshot: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func PositionSnapshotDecoderDecode(buf []byte) (PositionSnapshot, int, error) {
+	if len(buf) < 8 {
+		return PositionSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return PositionSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 35 {
+		return PositionSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	account := readString(buf, &pos)
+	positions_count := readU32BE(buf, &pos)
+	positions := make([]PositionEntry, 0, positions_count)
+	for i := 0; i < int(positions_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := PositionEntryDecoderDecode(buf, pos)
+		if err != nil {
+			return PositionSnapshot{}, pos, err
+		}
+		pos = item_end
+		positions = append(positions, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := PositionSnapshot{
+		Account:    account,
+		Positions:  positions,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message CapabilitiesResponse
+type CapabilitiesResponse struct {
+	SchemaIds []uint8
+	Paths     []CapabilityPath
+	Symbols   []string
+	Intervals []string
+}
+
+// SBE body encoder for CapabilitiesResponse (fields only, no header).
+type CapabilitiesResponseBodyEncoder struct{}
+
+func (CapabilitiesResponseBodyEncoder) Encode(value CapabilitiesResponse, buf *[]byte) {
+	local := *buf
+	writeU32BE(&local, uint32(len(value.SchemaIds)))
+	for _, item := range value.SchemaIds {
+		local = append(local, uint8(item))
+	}
+	writeU32BE(&local, uint32(len(value.Paths)))
+	for _, item := range value.Paths {
+		var item_buf []byte
+		CapabilityPathEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU32BE(&local, uint32(len(value.Symbols)))
+	for _, item := range value.Symbols {
+		writeStringU32(&local, item)
+	}
+	writeU32BE(&local, uint32(len(value.Intervals)))
+	for _, item := range value.Intervals {
+		writeStringU32(&local, item)
+	}
+	*buf = local
+}
+
+// SBE body decoder for CapabilitiesResponse: reads fields at pos, returns the value and the new offset.
+func CapabilitiesResponseBodyDecoderDecode(buf []byte, pos int) (CapabilitiesResponse, int, error) {
+	schema_ids_count := readU32BE(buf, &pos)
+	schema_ids := make([]uint8, 0, schema_ids_count)
+	for i := 0; i < int(schema_ids_count); i++ {
+		schema_ids = append(schema_ids, readU8(buf, &pos))
+	}
+	paths_count := readU32BE(buf, &pos)
+	paths := make([]CapabilityPath, 0, paths_count)
+	for i := 0; i < int(paths_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := CapabilityPathDecoderDecode(buf, pos)
+		if err != nil {
+			return CapabilitiesResponse{}, pos, err
+		}
+		pos = item_end
+		paths = append(paths, item)
+	}
+	symbols_count := readU32BE(buf, &pos)
+	symbols := make([]string, 0, symbols_count)
+	for i := 0; i < int(symbols_count); i++ {
+		symbols = append(symbols, readStringU32(buf, &pos))
+	}
+	intervals_count := readU32BE(buf, &pos)
+	intervals := make([]string, 0, intervals_count)
+	for i := 0; i < int(intervals_count); i++ {
+		intervals = append(intervals, readStringU32(buf, &pos))
+	}
+	value := CapabilitiesResponse{
+		SchemaIds: schema_ids,
+		Paths:     paths,
+		Symbols:   symbols,
+		Intervals: intervals,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for CapabilitiesResponse
+type CapabilitiesResponseEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (CapabilitiesResponseEncoder) Encode(SchemaIds []uint8, Paths []CapabilityPath, Symbols []string, Intervals []string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 53)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeU32BE(&buf, uint32(len(SchemaIds)))
+	for _, item := range SchemaIds {
+		buf = append(buf, uint8(item))
+	}
+	writeU32BE(&buf, uint32(len(Paths)))
+	for _, item := range Paths {
+		var item_buf []byte
+		CapabilityPathEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU32BE(&buf, uint32(len(Symbols)))
+	for _, item := range Symbols {
+		writeStringU32(&buf, item)
+	}
+	writeU32BE(&buf, uint32(len(Intervals)))
+	for _, item := range Intervals {
+		writeStringU32(&buf, item)
+	}
+	return buf, nil
+}
+
+// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func CapabilitiesResponseDecoderDecode(buf []byte) (CapabilitiesResponse, int, error) {
+	if len(buf) < 8 {
+		return CapabilitiesResponse{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return CapabilitiesResponse{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 53 {
+		return CapabilitiesResponse{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	schema_ids_count := readU32BE(buf, &pos)
+	schema_ids := make([]uint8, 0, schema_ids_count)
+	for i := 0; i < int(schema_ids_count); i++ {
+		schema_ids = append(schema_ids, readU8(buf, &pos))
+	}
+	paths_count := readU32BE(buf, &pos)
+	paths := make([]CapabilityPath, 0, paths_count)
+	for i := 0; i < int(paths_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := CapabilityPathDecoderDecode(buf, pos)
+		if err != nil {
+			return CapabilitiesResponse{}, pos, err
+		}
+		pos = item_end
+		paths = append(paths, item)
+	}
+	symbols_count := readU32BE(buf, &pos)
+	symbols := make([]string, 0, symbols_count)
+	for i := 0; i < int(symbols_count); i++ {
+		symbols = append(symbols, readStringU32(buf, &pos))
+	}
+	intervals_count := readU32BE(buf, &pos)
+	intervals := make([]string, 0, intervals_count)
+	for i := 0; i < int(intervals_count); i++ {
+		intervals = append(intervals, readStringU32(buf, &pos))
+	}
+	value := CapabilitiesResponse{
+		SchemaIds: schema_ids,
+		Paths:     paths,
+		Symbols:   symbols,
+		Intervals: intervals,
+	}
+	return value, pos, nil
+}
+
+// SBE message BatchReport
+type BatchReport struct {
+	BatchId   string
+	Account   string
+	Outcome   BatchReportOutcome
+	Results   []BatchResult
+	Timestamp int64
+}
+
+// SBE body encoder for BatchReport (fields only, no header).
+type BatchReportBodyEncoder struct{}
+
+func (BatchReportBodyEncoder) Encode(value BatchReport, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.BatchId)
+	writeString(&local, value.Account)
+	local = append(local, byte(value.Outcome.ToValue()))
+	writeU32BE(&local, uint32(len(value.Results)))
+	for _, item := range value.Results {
+		var item_buf []byte
+		BatchResultEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	*buf = local
+}
+
+// SBE body decoder for BatchReport: reads fields at pos, returns the value and the new offset.
+func BatchReportBodyDecoderDecode(buf []byte, pos int) (BatchReport, int, error) {
+	batch_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	outcome_raw := readU8(buf, &pos)
+	outcome, outcome_err := BatchReportOutcomeFromValue(outcome_raw)
+	if outcome_err != nil {
+		return BatchReport{}, pos, outcome_err
+	}
+	results_count := readU32BE(buf, &pos)
+	results := make([]BatchResult, 0, results_count)
+	for i := 0; i < int(results_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BatchResultDecoderDecode(buf, pos)
+		if err != nil {
+			return BatchReport{}, pos, err
+		}
+		pos = item_end
+		results = append(results, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	value := BatchReport{
+		BatchId:   batch_id,
+		Account:   account,
+		Outcome:   outcome,
+		Results:   results,
+		Timestamp: timestamp,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for BatchReport
+type BatchReportEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (BatchReportEncoder) Encode(BatchId string, Account string, Outcome BatchReportOutcome, Results []BatchResult, Timestamp int64) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 64)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 9)
+	writeString(&buf, BatchId)
+	writeString(&buf, Account)
+	buf = append(buf, byte(Outcome.ToValue()))
+	writeU32BE(&buf, uint32(len(Results)))
+	for _, item := range Results {
+		var item_buf []byte
+		BatchResultEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	return buf, nil
+}
+
+// SBE decoder for BatchReport: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func BatchReportDecoderDecode(buf []byte) (BatchReport, int, error) {
+	if len(buf) < 8 {
+		return BatchReport{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return BatchReport{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 64 {
+		return BatchReport{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	batch_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	outcome_raw := readU8(buf, &pos)
+	outcome, outcome_err := BatchReportOutcomeFromValue(outcome_raw)
+	if outcome_err != nil {
+		return BatchReport{}, pos, outcome_err
+	}
+	results_count := readU32BE(buf, &pos)
+	results := make([]BatchResult, 0, results_count)
+	for i := 0; i < int(results_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BatchResultDecoderDecode(buf, pos)
+		if err != nil {
+			return BatchReport{}, pos, err
+		}
+		pos = item_end
+		results = append(results, item)
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	value := BatchReport{
+		BatchId:   batch_id,
+		Account:   account,
+		Outcome:   outcome,
+		Results:   results,
+		Timestamp: timestamp,
+	}
+	return value, pos, nil
+}
+
+// SBE struct BatchAction
+type BatchAction struct {
+	Kind     BatchActionKind
+	NewOrder *NewOrderSingle
+	Cancel   *CancelRequest
+	Replace  *CancelReplaceRequest
+}
+
+// Encode writes BatchAction fields (no header) into buf.
+type BatchActionEncoder struct{}
+
+func (BatchActionEncoder) Encode(value BatchAction, buf *[]byte) {
+	local := *buf
+	local = append(local, byte(value.Kind.ToValue()))
+	if value.NewOrder != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	if value.NewOrder != nil {
+		NewOrderSingleBodyEncoder{}.Encode(*value.NewOrder, &local)
+	}
+	if value.Cancel != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	if value.Cancel != nil {
+		CancelRequestBodyEncoder{}.Encode(*value.Cancel, &local)
+	}
+	if value.Replace != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	if value.Replace != nil {
+		CancelReplaceRequestBodyEncoder{}.Encode(*value.Replace, &local)
+	}
+	*buf = local
+}
+
+// DecodeBatchActionDecoder reads BatchAction fields starting at pos and returns the new offset.
+func BatchActionDecoderDecode(buf []byte, pos int) (BatchAction, int, error) {
+	kind_raw := readU8(buf, &pos)
+	kind, kind_err := BatchActionKindFromValue(kind_raw)
+	if kind_err != nil {
+		return BatchAction{}, pos, kind_err
+	}
+	var new_order *NewOrderSingle
+	if readU8(buf, &pos) == 1 {
+		new_order_inner, new_order_inner_pos, new_order_inner_err := NewOrderSingleBodyDecoderDecode(buf, pos)
+		if new_order_inner_err != nil {
+			return BatchAction{}, pos, new_order_inner_err
+		}
+		pos = new_order_inner_pos
+		new_order = &new_order_inner
+	} else {
+		new_order = nil
+	}
+	var cancel *CancelRequest
+	if readU8(buf, &pos) == 1 {
+		cancel_inner, cancel_inner_pos, cancel_inner_err := CancelRequestBodyDecoderDecode(buf, pos)
+		if cancel_inner_err != nil {
+			return BatchAction{}, pos, cancel_inner_err
+		}
+		pos = cancel_inner_pos
+		cancel = &cancel_inner
+	} else {
+		cancel = nil
+	}
+	var replace *CancelReplaceRequest
+	if readU8(buf, &pos) == 1 {
+		replace_inner, replace_inner_pos, replace_inner_err := CancelReplaceRequestBodyDecoderDecode(buf, pos)
+		if replace_inner_err != nil {
+			return BatchAction{}, pos, replace_inner_err
+		}
+		pos = replace_inner_pos
+		replace = &replace_inner
+	} else {
+		replace = nil
+	}
+	value := BatchAction{
+		Kind:     kind,
+		NewOrder: new_order,
+		Cancel:   cancel,
+		Replace:  replace,
+	}
+	return value, pos, nil
+}
+
+// SBE message FillHistoryBatch
+type FillHistoryBatch struct {
+	Account    string
+	Fills      []ExecutionReport
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for FillHistoryBatch (fields only, no header).
+type FillHistoryBatchBodyEncoder struct{}
+
+func (FillHistoryBatchBodyEncoder) Encode(value FillHistoryBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Fills)))
+	for _, item := range value.Fills {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for FillHistoryBatch: reads fields at pos, returns the value and the new offset.
+func FillHistoryBatchBodyDecoderDecode(buf []byte, pos int) (FillHistoryBatch, int, error) {
+	var next_cursor *string
+	account := readString(buf, &pos)
+	fills_count := readU32BE(buf, &pos)
+	fills := make([]ExecutionReport, 0, fills_count)
+	for i := 0; i < int(fills_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return FillHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		fills = append(fills, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := FillHistoryBatch{
+		Account:    account,
+		Fills:      fills,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for FillHistoryBatch
+type FillHistoryBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (FillHistoryBatchEncoder) Encode(Account string, Fills []ExecutionReport, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 41)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Fills)))
+	for _, item := range Fills {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for FillHistoryBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func FillHistoryBatchDecoderDecode(buf []byte) (FillHistoryBatch, int, error) {
+	if len(buf) < 8 {
+		return FillHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return FillHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 41 {
+		return FillHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	account := readString(buf, &pos)
+	fills_count := readU32BE(buf, &pos)
+	fills := make([]ExecutionReport, 0, fills_count)
+	for i := 0; i < int(fills_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return FillHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		fills = append(fills, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := FillHistoryBatch{
+		Account:    account,
+		Fills:      fills,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message OpenOrdersSnapshot
+type OpenOrdersSnapshot struct {
+	Account    string
+	Orders     []ExecutionReport
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
+type OpenOrdersSnapshotBodyEncoder struct{}
+
+func (OpenOrdersSnapshotBodyEncoder) Encode(value OpenOrdersSnapshot, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Orders)))
+	for _, item := range value.Orders {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for OpenOrdersSnapshot: reads fields at pos, returns the value and the new offset.
+func OpenOrdersSnapshotBodyDecoderDecode(buf []byte, pos int) (OpenOrdersSnapshot, int, error) {
+	account := readString(buf, &pos)
+	orders_count := readU32BE(buf, &pos)
+	orders := make([]ExecutionReport, 0, orders_count)
+	for i := 0; i < int(orders_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return OpenOrdersSnapshot{}, pos, err
+		}
+		pos = item_end
+		orders = append(orders, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := OpenOrdersSnapshot{
+		Account:    account,
+		Orders:     orders,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for OpenOrdersSnapshot
+type OpenOrdersSnapshotEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (OpenOrdersSnapshotEncoder) Encode(Account string, Orders []ExecutionReport, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 49)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Orders)))
+	for _, item := range Orders {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func OpenOrdersSnapshotDecoderDecode(buf []byte) (OpenOrdersSnapshot, int, error) {
+	if len(buf) < 8 {
+		return OpenOrdersSnapshot{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return OpenOrdersSnapshot{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 49 {
+		return OpenOrdersSnapshot{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	account := readString(buf, &pos)
+	orders_count := readU32BE(buf, &pos)
+	orders := make([]ExecutionReport, 0, orders_count)
+	for i := 0; i < int(orders_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return OpenOrdersSnapshot{}, pos, err
+		}
+		pos = item_end
+		orders = append(orders, item)
+	}
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := OpenOrdersSnapshot{
+		Account:    account,
+		Orders:     orders,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message OrderHistoryBatch
+type OrderHistoryBatch struct {
+	Account    string
+	Orders     []ExecutionReport
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for OrderHistoryBatch (fields only, no header).
+type OrderHistoryBatchBodyEncoder struct{}
+
+func (OrderHistoryBatchBodyEncoder) Encode(value OrderHistoryBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Orders)))
+	for _, item := range value.Orders {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for OrderHistoryBatch: reads fields at pos, returns the value and the new offset.
+func OrderHistoryBatchBodyDecoderDecode(buf []byte, pos int) (OrderHistoryBatch, int, error) {
+	var next_cursor *string
+	account := readString(buf, &pos)
+	orders_count := readU32BE(buf, &pos)
+	orders := make([]ExecutionReport, 0, orders_count)
+	for i := 0; i < int(orders_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		orders = append(orders, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := OrderHistoryBatch{
+		Account:    account,
+		Orders:     orders,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for OrderHistoryBatch
+type OrderHistoryBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (OrderHistoryBatchEncoder) Encode(Account string, Orders []ExecutionReport, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 51)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Orders)))
+	for _, item := range Orders {
+		var item_buf []byte
+		ExecutionReportBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func OrderHistoryBatchDecoderDecode(buf []byte) (OrderHistoryBatch, int, error) {
+	if len(buf) < 8 {
+		return OrderHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return OrderHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 51 {
+		return OrderHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	account := readString(buf, &pos)
+	orders_count := readU32BE(buf, &pos)
+	orders := make([]ExecutionReport, 0, orders_count)
+	for i := 0; i < int(orders_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := ExecutionReportBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return OrderHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		orders = append(orders, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := OrderHistoryBatch{
+		Account:    account,
+		Orders:     orders,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message AllMidsBatch
+type AllMidsBatch struct {
+	Tickers []MiniTicker
+}
+
+// SBE body encoder for AllMidsBatch (fields only, no header).
+type AllMidsBatchBodyEncoder struct{}
+
+func (AllMidsBatchBodyEncoder) Encode(value AllMidsBatch, buf *[]byte) {
+	local := *buf
+	writeU32BE(&local, uint32(len(value.Tickers)))
+	for _, item := range value.Tickers {
+		var item_buf []byte
+		MiniTickerBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	*buf = local
+}
+
+// SBE body decoder for AllMidsBatch: reads fields at pos, returns the value and the new offset.
+func AllMidsBatchBodyDecoderDecode(buf []byte, pos int) (AllMidsBatch, int, error) {
+	tickers_count := readU32BE(buf, &pos)
+	tickers := make([]MiniTicker, 0, tickers_count)
+	for i := 0; i < int(tickers_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MiniTickerBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return AllMidsBatch{}, pos, err
+		}
+		pos = item_end
+		tickers = append(tickers, item)
+	}
+	value := AllMidsBatch{
+		Tickers: tickers,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for AllMidsBatch
+type AllMidsBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (AllMidsBatchEncoder) Encode(Tickers []MiniTicker) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 16)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeU32BE(&buf, uint32(len(Tickers)))
+	for _, item := range Tickers {
+		var item_buf []byte
+		MiniTickerBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	return buf, nil
+}
+
+// SBE decoder for AllMidsBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func AllMidsBatchDecoderDecode(buf []byte) (AllMidsBatch, int, error) {
+	if len(buf) < 8 {
+		return AllMidsBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return AllMidsBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 16 {
+		return AllMidsBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	tickers_count := readU32BE(buf, &pos)
+	tickers := make([]MiniTicker, 0, tickers_count)
+	for i := 0; i < int(tickers_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := MiniTickerBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return AllMidsBatch{}, pos, err
+		}
+		pos = item_end
+		tickers = append(tickers, item)
+	}
+	value := AllMidsBatch{
+		Tickers: tickers,
+	}
+	return value, pos, nil
+}
+
+// SBE message MarginUpdate
+type MarginUpdate struct {
+	Account    string
+	Summary    MarginSummary
+	IsSnapshot *uint8
+}
+
+// SBE body encoder for MarginUpdate (fields only, no header).
+type MarginUpdateBodyEncoder struct{}
+
+func (MarginUpdateBodyEncoder) Encode(value MarginUpdate, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	MarginSummaryBodyEncoder{}.Encode(value.Summary, &local)
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for MarginUpdate: reads fields at pos, returns the value and the new offset.
+func MarginUpdateBodyDecoderDecode(buf []byte, pos int) (MarginUpdate, int, error) {
+	account := readString(buf, &pos)
+	summary, summary_pos, summary_err := MarginSummaryBodyDecoderDecode(buf, pos)
+	if summary_err != nil {
+		return MarginUpdate{}, pos, summary_err
+	}
+	pos = summary_pos
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := MarginUpdate{
+		Account:    account,
+		Summary:    summary,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for MarginUpdate
+type MarginUpdateEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (MarginUpdateEncoder) Encode(Account string, Summary MarginSummary, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 37)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	MarginSummaryBodyEncoder{}.Encode(Summary, &buf)
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for MarginUpdate: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func MarginUpdateDecoderDecode(buf []byte) (MarginUpdate, int, error) {
+	if len(buf) < 8 {
+		return MarginUpdate{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return MarginUpdate{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 37 {
+		return MarginUpdate{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	account := readString(buf, &pos)
+	summary, summary_pos, summary_err := MarginSummaryBodyDecoderDecode(buf, pos)
+	if summary_err != nil {
+		return MarginUpdate{}, pos, summary_err
+	}
+	pos = summary_pos
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := MarginUpdate{
+		Account:    account,
+		Summary:    summary,
+		IsSnapshot: is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE message FundingHistoryBatch
+type FundingHistoryBatch struct {
+	Account    string
+	Payments   []FundingPayment
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for FundingHistoryBatch (fields only, no header).
+type FundingHistoryBatchBodyEncoder struct{}
+
+func (FundingHistoryBatchBodyEncoder) Encode(value FundingHistoryBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Payments)))
+	for _, item := range value.Payments {
+		var item_buf []byte
+		FundingPaymentBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for FundingHistoryBatch: reads fields at pos, returns the value and the new offset.
+func FundingHistoryBatchBodyDecoderDecode(buf []byte, pos int) (FundingHistoryBatch, int, error) {
+	var next_cursor *string
+	account := readString(buf, &pos)
+	payments_count := readU32BE(buf, &pos)
+	payments := make([]FundingPayment, 0, payments_count)
+	for i := 0; i < int(payments_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := FundingPaymentBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return FundingHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		payments = append(payments, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := FundingHistoryBatch{
+		Account:    account,
+		Payments:   payments,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for FundingHistoryBatch
+type FundingHistoryBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (FundingHistoryBatchEncoder) Encode(Account string, Payments []FundingPayment, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 44)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Payments)))
+	for _, item := range Payments {
+		var item_buf []byte
+		FundingPaymentBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func FundingHistoryBatchDecoderDecode(buf []byte) (FundingHistoryBatch, int, error) {
+	if len(buf) < 8 {
+		return FundingHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return FundingHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 44 {
+		return FundingHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	account := readString(buf, &pos)
+	payments_count := readU32BE(buf, &pos)
+	payments := make([]FundingPayment, 0, payments_count)
+	for i := 0; i < int(payments_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := FundingPaymentBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return FundingHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		payments = append(payments, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := FundingHistoryBatch{
+		Account:    account,
+		Payments:   payments,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message LedgerHistoryBatch
+type LedgerHistoryBatch struct {
+	Account    string
+	Entries    []LedgerUpdate
+	HasMore    uint8
+	NextCursor *string
+}
+
+// SBE body encoder for LedgerHistoryBatch (fields only, no header).
+type LedgerHistoryBatchBodyEncoder struct{}
+
+func (LedgerHistoryBatchBodyEncoder) Encode(value LedgerHistoryBatch, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Entries)))
+	for _, item := range value.Entries {
+		var item_buf []byte
+		LedgerUpdateBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	local = append(local, uint8(value.HasMore))
+	if value.NextCursor != nil {
+		local = append(local, 1)
+		writeString(&local, *value.NextCursor)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for LedgerHistoryBatch: reads fields at pos, returns the value and the new offset.
+func LedgerHistoryBatchBodyDecoderDecode(buf []byte, pos int) (LedgerHistoryBatch, int, error) {
+	var next_cursor *string
+	account := readString(buf, &pos)
+	entries_count := readU32BE(buf, &pos)
+	entries := make([]LedgerUpdate, 0, entries_count)
+	for i := 0; i < int(entries_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := LedgerUpdateBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return LedgerHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		entries = append(entries, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := LedgerHistoryBatch{
+		Account:    account,
+		Entries:    entries,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for LedgerHistoryBatch
+type LedgerHistoryBatchEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (LedgerHistoryBatchEncoder) Encode(Account string, Entries []LedgerUpdate, HasMore uint8, NextCursor *string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 47)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 1)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Entries)))
+	for _, item := range Entries {
+		var item_buf []byte
+		LedgerUpdateBodyEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	buf = append(buf, uint8(HasMore))
+	if NextCursor != nil {
+		buf = append(buf, 1)
+		writeString(&buf, *NextCursor)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func LedgerHistoryBatchDecoderDecode(buf []byte) (LedgerHistoryBatch, int, error) {
+	if len(buf) < 8 {
+		return LedgerHistoryBatch{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return LedgerHistoryBatch{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 47 {
+		return LedgerHistoryBatch{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	var next_cursor *string
+	account := readString(buf, &pos)
+	entries_count := readU32BE(buf, &pos)
+	entries := make([]LedgerUpdate, 0, entries_count)
+	for i := 0; i < int(entries_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := LedgerUpdateBodyDecoderDecode(buf, pos)
+		if err != nil {
+			return LedgerHistoryBatch{}, pos, err
+		}
+		pos = item_end
+		entries = append(entries, item)
+	}
+	has_more := readU8(buf, &pos)
+	if buf[pos] == 1 {
+		pos++
+		s := readString(buf, &pos)
+		next_cursor = &s
+	} else {
+		pos++
+	}
+	value := LedgerHistoryBatch{
+		Account:    account,
+		Entries:    entries,
+		HasMore:    has_more,
+		NextCursor: next_cursor,
+	}
+	return value, pos, nil
+}
+
+// SBE message BatchRequest
+type BatchRequest struct {
+	BatchId string
+	Account string
+	Actions []BatchAction
+}
+
+// SBE body encoder for BatchRequest (fields only, no header).
+type BatchRequestBodyEncoder struct{}
+
+func (BatchRequestBodyEncoder) Encode(value BatchRequest, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.BatchId)
+	writeString(&local, value.Account)
+	writeU32BE(&local, uint32(len(value.Actions)))
+	for _, item := range value.Actions {
+		var item_buf []byte
+		BatchActionEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&local, uint32(len(item_buf)))
+		local = append(local, item_buf...)
+	}
+	*buf = local
+}
+
+// SBE body decoder for BatchRequest: reads fields at pos, returns the value and the new offset.
+func BatchRequestBodyDecoderDecode(buf []byte, pos int) (BatchRequest, int, error) {
+	batch_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	actions_count := readU32BE(buf, &pos)
+	actions := make([]BatchAction, 0, actions_count)
+	for i := 0; i < int(actions_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BatchActionDecoderDecode(buf, pos)
+		if err != nil {
+			return BatchRequest{}, pos, err
+		}
+		pos = item_end
+		actions = append(actions, item)
+	}
+	value := BatchRequest{
+		BatchId: batch_id,
+		Account: account,
+		Actions: actions,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for BatchRequest
+type BatchRequestEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (BatchRequestEncoder) Encode(BatchId string, Account string, Actions []BatchAction) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 63)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeString(&buf, BatchId)
+	writeString(&buf, Account)
+	writeU32BE(&buf, uint32(len(Actions)))
+	for _, item := range Actions {
+		var item_buf []byte
+		BatchActionEncoder{}.Encode(item, &item_buf)
+		writeU32BE(&buf, uint32(len(item_buf)))
+		buf = append(buf, item_buf...)
+	}
+	return buf, nil
+}
+
+// SBE decoder for BatchRequest: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func BatchRequestDecoderDecode(buf []byte) (BatchRequest, int, error) {
+	if len(buf) < 8 {
+		return BatchRequest{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return BatchRequest{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 63 {
+		return BatchRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	batch_id := readString(buf, &pos)
+	account := readString(buf, &pos)
+	actions_count := readU32BE(buf, &pos)
+	actions := make([]BatchAction, 0, actions_count)
+	for i := 0; i < int(actions_count); i++ {
+		item_len := int(readU32BE(buf, &pos))
+		item_end := pos + item_len
+		item, _, err := BatchActionDecoderDecode(buf, pos)
+		if err != nil {
+			return BatchRequest{}, pos, err
+		}
+		pos = item_end
+		actions = append(actions, item)
+	}
+	value := BatchRequest{
+		BatchId: batch_id,
+		Account: account,
+		Actions: actions,
 	}
 	return value, pos, nil
 }

@@ -469,6 +469,21 @@ inline std::optional<MassCancelReportStatus> MassCancelReportStatusFromValue(uin
 
 inline uint8_t MassCancelReportStatusToValue(MassCancelReportStatus e) { return static_cast<uint8_t>(e); }
 
+enum class BatchReportOutcome : uint8_t {
+    Applied = 1,
+    Rejected = 2,
+};
+
+inline std::optional<BatchReportOutcome> BatchReportOutcomeFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return BatchReportOutcome::Applied;
+    case 2: return BatchReportOutcome::Rejected;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t BatchReportOutcomeToValue(BatchReportOutcome e) { return static_cast<uint8_t>(e); }
+
 enum class AggregateTradeSide : uint8_t {
     Buy = 1,
     Sell = 2,
@@ -562,6 +577,55 @@ inline std::optional<CapabilityPathPattern> CapabilityPathPatternFromValue(uint8
 }
 
 inline uint8_t CapabilityPathPatternToValue(CapabilityPathPattern e) { return static_cast<uint8_t>(e); }
+
+enum class BatchActionKind : uint8_t {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+};
+
+inline std::optional<BatchActionKind> BatchActionKindFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return BatchActionKind::NewOrder;
+    case 2: return BatchActionKind::Cancel;
+    case 3: return BatchActionKind::Replace;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t BatchActionKindToValue(BatchActionKind e) { return static_cast<uint8_t>(e); }
+
+enum class BatchResultKind : uint8_t {
+    NewOrder = 1,
+    Cancel = 2,
+    Replace = 3,
+};
+
+inline std::optional<BatchResultKind> BatchResultKindFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return BatchResultKind::NewOrder;
+    case 2: return BatchResultKind::Cancel;
+    case 3: return BatchResultKind::Replace;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t BatchResultKindToValue(BatchResultKind e) { return static_cast<uint8_t>(e); }
+
+enum class BatchResultStatus : uint8_t {
+    Applied = 1,
+    Rejected = 2,
+};
+
+inline std::optional<BatchResultStatus> BatchResultStatusFromValue(uint8_t v) {
+    switch (v) {
+    case 1: return BatchResultStatus::Applied;
+    case 2: return BatchResultStatus::Rejected;
+    default: return std::nullopt;
+    }
+}
+
+inline uint8_t BatchResultStatusToValue(BatchResultStatus e) { return static_cast<uint8_t>(e); }
 
 // SBE struct AggregateTrade
 struct AggregateTrade {
@@ -1035,6 +1099,51 @@ inline std::pair<CapabilityPath, std::size_t> CapabilityPathDecoder::decode(cons
     value.path = path;
     value.pattern = pattern;
     value.auth_required = auth_required;
+    return {value, pos};
+}
+
+// SBE struct BatchResult
+struct BatchResult {
+    uint32_t index;
+    BatchResultKind kind;
+    std::string cl_ord_id;
+    BatchResultStatus status;
+    std::optional<std::string> reject_reason;
+};
+
+struct BatchResultEncoder {
+    static void encode(const BatchResult& value, std::vector<uint8_t>& buf);
+};
+
+struct BatchResultDecoder {
+    static std::pair<BatchResult, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline void BatchResultEncoder::encode(const BatchResult& value, std::vector<uint8_t>& buf) {
+        write_u32_be(buf, value.index);
+        buf.push_back(BatchResultKindToValue(value.kind));
+        write_string(buf, value.cl_ord_id);
+        buf.push_back(BatchResultStatusToValue(value.status));
+        if (value.reject_reason.has_value()) { buf.push_back(1); write_string(buf, *value.reject_reason); } else { buf.push_back(0); }
+}
+
+inline std::pair<BatchResult, std::size_t> BatchResultDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    BatchResult value{};
+        std::optional<std::string> reject_reason;
+        uint32_t index = read_u32_be(buf, pos);
+        auto kind_v = BatchResultKindFromValue(take_u8(buf, pos));
+        if (!kind_v) throw std::runtime_error("invalid BatchResultKind");
+        BatchResultKind kind = *kind_v;
+        std::string cl_ord_id = read_string(buf, pos);
+        auto status_v = BatchResultStatusFromValue(take_u8(buf, pos));
+        if (!status_v) throw std::runtime_error("invalid BatchResultStatus");
+        BatchResultStatus status = *status_v;
+        if (take_u8(buf, pos) == 1) reject_reason = read_string(buf, pos);
+    value.index = index;
+    value.kind = kind;
+    value.cl_ord_id = cl_ord_id;
+    value.status = status;
+    value.reject_reason = reject_reason;
     return {value, pos};
 }
 
@@ -1733,307 +1842,6 @@ inline CancelReject CancelRejectDecoder::decode(const std::vector<uint8_t>& buf)
     return value;
 }
 
-// SBE message MarketDataSnapshot
-struct MarketDataSnapshot {
-    std::string symbol;
-    std::string exchange;
-    std::vector<PriceLevel> bids;
-    std::vector<PriceLevel> asks;
-    int64_t timestamp;
-    std::optional<uint64_t> sequence;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for MarketDataSnapshot (fields only, no header).
-struct MarketDataSnapshotBodyEncoder {
-    static void encode(const MarketDataSnapshot& value, std::vector<uint8_t>& buf);
-};
-
-inline void MarketDataSnapshotBodyEncoder::encode(const MarketDataSnapshot& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_string(buf, value.exchange);
-        write_u32_be(buf, static_cast<uint32_t>(value.bids.size()));
-        for (const auto& item : value.bids) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(value.asks.size()));
-        for (const auto& item : value.asks) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
-        write_u64_be(buf, value.sequence.value_or(0));
-        buf.push_back(value.sequence.has_value() ? 1 : 0);
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for MarketDataSnapshot: reads fields at pos.
-struct MarketDataSnapshotBodyDecoder {
-    static std::pair<MarketDataSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<MarketDataSnapshot, std::size_t> MarketDataSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    MarketDataSnapshot value{};
-        std::string symbol = read_string(buf, pos);
-        std::string exchange = read_string(buf, pos);
-        uint32_t bids_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> bids;
-        bids.reserve(bids_count);
-        for (uint32_t i = 0; i < bids_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bids.push_back(item);
-        }
-        uint32_t asks_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> asks;
-        asks.reserve(asks_count);
-        for (uint32_t i = 0; i < asks_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            asks.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.symbol = symbol;
-    value.exchange = exchange;
-    value.bids = bids;
-    value.asks = asks;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for MarketDataSnapshot
-struct MarketDataSnapshotEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> MarketDataSnapshotEncoder::encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 6);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 17);
-        write_string(buf, symbol);
-        write_string(buf, exchange);
-        write_u32_be(buf, static_cast<uint32_t>(bids.size()));
-        for (const auto& item : bids) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(asks.size()));
-        for (const auto& item : asks) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(timestamp));
-        write_u64_be(buf, sequence.value_or(0));
-        buf.push_back(sequence.has_value() ? 1 : 0);
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
-struct MarketDataSnapshotDecoder {
-    static MarketDataSnapshot decode(const std::vector<uint8_t>& buf);
-};
-
-inline MarketDataSnapshot MarketDataSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
-    MarketDataSnapshot value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 6) throw std::runtime_error("invalid template_id");
-        std::string symbol = read_string(buf, pos);
-        std::string exchange = read_string(buf, pos);
-        uint32_t bids_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> bids;
-        bids.reserve(bids_count);
-        for (uint32_t i = 0; i < bids_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bids.push_back(item);
-        }
-        uint32_t asks_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> asks;
-        asks.reserve(asks_count);
-        for (uint32_t i = 0; i < asks_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            asks.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.symbol = symbol;
-    value.exchange = exchange;
-    value.bids = bids;
-    value.asks = asks;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    value.is_snapshot = is_snapshot;
-    (void)value;
-    return value;
-}
-
-// SBE message MarketDataIncrementalRefresh
-struct MarketDataIncrementalRefresh {
-    std::string symbol;
-    std::vector<MarketDataUpdate> updates;
-    int64_t timestamp;
-    std::optional<uint64_t> sequence;
-};
-
-// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
-struct MarketDataIncrementalRefreshBodyEncoder {
-    static void encode(const MarketDataIncrementalRefresh& value, std::vector<uint8_t>& buf);
-};
-
-inline void MarketDataIncrementalRefreshBodyEncoder::encode(const MarketDataIncrementalRefresh& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_u32_be(buf, static_cast<uint32_t>(value.updates.size()));
-        for (const auto& item : value.updates) {
-            std::vector<uint8_t> item_buf;
-            MarketDataUpdateEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
-        write_u64_be(buf, value.sequence.value_or(0));
-        buf.push_back(value.sequence.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for MarketDataIncrementalRefresh: reads fields at pos.
-struct MarketDataIncrementalRefreshBodyDecoder {
-    static std::pair<MarketDataIncrementalRefresh, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<MarketDataIncrementalRefresh, std::size_t> MarketDataIncrementalRefreshBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    MarketDataIncrementalRefresh value{};
-        std::string symbol = read_string(buf, pos);
-        uint32_t updates_count = read_u32_be(buf, pos);
-        std::vector<MarketDataUpdate> updates;
-        updates.reserve(updates_count);
-        for (uint32_t i = 0; i < updates_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            updates.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-    value.symbol = symbol;
-    value.updates = updates;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    return {value, pos};
-}
-
-// SBE encoder for MarketDataIncrementalRefresh
-struct MarketDataIncrementalRefreshEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence);
-};
-
-inline std::vector<uint8_t> MarketDataIncrementalRefreshEncoder::encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 7);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 16);
-        write_string(buf, symbol);
-        write_u32_be(buf, static_cast<uint32_t>(updates.size()));
-        for (const auto& item : updates) {
-            std::vector<uint8_t> item_buf;
-            MarketDataUpdateEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(timestamp));
-        write_u64_be(buf, sequence.value_or(0));
-        buf.push_back(sequence.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
-struct MarketDataIncrementalRefreshDecoder {
-    static MarketDataIncrementalRefresh decode(const std::vector<uint8_t>& buf);
-};
-
-inline MarketDataIncrementalRefresh MarketDataIncrementalRefreshDecoder::decode(const std::vector<uint8_t>& buf) {
-    MarketDataIncrementalRefresh value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 7) throw std::runtime_error("invalid template_id");
-        std::string symbol = read_string(buf, pos);
-        uint32_t updates_count = read_u32_be(buf, pos);
-        std::vector<MarketDataUpdate> updates;
-        updates.reserve(updates_count);
-        for (uint32_t i = 0; i < updates_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            updates.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-    value.symbol = symbol;
-    value.updates = updates;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    (void)value;
-    return value;
-}
-
 // SBE message OrderBookRequest
 struct OrderBookRequest {
     std::string symbol;
@@ -2118,371 +1926,6 @@ inline OrderBookRequest OrderBookRequestDecoder::decode(const std::vector<uint8_
     value.symbol = symbol;
     value.depth = depth;
     value.at_time = at_time;
-    (void)value;
-    return value;
-}
-
-// SBE message OrderBookSnapshot
-struct OrderBookSnapshot {
-    std::string symbol;
-    std::string exchange;
-    std::vector<PriceLevel> bids;
-    std::vector<PriceLevel> asks;
-    int64_t timestamp;
-    std::optional<uint64_t> sequence;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for OrderBookSnapshot (fields only, no header).
-struct OrderBookSnapshotBodyEncoder {
-    static void encode(const OrderBookSnapshot& value, std::vector<uint8_t>& buf);
-};
-
-inline void OrderBookSnapshotBodyEncoder::encode(const OrderBookSnapshot& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_string(buf, value.exchange);
-        write_u32_be(buf, static_cast<uint32_t>(value.bids.size()));
-        for (const auto& item : value.bids) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(value.asks.size()));
-        for (const auto& item : value.asks) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
-        write_u64_be(buf, value.sequence.value_or(0));
-        buf.push_back(value.sequence.has_value() ? 1 : 0);
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for OrderBookSnapshot: reads fields at pos.
-struct OrderBookSnapshotBodyDecoder {
-    static std::pair<OrderBookSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<OrderBookSnapshot, std::size_t> OrderBookSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    OrderBookSnapshot value{};
-        std::string symbol = read_string(buf, pos);
-        std::string exchange = read_string(buf, pos);
-        uint32_t bids_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> bids;
-        bids.reserve(bids_count);
-        for (uint32_t i = 0; i < bids_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bids.push_back(item);
-        }
-        uint32_t asks_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> asks;
-        asks.reserve(asks_count);
-        for (uint32_t i = 0; i < asks_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            asks.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.symbol = symbol;
-    value.exchange = exchange;
-    value.bids = bids;
-    value.asks = asks;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for OrderBookSnapshot
-struct OrderBookSnapshotEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> OrderBookSnapshotEncoder::encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 9);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 17);
-        write_string(buf, symbol);
-        write_string(buf, exchange);
-        write_u32_be(buf, static_cast<uint32_t>(bids.size()));
-        for (const auto& item : bids) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(asks.size()));
-        for (const auto& item : asks) {
-            std::vector<uint8_t> item_buf;
-            PriceLevelEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(timestamp));
-        write_u64_be(buf, sequence.value_or(0));
-        buf.push_back(sequence.has_value() ? 1 : 0);
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
-struct OrderBookSnapshotDecoder {
-    static OrderBookSnapshot decode(const std::vector<uint8_t>& buf);
-};
-
-inline OrderBookSnapshot OrderBookSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
-    OrderBookSnapshot value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 9) throw std::runtime_error("invalid template_id");
-        std::string symbol = read_string(buf, pos);
-        std::string exchange = read_string(buf, pos);
-        uint32_t bids_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> bids;
-        bids.reserve(bids_count);
-        for (uint32_t i = 0; i < bids_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bids.push_back(item);
-        }
-        uint32_t asks_count = read_u32_be(buf, pos);
-        std::vector<PriceLevel> asks;
-        asks.reserve(asks_count);
-        for (uint32_t i = 0; i < asks_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            asks.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.symbol = symbol;
-    value.exchange = exchange;
-    value.bids = bids;
-    value.asks = asks;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    value.is_snapshot = is_snapshot;
-    (void)value;
-    return value;
-}
-
-// SBE message OrderBookDelta
-struct OrderBookDelta {
-    std::string symbol;
-    std::vector<MarketDataUpdate> updates;
-    int64_t timestamp;
-    std::optional<uint64_t> sequence;
-};
-
-// SBE body encoder for OrderBookDelta (fields only, no header).
-struct OrderBookDeltaBodyEncoder {
-    static void encode(const OrderBookDelta& value, std::vector<uint8_t>& buf);
-};
-
-inline void OrderBookDeltaBodyEncoder::encode(const OrderBookDelta& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_u32_be(buf, static_cast<uint32_t>(value.updates.size()));
-        for (const auto& item : value.updates) {
-            std::vector<uint8_t> item_buf;
-            MarketDataUpdateEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
-        write_u64_be(buf, value.sequence.value_or(0));
-        buf.push_back(value.sequence.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for OrderBookDelta: reads fields at pos.
-struct OrderBookDeltaBodyDecoder {
-    static std::pair<OrderBookDelta, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<OrderBookDelta, std::size_t> OrderBookDeltaBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    OrderBookDelta value{};
-        std::string symbol = read_string(buf, pos);
-        uint32_t updates_count = read_u32_be(buf, pos);
-        std::vector<MarketDataUpdate> updates;
-        updates.reserve(updates_count);
-        for (uint32_t i = 0; i < updates_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            updates.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-    value.symbol = symbol;
-    value.updates = updates;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    return {value, pos};
-}
-
-// SBE encoder for OrderBookDelta
-struct OrderBookDeltaEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence);
-};
-
-inline std::vector<uint8_t> OrderBookDeltaEncoder::encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 10);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 16);
-        write_string(buf, symbol);
-        write_u32_be(buf, static_cast<uint32_t>(updates.size()));
-        for (const auto& item : updates) {
-            std::vector<uint8_t> item_buf;
-            MarketDataUpdateEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u64_be(buf, static_cast<uint64_t>(timestamp));
-        write_u64_be(buf, sequence.value_or(0));
-        buf.push_back(sequence.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for OrderBookDelta: validates the header and reads the body.
-struct OrderBookDeltaDecoder {
-    static OrderBookDelta decode(const std::vector<uint8_t>& buf);
-};
-
-inline OrderBookDelta OrderBookDeltaDecoder::decode(const std::vector<uint8_t>& buf) {
-    OrderBookDelta value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 10) throw std::runtime_error("invalid template_id");
-        std::string symbol = read_string(buf, pos);
-        uint32_t updates_count = read_u32_be(buf, pos);
-        std::vector<MarketDataUpdate> updates;
-        updates.reserve(updates_count);
-        for (uint32_t i = 0; i < updates_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            updates.push_back(item);
-        }
-        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
-        uint64_t sequence_v = read_u64_be(buf, pos);
-        std::optional<uint64_t> sequence;
-        if (buf[pos++] == 1) sequence = sequence_v;
-    value.symbol = symbol;
-    value.updates = updates;
-    value.timestamp = timestamp;
-    value.sequence = sequence;
-    (void)value;
-    return value;
-}
-
-// SBE message AggregateTradeEvent
-struct AggregateTradeEvent {
-    AggregateTrade trade;
-};
-
-// SBE body encoder for AggregateTradeEvent (fields only, no header).
-struct AggregateTradeEventBodyEncoder {
-    static void encode(const AggregateTradeEvent& value, std::vector<uint8_t>& buf);
-};
-
-inline void AggregateTradeEventBodyEncoder::encode(const AggregateTradeEvent& value, std::vector<uint8_t>& buf) {
-        AggregateTradeEncoder::encode(value.trade, buf);
-}
-
-// SBE body decoder for AggregateTradeEvent: reads fields at pos.
-struct AggregateTradeEventBodyDecoder {
-    static std::pair<AggregateTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<AggregateTradeEvent, std::size_t> AggregateTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    AggregateTradeEvent value{};
-        auto [trade, trade_n] = AggregateTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
-    return {value, pos};
-}
-
-// SBE encoder for AggregateTradeEvent
-struct AggregateTradeEventEncoder {
-    static std::vector<uint8_t> encode(AggregateTrade trade);
-};
-
-inline std::vector<uint8_t> AggregateTradeEventEncoder::encode(AggregateTrade trade) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 11);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        AggregateTradeEncoder::encode(trade, buf);
-        return buf;
-}
-
-// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
-struct AggregateTradeEventDecoder {
-    static AggregateTradeEvent decode(const std::vector<uint8_t>& buf);
-};
-
-inline AggregateTradeEvent AggregateTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
-    AggregateTradeEvent value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 11) throw std::runtime_error("invalid template_id");
-        auto [trade, trade_n] = AggregateTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
     (void)value;
     return value;
 }
@@ -2593,123 +2036,6 @@ inline AggregateTradeRequest AggregateTradeRequestDecoder::decode(const std::vec
     value.end_time = end_time;
     value.limit = limit;
     value.cursor = cursor;
-    (void)value;
-    return value;
-}
-
-// SBE message AggregateTradeBatch
-struct AggregateTradeBatch {
-    std::string symbol;
-    std::vector<AggregateTrade> trades;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for AggregateTradeBatch (fields only, no header).
-struct AggregateTradeBatchBodyEncoder {
-    static void encode(const AggregateTradeBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void AggregateTradeBatchBodyEncoder::encode(const AggregateTradeBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_u32_be(buf, static_cast<uint32_t>(value.trades.size()));
-        for (const auto& item : value.trades) {
-            std::vector<uint8_t> item_buf;
-            AggregateTradeEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for AggregateTradeBatch: reads fields at pos.
-struct AggregateTradeBatchBodyDecoder {
-    static std::pair<AggregateTradeBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<AggregateTradeBatch, std::size_t> AggregateTradeBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    AggregateTradeBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        uint32_t trades_count = read_u32_be(buf, pos);
-        std::vector<AggregateTrade> trades;
-        trades.reserve(trades_count);
-        for (uint32_t i = 0; i < trades_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = AggregateTradeDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            trades.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.trades = trades;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for AggregateTradeBatch
-struct AggregateTradeBatchEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::vector<AggregateTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> AggregateTradeBatchEncoder::encode(std::string symbol, std::vector<AggregateTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 13);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, symbol);
-        write_u32_be(buf, static_cast<uint32_t>(trades.size()));
-        for (const auto& item : trades) {
-            std::vector<uint8_t> item_buf;
-            AggregateTradeEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
-struct AggregateTradeBatchDecoder {
-    static AggregateTradeBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline AggregateTradeBatch AggregateTradeBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    AggregateTradeBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 13) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        uint32_t trades_count = read_u32_be(buf, pos);
-        std::vector<AggregateTrade> trades;
-        trades.reserve(trades_count);
-        for (uint32_t i = 0; i < trades_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = AggregateTradeDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            trades.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.trades = trades;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
     (void)value;
     return value;
 }
@@ -2861,100 +2187,6 @@ inline AllMidsRequest AllMidsRequestDecoder::decode(const std::vector<uint8_t>& 
         (void)read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
         if (tmpl_id != 15) throw std::runtime_error("invalid template_id");
-    (void)value;
-    return value;
-}
-
-// SBE message AllMidsBatch
-struct AllMidsBatch {
-    std::vector<MiniTicker> tickers;
-};
-
-// SBE body encoder for AllMidsBatch (fields only, no header).
-struct AllMidsBatchBodyEncoder {
-    static void encode(const AllMidsBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void AllMidsBatchBodyEncoder::encode(const AllMidsBatch& value, std::vector<uint8_t>& buf) {
-        write_u32_be(buf, static_cast<uint32_t>(value.tickers.size()));
-        for (const auto& item : value.tickers) {
-            std::vector<uint8_t> item_buf;
-            MiniTickerBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-}
-
-// SBE body decoder for AllMidsBatch: reads fields at pos.
-struct AllMidsBatchBodyDecoder {
-    static std::pair<AllMidsBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<AllMidsBatch, std::size_t> AllMidsBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    AllMidsBatch value{};
-        uint32_t tickers_count = read_u32_be(buf, pos);
-        std::vector<MiniTicker> tickers;
-        tickers.reserve(tickers_count);
-        for (uint32_t i = 0; i < tickers_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MiniTickerBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            tickers.push_back(item);
-        }
-    value.tickers = tickers;
-    return {value, pos};
-}
-
-// SBE encoder for AllMidsBatch
-struct AllMidsBatchEncoder {
-    static std::vector<uint8_t> encode(std::vector<MiniTicker> tickers);
-};
-
-inline std::vector<uint8_t> AllMidsBatchEncoder::encode(std::vector<MiniTicker> tickers) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 16);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        write_u32_be(buf, static_cast<uint32_t>(tickers.size()));
-        for (const auto& item : tickers) {
-            std::vector<uint8_t> item_buf;
-            MiniTickerBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        return buf;
-}
-
-// SBE decoder for AllMidsBatch: validates the header and reads the body.
-struct AllMidsBatchDecoder {
-    static AllMidsBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline AllMidsBatch AllMidsBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    AllMidsBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 16) throw std::runtime_error("invalid template_id");
-        uint32_t tickers_count = read_u32_be(buf, pos);
-        std::vector<MiniTicker> tickers;
-        tickers.reserve(tickers_count);
-        for (uint32_t i = 0; i < tickers_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = MiniTickerBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            tickers.push_back(item);
-        }
-    value.tickers = tickers;
     (void)value;
     return value;
 }
@@ -3136,134 +2368,6 @@ inline MarkPriceRequest MarkPriceRequestDecoder::decode(const std::vector<uint8_
     return value;
 }
 
-// SBE message LiquidationTradeEvent
-struct LiquidationTradeEvent {
-    LiquidationTrade trade;
-};
-
-// SBE body encoder for LiquidationTradeEvent (fields only, no header).
-struct LiquidationTradeEventBodyEncoder {
-    static void encode(const LiquidationTradeEvent& value, std::vector<uint8_t>& buf);
-};
-
-inline void LiquidationTradeEventBodyEncoder::encode(const LiquidationTradeEvent& value, std::vector<uint8_t>& buf) {
-        LiquidationTradeEncoder::encode(value.trade, buf);
-}
-
-// SBE body decoder for LiquidationTradeEvent: reads fields at pos.
-struct LiquidationTradeEventBodyDecoder {
-    static std::pair<LiquidationTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<LiquidationTradeEvent, std::size_t> LiquidationTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    LiquidationTradeEvent value{};
-        auto [trade, trade_n] = LiquidationTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
-    return {value, pos};
-}
-
-// SBE encoder for LiquidationTradeEvent
-struct LiquidationTradeEventEncoder {
-    static std::vector<uint8_t> encode(LiquidationTrade trade);
-};
-
-inline std::vector<uint8_t> LiquidationTradeEventEncoder::encode(LiquidationTrade trade) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 19);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        LiquidationTradeEncoder::encode(trade, buf);
-        return buf;
-}
-
-// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
-struct LiquidationTradeEventDecoder {
-    static LiquidationTradeEvent decode(const std::vector<uint8_t>& buf);
-};
-
-inline LiquidationTradeEvent LiquidationTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
-    LiquidationTradeEvent value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 19) throw std::runtime_error("invalid template_id");
-        auto [trade, trade_n] = LiquidationTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
-    (void)value;
-    return value;
-}
-
-// SBE message CandleBarEvent
-struct CandleBarEvent {
-    CandleBar bar;
-};
-
-// SBE body encoder for CandleBarEvent (fields only, no header).
-struct CandleBarEventBodyEncoder {
-    static void encode(const CandleBarEvent& value, std::vector<uint8_t>& buf);
-};
-
-inline void CandleBarEventBodyEncoder::encode(const CandleBarEvent& value, std::vector<uint8_t>& buf) {
-        CandleBarEncoder::encode(value.bar, buf);
-}
-
-// SBE body decoder for CandleBarEvent: reads fields at pos.
-struct CandleBarEventBodyDecoder {
-    static std::pair<CandleBarEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<CandleBarEvent, std::size_t> CandleBarEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    CandleBarEvent value{};
-        auto [bar, bar_n] = CandleBarDecoder::decode(buf, pos);
-        pos += bar_n;
-    value.bar = bar;
-    return {value, pos};
-}
-
-// SBE encoder for CandleBarEvent
-struct CandleBarEventEncoder {
-    static std::vector<uint8_t> encode(CandleBar bar);
-};
-
-inline std::vector<uint8_t> CandleBarEventEncoder::encode(CandleBar bar) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 20);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        CandleBarEncoder::encode(bar, buf);
-        return buf;
-}
-
-// SBE decoder for CandleBarEvent: validates the header and reads the body.
-struct CandleBarEventDecoder {
-    static CandleBarEvent decode(const std::vector<uint8_t>& buf);
-};
-
-inline CandleBarEvent CandleBarEventDecoder::decode(const std::vector<uint8_t>& buf) {
-    CandleBarEvent value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 20) throw std::runtime_error("invalid template_id");
-        auto [bar, bar_n] = CandleBarDecoder::decode(buf, pos);
-        pos += bar_n;
-    value.bar = bar;
-    (void)value;
-    return value;
-}
-
 // SBE message CandleBarRequest
 struct CandleBarRequest {
     std::string symbol;
@@ -3381,194 +2485,6 @@ inline CandleBarRequest CandleBarRequestDecoder::decode(const std::vector<uint8_
     return value;
 }
 
-// SBE message CandleBarBatch
-struct CandleBarBatch {
-    std::string symbol;
-    std::string interval;
-    std::vector<CandleBar> bars;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for CandleBarBatch (fields only, no header).
-struct CandleBarBatchBodyEncoder {
-    static void encode(const CandleBarBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void CandleBarBatchBodyEncoder::encode(const CandleBarBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_string(buf, value.interval);
-        write_u32_be(buf, static_cast<uint32_t>(value.bars.size()));
-        for (const auto& item : value.bars) {
-            std::vector<uint8_t> item_buf;
-            CandleBarEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for CandleBarBatch: reads fields at pos.
-struct CandleBarBatchBodyDecoder {
-    static std::pair<CandleBarBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<CandleBarBatch, std::size_t> CandleBarBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    CandleBarBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        std::string interval = read_string(buf, pos);
-        uint32_t bars_count = read_u32_be(buf, pos);
-        std::vector<CandleBar> bars;
-        bars.reserve(bars_count);
-        for (uint32_t i = 0; i < bars_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = CandleBarDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bars.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.interval = interval;
-    value.bars = bars;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for CandleBarBatch
-struct CandleBarBatchEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::string interval, std::vector<CandleBar> bars, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> CandleBarBatchEncoder::encode(std::string symbol, std::string interval, std::vector<CandleBar> bars, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 22);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, symbol);
-        write_string(buf, interval);
-        write_u32_be(buf, static_cast<uint32_t>(bars.size()));
-        for (const auto& item : bars) {
-            std::vector<uint8_t> item_buf;
-            CandleBarEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for CandleBarBatch: validates the header and reads the body.
-struct CandleBarBatchDecoder {
-    static CandleBarBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline CandleBarBatch CandleBarBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    CandleBarBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 22) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        std::string interval = read_string(buf, pos);
-        uint32_t bars_count = read_u32_be(buf, pos);
-        std::vector<CandleBar> bars;
-        bars.reserve(bars_count);
-        for (uint32_t i = 0; i < bars_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = CandleBarDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            bars.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.interval = interval;
-    value.bars = bars;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    (void)value;
-    return value;
-}
-
-// SBE message PublicTradeEvent
-struct PublicTradeEvent {
-    PublicTrade trade;
-};
-
-// SBE body encoder for PublicTradeEvent (fields only, no header).
-struct PublicTradeEventBodyEncoder {
-    static void encode(const PublicTradeEvent& value, std::vector<uint8_t>& buf);
-};
-
-inline void PublicTradeEventBodyEncoder::encode(const PublicTradeEvent& value, std::vector<uint8_t>& buf) {
-        PublicTradeEncoder::encode(value.trade, buf);
-}
-
-// SBE body decoder for PublicTradeEvent: reads fields at pos.
-struct PublicTradeEventBodyDecoder {
-    static std::pair<PublicTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<PublicTradeEvent, std::size_t> PublicTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    PublicTradeEvent value{};
-        auto [trade, trade_n] = PublicTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
-    return {value, pos};
-}
-
-// SBE encoder for PublicTradeEvent
-struct PublicTradeEventEncoder {
-    static std::vector<uint8_t> encode(PublicTrade trade);
-};
-
-inline std::vector<uint8_t> PublicTradeEventEncoder::encode(PublicTrade trade) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 23);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        PublicTradeEncoder::encode(trade, buf);
-        return buf;
-}
-
-// SBE decoder for PublicTradeEvent: validates the header and reads the body.
-struct PublicTradeEventDecoder {
-    static PublicTradeEvent decode(const std::vector<uint8_t>& buf);
-};
-
-inline PublicTradeEvent PublicTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
-    PublicTradeEvent value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 23) throw std::runtime_error("invalid template_id");
-        auto [trade, trade_n] = PublicTradeDecoder::decode(buf, pos);
-        pos += trade_n;
-    value.trade = trade;
-    (void)value;
-    return value;
-}
-
 // SBE message TradeHistoryRequest
 struct TradeHistoryRequest {
     std::string symbol;
@@ -3675,123 +2591,6 @@ inline TradeHistoryRequest TradeHistoryRequestDecoder::decode(const std::vector<
     value.end_time = end_time;
     value.limit = limit;
     value.cursor = cursor;
-    (void)value;
-    return value;
-}
-
-// SBE message PublicTradeBatch
-struct PublicTradeBatch {
-    std::string symbol;
-    std::vector<PublicTrade> trades;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for PublicTradeBatch (fields only, no header).
-struct PublicTradeBatchBodyEncoder {
-    static void encode(const PublicTradeBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void PublicTradeBatchBodyEncoder::encode(const PublicTradeBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.symbol);
-        write_u32_be(buf, static_cast<uint32_t>(value.trades.size()));
-        for (const auto& item : value.trades) {
-            std::vector<uint8_t> item_buf;
-            PublicTradeEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for PublicTradeBatch: reads fields at pos.
-struct PublicTradeBatchBodyDecoder {
-    static std::pair<PublicTradeBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<PublicTradeBatch, std::size_t> PublicTradeBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    PublicTradeBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        uint32_t trades_count = read_u32_be(buf, pos);
-        std::vector<PublicTrade> trades;
-        trades.reserve(trades_count);
-        for (uint32_t i = 0; i < trades_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PublicTradeDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            trades.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.trades = trades;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for PublicTradeBatch
-struct PublicTradeBatchEncoder {
-    static std::vector<uint8_t> encode(std::string symbol, std::vector<PublicTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> PublicTradeBatchEncoder::encode(std::string symbol, std::vector<PublicTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 25);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, symbol);
-        write_u32_be(buf, static_cast<uint32_t>(trades.size()));
-        for (const auto& item : trades) {
-            std::vector<uint8_t> item_buf;
-            PublicTradeEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for PublicTradeBatch: validates the header and reads the body.
-struct PublicTradeBatchDecoder {
-    static PublicTradeBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline PublicTradeBatch PublicTradeBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    PublicTradeBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 25) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string symbol = read_string(buf, pos);
-        uint32_t trades_count = read_u32_be(buf, pos);
-        std::vector<PublicTrade> trades;
-        trades.reserve(trades_count);
-        for (uint32_t i = 0; i < trades_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PublicTradeDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            trades.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.symbol = symbol;
-    value.trades = trades;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
     (void)value;
     return value;
 }
@@ -4178,100 +2977,6 @@ inline InstrumentCatalogRequest InstrumentCatalogRequestDecoder::decode(const st
     return value;
 }
 
-// SBE message InstrumentCatalogResponse
-struct InstrumentCatalogResponse {
-    std::vector<InstrumentMetadata> instruments;
-};
-
-// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
-struct InstrumentCatalogResponseBodyEncoder {
-    static void encode(const InstrumentCatalogResponse& value, std::vector<uint8_t>& buf);
-};
-
-inline void InstrumentCatalogResponseBodyEncoder::encode(const InstrumentCatalogResponse& value, std::vector<uint8_t>& buf) {
-        write_u32_be(buf, static_cast<uint32_t>(value.instruments.size()));
-        for (const auto& item : value.instruments) {
-            std::vector<uint8_t> item_buf;
-            InstrumentMetadataEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-}
-
-// SBE body decoder for InstrumentCatalogResponse: reads fields at pos.
-struct InstrumentCatalogResponseBodyDecoder {
-    static std::pair<InstrumentCatalogResponse, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<InstrumentCatalogResponse, std::size_t> InstrumentCatalogResponseBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    InstrumentCatalogResponse value{};
-        uint32_t instruments_count = read_u32_be(buf, pos);
-        std::vector<InstrumentMetadata> instruments;
-        instruments.reserve(instruments_count);
-        for (uint32_t i = 0; i < instruments_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = InstrumentMetadataDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            instruments.push_back(item);
-        }
-    value.instruments = instruments;
-    return {value, pos};
-}
-
-// SBE encoder for InstrumentCatalogResponse
-struct InstrumentCatalogResponseEncoder {
-    static std::vector<uint8_t> encode(std::vector<InstrumentMetadata> instruments);
-};
-
-inline std::vector<uint8_t> InstrumentCatalogResponseEncoder::encode(std::vector<InstrumentMetadata> instruments) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 30);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        write_u32_be(buf, static_cast<uint32_t>(instruments.size()));
-        for (const auto& item : instruments) {
-            std::vector<uint8_t> item_buf;
-            InstrumentMetadataEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        return buf;
-}
-
-// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
-struct InstrumentCatalogResponseDecoder {
-    static InstrumentCatalogResponse decode(const std::vector<uint8_t>& buf);
-};
-
-inline InstrumentCatalogResponse InstrumentCatalogResponseDecoder::decode(const std::vector<uint8_t>& buf) {
-    InstrumentCatalogResponse value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 30) throw std::runtime_error("invalid template_id");
-        uint32_t instruments_count = read_u32_be(buf, pos);
-        std::vector<InstrumentMetadata> instruments;
-        instruments.reserve(instruments_count);
-        for (uint32_t i = 0; i < instruments_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = InstrumentMetadataDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            instruments.push_back(item);
-        }
-    value.instruments = instruments;
-    (void)value;
-    return value;
-}
-
 // SBE message AccountSummary
 struct AccountSummary {
     std::string account;
@@ -4459,120 +3164,6 @@ inline MarginSummary MarginSummaryDecoder::decode(const std::vector<uint8_t>& bu
     return value;
 }
 
-// SBE message BalanceSnapshot
-struct BalanceSnapshot {
-    std::string account;
-    std::vector<BalanceEntry> balances;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for BalanceSnapshot (fields only, no header).
-struct BalanceSnapshotBodyEncoder {
-    static void encode(const BalanceSnapshot& value, std::vector<uint8_t>& buf);
-};
-
-inline void BalanceSnapshotBodyEncoder::encode(const BalanceSnapshot& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.balances.size()));
-        for (const auto& item : value.balances) {
-            std::vector<uint8_t> item_buf;
-            BalanceEntryEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for BalanceSnapshot: reads fields at pos.
-struct BalanceSnapshotBodyDecoder {
-    static std::pair<BalanceSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<BalanceSnapshot, std::size_t> BalanceSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    BalanceSnapshot value{};
-        std::string account = read_string(buf, pos);
-        uint32_t balances_count = read_u32_be(buf, pos);
-        std::vector<BalanceEntry> balances;
-        balances.reserve(balances_count);
-        for (uint32_t i = 0; i < balances_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = BalanceEntryDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            balances.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.balances = balances;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for BalanceSnapshot
-struct BalanceSnapshotEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<BalanceEntry> balances, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> BalanceSnapshotEncoder::encode(std::string account, std::vector<BalanceEntry> balances, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 33);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(balances.size()));
-        for (const auto& item : balances) {
-            std::vector<uint8_t> item_buf;
-            BalanceEntryEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for BalanceSnapshot: validates the header and reads the body.
-struct BalanceSnapshotDecoder {
-    static BalanceSnapshot decode(const std::vector<uint8_t>& buf);
-};
-
-inline BalanceSnapshot BalanceSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
-    BalanceSnapshot value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 33) throw std::runtime_error("invalid template_id");
-        std::string account = read_string(buf, pos);
-        uint32_t balances_count = read_u32_be(buf, pos);
-        std::vector<BalanceEntry> balances;
-        balances.reserve(balances_count);
-        for (uint32_t i = 0; i < balances_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = BalanceEntryDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            balances.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.balances = balances;
-    value.is_snapshot = is_snapshot;
-    (void)value;
-    return value;
-}
-
 // SBE message BalanceUpdate
 struct BalanceUpdate {
     std::string account;
@@ -4674,120 +3265,6 @@ inline BalanceUpdate BalanceUpdateDecoder::decode(const std::vector<uint8_t>& bu
     return value;
 }
 
-// SBE message PositionSnapshot
-struct PositionSnapshot {
-    std::string account;
-    std::vector<PositionEntry> positions;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for PositionSnapshot (fields only, no header).
-struct PositionSnapshotBodyEncoder {
-    static void encode(const PositionSnapshot& value, std::vector<uint8_t>& buf);
-};
-
-inline void PositionSnapshotBodyEncoder::encode(const PositionSnapshot& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.positions.size()));
-        for (const auto& item : value.positions) {
-            std::vector<uint8_t> item_buf;
-            PositionEntryEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for PositionSnapshot: reads fields at pos.
-struct PositionSnapshotBodyDecoder {
-    static std::pair<PositionSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<PositionSnapshot, std::size_t> PositionSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    PositionSnapshot value{};
-        std::string account = read_string(buf, pos);
-        uint32_t positions_count = read_u32_be(buf, pos);
-        std::vector<PositionEntry> positions;
-        positions.reserve(positions_count);
-        for (uint32_t i = 0; i < positions_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PositionEntryDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            positions.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.positions = positions;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for PositionSnapshot
-struct PositionSnapshotEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<PositionEntry> positions, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> PositionSnapshotEncoder::encode(std::string account, std::vector<PositionEntry> positions, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 35);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(positions.size()));
-        for (const auto& item : positions) {
-            std::vector<uint8_t> item_buf;
-            PositionEntryEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for PositionSnapshot: validates the header and reads the body.
-struct PositionSnapshotDecoder {
-    static PositionSnapshot decode(const std::vector<uint8_t>& buf);
-};
-
-inline PositionSnapshot PositionSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
-    PositionSnapshot value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 35) throw std::runtime_error("invalid template_id");
-        std::string account = read_string(buf, pos);
-        uint32_t positions_count = read_u32_be(buf, pos);
-        std::vector<PositionEntry> positions;
-        positions.reserve(positions_count);
-        for (uint32_t i = 0; i < positions_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = PositionEntryDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            positions.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.positions = positions;
-    value.is_snapshot = is_snapshot;
-    (void)value;
-    return value;
-}
-
 // SBE message PositionUpdate
 struct PositionUpdate {
     std::string account;
@@ -4874,90 +3351,6 @@ inline PositionUpdate PositionUpdateDecoder::decode(const std::vector<uint8_t>& 
     value.qty = qty;
     value.entry_price = entry_price;
     value.unrealized_pnl = unrealized_pnl;
-    (void)value;
-    return value;
-}
-
-// SBE message MarginUpdate
-struct MarginUpdate {
-    std::string account;
-    MarginSummary summary;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for MarginUpdate (fields only, no header).
-struct MarginUpdateBodyEncoder {
-    static void encode(const MarginUpdate& value, std::vector<uint8_t>& buf);
-};
-
-inline void MarginUpdateBodyEncoder::encode(const MarginUpdate& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        MarginSummaryBodyEncoder::encode(value.summary, buf);
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for MarginUpdate: reads fields at pos.
-struct MarginUpdateBodyDecoder {
-    static std::pair<MarginUpdate, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<MarginUpdate, std::size_t> MarginUpdateBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    MarginUpdate value{};
-        std::string account = read_string(buf, pos);
-        auto [summary, summary_n] = MarginSummaryBodyDecoder::decode(buf, pos);
-        pos += summary_n;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.summary = summary;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for MarginUpdate
-struct MarginUpdateEncoder {
-    static std::vector<uint8_t> encode(std::string account, MarginSummary summary, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> MarginUpdateEncoder::encode(std::string account, MarginSummary summary, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 37);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        MarginSummaryBodyEncoder::encode(summary, buf);
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for MarginUpdate: validates the header and reads the body.
-struct MarginUpdateDecoder {
-    static MarginUpdate decode(const std::vector<uint8_t>& buf);
-};
-
-inline MarginUpdate MarginUpdateDecoder::decode(const std::vector<uint8_t>& buf) {
-    MarginUpdate value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 37) throw std::runtime_error("invalid template_id");
-        std::string account = read_string(buf, pos);
-        auto [summary, summary_n] = MarginSummaryBodyDecoder::decode(buf, pos);
-        pos += summary_n;
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.summary = summary;
-    value.is_snapshot = is_snapshot;
     (void)value;
     return value;
 }
@@ -5260,123 +3653,6 @@ inline FillHistoryRequest FillHistoryRequestDecoder::decode(const std::vector<ui
     return value;
 }
 
-// SBE message FillHistoryBatch
-struct FillHistoryBatch {
-    std::string account;
-    std::vector<ExecutionReport> fills;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for FillHistoryBatch (fields only, no header).
-struct FillHistoryBatchBodyEncoder {
-    static void encode(const FillHistoryBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void FillHistoryBatchBodyEncoder::encode(const FillHistoryBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.fills.size()));
-        for (const auto& item : value.fills) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for FillHistoryBatch: reads fields at pos.
-struct FillHistoryBatchBodyDecoder {
-    static std::pair<FillHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<FillHistoryBatch, std::size_t> FillHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    FillHistoryBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t fills_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> fills;
-        fills.reserve(fills_count);
-        for (uint32_t i = 0; i < fills_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            fills.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.fills = fills;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for FillHistoryBatch
-struct FillHistoryBatchEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> fills, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> FillHistoryBatchEncoder::encode(std::string account, std::vector<ExecutionReport> fills, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 41);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(fills.size()));
-        for (const auto& item : fills) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for FillHistoryBatch: validates the header and reads the body.
-struct FillHistoryBatchDecoder {
-    static FillHistoryBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline FillHistoryBatch FillHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    FillHistoryBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 41) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t fills_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> fills;
-        fills.reserve(fills_count);
-        for (uint32_t i = 0; i < fills_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            fills.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.fills = fills;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    (void)value;
-    return value;
-}
-
 // SBE message FundingPayment
 struct FundingPayment {
     std::string account;
@@ -5575,123 +3851,6 @@ inline FundingHistoryRequest FundingHistoryRequestDecoder::decode(const std::vec
     value.end_time = end_time;
     value.limit = limit;
     value.cursor = cursor;
-    (void)value;
-    return value;
-}
-
-// SBE message FundingHistoryBatch
-struct FundingHistoryBatch {
-    std::string account;
-    std::vector<FundingPayment> payments;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for FundingHistoryBatch (fields only, no header).
-struct FundingHistoryBatchBodyEncoder {
-    static void encode(const FundingHistoryBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void FundingHistoryBatchBodyEncoder::encode(const FundingHistoryBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.payments.size()));
-        for (const auto& item : value.payments) {
-            std::vector<uint8_t> item_buf;
-            FundingPaymentBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for FundingHistoryBatch: reads fields at pos.
-struct FundingHistoryBatchBodyDecoder {
-    static std::pair<FundingHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<FundingHistoryBatch, std::size_t> FundingHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    FundingHistoryBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t payments_count = read_u32_be(buf, pos);
-        std::vector<FundingPayment> payments;
-        payments.reserve(payments_count);
-        for (uint32_t i = 0; i < payments_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = FundingPaymentBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            payments.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.payments = payments;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for FundingHistoryBatch
-struct FundingHistoryBatchEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<FundingPayment> payments, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> FundingHistoryBatchEncoder::encode(std::string account, std::vector<FundingPayment> payments, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 44);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(payments.size()));
-        for (const auto& item : payments) {
-            std::vector<uint8_t> item_buf;
-            FundingPaymentBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
-struct FundingHistoryBatchDecoder {
-    static FundingHistoryBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline FundingHistoryBatch FundingHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    FundingHistoryBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 44) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t payments_count = read_u32_be(buf, pos);
-        std::vector<FundingPayment> payments;
-        payments.reserve(payments_count);
-        for (uint32_t i = 0; i < payments_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = FundingPaymentBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            payments.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.payments = payments;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
     (void)value;
     return value;
 }
@@ -5909,123 +4068,6 @@ inline LedgerHistoryRequest LedgerHistoryRequestDecoder::decode(const std::vecto
     return value;
 }
 
-// SBE message LedgerHistoryBatch
-struct LedgerHistoryBatch {
-    std::string account;
-    std::vector<LedgerUpdate> entries;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for LedgerHistoryBatch (fields only, no header).
-struct LedgerHistoryBatchBodyEncoder {
-    static void encode(const LedgerHistoryBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void LedgerHistoryBatchBodyEncoder::encode(const LedgerHistoryBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.entries.size()));
-        for (const auto& item : value.entries) {
-            std::vector<uint8_t> item_buf;
-            LedgerUpdateBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for LedgerHistoryBatch: reads fields at pos.
-struct LedgerHistoryBatchBodyDecoder {
-    static std::pair<LedgerHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<LedgerHistoryBatch, std::size_t> LedgerHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    LedgerHistoryBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t entries_count = read_u32_be(buf, pos);
-        std::vector<LedgerUpdate> entries;
-        entries.reserve(entries_count);
-        for (uint32_t i = 0; i < entries_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = LedgerUpdateBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            entries.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.entries = entries;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for LedgerHistoryBatch
-struct LedgerHistoryBatchEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<LedgerUpdate> entries, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> LedgerHistoryBatchEncoder::encode(std::string account, std::vector<LedgerUpdate> entries, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 47);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(entries.size()));
-        for (const auto& item : entries) {
-            std::vector<uint8_t> item_buf;
-            LedgerUpdateBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
-struct LedgerHistoryBatchDecoder {
-    static LedgerHistoryBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline LedgerHistoryBatch LedgerHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    LedgerHistoryBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 47) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t entries_count = read_u32_be(buf, pos);
-        std::vector<LedgerUpdate> entries;
-        entries.reserve(entries_count);
-        for (uint32_t i = 0; i < entries_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = LedgerUpdateBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            entries.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.entries = entries;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    (void)value;
-    return value;
-}
-
 // SBE message OpenOrdersRequest
 struct OpenOrdersRequest {
     std::string account;
@@ -6093,120 +4135,6 @@ inline OpenOrdersRequest OpenOrdersRequestDecoder::decode(const std::vector<uint
         if (take_u8(buf, pos) == 1) symbol = read_string(buf, pos);
     value.account = account;
     value.symbol = symbol;
-    (void)value;
-    return value;
-}
-
-// SBE message OpenOrdersSnapshot
-struct OpenOrdersSnapshot {
-    std::string account;
-    std::vector<ExecutionReport> orders;
-    std::optional<uint8_t> is_snapshot;
-};
-
-// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
-struct OpenOrdersSnapshotBodyEncoder {
-    static void encode(const OpenOrdersSnapshot& value, std::vector<uint8_t>& buf);
-};
-
-inline void OpenOrdersSnapshotBodyEncoder::encode(const OpenOrdersSnapshot& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.orders.size()));
-        for (const auto& item : value.orders) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.is_snapshot.value_or(0));
-        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
-}
-
-// SBE body decoder for OpenOrdersSnapshot: reads fields at pos.
-struct OpenOrdersSnapshotBodyDecoder {
-    static std::pair<OpenOrdersSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<OpenOrdersSnapshot, std::size_t> OpenOrdersSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    OpenOrdersSnapshot value{};
-        std::string account = read_string(buf, pos);
-        uint32_t orders_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> orders;
-        orders.reserve(orders_count);
-        for (uint32_t i = 0; i < orders_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            orders.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.orders = orders;
-    value.is_snapshot = is_snapshot;
-    return {value, pos};
-}
-
-// SBE encoder for OpenOrdersSnapshot
-struct OpenOrdersSnapshotEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> orders, std::optional<uint8_t> is_snapshot);
-};
-
-inline std::vector<uint8_t> OpenOrdersSnapshotEncoder::encode(std::string account, std::vector<ExecutionReport> orders, std::optional<uint8_t> is_snapshot) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 49);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(orders.size()));
-        for (const auto& item : orders) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(is_snapshot.value_or(0));
-        buf.push_back(is_snapshot.has_value() ? 1 : 0);
-        return buf;
-}
-
-// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
-struct OpenOrdersSnapshotDecoder {
-    static OpenOrdersSnapshot decode(const std::vector<uint8_t>& buf);
-};
-
-inline OpenOrdersSnapshot OpenOrdersSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
-    OpenOrdersSnapshot value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 49) throw std::runtime_error("invalid template_id");
-        std::string account = read_string(buf, pos);
-        uint32_t orders_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> orders;
-        orders.reserve(orders_count);
-        for (uint32_t i = 0; i < orders_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            orders.push_back(item);
-        }
-        uint8_t is_snapshot_v = take_u8(buf, pos);
-        std::optional<uint8_t> is_snapshot;
-        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
-    value.account = account;
-    value.orders = orders;
-    value.is_snapshot = is_snapshot;
     (void)value;
     return value;
 }
@@ -6330,123 +4258,6 @@ inline OrderHistoryRequest OrderHistoryRequestDecoder::decode(const std::vector<
     return value;
 }
 
-// SBE message OrderHistoryBatch
-struct OrderHistoryBatch {
-    std::string account;
-    std::vector<ExecutionReport> orders;
-    uint8_t has_more;
-    std::optional<std::string> next_cursor;
-};
-
-// SBE body encoder for OrderHistoryBatch (fields only, no header).
-struct OrderHistoryBatchBodyEncoder {
-    static void encode(const OrderHistoryBatch& value, std::vector<uint8_t>& buf);
-};
-
-inline void OrderHistoryBatchBodyEncoder::encode(const OrderHistoryBatch& value, std::vector<uint8_t>& buf) {
-        write_string(buf, value.account);
-        write_u32_be(buf, static_cast<uint32_t>(value.orders.size()));
-        for (const auto& item : value.orders) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(value.has_more);
-        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
-}
-
-// SBE body decoder for OrderHistoryBatch: reads fields at pos.
-struct OrderHistoryBatchBodyDecoder {
-    static std::pair<OrderHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<OrderHistoryBatch, std::size_t> OrderHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    OrderHistoryBatch value{};
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t orders_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> orders;
-        orders.reserve(orders_count);
-        for (uint32_t i = 0; i < orders_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            orders.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.orders = orders;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    return {value, pos};
-}
-
-// SBE encoder for OrderHistoryBatch
-struct OrderHistoryBatchEncoder {
-    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> orders, uint8_t has_more, std::optional<std::string> next_cursor);
-};
-
-inline std::vector<uint8_t> OrderHistoryBatchEncoder::encode(std::string account, std::vector<ExecutionReport> orders, uint8_t has_more, std::optional<std::string> next_cursor) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 51);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 1);
-        write_string(buf, account);
-        write_u32_be(buf, static_cast<uint32_t>(orders.size()));
-        for (const auto& item : orders) {
-            std::vector<uint8_t> item_buf;
-            ExecutionReportBodyEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        buf.push_back(has_more);
-        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
-        return buf;
-}
-
-// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
-struct OrderHistoryBatchDecoder {
-    static OrderHistoryBatch decode(const std::vector<uint8_t>& buf);
-};
-
-inline OrderHistoryBatch OrderHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
-    OrderHistoryBatch value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 51) throw std::runtime_error("invalid template_id");
-        std::optional<std::string> next_cursor;
-        std::string account = read_string(buf, pos);
-        uint32_t orders_count = read_u32_be(buf, pos);
-        std::vector<ExecutionReport> orders;
-        orders.reserve(orders_count);
-        for (uint32_t i = 0; i < orders_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            orders.push_back(item);
-        }
-        uint8_t has_more = take_u8(buf, pos);
-        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
-    value.account = account;
-    value.orders = orders;
-    value.has_more = has_more;
-    value.next_cursor = next_cursor;
-    (void)value;
-    return value;
-}
-
 // SBE message CapabilitiesRequest
 struct CapabilitiesRequest {
 };
@@ -6498,169 +4309,6 @@ inline CapabilitiesRequest CapabilitiesRequestDecoder::decode(const std::vector<
         (void)read_u16_be(buf, pos);
         if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
         if (tmpl_id != 52) throw std::runtime_error("invalid template_id");
-    (void)value;
-    return value;
-}
-
-// SBE message CapabilitiesResponse
-struct CapabilitiesResponse {
-    std::vector<uint8_t> schema_ids;
-    std::vector<CapabilityPath> paths;
-    std::vector<std::string> symbols;
-    std::vector<std::string> intervals;
-};
-
-// SBE body encoder for CapabilitiesResponse (fields only, no header).
-struct CapabilitiesResponseBodyEncoder {
-    static void encode(const CapabilitiesResponse& value, std::vector<uint8_t>& buf);
-};
-
-inline void CapabilitiesResponseBodyEncoder::encode(const CapabilitiesResponse& value, std::vector<uint8_t>& buf) {
-        write_u32_be(buf, static_cast<uint32_t>(value.schema_ids.size()));
-        for (const auto& item : value.schema_ids) {
-        buf.push_back(item);
-        }
-        write_u32_be(buf, static_cast<uint32_t>(value.paths.size()));
-        for (const auto& item : value.paths) {
-            std::vector<uint8_t> item_buf;
-            CapabilityPathEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(value.symbols.size()));
-        for (const auto& item : value.symbols) {
-            write_string_u32(buf, item);
-        }
-        write_u32_be(buf, static_cast<uint32_t>(value.intervals.size()));
-        for (const auto& item : value.intervals) {
-            write_string_u32(buf, item);
-        }
-}
-
-// SBE body decoder for CapabilitiesResponse: reads fields at pos.
-struct CapabilitiesResponseBodyDecoder {
-    static std::pair<CapabilitiesResponse, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
-};
-
-inline std::pair<CapabilitiesResponse, std::size_t> CapabilitiesResponseBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
-    CapabilitiesResponse value{};
-        uint32_t schema_ids_count = read_u32_be(buf, pos);
-        std::vector<uint8_t> schema_ids;
-        schema_ids.reserve(schema_ids_count);
-        for (uint32_t i = 0; i < schema_ids_count; ++i) {
-            schema_ids.push_back(take_u8(buf, pos));
-        }
-        uint32_t paths_count = read_u32_be(buf, pos);
-        std::vector<CapabilityPath> paths;
-        paths.reserve(paths_count);
-        for (uint32_t i = 0; i < paths_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = CapabilityPathDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            paths.push_back(item);
-        }
-        uint32_t symbols_count = read_u32_be(buf, pos);
-        std::vector<std::string> symbols;
-        symbols.reserve(symbols_count);
-        for (uint32_t i = 0; i < symbols_count; ++i) {
-            symbols.push_back(read_string_u32(buf, pos));
-        }
-        uint32_t intervals_count = read_u32_be(buf, pos);
-        std::vector<std::string> intervals;
-        intervals.reserve(intervals_count);
-        for (uint32_t i = 0; i < intervals_count; ++i) {
-            intervals.push_back(read_string_u32(buf, pos));
-        }
-    value.schema_ids = schema_ids;
-    value.paths = paths;
-    value.symbols = symbols;
-    value.intervals = intervals;
-    return {value, pos};
-}
-
-// SBE encoder for CapabilitiesResponse
-struct CapabilitiesResponseEncoder {
-    static std::vector<uint8_t> encode(std::vector<uint8_t> schema_ids, std::vector<CapabilityPath> paths, std::vector<std::string> symbols, std::vector<std::string> intervals);
-};
-
-inline std::vector<uint8_t> CapabilitiesResponseEncoder::encode(std::vector<uint8_t> schema_ids, std::vector<CapabilityPath> paths, std::vector<std::string> symbols, std::vector<std::string> intervals) {
-        std::vector<uint8_t> buf;
-        write_u16_be(buf, SCHEMA_ID);
-        write_u16_be(buf, 53);
-        write_u16_be(buf, 0);
-        write_u16_be(buf, 0);
-        write_u32_be(buf, static_cast<uint32_t>(schema_ids.size()));
-        for (const auto& item : schema_ids) {
-        buf.push_back(item);
-        }
-        write_u32_be(buf, static_cast<uint32_t>(paths.size()));
-        for (const auto& item : paths) {
-            std::vector<uint8_t> item_buf;
-            CapabilityPathEncoder::encode(item, item_buf);
-            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
-            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
-        }
-        write_u32_be(buf, static_cast<uint32_t>(symbols.size()));
-        for (const auto& item : symbols) {
-            write_string_u32(buf, item);
-        }
-        write_u32_be(buf, static_cast<uint32_t>(intervals.size()));
-        for (const auto& item : intervals) {
-            write_string_u32(buf, item);
-        }
-        return buf;
-}
-
-// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
-struct CapabilitiesResponseDecoder {
-    static CapabilitiesResponse decode(const std::vector<uint8_t>& buf);
-};
-
-inline CapabilitiesResponse CapabilitiesResponseDecoder::decode(const std::vector<uint8_t>& buf) {
-    CapabilitiesResponse value{};
-        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
-        std::size_t pos = 0;
-        uint16_t schema_id = read_u16_be(buf, pos);
-        uint16_t tmpl_id = read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        (void)read_u16_be(buf, pos);
-        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
-        if (tmpl_id != 53) throw std::runtime_error("invalid template_id");
-        uint32_t schema_ids_count = read_u32_be(buf, pos);
-        std::vector<uint8_t> schema_ids;
-        schema_ids.reserve(schema_ids_count);
-        for (uint32_t i = 0; i < schema_ids_count; ++i) {
-            schema_ids.push_back(take_u8(buf, pos));
-        }
-        uint32_t paths_count = read_u32_be(buf, pos);
-        std::vector<CapabilityPath> paths;
-        paths.reserve(paths_count);
-        for (uint32_t i = 0; i < paths_count; ++i) {
-            uint32_t item_len = read_u32_be(buf, pos);
-            std::size_t item_end = pos + item_len;
-            auto [item, consumed] = CapabilityPathDecoder::decode(buf, pos);
-            (void)consumed;
-            pos = item_end;
-            paths.push_back(item);
-        }
-        uint32_t symbols_count = read_u32_be(buf, pos);
-        std::vector<std::string> symbols;
-        symbols.reserve(symbols_count);
-        for (uint32_t i = 0; i < symbols_count; ++i) {
-            symbols.push_back(read_string_u32(buf, pos));
-        }
-        uint32_t intervals_count = read_u32_be(buf, pos);
-        std::vector<std::string> intervals;
-        intervals.reserve(intervals_count);
-        for (uint32_t i = 0; i < intervals_count; ++i) {
-            intervals.push_back(read_string_u32(buf, pos));
-        }
-    value.schema_ids = schema_ids;
-    value.paths = paths;
-    value.symbols = symbols;
-    value.intervals = intervals;
     (void)value;
     return value;
 }
@@ -7471,6 +5119,2763 @@ inline PriceLimits PriceLimitsDecoder::decode(const std::vector<uint8_t>& buf) {
     value.reference_price = reference_price;
     value.timestamp = timestamp;
     value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message AggregateTradeEvent
+struct AggregateTradeEvent {
+    AggregateTrade trade;
+};
+
+// SBE body encoder for AggregateTradeEvent (fields only, no header).
+struct AggregateTradeEventBodyEncoder {
+    static void encode(const AggregateTradeEvent& value, std::vector<uint8_t>& buf);
+};
+
+inline void AggregateTradeEventBodyEncoder::encode(const AggregateTradeEvent& value, std::vector<uint8_t>& buf) {
+        AggregateTradeEncoder::encode(value.trade, buf);
+}
+
+// SBE body decoder for AggregateTradeEvent: reads fields at pos.
+struct AggregateTradeEventBodyDecoder {
+    static std::pair<AggregateTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<AggregateTradeEvent, std::size_t> AggregateTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    AggregateTradeEvent value{};
+        auto [trade, trade_n] = AggregateTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    return {value, pos};
+}
+
+// SBE encoder for AggregateTradeEvent
+struct AggregateTradeEventEncoder {
+    static std::vector<uint8_t> encode(AggregateTrade trade);
+};
+
+inline std::vector<uint8_t> AggregateTradeEventEncoder::encode(AggregateTrade trade) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 11);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        AggregateTradeEncoder::encode(trade, buf);
+        return buf;
+}
+
+// SBE decoder for AggregateTradeEvent: validates the header and reads the body.
+struct AggregateTradeEventDecoder {
+    static AggregateTradeEvent decode(const std::vector<uint8_t>& buf);
+};
+
+inline AggregateTradeEvent AggregateTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
+    AggregateTradeEvent value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 11) throw std::runtime_error("invalid template_id");
+        auto [trade, trade_n] = AggregateTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    (void)value;
+    return value;
+}
+
+// SBE message AggregateTradeBatch
+struct AggregateTradeBatch {
+    std::string symbol;
+    std::vector<AggregateTrade> trades;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for AggregateTradeBatch (fields only, no header).
+struct AggregateTradeBatchBodyEncoder {
+    static void encode(const AggregateTradeBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void AggregateTradeBatchBodyEncoder::encode(const AggregateTradeBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_u32_be(buf, static_cast<uint32_t>(value.trades.size()));
+        for (const auto& item : value.trades) {
+            std::vector<uint8_t> item_buf;
+            AggregateTradeEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for AggregateTradeBatch: reads fields at pos.
+struct AggregateTradeBatchBodyDecoder {
+    static std::pair<AggregateTradeBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<AggregateTradeBatch, std::size_t> AggregateTradeBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    AggregateTradeBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        uint32_t trades_count = read_u32_be(buf, pos);
+        std::vector<AggregateTrade> trades;
+        trades.reserve(trades_count);
+        for (uint32_t i = 0; i < trades_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = AggregateTradeDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            trades.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.trades = trades;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for AggregateTradeBatch
+struct AggregateTradeBatchEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::vector<AggregateTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> AggregateTradeBatchEncoder::encode(std::string symbol, std::vector<AggregateTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 13);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, symbol);
+        write_u32_be(buf, static_cast<uint32_t>(trades.size()));
+        for (const auto& item : trades) {
+            std::vector<uint8_t> item_buf;
+            AggregateTradeEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for AggregateTradeBatch: validates the header and reads the body.
+struct AggregateTradeBatchDecoder {
+    static AggregateTradeBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline AggregateTradeBatch AggregateTradeBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    AggregateTradeBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 13) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        uint32_t trades_count = read_u32_be(buf, pos);
+        std::vector<AggregateTrade> trades;
+        trades.reserve(trades_count);
+        for (uint32_t i = 0; i < trades_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = AggregateTradeDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            trades.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.trades = trades;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message LiquidationTradeEvent
+struct LiquidationTradeEvent {
+    LiquidationTrade trade;
+};
+
+// SBE body encoder for LiquidationTradeEvent (fields only, no header).
+struct LiquidationTradeEventBodyEncoder {
+    static void encode(const LiquidationTradeEvent& value, std::vector<uint8_t>& buf);
+};
+
+inline void LiquidationTradeEventBodyEncoder::encode(const LiquidationTradeEvent& value, std::vector<uint8_t>& buf) {
+        LiquidationTradeEncoder::encode(value.trade, buf);
+}
+
+// SBE body decoder for LiquidationTradeEvent: reads fields at pos.
+struct LiquidationTradeEventBodyDecoder {
+    static std::pair<LiquidationTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<LiquidationTradeEvent, std::size_t> LiquidationTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    LiquidationTradeEvent value{};
+        auto [trade, trade_n] = LiquidationTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    return {value, pos};
+}
+
+// SBE encoder for LiquidationTradeEvent
+struct LiquidationTradeEventEncoder {
+    static std::vector<uint8_t> encode(LiquidationTrade trade);
+};
+
+inline std::vector<uint8_t> LiquidationTradeEventEncoder::encode(LiquidationTrade trade) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 19);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        LiquidationTradeEncoder::encode(trade, buf);
+        return buf;
+}
+
+// SBE decoder for LiquidationTradeEvent: validates the header and reads the body.
+struct LiquidationTradeEventDecoder {
+    static LiquidationTradeEvent decode(const std::vector<uint8_t>& buf);
+};
+
+inline LiquidationTradeEvent LiquidationTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
+    LiquidationTradeEvent value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 19) throw std::runtime_error("invalid template_id");
+        auto [trade, trade_n] = LiquidationTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    (void)value;
+    return value;
+}
+
+// SBE message MarketDataSnapshot
+struct MarketDataSnapshot {
+    std::string symbol;
+    std::string exchange;
+    std::vector<PriceLevel> bids;
+    std::vector<PriceLevel> asks;
+    int64_t timestamp;
+    std::optional<uint64_t> sequence;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for MarketDataSnapshot (fields only, no header).
+struct MarketDataSnapshotBodyEncoder {
+    static void encode(const MarketDataSnapshot& value, std::vector<uint8_t>& buf);
+};
+
+inline void MarketDataSnapshotBodyEncoder::encode(const MarketDataSnapshot& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_string(buf, value.exchange);
+        write_u32_be(buf, static_cast<uint32_t>(value.bids.size()));
+        for (const auto& item : value.bids) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(value.asks.size()));
+        for (const auto& item : value.asks) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        write_u64_be(buf, value.sequence.value_or(0));
+        buf.push_back(value.sequence.has_value() ? 1 : 0);
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for MarketDataSnapshot: reads fields at pos.
+struct MarketDataSnapshotBodyDecoder {
+    static std::pair<MarketDataSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<MarketDataSnapshot, std::size_t> MarketDataSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    MarketDataSnapshot value{};
+        std::string symbol = read_string(buf, pos);
+        std::string exchange = read_string(buf, pos);
+        uint32_t bids_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> bids;
+        bids.reserve(bids_count);
+        for (uint32_t i = 0; i < bids_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bids.push_back(item);
+        }
+        uint32_t asks_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> asks;
+        asks.reserve(asks_count);
+        for (uint32_t i = 0; i < asks_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            asks.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.exchange = exchange;
+    value.bids = bids;
+    value.asks = asks;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for MarketDataSnapshot
+struct MarketDataSnapshotEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> MarketDataSnapshotEncoder::encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 6);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 17);
+        write_string(buf, symbol);
+        write_string(buf, exchange);
+        write_u32_be(buf, static_cast<uint32_t>(bids.size()));
+        for (const auto& item : bids) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(asks.size()));
+        for (const auto& item : asks) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        write_u64_be(buf, sequence.value_or(0));
+        buf.push_back(sequence.has_value() ? 1 : 0);
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for MarketDataSnapshot: validates the header and reads the body.
+struct MarketDataSnapshotDecoder {
+    static MarketDataSnapshot decode(const std::vector<uint8_t>& buf);
+};
+
+inline MarketDataSnapshot MarketDataSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
+    MarketDataSnapshot value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 6) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        std::string exchange = read_string(buf, pos);
+        uint32_t bids_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> bids;
+        bids.reserve(bids_count);
+        for (uint32_t i = 0; i < bids_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bids.push_back(item);
+        }
+        uint32_t asks_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> asks;
+        asks.reserve(asks_count);
+        for (uint32_t i = 0; i < asks_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            asks.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.exchange = exchange;
+    value.bids = bids;
+    value.asks = asks;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message OrderBookSnapshot
+struct OrderBookSnapshot {
+    std::string symbol;
+    std::string exchange;
+    std::vector<PriceLevel> bids;
+    std::vector<PriceLevel> asks;
+    int64_t timestamp;
+    std::optional<uint64_t> sequence;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for OrderBookSnapshot (fields only, no header).
+struct OrderBookSnapshotBodyEncoder {
+    static void encode(const OrderBookSnapshot& value, std::vector<uint8_t>& buf);
+};
+
+inline void OrderBookSnapshotBodyEncoder::encode(const OrderBookSnapshot& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_string(buf, value.exchange);
+        write_u32_be(buf, static_cast<uint32_t>(value.bids.size()));
+        for (const auto& item : value.bids) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(value.asks.size()));
+        for (const auto& item : value.asks) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        write_u64_be(buf, value.sequence.value_or(0));
+        buf.push_back(value.sequence.has_value() ? 1 : 0);
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for OrderBookSnapshot: reads fields at pos.
+struct OrderBookSnapshotBodyDecoder {
+    static std::pair<OrderBookSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<OrderBookSnapshot, std::size_t> OrderBookSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    OrderBookSnapshot value{};
+        std::string symbol = read_string(buf, pos);
+        std::string exchange = read_string(buf, pos);
+        uint32_t bids_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> bids;
+        bids.reserve(bids_count);
+        for (uint32_t i = 0; i < bids_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bids.push_back(item);
+        }
+        uint32_t asks_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> asks;
+        asks.reserve(asks_count);
+        for (uint32_t i = 0; i < asks_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            asks.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.exchange = exchange;
+    value.bids = bids;
+    value.asks = asks;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for OrderBookSnapshot
+struct OrderBookSnapshotEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> OrderBookSnapshotEncoder::encode(std::string symbol, std::string exchange, std::vector<PriceLevel> bids, std::vector<PriceLevel> asks, int64_t timestamp, std::optional<uint64_t> sequence, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 9);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 17);
+        write_string(buf, symbol);
+        write_string(buf, exchange);
+        write_u32_be(buf, static_cast<uint32_t>(bids.size()));
+        for (const auto& item : bids) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(asks.size()));
+        for (const auto& item : asks) {
+            std::vector<uint8_t> item_buf;
+            PriceLevelEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        write_u64_be(buf, sequence.value_or(0));
+        buf.push_back(sequence.has_value() ? 1 : 0);
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for OrderBookSnapshot: validates the header and reads the body.
+struct OrderBookSnapshotDecoder {
+    static OrderBookSnapshot decode(const std::vector<uint8_t>& buf);
+};
+
+inline OrderBookSnapshot OrderBookSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
+    OrderBookSnapshot value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 9) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        std::string exchange = read_string(buf, pos);
+        uint32_t bids_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> bids;
+        bids.reserve(bids_count);
+        for (uint32_t i = 0; i < bids_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bids.push_back(item);
+        }
+        uint32_t asks_count = read_u32_be(buf, pos);
+        std::vector<PriceLevel> asks;
+        asks.reserve(asks_count);
+        for (uint32_t i = 0; i < asks_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PriceLevelDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            asks.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.exchange = exchange;
+    value.bids = bids;
+    value.asks = asks;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message MarketDataIncrementalRefresh
+struct MarketDataIncrementalRefresh {
+    std::string symbol;
+    std::vector<MarketDataUpdate> updates;
+    int64_t timestamp;
+    std::optional<uint64_t> sequence;
+};
+
+// SBE body encoder for MarketDataIncrementalRefresh (fields only, no header).
+struct MarketDataIncrementalRefreshBodyEncoder {
+    static void encode(const MarketDataIncrementalRefresh& value, std::vector<uint8_t>& buf);
+};
+
+inline void MarketDataIncrementalRefreshBodyEncoder::encode(const MarketDataIncrementalRefresh& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_u32_be(buf, static_cast<uint32_t>(value.updates.size()));
+        for (const auto& item : value.updates) {
+            std::vector<uint8_t> item_buf;
+            MarketDataUpdateEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        write_u64_be(buf, value.sequence.value_or(0));
+        buf.push_back(value.sequence.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for MarketDataIncrementalRefresh: reads fields at pos.
+struct MarketDataIncrementalRefreshBodyDecoder {
+    static std::pair<MarketDataIncrementalRefresh, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<MarketDataIncrementalRefresh, std::size_t> MarketDataIncrementalRefreshBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    MarketDataIncrementalRefresh value{};
+        std::string symbol = read_string(buf, pos);
+        uint32_t updates_count = read_u32_be(buf, pos);
+        std::vector<MarketDataUpdate> updates;
+        updates.reserve(updates_count);
+        for (uint32_t i = 0; i < updates_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            updates.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+    value.symbol = symbol;
+    value.updates = updates;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    return {value, pos};
+}
+
+// SBE encoder for MarketDataIncrementalRefresh
+struct MarketDataIncrementalRefreshEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence);
+};
+
+inline std::vector<uint8_t> MarketDataIncrementalRefreshEncoder::encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 7);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 16);
+        write_string(buf, symbol);
+        write_u32_be(buf, static_cast<uint32_t>(updates.size()));
+        for (const auto& item : updates) {
+            std::vector<uint8_t> item_buf;
+            MarketDataUpdateEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        write_u64_be(buf, sequence.value_or(0));
+        buf.push_back(sequence.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for MarketDataIncrementalRefresh: validates the header and reads the body.
+struct MarketDataIncrementalRefreshDecoder {
+    static MarketDataIncrementalRefresh decode(const std::vector<uint8_t>& buf);
+};
+
+inline MarketDataIncrementalRefresh MarketDataIncrementalRefreshDecoder::decode(const std::vector<uint8_t>& buf) {
+    MarketDataIncrementalRefresh value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 7) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        uint32_t updates_count = read_u32_be(buf, pos);
+        std::vector<MarketDataUpdate> updates;
+        updates.reserve(updates_count);
+        for (uint32_t i = 0; i < updates_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            updates.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+    value.symbol = symbol;
+    value.updates = updates;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    (void)value;
+    return value;
+}
+
+// SBE message OrderBookDelta
+struct OrderBookDelta {
+    std::string symbol;
+    std::vector<MarketDataUpdate> updates;
+    int64_t timestamp;
+    std::optional<uint64_t> sequence;
+};
+
+// SBE body encoder for OrderBookDelta (fields only, no header).
+struct OrderBookDeltaBodyEncoder {
+    static void encode(const OrderBookDelta& value, std::vector<uint8_t>& buf);
+};
+
+inline void OrderBookDeltaBodyEncoder::encode(const OrderBookDelta& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_u32_be(buf, static_cast<uint32_t>(value.updates.size()));
+        for (const auto& item : value.updates) {
+            std::vector<uint8_t> item_buf;
+            MarketDataUpdateEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        write_u64_be(buf, value.sequence.value_or(0));
+        buf.push_back(value.sequence.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for OrderBookDelta: reads fields at pos.
+struct OrderBookDeltaBodyDecoder {
+    static std::pair<OrderBookDelta, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<OrderBookDelta, std::size_t> OrderBookDeltaBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    OrderBookDelta value{};
+        std::string symbol = read_string(buf, pos);
+        uint32_t updates_count = read_u32_be(buf, pos);
+        std::vector<MarketDataUpdate> updates;
+        updates.reserve(updates_count);
+        for (uint32_t i = 0; i < updates_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            updates.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+    value.symbol = symbol;
+    value.updates = updates;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    return {value, pos};
+}
+
+// SBE encoder for OrderBookDelta
+struct OrderBookDeltaEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence);
+};
+
+inline std::vector<uint8_t> OrderBookDeltaEncoder::encode(std::string symbol, std::vector<MarketDataUpdate> updates, int64_t timestamp, std::optional<uint64_t> sequence) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 10);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 16);
+        write_string(buf, symbol);
+        write_u32_be(buf, static_cast<uint32_t>(updates.size()));
+        for (const auto& item : updates) {
+            std::vector<uint8_t> item_buf;
+            MarketDataUpdateEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        write_u64_be(buf, sequence.value_or(0));
+        buf.push_back(sequence.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for OrderBookDelta: validates the header and reads the body.
+struct OrderBookDeltaDecoder {
+    static OrderBookDelta decode(const std::vector<uint8_t>& buf);
+};
+
+inline OrderBookDelta OrderBookDeltaDecoder::decode(const std::vector<uint8_t>& buf) {
+    OrderBookDelta value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 10) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        uint32_t updates_count = read_u32_be(buf, pos);
+        std::vector<MarketDataUpdate> updates;
+        updates.reserve(updates_count);
+        for (uint32_t i = 0; i < updates_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MarketDataUpdateDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            updates.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint64_t sequence_v = read_u64_be(buf, pos);
+        std::optional<uint64_t> sequence;
+        if (buf[pos++] == 1) sequence = sequence_v;
+    value.symbol = symbol;
+    value.updates = updates;
+    value.timestamp = timestamp;
+    value.sequence = sequence;
+    (void)value;
+    return value;
+}
+
+// SBE message CandleBarEvent
+struct CandleBarEvent {
+    CandleBar bar;
+};
+
+// SBE body encoder for CandleBarEvent (fields only, no header).
+struct CandleBarEventBodyEncoder {
+    static void encode(const CandleBarEvent& value, std::vector<uint8_t>& buf);
+};
+
+inline void CandleBarEventBodyEncoder::encode(const CandleBarEvent& value, std::vector<uint8_t>& buf) {
+        CandleBarEncoder::encode(value.bar, buf);
+}
+
+// SBE body decoder for CandleBarEvent: reads fields at pos.
+struct CandleBarEventBodyDecoder {
+    static std::pair<CandleBarEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<CandleBarEvent, std::size_t> CandleBarEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    CandleBarEvent value{};
+        auto [bar, bar_n] = CandleBarDecoder::decode(buf, pos);
+        pos = bar_n;
+    value.bar = bar;
+    return {value, pos};
+}
+
+// SBE encoder for CandleBarEvent
+struct CandleBarEventEncoder {
+    static std::vector<uint8_t> encode(CandleBar bar);
+};
+
+inline std::vector<uint8_t> CandleBarEventEncoder::encode(CandleBar bar) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 20);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        CandleBarEncoder::encode(bar, buf);
+        return buf;
+}
+
+// SBE decoder for CandleBarEvent: validates the header and reads the body.
+struct CandleBarEventDecoder {
+    static CandleBarEvent decode(const std::vector<uint8_t>& buf);
+};
+
+inline CandleBarEvent CandleBarEventDecoder::decode(const std::vector<uint8_t>& buf) {
+    CandleBarEvent value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 20) throw std::runtime_error("invalid template_id");
+        auto [bar, bar_n] = CandleBarDecoder::decode(buf, pos);
+        pos = bar_n;
+    value.bar = bar;
+    (void)value;
+    return value;
+}
+
+// SBE message CandleBarBatch
+struct CandleBarBatch {
+    std::string symbol;
+    std::string interval;
+    std::vector<CandleBar> bars;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for CandleBarBatch (fields only, no header).
+struct CandleBarBatchBodyEncoder {
+    static void encode(const CandleBarBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void CandleBarBatchBodyEncoder::encode(const CandleBarBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_string(buf, value.interval);
+        write_u32_be(buf, static_cast<uint32_t>(value.bars.size()));
+        for (const auto& item : value.bars) {
+            std::vector<uint8_t> item_buf;
+            CandleBarEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for CandleBarBatch: reads fields at pos.
+struct CandleBarBatchBodyDecoder {
+    static std::pair<CandleBarBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<CandleBarBatch, std::size_t> CandleBarBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    CandleBarBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        std::string interval = read_string(buf, pos);
+        uint32_t bars_count = read_u32_be(buf, pos);
+        std::vector<CandleBar> bars;
+        bars.reserve(bars_count);
+        for (uint32_t i = 0; i < bars_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = CandleBarDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bars.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.interval = interval;
+    value.bars = bars;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for CandleBarBatch
+struct CandleBarBatchEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::string interval, std::vector<CandleBar> bars, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> CandleBarBatchEncoder::encode(std::string symbol, std::string interval, std::vector<CandleBar> bars, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 22);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, symbol);
+        write_string(buf, interval);
+        write_u32_be(buf, static_cast<uint32_t>(bars.size()));
+        for (const auto& item : bars) {
+            std::vector<uint8_t> item_buf;
+            CandleBarEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for CandleBarBatch: validates the header and reads the body.
+struct CandleBarBatchDecoder {
+    static CandleBarBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline CandleBarBatch CandleBarBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    CandleBarBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 22) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        std::string interval = read_string(buf, pos);
+        uint32_t bars_count = read_u32_be(buf, pos);
+        std::vector<CandleBar> bars;
+        bars.reserve(bars_count);
+        for (uint32_t i = 0; i < bars_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = CandleBarDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            bars.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.interval = interval;
+    value.bars = bars;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message PublicTradeEvent
+struct PublicTradeEvent {
+    PublicTrade trade;
+};
+
+// SBE body encoder for PublicTradeEvent (fields only, no header).
+struct PublicTradeEventBodyEncoder {
+    static void encode(const PublicTradeEvent& value, std::vector<uint8_t>& buf);
+};
+
+inline void PublicTradeEventBodyEncoder::encode(const PublicTradeEvent& value, std::vector<uint8_t>& buf) {
+        PublicTradeEncoder::encode(value.trade, buf);
+}
+
+// SBE body decoder for PublicTradeEvent: reads fields at pos.
+struct PublicTradeEventBodyDecoder {
+    static std::pair<PublicTradeEvent, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<PublicTradeEvent, std::size_t> PublicTradeEventBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    PublicTradeEvent value{};
+        auto [trade, trade_n] = PublicTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    return {value, pos};
+}
+
+// SBE encoder for PublicTradeEvent
+struct PublicTradeEventEncoder {
+    static std::vector<uint8_t> encode(PublicTrade trade);
+};
+
+inline std::vector<uint8_t> PublicTradeEventEncoder::encode(PublicTrade trade) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 23);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        PublicTradeEncoder::encode(trade, buf);
+        return buf;
+}
+
+// SBE decoder for PublicTradeEvent: validates the header and reads the body.
+struct PublicTradeEventDecoder {
+    static PublicTradeEvent decode(const std::vector<uint8_t>& buf);
+};
+
+inline PublicTradeEvent PublicTradeEventDecoder::decode(const std::vector<uint8_t>& buf) {
+    PublicTradeEvent value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 23) throw std::runtime_error("invalid template_id");
+        auto [trade, trade_n] = PublicTradeDecoder::decode(buf, pos);
+        pos = trade_n;
+    value.trade = trade;
+    (void)value;
+    return value;
+}
+
+// SBE message PublicTradeBatch
+struct PublicTradeBatch {
+    std::string symbol;
+    std::vector<PublicTrade> trades;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for PublicTradeBatch (fields only, no header).
+struct PublicTradeBatchBodyEncoder {
+    static void encode(const PublicTradeBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void PublicTradeBatchBodyEncoder::encode(const PublicTradeBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_u32_be(buf, static_cast<uint32_t>(value.trades.size()));
+        for (const auto& item : value.trades) {
+            std::vector<uint8_t> item_buf;
+            PublicTradeEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for PublicTradeBatch: reads fields at pos.
+struct PublicTradeBatchBodyDecoder {
+    static std::pair<PublicTradeBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<PublicTradeBatch, std::size_t> PublicTradeBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    PublicTradeBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        uint32_t trades_count = read_u32_be(buf, pos);
+        std::vector<PublicTrade> trades;
+        trades.reserve(trades_count);
+        for (uint32_t i = 0; i < trades_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PublicTradeDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            trades.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.trades = trades;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for PublicTradeBatch
+struct PublicTradeBatchEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::vector<PublicTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> PublicTradeBatchEncoder::encode(std::string symbol, std::vector<PublicTrade> trades, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 25);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, symbol);
+        write_u32_be(buf, static_cast<uint32_t>(trades.size()));
+        for (const auto& item : trades) {
+            std::vector<uint8_t> item_buf;
+            PublicTradeEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for PublicTradeBatch: validates the header and reads the body.
+struct PublicTradeBatchDecoder {
+    static PublicTradeBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline PublicTradeBatch PublicTradeBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    PublicTradeBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 25) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string symbol = read_string(buf, pos);
+        uint32_t trades_count = read_u32_be(buf, pos);
+        std::vector<PublicTrade> trades;
+        trades.reserve(trades_count);
+        for (uint32_t i = 0; i < trades_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PublicTradeDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            trades.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.symbol = symbol;
+    value.trades = trades;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message InstrumentCatalogResponse
+struct InstrumentCatalogResponse {
+    std::vector<InstrumentMetadata> instruments;
+};
+
+// SBE body encoder for InstrumentCatalogResponse (fields only, no header).
+struct InstrumentCatalogResponseBodyEncoder {
+    static void encode(const InstrumentCatalogResponse& value, std::vector<uint8_t>& buf);
+};
+
+inline void InstrumentCatalogResponseBodyEncoder::encode(const InstrumentCatalogResponse& value, std::vector<uint8_t>& buf) {
+        write_u32_be(buf, static_cast<uint32_t>(value.instruments.size()));
+        for (const auto& item : value.instruments) {
+            std::vector<uint8_t> item_buf;
+            InstrumentMetadataEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+}
+
+// SBE body decoder for InstrumentCatalogResponse: reads fields at pos.
+struct InstrumentCatalogResponseBodyDecoder {
+    static std::pair<InstrumentCatalogResponse, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<InstrumentCatalogResponse, std::size_t> InstrumentCatalogResponseBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    InstrumentCatalogResponse value{};
+        uint32_t instruments_count = read_u32_be(buf, pos);
+        std::vector<InstrumentMetadata> instruments;
+        instruments.reserve(instruments_count);
+        for (uint32_t i = 0; i < instruments_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = InstrumentMetadataDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            instruments.push_back(item);
+        }
+    value.instruments = instruments;
+    return {value, pos};
+}
+
+// SBE encoder for InstrumentCatalogResponse
+struct InstrumentCatalogResponseEncoder {
+    static std::vector<uint8_t> encode(std::vector<InstrumentMetadata> instruments);
+};
+
+inline std::vector<uint8_t> InstrumentCatalogResponseEncoder::encode(std::vector<InstrumentMetadata> instruments) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 30);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_u32_be(buf, static_cast<uint32_t>(instruments.size()));
+        for (const auto& item : instruments) {
+            std::vector<uint8_t> item_buf;
+            InstrumentMetadataEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        return buf;
+}
+
+// SBE decoder for InstrumentCatalogResponse: validates the header and reads the body.
+struct InstrumentCatalogResponseDecoder {
+    static InstrumentCatalogResponse decode(const std::vector<uint8_t>& buf);
+};
+
+inline InstrumentCatalogResponse InstrumentCatalogResponseDecoder::decode(const std::vector<uint8_t>& buf) {
+    InstrumentCatalogResponse value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 30) throw std::runtime_error("invalid template_id");
+        uint32_t instruments_count = read_u32_be(buf, pos);
+        std::vector<InstrumentMetadata> instruments;
+        instruments.reserve(instruments_count);
+        for (uint32_t i = 0; i < instruments_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = InstrumentMetadataDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            instruments.push_back(item);
+        }
+    value.instruments = instruments;
+    (void)value;
+    return value;
+}
+
+// SBE message BalanceSnapshot
+struct BalanceSnapshot {
+    std::string account;
+    std::vector<BalanceEntry> balances;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for BalanceSnapshot (fields only, no header).
+struct BalanceSnapshotBodyEncoder {
+    static void encode(const BalanceSnapshot& value, std::vector<uint8_t>& buf);
+};
+
+inline void BalanceSnapshotBodyEncoder::encode(const BalanceSnapshot& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.balances.size()));
+        for (const auto& item : value.balances) {
+            std::vector<uint8_t> item_buf;
+            BalanceEntryEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for BalanceSnapshot: reads fields at pos.
+struct BalanceSnapshotBodyDecoder {
+    static std::pair<BalanceSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<BalanceSnapshot, std::size_t> BalanceSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    BalanceSnapshot value{};
+        std::string account = read_string(buf, pos);
+        uint32_t balances_count = read_u32_be(buf, pos);
+        std::vector<BalanceEntry> balances;
+        balances.reserve(balances_count);
+        for (uint32_t i = 0; i < balances_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BalanceEntryDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            balances.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.balances = balances;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for BalanceSnapshot
+struct BalanceSnapshotEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<BalanceEntry> balances, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> BalanceSnapshotEncoder::encode(std::string account, std::vector<BalanceEntry> balances, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 33);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(balances.size()));
+        for (const auto& item : balances) {
+            std::vector<uint8_t> item_buf;
+            BalanceEntryEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for BalanceSnapshot: validates the header and reads the body.
+struct BalanceSnapshotDecoder {
+    static BalanceSnapshot decode(const std::vector<uint8_t>& buf);
+};
+
+inline BalanceSnapshot BalanceSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
+    BalanceSnapshot value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 33) throw std::runtime_error("invalid template_id");
+        std::string account = read_string(buf, pos);
+        uint32_t balances_count = read_u32_be(buf, pos);
+        std::vector<BalanceEntry> balances;
+        balances.reserve(balances_count);
+        for (uint32_t i = 0; i < balances_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BalanceEntryDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            balances.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.balances = balances;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message PositionSnapshot
+struct PositionSnapshot {
+    std::string account;
+    std::vector<PositionEntry> positions;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for PositionSnapshot (fields only, no header).
+struct PositionSnapshotBodyEncoder {
+    static void encode(const PositionSnapshot& value, std::vector<uint8_t>& buf);
+};
+
+inline void PositionSnapshotBodyEncoder::encode(const PositionSnapshot& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.positions.size()));
+        for (const auto& item : value.positions) {
+            std::vector<uint8_t> item_buf;
+            PositionEntryEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for PositionSnapshot: reads fields at pos.
+struct PositionSnapshotBodyDecoder {
+    static std::pair<PositionSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<PositionSnapshot, std::size_t> PositionSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    PositionSnapshot value{};
+        std::string account = read_string(buf, pos);
+        uint32_t positions_count = read_u32_be(buf, pos);
+        std::vector<PositionEntry> positions;
+        positions.reserve(positions_count);
+        for (uint32_t i = 0; i < positions_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PositionEntryDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            positions.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.positions = positions;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for PositionSnapshot
+struct PositionSnapshotEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<PositionEntry> positions, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> PositionSnapshotEncoder::encode(std::string account, std::vector<PositionEntry> positions, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 35);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(positions.size()));
+        for (const auto& item : positions) {
+            std::vector<uint8_t> item_buf;
+            PositionEntryEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for PositionSnapshot: validates the header and reads the body.
+struct PositionSnapshotDecoder {
+    static PositionSnapshot decode(const std::vector<uint8_t>& buf);
+};
+
+inline PositionSnapshot PositionSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
+    PositionSnapshot value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 35) throw std::runtime_error("invalid template_id");
+        std::string account = read_string(buf, pos);
+        uint32_t positions_count = read_u32_be(buf, pos);
+        std::vector<PositionEntry> positions;
+        positions.reserve(positions_count);
+        for (uint32_t i = 0; i < positions_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = PositionEntryDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            positions.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.positions = positions;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message CapabilitiesResponse
+struct CapabilitiesResponse {
+    std::vector<uint8_t> schema_ids;
+    std::vector<CapabilityPath> paths;
+    std::vector<std::string> symbols;
+    std::vector<std::string> intervals;
+};
+
+// SBE body encoder for CapabilitiesResponse (fields only, no header).
+struct CapabilitiesResponseBodyEncoder {
+    static void encode(const CapabilitiesResponse& value, std::vector<uint8_t>& buf);
+};
+
+inline void CapabilitiesResponseBodyEncoder::encode(const CapabilitiesResponse& value, std::vector<uint8_t>& buf) {
+        write_u32_be(buf, static_cast<uint32_t>(value.schema_ids.size()));
+        for (const auto& item : value.schema_ids) {
+        buf.push_back(item);
+        }
+        write_u32_be(buf, static_cast<uint32_t>(value.paths.size()));
+        for (const auto& item : value.paths) {
+            std::vector<uint8_t> item_buf;
+            CapabilityPathEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(value.symbols.size()));
+        for (const auto& item : value.symbols) {
+            write_string_u32(buf, item);
+        }
+        write_u32_be(buf, static_cast<uint32_t>(value.intervals.size()));
+        for (const auto& item : value.intervals) {
+            write_string_u32(buf, item);
+        }
+}
+
+// SBE body decoder for CapabilitiesResponse: reads fields at pos.
+struct CapabilitiesResponseBodyDecoder {
+    static std::pair<CapabilitiesResponse, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<CapabilitiesResponse, std::size_t> CapabilitiesResponseBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    CapabilitiesResponse value{};
+        uint32_t schema_ids_count = read_u32_be(buf, pos);
+        std::vector<uint8_t> schema_ids;
+        schema_ids.reserve(schema_ids_count);
+        for (uint32_t i = 0; i < schema_ids_count; ++i) {
+            schema_ids.push_back(take_u8(buf, pos));
+        }
+        uint32_t paths_count = read_u32_be(buf, pos);
+        std::vector<CapabilityPath> paths;
+        paths.reserve(paths_count);
+        for (uint32_t i = 0; i < paths_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = CapabilityPathDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            paths.push_back(item);
+        }
+        uint32_t symbols_count = read_u32_be(buf, pos);
+        std::vector<std::string> symbols;
+        symbols.reserve(symbols_count);
+        for (uint32_t i = 0; i < symbols_count; ++i) {
+            symbols.push_back(read_string_u32(buf, pos));
+        }
+        uint32_t intervals_count = read_u32_be(buf, pos);
+        std::vector<std::string> intervals;
+        intervals.reserve(intervals_count);
+        for (uint32_t i = 0; i < intervals_count; ++i) {
+            intervals.push_back(read_string_u32(buf, pos));
+        }
+    value.schema_ids = schema_ids;
+    value.paths = paths;
+    value.symbols = symbols;
+    value.intervals = intervals;
+    return {value, pos};
+}
+
+// SBE encoder for CapabilitiesResponse
+struct CapabilitiesResponseEncoder {
+    static std::vector<uint8_t> encode(std::vector<uint8_t> schema_ids, std::vector<CapabilityPath> paths, std::vector<std::string> symbols, std::vector<std::string> intervals);
+};
+
+inline std::vector<uint8_t> CapabilitiesResponseEncoder::encode(std::vector<uint8_t> schema_ids, std::vector<CapabilityPath> paths, std::vector<std::string> symbols, std::vector<std::string> intervals) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 53);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_u32_be(buf, static_cast<uint32_t>(schema_ids.size()));
+        for (const auto& item : schema_ids) {
+        buf.push_back(item);
+        }
+        write_u32_be(buf, static_cast<uint32_t>(paths.size()));
+        for (const auto& item : paths) {
+            std::vector<uint8_t> item_buf;
+            CapabilityPathEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u32_be(buf, static_cast<uint32_t>(symbols.size()));
+        for (const auto& item : symbols) {
+            write_string_u32(buf, item);
+        }
+        write_u32_be(buf, static_cast<uint32_t>(intervals.size()));
+        for (const auto& item : intervals) {
+            write_string_u32(buf, item);
+        }
+        return buf;
+}
+
+// SBE decoder for CapabilitiesResponse: validates the header and reads the body.
+struct CapabilitiesResponseDecoder {
+    static CapabilitiesResponse decode(const std::vector<uint8_t>& buf);
+};
+
+inline CapabilitiesResponse CapabilitiesResponseDecoder::decode(const std::vector<uint8_t>& buf) {
+    CapabilitiesResponse value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 53) throw std::runtime_error("invalid template_id");
+        uint32_t schema_ids_count = read_u32_be(buf, pos);
+        std::vector<uint8_t> schema_ids;
+        schema_ids.reserve(schema_ids_count);
+        for (uint32_t i = 0; i < schema_ids_count; ++i) {
+            schema_ids.push_back(take_u8(buf, pos));
+        }
+        uint32_t paths_count = read_u32_be(buf, pos);
+        std::vector<CapabilityPath> paths;
+        paths.reserve(paths_count);
+        for (uint32_t i = 0; i < paths_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = CapabilityPathDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            paths.push_back(item);
+        }
+        uint32_t symbols_count = read_u32_be(buf, pos);
+        std::vector<std::string> symbols;
+        symbols.reserve(symbols_count);
+        for (uint32_t i = 0; i < symbols_count; ++i) {
+            symbols.push_back(read_string_u32(buf, pos));
+        }
+        uint32_t intervals_count = read_u32_be(buf, pos);
+        std::vector<std::string> intervals;
+        intervals.reserve(intervals_count);
+        for (uint32_t i = 0; i < intervals_count; ++i) {
+            intervals.push_back(read_string_u32(buf, pos));
+        }
+    value.schema_ids = schema_ids;
+    value.paths = paths;
+    value.symbols = symbols;
+    value.intervals = intervals;
+    (void)value;
+    return value;
+}
+
+// SBE message BatchReport
+struct BatchReport {
+    std::string batch_id;
+    std::string account;
+    BatchReportOutcome outcome;
+    std::vector<BatchResult> results;
+    int64_t timestamp;
+};
+
+// SBE body encoder for BatchReport (fields only, no header).
+struct BatchReportBodyEncoder {
+    static void encode(const BatchReport& value, std::vector<uint8_t>& buf);
+};
+
+inline void BatchReportBodyEncoder::encode(const BatchReport& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.batch_id);
+        write_string(buf, value.account);
+        buf.push_back(BatchReportOutcomeToValue(value.outcome));
+        write_u32_be(buf, static_cast<uint32_t>(value.results.size()));
+        for (const auto& item : value.results) {
+            std::vector<uint8_t> item_buf;
+            BatchResultEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+}
+
+// SBE body decoder for BatchReport: reads fields at pos.
+struct BatchReportBodyDecoder {
+    static std::pair<BatchReport, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<BatchReport, std::size_t> BatchReportBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    BatchReport value{};
+        std::string batch_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        auto outcome_v = BatchReportOutcomeFromValue(take_u8(buf, pos));
+        if (!outcome_v) throw std::runtime_error("invalid BatchReportOutcome");
+        BatchReportOutcome outcome = *outcome_v;
+        uint32_t results_count = read_u32_be(buf, pos);
+        std::vector<BatchResult> results;
+        results.reserve(results_count);
+        for (uint32_t i = 0; i < results_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BatchResultDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            results.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+    value.batch_id = batch_id;
+    value.account = account;
+    value.outcome = outcome;
+    value.results = results;
+    value.timestamp = timestamp;
+    return {value, pos};
+}
+
+// SBE encoder for BatchReport
+struct BatchReportEncoder {
+    static std::vector<uint8_t> encode(std::string batch_id, std::string account, BatchReportOutcome outcome, std::vector<BatchResult> results, int64_t timestamp);
+};
+
+inline std::vector<uint8_t> BatchReportEncoder::encode(std::string batch_id, std::string account, BatchReportOutcome outcome, std::vector<BatchResult> results, int64_t timestamp) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 64);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 9);
+        write_string(buf, batch_id);
+        write_string(buf, account);
+        buf.push_back(BatchReportOutcomeToValue(outcome));
+        write_u32_be(buf, static_cast<uint32_t>(results.size()));
+        for (const auto& item : results) {
+            std::vector<uint8_t> item_buf;
+            BatchResultEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        return buf;
+}
+
+// SBE decoder for BatchReport: validates the header and reads the body.
+struct BatchReportDecoder {
+    static BatchReport decode(const std::vector<uint8_t>& buf);
+};
+
+inline BatchReport BatchReportDecoder::decode(const std::vector<uint8_t>& buf) {
+    BatchReport value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 64) throw std::runtime_error("invalid template_id");
+        std::string batch_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        auto outcome_v = BatchReportOutcomeFromValue(take_u8(buf, pos));
+        if (!outcome_v) throw std::runtime_error("invalid BatchReportOutcome");
+        BatchReportOutcome outcome = *outcome_v;
+        uint32_t results_count = read_u32_be(buf, pos);
+        std::vector<BatchResult> results;
+        results.reserve(results_count);
+        for (uint32_t i = 0; i < results_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BatchResultDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            results.push_back(item);
+        }
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+    value.batch_id = batch_id;
+    value.account = account;
+    value.outcome = outcome;
+    value.results = results;
+    value.timestamp = timestamp;
+    (void)value;
+    return value;
+}
+
+// SBE struct BatchAction
+struct BatchAction {
+    BatchActionKind kind;
+    std::optional<NewOrderSingle> new_order;
+    std::optional<CancelRequest> cancel;
+    std::optional<CancelReplaceRequest> replace;
+};
+
+struct BatchActionEncoder {
+    static void encode(const BatchAction& value, std::vector<uint8_t>& buf);
+};
+
+struct BatchActionDecoder {
+    static std::pair<BatchAction, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline void BatchActionEncoder::encode(const BatchAction& value, std::vector<uint8_t>& buf) {
+        buf.push_back(BatchActionKindToValue(value.kind));
+        buf.push_back(value.new_order.has_value() ? 1 : 0);
+        if (value.new_order.has_value()) {
+        NewOrderSingleBodyEncoder::encode(*value.new_order, buf);
+        }
+        buf.push_back(value.cancel.has_value() ? 1 : 0);
+        if (value.cancel.has_value()) {
+        CancelRequestBodyEncoder::encode(*value.cancel, buf);
+        }
+        buf.push_back(value.replace.has_value() ? 1 : 0);
+        if (value.replace.has_value()) {
+        CancelReplaceRequestBodyEncoder::encode(*value.replace, buf);
+        }
+}
+
+inline std::pair<BatchAction, std::size_t> BatchActionDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    BatchAction value{};
+        auto kind_v = BatchActionKindFromValue(take_u8(buf, pos));
+        if (!kind_v) throw std::runtime_error("invalid BatchActionKind");
+        BatchActionKind kind = *kind_v;
+        std::optional<NewOrderSingle> new_order;
+        if (take_u8(buf, pos) == 1) {
+        auto [new_order_inner, new_order_inner_n] = NewOrderSingleBodyDecoder::decode(buf, pos);
+        pos = new_order_inner_n;
+            new_order = new_order_inner;
+        }
+        std::optional<CancelRequest> cancel;
+        if (take_u8(buf, pos) == 1) {
+        auto [cancel_inner, cancel_inner_n] = CancelRequestBodyDecoder::decode(buf, pos);
+        pos = cancel_inner_n;
+            cancel = cancel_inner;
+        }
+        std::optional<CancelReplaceRequest> replace;
+        if (take_u8(buf, pos) == 1) {
+        auto [replace_inner, replace_inner_n] = CancelReplaceRequestBodyDecoder::decode(buf, pos);
+        pos = replace_inner_n;
+            replace = replace_inner;
+        }
+    value.kind = kind;
+    value.new_order = new_order;
+    value.cancel = cancel;
+    value.replace = replace;
+    return {value, pos};
+}
+
+// SBE message FillHistoryBatch
+struct FillHistoryBatch {
+    std::string account;
+    std::vector<ExecutionReport> fills;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for FillHistoryBatch (fields only, no header).
+struct FillHistoryBatchBodyEncoder {
+    static void encode(const FillHistoryBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void FillHistoryBatchBodyEncoder::encode(const FillHistoryBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.fills.size()));
+        for (const auto& item : value.fills) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for FillHistoryBatch: reads fields at pos.
+struct FillHistoryBatchBodyDecoder {
+    static std::pair<FillHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<FillHistoryBatch, std::size_t> FillHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    FillHistoryBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t fills_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> fills;
+        fills.reserve(fills_count);
+        for (uint32_t i = 0; i < fills_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            fills.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.fills = fills;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for FillHistoryBatch
+struct FillHistoryBatchEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> fills, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> FillHistoryBatchEncoder::encode(std::string account, std::vector<ExecutionReport> fills, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 41);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(fills.size()));
+        for (const auto& item : fills) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for FillHistoryBatch: validates the header and reads the body.
+struct FillHistoryBatchDecoder {
+    static FillHistoryBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline FillHistoryBatch FillHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    FillHistoryBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 41) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t fills_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> fills;
+        fills.reserve(fills_count);
+        for (uint32_t i = 0; i < fills_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            fills.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.fills = fills;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message OpenOrdersSnapshot
+struct OpenOrdersSnapshot {
+    std::string account;
+    std::vector<ExecutionReport> orders;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for OpenOrdersSnapshot (fields only, no header).
+struct OpenOrdersSnapshotBodyEncoder {
+    static void encode(const OpenOrdersSnapshot& value, std::vector<uint8_t>& buf);
+};
+
+inline void OpenOrdersSnapshotBodyEncoder::encode(const OpenOrdersSnapshot& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.orders.size()));
+        for (const auto& item : value.orders) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for OpenOrdersSnapshot: reads fields at pos.
+struct OpenOrdersSnapshotBodyDecoder {
+    static std::pair<OpenOrdersSnapshot, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<OpenOrdersSnapshot, std::size_t> OpenOrdersSnapshotBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    OpenOrdersSnapshot value{};
+        std::string account = read_string(buf, pos);
+        uint32_t orders_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> orders;
+        orders.reserve(orders_count);
+        for (uint32_t i = 0; i < orders_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            orders.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.orders = orders;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for OpenOrdersSnapshot
+struct OpenOrdersSnapshotEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> orders, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> OpenOrdersSnapshotEncoder::encode(std::string account, std::vector<ExecutionReport> orders, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 49);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(orders.size()));
+        for (const auto& item : orders) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for OpenOrdersSnapshot: validates the header and reads the body.
+struct OpenOrdersSnapshotDecoder {
+    static OpenOrdersSnapshot decode(const std::vector<uint8_t>& buf);
+};
+
+inline OpenOrdersSnapshot OpenOrdersSnapshotDecoder::decode(const std::vector<uint8_t>& buf) {
+    OpenOrdersSnapshot value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 49) throw std::runtime_error("invalid template_id");
+        std::string account = read_string(buf, pos);
+        uint32_t orders_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> orders;
+        orders.reserve(orders_count);
+        for (uint32_t i = 0; i < orders_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            orders.push_back(item);
+        }
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.orders = orders;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message OrderHistoryBatch
+struct OrderHistoryBatch {
+    std::string account;
+    std::vector<ExecutionReport> orders;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for OrderHistoryBatch (fields only, no header).
+struct OrderHistoryBatchBodyEncoder {
+    static void encode(const OrderHistoryBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void OrderHistoryBatchBodyEncoder::encode(const OrderHistoryBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.orders.size()));
+        for (const auto& item : value.orders) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for OrderHistoryBatch: reads fields at pos.
+struct OrderHistoryBatchBodyDecoder {
+    static std::pair<OrderHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<OrderHistoryBatch, std::size_t> OrderHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    OrderHistoryBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t orders_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> orders;
+        orders.reserve(orders_count);
+        for (uint32_t i = 0; i < orders_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            orders.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.orders = orders;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for OrderHistoryBatch
+struct OrderHistoryBatchEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<ExecutionReport> orders, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> OrderHistoryBatchEncoder::encode(std::string account, std::vector<ExecutionReport> orders, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 51);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(orders.size()));
+        for (const auto& item : orders) {
+            std::vector<uint8_t> item_buf;
+            ExecutionReportBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for OrderHistoryBatch: validates the header and reads the body.
+struct OrderHistoryBatchDecoder {
+    static OrderHistoryBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline OrderHistoryBatch OrderHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    OrderHistoryBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 51) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t orders_count = read_u32_be(buf, pos);
+        std::vector<ExecutionReport> orders;
+        orders.reserve(orders_count);
+        for (uint32_t i = 0; i < orders_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = ExecutionReportBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            orders.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.orders = orders;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message AllMidsBatch
+struct AllMidsBatch {
+    std::vector<MiniTicker> tickers;
+};
+
+// SBE body encoder for AllMidsBatch (fields only, no header).
+struct AllMidsBatchBodyEncoder {
+    static void encode(const AllMidsBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void AllMidsBatchBodyEncoder::encode(const AllMidsBatch& value, std::vector<uint8_t>& buf) {
+        write_u32_be(buf, static_cast<uint32_t>(value.tickers.size()));
+        for (const auto& item : value.tickers) {
+            std::vector<uint8_t> item_buf;
+            MiniTickerBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+}
+
+// SBE body decoder for AllMidsBatch: reads fields at pos.
+struct AllMidsBatchBodyDecoder {
+    static std::pair<AllMidsBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<AllMidsBatch, std::size_t> AllMidsBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    AllMidsBatch value{};
+        uint32_t tickers_count = read_u32_be(buf, pos);
+        std::vector<MiniTicker> tickers;
+        tickers.reserve(tickers_count);
+        for (uint32_t i = 0; i < tickers_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MiniTickerBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            tickers.push_back(item);
+        }
+    value.tickers = tickers;
+    return {value, pos};
+}
+
+// SBE encoder for AllMidsBatch
+struct AllMidsBatchEncoder {
+    static std::vector<uint8_t> encode(std::vector<MiniTicker> tickers);
+};
+
+inline std::vector<uint8_t> AllMidsBatchEncoder::encode(std::vector<MiniTicker> tickers) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 16);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_u32_be(buf, static_cast<uint32_t>(tickers.size()));
+        for (const auto& item : tickers) {
+            std::vector<uint8_t> item_buf;
+            MiniTickerBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        return buf;
+}
+
+// SBE decoder for AllMidsBatch: validates the header and reads the body.
+struct AllMidsBatchDecoder {
+    static AllMidsBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline AllMidsBatch AllMidsBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    AllMidsBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 16) throw std::runtime_error("invalid template_id");
+        uint32_t tickers_count = read_u32_be(buf, pos);
+        std::vector<MiniTicker> tickers;
+        tickers.reserve(tickers_count);
+        for (uint32_t i = 0; i < tickers_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = MiniTickerBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            tickers.push_back(item);
+        }
+    value.tickers = tickers;
+    (void)value;
+    return value;
+}
+
+// SBE message MarginUpdate
+struct MarginUpdate {
+    std::string account;
+    MarginSummary summary;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for MarginUpdate (fields only, no header).
+struct MarginUpdateBodyEncoder {
+    static void encode(const MarginUpdate& value, std::vector<uint8_t>& buf);
+};
+
+inline void MarginUpdateBodyEncoder::encode(const MarginUpdate& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        MarginSummaryBodyEncoder::encode(value.summary, buf);
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for MarginUpdate: reads fields at pos.
+struct MarginUpdateBodyDecoder {
+    static std::pair<MarginUpdate, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<MarginUpdate, std::size_t> MarginUpdateBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    MarginUpdate value{};
+        std::string account = read_string(buf, pos);
+        auto [summary, summary_n] = MarginSummaryBodyDecoder::decode(buf, pos);
+        pos = summary_n;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.summary = summary;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for MarginUpdate
+struct MarginUpdateEncoder {
+    static std::vector<uint8_t> encode(std::string account, MarginSummary summary, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> MarginUpdateEncoder::encode(std::string account, MarginSummary summary, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 37);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        MarginSummaryBodyEncoder::encode(summary, buf);
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for MarginUpdate: validates the header and reads the body.
+struct MarginUpdateDecoder {
+    static MarginUpdate decode(const std::vector<uint8_t>& buf);
+};
+
+inline MarginUpdate MarginUpdateDecoder::decode(const std::vector<uint8_t>& buf) {
+    MarginUpdate value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 37) throw std::runtime_error("invalid template_id");
+        std::string account = read_string(buf, pos);
+        auto [summary, summary_n] = MarginSummaryBodyDecoder::decode(buf, pos);
+        pos = summary_n;
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.account = account;
+    value.summary = summary;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
+// SBE message FundingHistoryBatch
+struct FundingHistoryBatch {
+    std::string account;
+    std::vector<FundingPayment> payments;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for FundingHistoryBatch (fields only, no header).
+struct FundingHistoryBatchBodyEncoder {
+    static void encode(const FundingHistoryBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void FundingHistoryBatchBodyEncoder::encode(const FundingHistoryBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.payments.size()));
+        for (const auto& item : value.payments) {
+            std::vector<uint8_t> item_buf;
+            FundingPaymentBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for FundingHistoryBatch: reads fields at pos.
+struct FundingHistoryBatchBodyDecoder {
+    static std::pair<FundingHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<FundingHistoryBatch, std::size_t> FundingHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    FundingHistoryBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t payments_count = read_u32_be(buf, pos);
+        std::vector<FundingPayment> payments;
+        payments.reserve(payments_count);
+        for (uint32_t i = 0; i < payments_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = FundingPaymentBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            payments.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.payments = payments;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for FundingHistoryBatch
+struct FundingHistoryBatchEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<FundingPayment> payments, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> FundingHistoryBatchEncoder::encode(std::string account, std::vector<FundingPayment> payments, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 44);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(payments.size()));
+        for (const auto& item : payments) {
+            std::vector<uint8_t> item_buf;
+            FundingPaymentBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for FundingHistoryBatch: validates the header and reads the body.
+struct FundingHistoryBatchDecoder {
+    static FundingHistoryBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline FundingHistoryBatch FundingHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    FundingHistoryBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 44) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t payments_count = read_u32_be(buf, pos);
+        std::vector<FundingPayment> payments;
+        payments.reserve(payments_count);
+        for (uint32_t i = 0; i < payments_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = FundingPaymentBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            payments.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.payments = payments;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message LedgerHistoryBatch
+struct LedgerHistoryBatch {
+    std::string account;
+    std::vector<LedgerUpdate> entries;
+    uint8_t has_more;
+    std::optional<std::string> next_cursor;
+};
+
+// SBE body encoder for LedgerHistoryBatch (fields only, no header).
+struct LedgerHistoryBatchBodyEncoder {
+    static void encode(const LedgerHistoryBatch& value, std::vector<uint8_t>& buf);
+};
+
+inline void LedgerHistoryBatchBodyEncoder::encode(const LedgerHistoryBatch& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.entries.size()));
+        for (const auto& item : value.entries) {
+            std::vector<uint8_t> item_buf;
+            LedgerUpdateBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(value.has_more);
+        if (value.next_cursor.has_value()) { buf.push_back(1); write_string(buf, *value.next_cursor); } else { buf.push_back(0); }
+}
+
+// SBE body decoder for LedgerHistoryBatch: reads fields at pos.
+struct LedgerHistoryBatchBodyDecoder {
+    static std::pair<LedgerHistoryBatch, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<LedgerHistoryBatch, std::size_t> LedgerHistoryBatchBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    LedgerHistoryBatch value{};
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t entries_count = read_u32_be(buf, pos);
+        std::vector<LedgerUpdate> entries;
+        entries.reserve(entries_count);
+        for (uint32_t i = 0; i < entries_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = LedgerUpdateBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            entries.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.entries = entries;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    return {value, pos};
+}
+
+// SBE encoder for LedgerHistoryBatch
+struct LedgerHistoryBatchEncoder {
+    static std::vector<uint8_t> encode(std::string account, std::vector<LedgerUpdate> entries, uint8_t has_more, std::optional<std::string> next_cursor);
+};
+
+inline std::vector<uint8_t> LedgerHistoryBatchEncoder::encode(std::string account, std::vector<LedgerUpdate> entries, uint8_t has_more, std::optional<std::string> next_cursor) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 47);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 1);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(entries.size()));
+        for (const auto& item : entries) {
+            std::vector<uint8_t> item_buf;
+            LedgerUpdateBodyEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        buf.push_back(has_more);
+        if (next_cursor.has_value()) { buf.push_back(1); write_string(buf, *next_cursor); } else { buf.push_back(0); }
+        return buf;
+}
+
+// SBE decoder for LedgerHistoryBatch: validates the header and reads the body.
+struct LedgerHistoryBatchDecoder {
+    static LedgerHistoryBatch decode(const std::vector<uint8_t>& buf);
+};
+
+inline LedgerHistoryBatch LedgerHistoryBatchDecoder::decode(const std::vector<uint8_t>& buf) {
+    LedgerHistoryBatch value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 47) throw std::runtime_error("invalid template_id");
+        std::optional<std::string> next_cursor;
+        std::string account = read_string(buf, pos);
+        uint32_t entries_count = read_u32_be(buf, pos);
+        std::vector<LedgerUpdate> entries;
+        entries.reserve(entries_count);
+        for (uint32_t i = 0; i < entries_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = LedgerUpdateBodyDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            entries.push_back(item);
+        }
+        uint8_t has_more = take_u8(buf, pos);
+        if (take_u8(buf, pos) == 1) next_cursor = read_string(buf, pos);
+    value.account = account;
+    value.entries = entries;
+    value.has_more = has_more;
+    value.next_cursor = next_cursor;
+    (void)value;
+    return value;
+}
+
+// SBE message BatchRequest
+struct BatchRequest {
+    std::string batch_id;
+    std::string account;
+    std::vector<BatchAction> actions;
+};
+
+// SBE body encoder for BatchRequest (fields only, no header).
+struct BatchRequestBodyEncoder {
+    static void encode(const BatchRequest& value, std::vector<uint8_t>& buf);
+};
+
+inline void BatchRequestBodyEncoder::encode(const BatchRequest& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.batch_id);
+        write_string(buf, value.account);
+        write_u32_be(buf, static_cast<uint32_t>(value.actions.size()));
+        for (const auto& item : value.actions) {
+            std::vector<uint8_t> item_buf;
+            BatchActionEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+}
+
+// SBE body decoder for BatchRequest: reads fields at pos.
+struct BatchRequestBodyDecoder {
+    static std::pair<BatchRequest, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<BatchRequest, std::size_t> BatchRequestBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    BatchRequest value{};
+        std::string batch_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        uint32_t actions_count = read_u32_be(buf, pos);
+        std::vector<BatchAction> actions;
+        actions.reserve(actions_count);
+        for (uint32_t i = 0; i < actions_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BatchActionDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            actions.push_back(item);
+        }
+    value.batch_id = batch_id;
+    value.account = account;
+    value.actions = actions;
+    return {value, pos};
+}
+
+// SBE encoder for BatchRequest
+struct BatchRequestEncoder {
+    static std::vector<uint8_t> encode(std::string batch_id, std::string account, std::vector<BatchAction> actions);
+};
+
+inline std::vector<uint8_t> BatchRequestEncoder::encode(std::string batch_id, std::string account, std::vector<BatchAction> actions) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 63);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_string(buf, batch_id);
+        write_string(buf, account);
+        write_u32_be(buf, static_cast<uint32_t>(actions.size()));
+        for (const auto& item : actions) {
+            std::vector<uint8_t> item_buf;
+            BatchActionEncoder::encode(item, item_buf);
+            write_u32_be(buf, static_cast<uint32_t>(item_buf.size()));
+            buf.insert(buf.end(), item_buf.begin(), item_buf.end());
+        }
+        return buf;
+}
+
+// SBE decoder for BatchRequest: validates the header and reads the body.
+struct BatchRequestDecoder {
+    static BatchRequest decode(const std::vector<uint8_t>& buf);
+};
+
+inline BatchRequest BatchRequestDecoder::decode(const std::vector<uint8_t>& buf) {
+    BatchRequest value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 63) throw std::runtime_error("invalid template_id");
+        std::string batch_id = read_string(buf, pos);
+        std::string account = read_string(buf, pos);
+        uint32_t actions_count = read_u32_be(buf, pos);
+        std::vector<BatchAction> actions;
+        actions.reserve(actions_count);
+        for (uint32_t i = 0; i < actions_count; ++i) {
+            uint32_t item_len = read_u32_be(buf, pos);
+            std::size_t item_end = pos + item_len;
+            auto [item, consumed] = BatchActionDecoder::decode(buf, pos);
+            (void)consumed;
+            pos = item_end;
+            actions.push_back(item);
+        }
+    value.batch_id = batch_id;
+    value.account = account;
+    value.actions = actions;
     (void)value;
     return value;
 }

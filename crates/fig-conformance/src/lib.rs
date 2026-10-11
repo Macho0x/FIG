@@ -15,22 +15,24 @@ use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::{
     AccountSummary, AggregateTrade, AggregateTradeBatch, AggregateTradeEvent,
     AggregateTradeRequest, AllMidsBatch, AllMidsRequest, BalanceSnapshot, BalanceUpdate,
-    BestBidOffer, CancelReject, CancelReplaceRequest, CancelRequest, CandleBar, CandleBarBatch,
-    CandleBarEvent, CandleBarRequest, CapabilitiesRequest, CapabilitiesResponse, ExecType,
-    ExecutionReport, FillHistoryBatch, FillHistoryRequest, FundingHistoryBatch,
-    FundingHistoryRequest, FundingPayment, InstrumentCatalogRequest, InstrumentCatalogResponse,
-    InstrumentMetadata, LedgerHistoryBatch, LedgerHistoryRequest, LedgerUpdate, LiquidationTrade,
-    LiquidationTradeEvent, MarginSummary, MarginUpdate, MarkPriceRequest, MarkPriceUpdate,
-    MarketDataAction, MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate,
-    MassCancelReport, MassCancelReportStatus, MassCancelRequest, MiniTicker, NewOrderSingle,
-    OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
-    OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderListStatusStatus, OrderType, PositionEntry, PositionRequest, PositionSnapshot,
-    PositionUpdate, Price, PriceLimits, PriceLimitsRequest, PublicTrade, PublicTradeBatch,
-    PublicTradeEvent, Quantity, SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest,
-    SecurityStatusStatus, Side, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
-    TradingSessionStatus, TradingSessionStatusHaltReason, TradingSessionStatusRequest,
-    TradingSessionStatusStatus, UserLiquidation,
+    BatchAction, BatchActionKind, BatchReport, BatchReportOutcome, BatchRequest, BatchResult,
+    BatchResultKind, BatchResultStatus, BestBidOffer, CancelReject, CancelReplaceRequest,
+    CancelRequest, CandleBar, CandleBarBatch, CandleBarEvent, CandleBarRequest,
+    CapabilitiesRequest, CapabilitiesResponse, ExecType, ExecutionReport, FillHistoryBatch,
+    FillHistoryRequest, FundingHistoryBatch, FundingHistoryRequest, FundingPayment,
+    InstrumentCatalogRequest, InstrumentCatalogResponse, InstrumentMetadata, LedgerHistoryBatch,
+    LedgerHistoryRequest, LedgerUpdate, LiquidationTrade, LiquidationTradeEvent, MarginSummary,
+    MarginUpdate, MarkPriceRequest, MarkPriceUpdate, MarketDataAction,
+    MarketDataIncrementalRefresh, MarketDataSnapshot, MarketDataUpdate, MassCancelReport,
+    MassCancelReportStatus, MassCancelRequest, MiniTicker, NewOrderSingle, OpenOrdersRequest,
+    OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest, OrderBookSnapshot,
+    OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
+    PositionEntry, PositionRequest, PositionSnapshot, PositionUpdate, Price, PriceLimits,
+    PriceLimitsRequest, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity, SecurityStatus,
+    SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side, SymbolTicker,
+    TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
+    TradingSessionStatusHaltReason, TradingSessionStatusRequest, TradingSessionStatusStatus,
+    UserLiquidation,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -911,13 +913,76 @@ pub fn sample_price_limits() -> PriceLimits {
     }
 }
 
+pub fn sample_batch_request() -> BatchRequest {
+    BatchRequest {
+        batch_id: "BAT-001".to_string(),
+        account: "DEMO".to_string(),
+        actions: vec![
+            BatchAction {
+                kind: BatchActionKind::NewOrder,
+                new_order: Some(NewOrderSingle {
+                    cl_ord_id: "BAT-ORD-1".to_string(),
+                    side: Side::Buy,
+                    order_qty: Quantity(1.0),
+                    price: Some(Price(10.0)),
+                    stop_price: None,
+                    symbol: "AAPL".to_string(),
+                    order_type: OrderType::Limit,
+                    time_in_force: TimeInForce::Day,
+                    expire_time: None,
+                    account: Some("DEMO".to_string()),
+                    strategy_id: None,
+                    security_id: None,
+                    id_source: None,
+                    security_exchange: None,
+                    post_only: Some(true),
+                    reduce_only: None,
+                }),
+                cancel: None,
+                replace: None,
+            },
+            BatchAction {
+                kind: BatchActionKind::Cancel,
+                new_order: None,
+                cancel: Some(sample_cancel_request()),
+                replace: None,
+            },
+        ],
+    }
+}
+
+pub fn sample_batch_report() -> BatchReport {
+    BatchReport {
+        batch_id: "BAT-001".to_string(),
+        account: "DEMO".to_string(),
+        outcome: BatchReportOutcome::Applied,
+        results: vec![
+            BatchResult {
+                index: 0,
+                kind: BatchResultKind::NewOrder,
+                cl_ord_id: "BAT-ORD-1".to_string(),
+                status: BatchResultStatus::Applied,
+                reject_reason: None,
+            },
+            BatchResult {
+                index: 1,
+                kind: BatchResultKind::Cancel,
+                cl_ord_id: "CL-ORD-ID-1".to_string(),
+                status: BatchResultStatus::Applied,
+                reject_reason: None,
+            },
+        ],
+        timestamp: 1_700_000_000_000_000_000,
+    }
+}
+
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
         encode_account_summary, encode_aggregate_trade_batch, encode_aggregate_trade_event,
         encode_aggregate_trade_request, encode_all_mids_batch, encode_all_mids_request,
-        encode_balance_snapshot, encode_balance_update, encode_best_bid_offer,
-        encode_cancel_reject, encode_cancel_replace_request, encode_cancel_request,
-        encode_candle_bar, encode_candle_bar_batch, encode_candle_bar_event,
+        encode_balance_snapshot, encode_balance_update, encode_batch_report, encode_batch_request,
+        encode_best_bid_offer, encode_cancel_reject, encode_cancel_replace_request,
+        encode_cancel_request, encode_candle_bar, encode_candle_bar_batch, encode_candle_bar_event,
         encode_candle_bar_request, encode_capabilities_request, encode_capabilities_response,
         encode_execution_report, encode_fill_history_batch, encode_fill_history_request,
         encode_funding_history_batch, encode_funding_history_request, encode_funding_payment,
@@ -1024,6 +1089,8 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "MassCancelReport" => encode_mass_cancel_report(&sample_mass_cancel_report()),
         "PriceLimitsRequest" => encode_price_limits_request(&sample_price_limits_request()),
         "PriceLimits" => encode_price_limits(&sample_price_limits()),
+        "BatchRequest" => encode_batch_request(&sample_batch_request()),
+        "BatchReport" => encode_batch_report(&sample_batch_report()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;
@@ -1042,6 +1109,24 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
             .map_err(|e| anyhow!("sbe decode: {e}"))?;
         if decoded != want {
             return Err(anyhow!("sbe round-trip capabilities mismatch: {decoded:?}"));
+        }
+    }
+    if vector.message_type == "BatchRequest" {
+        let want = sample_batch_request();
+        let decoded = fig_core::sbe::decode_batch_request(&encoded)
+            .map_err(|e| anyhow!("sbe decode: {e}"))?;
+        if decoded != want {
+            return Err(anyhow!(
+                "sbe round-trip batch request mismatch: {decoded:?}"
+            ));
+        }
+    }
+    if vector.message_type == "BatchReport" {
+        let want = sample_batch_report();
+        let decoded =
+            fig_core::sbe::decode_batch_report(&encoded).map_err(|e| anyhow!("sbe decode: {e}"))?;
+        if decoded != want {
+            return Err(anyhow!("sbe round-trip batch report mismatch: {decoded:?}"));
         }
     }
     Ok(())

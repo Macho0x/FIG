@@ -2,6 +2,20 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.5
+
+### Added
+- **Crypto track locked** as the active P3 workstream. Institutional FIX dialect
+  work is parked ([TODO.md](TODO.md) §0.5 / §0.6).
+- **Atomic multi-action `REQUEST`** ([ADR 0010](docs/adr/0010-batch-request.md)):
+  `BatchRequest` / `BatchReport` on `POST trading/accounts/{account}/batch`.
+  All-or-nothing; envelope errors are `STREAM_ERROR`; trading rejects stay in
+  the report. SBE templates 63–64 append after price limits. Reference cap is
+  16 actions. FIX/OUCH stay one message per action.
+
+### Changed
+- Conformance SBE coverage is 89 vectors (65 SBE), including the batch envelope.
+
 ## 1.4.4
 
 ### Added

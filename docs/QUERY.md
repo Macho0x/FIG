@@ -43,6 +43,7 @@ Order history (>50 rows in exchange-sim) uses this pattern today.
 | Margin summary | `accounts/{account}/margin` | (empty GET) | `MarginSummary` |
 | Open orders | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` | `OpenOrdersSnapshot` |
 | Mass cancel | `trading/accounts/{account}/orders/masscancel` | `MassCancelRequest` (POST) | `MassCancelReport` |
+| Atomic batch | `trading/accounts/{account}/batch` | `BatchRequest` (POST) | `BatchReport` |
 | Order history | `trading/accounts/{account}/orders` | `OrderHistoryRequest` | `OrderHistoryBatch` (+ stream) |
 | Fill history | `accounts/{account}/fills` | `FillHistoryRequest` | `FillHistoryBatch` |
 | Funding history | `accounts/{account}/funding` | `FundingHistoryRequest` | `FundingHistoryBatch` |

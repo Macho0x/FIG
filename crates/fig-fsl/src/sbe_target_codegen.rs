@@ -36,33 +36,44 @@ pub fn generate_sbe_target(schema: &Schema, lang: SbeTargetLang) -> String {
         out.push('\n');
     }
 
-    // Named struct type-defs (`type X { ... }`), then inline struct fields.
-    for td in &schema.type_defs {
-        if let Some(fields) = &td.fields {
-            out.push_str(&generate_target_struct(
-                lang, &td.name, fields, &td.name, &structs, &messages,
-            ));
-            out.push('\n');
-        }
-    }
     for (name, fields) in &inline_struct_types {
         out.push_str(&generate_target_inline_struct(lang, name, fields));
         out.push('\n');
     }
 
-    for (template_id, msg) in schema.messages.iter().enumerate() {
-        let tid = (template_id + 1) as u16;
-        // Value struct for the message.
-        out.push_str(&target_message_struct_decl(lang, msg, &structs, &messages));
-        out.push('\n');
-        out.push_str(&generate_target_message_body_encoder(lang, msg, &sets));
-        out.push('\n');
-        out.push_str(&generate_target_message_body_decoder(lang, msg, &sets));
-        out.push('\n');
-        out.push_str(&generate_target_message_encoder(lang, msg, tid, &sets));
-        out.push('\n');
-        out.push_str(&generate_target_message_decoder(lang, msg, tid, &sets));
-        out.push('\n');
+    // Type-defs may nest messages (`BatchAction.new_order: NewOrderSingle optional`).
+    // C++ `std::optional<T>` needs T complete, so emit in dependency order.
+    // SBE template IDs stay merge-order (`schema.messages` index + 1).
+    let template_ids: std::collections::HashMap<&str, u16> = schema
+        .messages
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.name.as_str(), (i + 1) as u16))
+        .collect();
+    for name in topo_composite_order(schema, &structs, &messages) {
+        if let Some(td) = schema
+            .type_defs
+            .iter()
+            .find(|td| td.name == name && td.fields.is_some())
+        {
+            let fields = td.fields.as_ref().expect("filtered");
+            out.push_str(&generate_target_struct(
+                lang, &td.name, fields, &td.name, &structs, &messages,
+            ));
+            out.push('\n');
+        } else if let Some(msg) = schema.messages.iter().find(|m| m.name == name) {
+            let tid = template_ids[msg.name.as_str()];
+            out.push_str(&target_message_struct_decl(lang, msg, &structs, &messages));
+            out.push('\n');
+            out.push_str(&generate_target_message_body_encoder(lang, msg, &sets));
+            out.push('\n');
+            out.push_str(&generate_target_message_body_decoder(lang, msg, &sets));
+            out.push('\n');
+            out.push_str(&generate_target_message_encoder(lang, msg, tid, &sets));
+            out.push('\n');
+            out.push_str(&generate_target_message_decoder(lang, msg, tid, &sets));
+            out.push('\n');
+        }
     }
     out.push_str(&file_footer(lang));
     out
@@ -1040,6 +1051,92 @@ fn is_message_name(name: &str, messages: &std::collections::HashSet<String>) -> 
     messages.contains(name)
 }
 
+fn collect_named_type_refs(ft: &FieldType, out: &mut Vec<String>) {
+    match ft {
+        FieldType::Named(n) => out.push(n.clone()),
+        FieldType::List(inner) => collect_named_type_refs(inner, out),
+        FieldType::InlineStruct(fields) => {
+            for field in fields {
+                collect_named_type_refs(&field.field_type, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Composite types (fielded `type` defs + messages) in dependency-first order.
+fn topo_composite_order(
+    schema: &Schema,
+    structs: &std::collections::HashSet<String>,
+    messages: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    use std::collections::{HashMap, HashSet, VecDeque};
+
+    let mut nodes: Vec<String> = Vec::new();
+    let mut fields_of: HashMap<String, Vec<Field>> = HashMap::new();
+    for td in &schema.type_defs {
+        if let Some(fields) = &td.fields {
+            nodes.push(td.name.clone());
+            fields_of.insert(td.name.clone(), fields.clone());
+        }
+    }
+    for msg in &schema.messages {
+        nodes.push(msg.name.clone());
+        fields_of.insert(msg.name.clone(), msg.fields.clone());
+    }
+    let node_set: HashSet<String> = nodes.iter().cloned().collect();
+
+    let mut remaining_deps: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
+    for n in &nodes {
+        remaining_deps.insert(n.clone(), HashSet::new());
+        dependents.insert(n.clone(), Vec::new());
+    }
+    for n in &nodes {
+        let mut refs = Vec::new();
+        for field in &fields_of[n] {
+            collect_named_type_refs(&field.field_type, &mut refs);
+        }
+        for r in refs {
+            if r != *n && node_set.contains(&r) && (structs.contains(&r) || messages.contains(&r)) {
+                remaining_deps.get_mut(n).unwrap().insert(r.clone());
+                dependents.get_mut(&r).unwrap().push(n.clone());
+            }
+        }
+    }
+
+    let mut ready: VecDeque<String> = VecDeque::new();
+    for n in &nodes {
+        if remaining_deps[n].is_empty() {
+            ready.push_back(n.clone());
+        }
+    }
+    let mut ordered = Vec::with_capacity(nodes.len());
+    let mut seen: HashSet<String> = HashSet::new();
+    while let Some(n) = ready.pop_front() {
+        if !seen.insert(n.clone()) {
+            continue;
+        }
+        ordered.push(n.clone());
+        let kids = dependents[&n].clone();
+        for m in kids {
+            remaining_deps.get_mut(&m).unwrap().remove(&n);
+            if remaining_deps[&m].is_empty() {
+                ready.push_back(m);
+            }
+        }
+    }
+    if ordered.len() != nodes.len() {
+        let leftover: Vec<_> = nodes
+            .iter()
+            .filter(|n| !seen.contains(*n))
+            .cloned()
+            .collect();
+        panic!("sbe target codegen: cyclic composite types: {leftover:?}");
+    }
+    ordered
+}
+
 /// Scalar kind for a field, if it is a scalar (named alias or inline base).
 fn field_scalar_kind(ft: &FieldType) -> Option<ScalarKind> {
     let token = match ft {
@@ -1365,10 +1462,28 @@ fn target_encode_field(
             out.push_str(&encode_named_value(lang, &struct_name, &pname, buf, false));
         }
         FieldType::Named(n) if is_message_name(n, messages) => {
-            out.push_str(&encode_body_value(lang, n, &pname, buf, false));
+            if optional {
+                out.push_str(&encode_optional_presence(lang, buf, &pname));
+                out.push_str(&encode_if_present(
+                    lang,
+                    &pname,
+                    &encode_body_value(lang, n, &deref_optional(lang, &pname), buf, false),
+                ));
+            } else {
+                out.push_str(&encode_body_value(lang, n, &pname, buf, false));
+            }
         }
         FieldType::Named(n) if is_struct_name(n, structs) => {
-            out.push_str(&encode_named_value(lang, n, &pname, buf, false));
+            if optional {
+                out.push_str(&encode_optional_presence(lang, buf, &pname));
+                out.push_str(&encode_if_present(
+                    lang,
+                    &pname,
+                    &encode_named_value(lang, n, &deref_optional(lang, &pname), buf, false),
+                ));
+            } else {
+                out.push_str(&encode_named_value(lang, n, &pname, buf, false));
+            }
         }
         _ => {
             if sbe_field_wire_type_of(&field.field_type) == "str" {
@@ -1384,6 +1499,42 @@ fn target_encode_field(
         }
     }
     out
+}
+
+fn encode_optional_presence(lang: SbeTargetLang, buf: &str, pname: &str) -> String {
+    match lang {
+        SbeTargetLang::Go => format!(
+            "\tif {pname} != nil {{\n\t\t{buf} = append({buf}, 1)\n\t}} else {{\n\t\t{buf} = append({buf}, 0)\n\t}}\n"
+        ),
+        SbeTargetLang::Cpp => format!("        buf.push_back({pname}.has_value() ? 1 : 0);\n"),
+        SbeTargetLang::Csharp => {
+            format!("            buf.Add((byte)({pname} != null ? 1 : 0));\n")
+        }
+        SbeTargetLang::TypeScript => format!("  buf.push({pname} != null ? 1 : 0);\n"),
+        SbeTargetLang::Zig => format!("        try {buf}.append(if ({pname} != null) 1 else 0);\n"),
+    }
+}
+
+fn deref_optional(lang: SbeTargetLang, pname: &str) -> String {
+    match lang {
+        SbeTargetLang::Go => format!("*{pname}"),
+        SbeTargetLang::Cpp => format!("*{pname}"),
+        SbeTargetLang::Csharp => pname.to_string(),
+        SbeTargetLang::TypeScript => pname.to_string(),
+        SbeTargetLang::Zig => format!("{pname}.?"),
+    }
+}
+
+fn encode_if_present(lang: SbeTargetLang, pname: &str, inner: &str) -> String {
+    match lang {
+        SbeTargetLang::Go => format!("\tif {pname} != nil {{\n{inner}\t}}\n"),
+        SbeTargetLang::Cpp => format!("        if ({pname}.has_value()) {{\n{inner}        }}\n"),
+        SbeTargetLang::Csharp => {
+            format!("            if ({pname} != null)\n            {{\n{inner}            }}\n")
+        }
+        SbeTargetLang::TypeScript => format!("  if ({pname} != null) {{\n{inner}  }}\n"),
+        SbeTargetLang::Zig => format!("        if ({pname} != null) {{\n{inner}        }}\n"),
+    }
 }
 
 /// Encode a nested message value through its Body encoder.
@@ -1715,10 +1866,20 @@ fn target_decode_field(
             });
         }
         FieldType::Named(n) if is_message_name(n, messages) => {
-            out.push_str(&decode_body_value(lang, n, &var, parent));
+            if optional {
+                let inner = decode_body_value(lang, n, &format!("{var}_inner"), parent);
+                out.push_str(&decode_optional_nested(lang, &var, n, &inner));
+            } else {
+                out.push_str(&decode_body_value(lang, n, &var, parent));
+            }
         }
         FieldType::Named(n) if is_struct_name(n, structs) => {
-            out.push_str(&decode_named_value(lang, n, &var, parent));
+            if optional {
+                let inner = decode_named_value(lang, n, &format!("{var}_inner"), parent);
+                out.push_str(&decode_optional_nested(lang, &var, n, &inner));
+            } else {
+                out.push_str(&decode_named_value(lang, n, &var, parent));
+            }
         }
         _ => {
             if sbe_field_wire_type_of(&field.field_type) == "str" {
@@ -1747,11 +1908,31 @@ fn decode_scalar_expr(lang: SbeTargetLang, ft: &FieldType, buf: &str) -> String 
     kind.lang_from_wire(lang, &raw)
 }
 
+fn decode_optional_nested(lang: SbeTargetLang, var: &str, ty: &str, inner: &str) -> String {
+    match lang {
+        SbeTargetLang::Go => format!(
+            "\tvar {var} *{ty}\n\tif readU8(buf, &pos) == 1 {{\n{inner}\t\t{var} = &{var}_inner\n\t}} else {{\n\t\t{var} = nil\n\t}}\n"
+        ),
+        SbeTargetLang::Cpp => format!(
+            "        std::optional<{ty}> {var};\n        if (take_u8(buf, pos) == 1) {{\n{inner}            {var} = {var}_inner;\n        }}\n"
+        ),
+        SbeTargetLang::Csharp => format!(
+            "            {ty} {var} = null;\n            if (Wire.TakeU8(buf, ref pos) == 1)\n            {{\n{inner}                {var} = {var}_inner;\n            }}\n"
+        ),
+        SbeTargetLang::TypeScript => format!(
+            "  let {var}: {ty} | null = null;\n  if (readU8(buf, pos) === 1) {{\n{inner}    {var} = {var}_inner;\n  }}\n"
+        ),
+        SbeTargetLang::Zig => format!(
+            "        var {var}: ?{ty} = null;\n        if (readU8(buf, &pos) == 1) {{\n{inner}            {var} = {var}_inner;\n        }}\n"
+        ),
+    }
+}
+
 /// Decode a nested message through its Body decoder.
 fn decode_body_value(lang: SbeTargetLang, name: &str, var: &str, parent: &str) -> String {
     match lang {
         SbeTargetLang::Go => format!("\t{var}, {var}_pos, {var}_err := {name}BodyDecoderDecode(buf, pos)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n\tpos = {var}_pos\n"),
-        SbeTargetLang::Cpp => format!("        auto [{var}, {var}_n] = {name}BodyDecoder::decode(buf, pos);\n        pos += {var}_n;\n"),
+        SbeTargetLang::Cpp => format!("        auto [{var}, {var}_n] = {name}BodyDecoder::decode(buf, pos);\n        pos = {var}_n;\n"),
         SbeTargetLang::Csharp => format!("            var ({var}, {var}Pos) = {name}BodyDecoder.Decode(buf, pos);\n            pos = {var}Pos;\n"),
         SbeTargetLang::TypeScript => format!("  const {var} = {name}BodyDecoderDecode(buf, pos);\n"),
         SbeTargetLang::Zig => format!("        const {var} = try {name}BodyDecoder.decode(allocator, buf, &pos);\n"),
@@ -1761,7 +1942,7 @@ fn decode_body_value(lang: SbeTargetLang, name: &str, var: &str, parent: &str) -
 fn decode_named_value(lang: SbeTargetLang, name: &str, var: &str, parent: &str) -> String {
     match lang {
         SbeTargetLang::Go => format!("\t{var}, {var}_pos, {var}_err := {name}DecoderDecode(buf, pos)\n\tif {var}_err != nil {{\n\t\treturn {parent}{{}}, pos, {var}_err\n\t}}\n\tpos = {var}_pos\n"),
-        SbeTargetLang::Cpp => format!("        auto [{var}, {var}_n] = {name}Decoder::decode(buf, pos);\n        pos += {var}_n;\n"),
+        SbeTargetLang::Cpp => format!("        auto [{var}, {var}_n] = {name}Decoder::decode(buf, pos);\n        pos = {var}_n;\n"),
         SbeTargetLang::Csharp => format!("            var ({var}, {var}Pos) = {name}Decoder.Decode(buf, pos);\n            pos = {var}Pos;\n"),
         SbeTargetLang::TypeScript => format!("  const {var} = {name}DecoderDecode(buf, pos);\n"),
         SbeTargetLang::Zig => format!("        const {var} = try {name}.decode(allocator, buf, &pos);\n"),
@@ -2045,6 +2226,23 @@ mod tests {
         assert!(code.contains("NewOrderSingleEncoder"));
         assert!(code.contains("SCHEMA_ID"));
         assert!(code.contains("namespace fig::sbe"));
+    }
+
+    #[test]
+    fn test_generate_sbe_target_optional_nested_batch() {
+        let schema = load_merged_trading_schema();
+        let go = generate_sbe_target(&schema, SbeTargetLang::Go);
+        assert!(go.contains("*NewOrderSingle"));
+        assert!(go.contains("BatchRequestEncoder"));
+        let cpp = generate_sbe_target(&schema, SbeTargetLang::Cpp);
+        assert!(cpp.contains("std::optional<NewOrderSingle>"));
+        assert!(cpp.contains("pos = new_order_inner_n") || cpp.contains("pos = new_order_n"));
+        let nos = cpp.find("struct NewOrderSingle {").expect("NewOrderSingle");
+        let bat = cpp.find("struct BatchAction {").expect("BatchAction");
+        assert!(
+            nos < bat,
+            "C++ needs NewOrderSingle complete before BatchAction"
+        );
     }
 
     #[test]
