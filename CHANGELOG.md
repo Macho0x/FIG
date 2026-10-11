@@ -2,6 +2,18 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.3
+
+### Changed
+- README and SECURITY describe the protocol as SPEC 1.0.0 (*Stable*). That version
+  changes only on a wire break. The schema catalog is additive; calling the wire
+  format frozen overstated that.
+- TODO.md matches the tree. Shipped work is no longer listed as deferred: server
+  0-RTT token checks, `RedisReplayCache`, Redis session CI, fuzz in required CI,
+  the JWT rotation runbook, funding/ledger/liquidation/agg-trade helpers, generated
+  SBE, market-state helpers, and the OUCH/ITCH adapters. Conformance counts are
+  the 85 vectors in `tests/conformance/vectors/v1.json`. Open rows in §0 are unchanged.
+
 ## 1.4.2
 
 ### Added

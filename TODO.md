@@ -198,20 +198,22 @@ and post-1.0 rows remain tracked in [§0](#0-active-backlog-fig-repo) / §18.7.
 Use during Engineering / Security review. **1.0** means the reference Rust stack +
 FFI/Python wire path is production-ready for **protocol adoption**; **post-1.0**
 items do not block the SPEC version bump if accepted or ticketed in §18.7.
+The right column is that deferral list, updated with what has shipped since.
+Current open work is [§0](#0-active-backlog-fig-repo).
 
 | Area | In 1.0 (required / done) | Post-1.0 (deferred → §18.7) |
 |---|---|---|
 | **Release gate** | Criteria tables ✅ + sign-off + SPEC → `1.0.0` | — |
 | **Wire codecs** | CBOR + SBE only (SPEC §3.3, §11.2) | Protobuf wire restoration (not planned) |
-| **Rust core** | §1–15 framing, transport, sessions, auth, observability | Tier 4 frames in all SDKs (ACK_RANGE, …) |
-| **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list stream polish; every edge path in `fig-client` |
-| **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | funding, ledger, liquidations, agg trades, persistent multiplexer SDK |
-| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig FFI wrappers; per-language generated SBE compiled + hex-parity-checked | Native TREE per language |
-| **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Server `accept_0rtt` token read + shared Redis replay cache (HA) |
-| **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Redis round-trip in CI service container |
-| **Security** | mTLS, rate limits, load smoke, fuzz target exists | Fuzz in required CI; external pen test; JWT key rotation runbook |
-| **Schema IDs** | Single wire `schema_id = 0x01` (documented) | Split `0x02` market / `0x03` account domains |
-| **Ops** | docker-compose, gateway health/metrics | crates.io / npm publish automation |
+| **Rust core** | §1–15 framing, transport, sessions, auth, observability | Open: Tier 4 frames in every language SDK ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) |
+| **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list subscribe is wired on `trading/accounts/{account}/orderlists`. Open catalog gaps stay in §0 (price limits, open interest, settlement, block trades). |
+| **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | Shipped: funding, ledger, liquidations, agg trades ([§0.3](#03-p2--reference-client-and-sdk-polish)). Open: `AccountCache` on FFI/Python ([§0.7](#07-p4--long-horizon--optional)). No persistent multiplexer SDK in the tree. |
+| **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig/Java FFI wrappers; generated SBE hex-checked; market-state helpers on `fig.h` | Open: native TREE per language ([§0.7](#07-p4--long-horizon--optional)). Per-language CBOR serializers remain 🔶 ([§16.2](#162-fsl-codegen-parity-track-a)). |
+| **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Shipped: server `accept_0rtt` verifies the resumption token; `RedisReplayCache` ([§0.2](#02-p1--security-and-correctness)) |
+| **Sessions HA** | `RedisSessionStore`, compose, `DurableSessionStore` | Shipped: Redis session round-trip in the CI service container ([§0.7](#07-p4--long-horizon--optional)) |
+| **Security** | mTLS, rate limits, load smoke, fuzz target exists | Shipped: frame + SBE fuzz in required CI; JWT key-rotation runbook. Open: external pen test ([§0.7](#07-p4--long-horizon--optional)) |
+| **Schema IDs** | Single wire `schema_id = 0x01` (documented) | Open: split `0x02` market / `0x03` account ([§0.7](#07-p4--long-horizon--optional)) |
+| **Ops** | docker-compose, gateway health/metrics | Open: crates.io / npm publish automation ([§0.7](#07-p4--long-horizon--optional)) |
 | **Venue-owned** | Wire auth contract (§9.3) | API key issuance, RS256/KMS, matching engine |
 
 ### 18.7 Post-1.0 outstanding (FIG project)
@@ -264,7 +266,7 @@ FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
 | Transport | TLS 1.3, cert verification by default, mTLS w/ client CA, cert rotation | ✅ | Verify prod deploy uses `FIG_MTLS_CA` and `FIG_TLS_CA` |
 | Auth | Constant-time compare, JWT (`alg` enforced), path policy | ✅ | RS256/KMS is venue responsibility |
 | DoS | Rate limiter, flood guard, load smoke — all wired into the receive path | ✅ | `fig-load` in CI |
-| 0-RTT | Server-signed tokens verified before restore; replay window | ✅ | Shared Redis HA cache still tracked (§18.7) |
+| 0-RTT | Server-signed tokens verified before restore; replay window | ✅ | `RedisReplayCache` via `FIG_REPLAY_REDIS_URL` ([§0.2](#02-p1--security-and-correctness)) |
 | Fuzz | Frame + SBE decoders | ✅ | Both targets required in CI |
 | Input | Bounds checks: frames, SBE, FIX, extension TLV | ✅ | Regression tests per area |
 | External | Pen test | ⬜ | Optional for the stack release |
@@ -394,7 +396,7 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ⬜ | FIX gateway: full institutional dialect matrix | High | Today: subset (Logon, D/F/G/8/9, some MD) — see `fix.rs` |
+| ⬜ | FIX gateway: full institutional dialect matrix | High | Today: Logon, D/F/G, ExecutionReport/CancelReject, resend (35=2), gap-fill (35=4), mass cancel (35=q/r), trading-session (35=g/h), security status (35=e/f), drop copy, and some MD. Still missing allocations, trade capture, multi-leg, and IOI — see `fix.rs` |
 | ✅ | FIX: mass cancel, trading session status, security status | High | FIX 35=q/r, 35=g/h, 35=e/f on native paths |
 | ⬜ | FIX: allocations, trade capture, multi-leg, IOI | High | Institutional order types |
 | 🔶 | FSL: market state & control (halts, auctions, pre-open, price limits) | High | `schemas/marketstate.fsl` + sim hub; price limits not in catalog |
@@ -434,9 +436,9 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 
 | Phase | Deliverable | FIG repo | Venue |
 |---|---|---|---|
-| **P1** | FIX drop-copy / order-entry bridge | Expand `fix.rs`, cert tests | Member OMS integration |
-| **P2** | Market-state FSL domain + halts/auctions | New FSL + exchange-sim reference | Production supervision |
-| **P3** | MD distribution strategy | [ADR 0009](docs/adr/0009-market-data-plane.md) ITCH L2 egress | Keep incumbent multicast for HFT MD |
+| **P1** | FIX drop-copy / order-entry bridge | ✅ order entry, drop copy, resend/gap-fill cert harness. Open: allocations, trade capture, multi-leg, IOI ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) | Member OMS integration |
+| **P2** | Market-state FSL domain + halts/auctions | 🔶 `schemas/marketstate.fsl` + sim hub (session, security, mass cancel). Price limits are not in the catalog ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) | Production supervision |
+| **P3** | MD distribution strategy | ✅ [ADR 0009](docs/adr/0009-market-data-plane.md) ITCH L2 egress (`--itch-addr`, `--itch-multicast`) | Keep incumbent multicast for HFT MD |
 
 **Rough effort:** Protocol surface ~**25–35%** for CME-equivalent connectivity;
 institutional cert + MD distribution largely **greenfield** relative to current FIG.
@@ -448,9 +450,9 @@ institutional cert + MD distribution largely **greenfield** relative to current 
 | Dimension | Hyperliquid-shaped (§20) | CME-shaped (§21) |
 |---|---|---|
 | **§17 API catalog fit** | High | Low (different MD/order models) |
-| **Gateway migration value** | High (JSON WS → FIG) | Medium (FIX subset only) |
+| **Gateway migration value** | High (JSON WS → FIG) | Medium (order entry, drop copy, session/security/mass cancel; not alloc/TC/multi-leg/IOI) |
 | **Native FIG as primary wire** | Plausible for colo MM clients | Unlikely for core Globex MD |
-| **Biggest FIG-project gap** | Product FSL (TWAP/vaults/chain events) | FIX completeness + named binary adapters |
+| **Biggest FIG-project gap** | Product FSL (TWAP/vaults/chain events) | FIX dialect still missing alloc / trade capture / multi-leg / IOI, plus price limits, open interest, settlement, and block trades. OUCH and ITCH adapters shipped. |
 | **Biggest venue gap** | Chain + matching at scale | Clearing, cert, surveillance, MDP |
 | **Sensible first milestone** | Gateway + native FIG orders/MD | FIX drop-copy / order-entry bridge |
 | **Depends on** | §18 1.0 + §19 shared foundation | §18 1.0 + §19 shared foundation |
@@ -462,8 +464,10 @@ institutional cert + MD distribution largely **greenfield** relative to current 
 Bring non-Rust languages to full SPEC parity with Rust. Rust has (1) rich
 **FSL codegen** (`RustCodegen` + `--lang sbe`) and (2) a complete **`fig-core`
 runtime** (~20 modules). All `ftlc --lang` targets emit typed enums, nested structs,
-type aliases, message metadata, and CBOR field manifests; wire codecs delegate to
-`fig-ffi` / `fig-python` rather than per-language SBE rewrites.
+type aliases, message metadata, and CBOR field manifests. Go, C++, C#, TypeScript,
+and Zig also have generated SBE encoders and decoders, hex-checked in CI. CBOR on
+the other languages still goes through `fig-ffi` / `fig-python`; those
+per-language CBOR serializers stay 🔶 in §16.2.
 
 Schema evolution policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).
 
@@ -572,7 +576,7 @@ Mirror [`RustCodegen`](crates/fig-fsl/src/codegen.rs) for every `--lang` target.
 | 🔶 | C++: structs + CBOR/JSON helpers | High | FSL types; wire CBOR via `fig-ffi` |
 | 🔶 | C#: classes + System.Text.Json + CBOR | High | FSL types; wire CBOR via `fig-ffi` |
 | 🔶 | TypeScript: interfaces + CBOR encode/decode | Medium | FSL types + `bindings/typescript/fig.ts` over `fig-ffi` |
-| 🔶 | OCaml: records + variant enums + CBOR | Low | FSL types + ctypes; wire via `fig-ffi` |
+| 🔶 | OCaml: records + variant enums + CBOR | Low | FSL types + C stubs (`fig_stubs.c`); wire via `fig-ffi` |
 | 🔶 | Zig: structs + CBOR helpers | Medium | FSL types + `@cImport`; wire via `fig-ffi` |
 | ✅ | SBE encode/decode codegen per language | Medium | `ftlc --lang sbe-{go,cpp,csharp,typescript,zig}` → `bindings/` via `sbe_target_codegen.rs` + xtask |
 | ✅ | Verify `sbe-xml` vs Rust `--lang sbe` wire compatibility | Medium | Generated-code tests in `crates/fig-fsl/tests/target_codegen_tests.rs` |
@@ -588,9 +592,9 @@ Wrap `fig-core` once; expose stable C ABI; bind per language.
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; live subscribe (`fig_client_subscribe` / `sub_next`); compression, fragmentation, 0-RTT, migration, stream decode; JWT + SBE |
+| ✅ | `crates/fig-ffi` crate | High | cbindgen → `fig.h`; live subscribe (`fig_client_subscribe` / `sub_next`); compression, fragmentation, 0-RTT, migration, stream decode; JWT + SBE; market-state helpers (`request_session_status`, `request_security_status`, `mass_cancel`) |
 | ✅ | FFI API surface spec | High | Frame + CBOR + client + live sub + advanced features in `fig.h` |
-| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — `request()` EOF; `subscribe()` snapshot; `subscribe_live()` / `FigPySubscription` |
+| ✅ | `fig-python` (PyO3 / maturin) | High | Reference SDK — `request()` EOF; `subscribe()` snapshot; `subscribe_live()` / `FigPySubscription`; `request_session_status`, `request_security_status`, `mass_cancel` |
 | ✅ | `fig-csharp` (P/Invoke) | Medium | `FigClient.Subscribe` / `FigSubscription.Next` + JWT + SBE |
 | ✅ | `fig-go` (cgo) | Medium | `Client.Subscribe` / `Subscription.Next` + JWT + SBE |
 | ✅ | `fig-cpp` (header + link staticlib) | Medium | `fig::Client::subscribe` / `Subscription::next` + JWT + SBE |
@@ -608,6 +612,9 @@ FigClient::connect(addr, tls_config)
 FigClient::subscribe(frame) → snapshot + live handle
 FigClient::sub_next(timeout) → STREAM_ITEM
 FigClient::request_and_recv(frame) → RESPONSE (EOF)
+FigClient::request_session_status() → TradingSessionStatus
+FigClient::request_security_status(symbol) → SecurityStatus
+FigClient::mass_cancel(...) → MassCancelReport
 FigClient::ping() / close()
 ```
 
@@ -899,7 +906,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | `CandleInterval` type | High | In `orders.fsl` (pending schema split) |
+| ✅ | `CandleInterval` type | High | Defined in `schemas/marketdata.fsl`; `account.fsl` uses `list<CandleInterval>` |
 | ✅ | `CandleBar` | High | Type + `CandleBarEvent` stream wrapper |
 | ✅ | `CandleBarRequest` → `CandleBarBatch` | High | Historical + gap backfill |
 | ✅ | `TradeHistoryRequest` → `PublicTradeBatch` | High | Trade tape query |
@@ -928,7 +935,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 | ✅ | `FundingPayment` | Medium | Stream + `FundingHistoryBatch` |
 | ✅ | `LedgerUpdate` | Medium | Stream + `LedgerHistoryBatch` + fee on fill |
 | ✅ | `UserLiquidation` | Medium | Stream on balance breach |
-| ✅ | `OrderListStatus` | Low | FSL type defined (stream wiring optional) |
+| ✅ | `OrderListStatus` | Low | Reference broker subscribe + fan-out on `trading/accounts/{account}/orderlists` |
 | ✅ | `PageInfo` | Medium | Shared pagination type in FSL |
 
 #### Trading stream gaps (extend `trading.orders.fsl`)
@@ -959,7 +966,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim; rate limit by tier pending |
+| ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim. Tier-based public MD rate limits are still open — [§0.3](#03-p2--reference-client-and-sdk-polish) |
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
 | ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
@@ -974,7 +981,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | L2 quote streaming | — | `OrderBookSnapshot` + `OrderBookDelta` on subscribe/fill; client merge helpers pending (§16) |
+| ✅ | L2 quote streaming | — | `OrderBookSnapshot` + `OrderBookDelta` on subscribe/fill; client merge is `fig-client::OrderBookState` |
 | ✅ | `handle_subscribe` for all MD paths | High | `book`, `bbo`, `trades`, `candles`, `ticker` in `broker_api` |
 | ✅ | Trade tape fan-out | High | `MarketDataHub::on_trade` + `post_fill_updates` |
 | ✅ | Candle aggregator | High | OHLCV from trades; partial + final bars |
@@ -1054,8 +1061,8 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 |---|---|---|---|
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
 | ✅ | SBE templates for hot-path streams | High | `fig_core::sbe` encoders (templates 9, 20, 22, 27, 33) |
-| ✅ | CBOR golden vectors per message | High | 30 vectors incl. snapshot/delta pairs + paginated history frame |
-| ✅ | SBE golden vectors per message | High | `sbe.candle_bar*`, `sbe.symbol_ticker`, `sbe.order_book_snapshot`, `sbe.balance_snapshot` |
+| ✅ | CBOR golden vectors per message | High | 17 CBOR vectors in `tests/conformance/vectors/v1.json` (snapshot/delta, paginated history, instrument catalog, post-only) |
+| ✅ | SBE golden vectors per message | High | 61 SBE vectors in the same file, including trading-session, security-status, and mass-cancel. File total is 85 (61 SBE, 17 CBOR, 6 frame, 1 channel). |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
 | ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE via `ContentType`; `multi_codec.rs` + integration test |
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |
@@ -1354,14 +1361,14 @@ If you want the full transport throughput benchmark back in CI later, we'll need
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | README.md | — | Full description, benchmarks, architecture |
-| ✅ | SPEC.md | — | RFC-style protocol specification (773 lines) |
+| ✅ | SPEC.md | — | RFC-style protocol specification (844 lines) |
 | ✅ | CONTRIBUTING.md | — | Development guidelines |
 | ✅ | schemas/orders.fsl | — | Complete example schema |
 | ✅ | API docs (rustdoc) | Medium | docs/API.md + module index; cargo doc --workspace |
 | ✅ | Tutorial / getting started guide | Medium | docs/TUTORIAL.md step-by-step guide |
 | ✅ | Protocol guide (deep dive) | Low | docs/PROTOCOL.md |
 | ✅ | Gateway deployment guide | Low | docs/GATEWAY.md |
-| ✅ | Architecture Decision Records (ADRs) | Low | docs/adr/README.md + 0004 FSL source of truth |
+| ✅ | Architecture Decision Records (ADRs) | Low | docs/adr/README.md (0001–0009), including 0004 FSL source of truth |
 
 ---
 
