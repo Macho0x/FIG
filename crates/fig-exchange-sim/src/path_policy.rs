@@ -54,6 +54,7 @@ fn is_get_query_path(path: &str) -> bool {
         || parse_order_book_path(path).is_some()
         || crate::market_state::parse_session_path(path)
         || crate::market_state::parse_security_status_path(path).is_some()
+        || crate::market_state::parse_price_limits_path(path).is_some()
         || path.ends_with("/fills")
         || path.ends_with("/funding")
         || path.ends_with("/ledger")
@@ -244,6 +245,17 @@ mod tests {
             .with_extension(Extension::text(
                 ExtensionTag::ChannelPath,
                 "marketdata/session",
+            ))
+            .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+        assert!(validate_interaction(&frame).is_none());
+    }
+
+    #[test]
+    fn get_allowed_on_price_limits_path() {
+        let frame = Frame::new(FrameType::Request, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/AAPL/limits",
             ))
             .with_extension(Extension::text(ExtensionTag::Method, "GET"));
         assert!(validate_interaction(&frame).is_none());

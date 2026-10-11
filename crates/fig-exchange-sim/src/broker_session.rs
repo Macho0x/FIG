@@ -58,6 +58,8 @@ pub fn capabilities_response() -> CapabilitiesResponse {
             cap("marketdata/session", RequestResponse, false),
             cap("marketdata/{symbol}/status", PubSub, false),
             cap("marketdata/{symbol}/status", RequestResponse, false),
+            cap("marketdata/{symbol}/limits", PubSub, false),
+            cap("marketdata/{symbol}/limits", RequestResponse, false),
             cap("trading/accounts/{account}/executions", PubSub, true),
             cap(
                 "trading/accounts/{account}/orders/open",
@@ -519,6 +521,8 @@ mod tests {
             ("marketdata/session", RequestResponse, false),
             ("marketdata/{symbol}/status", PubSub, false),
             ("marketdata/{symbol}/status", RequestResponse, false),
+            ("marketdata/{symbol}/limits", PubSub, false),
+            ("marketdata/{symbol}/limits", RequestResponse, false),
             ("trading/accounts/{account}/executions", PubSub, true),
             (
                 "trading/accounts/{account}/orders/open",

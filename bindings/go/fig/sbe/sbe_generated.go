@@ -9883,3 +9883,296 @@ func MassCancelReportDecoderDecode(buf []byte) (MassCancelReport, int, error) {
 	}
 	return value, pos, nil
 }
+
+// SBE message PriceLimitsRequest
+type PriceLimitsRequest struct {
+	Symbol string
+}
+
+// SBE body encoder for PriceLimitsRequest (fields only, no header).
+type PriceLimitsRequestBodyEncoder struct{}
+
+func (PriceLimitsRequestBodyEncoder) Encode(value PriceLimitsRequest, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	*buf = local
+}
+
+// SBE body decoder for PriceLimitsRequest: reads fields at pos, returns the value and the new offset.
+func PriceLimitsRequestBodyDecoderDecode(buf []byte, pos int) (PriceLimitsRequest, int, error) {
+	symbol := readString(buf, &pos)
+	value := PriceLimitsRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for PriceLimitsRequest
+type PriceLimitsRequestEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (PriceLimitsRequestEncoder) Encode(Symbol string) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 61)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 0)
+	writeString(&buf, Symbol)
+	return buf, nil
+}
+
+// SBE decoder for PriceLimitsRequest: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func PriceLimitsRequestDecoderDecode(buf []byte) (PriceLimitsRequest, int, error) {
+	if len(buf) < 8 {
+		return PriceLimitsRequest{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return PriceLimitsRequest{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 61 {
+		return PriceLimitsRequest{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	value := PriceLimitsRequest{
+		Symbol: symbol,
+	}
+	return value, pos, nil
+}
+
+// SBE message PriceLimits
+type PriceLimits struct {
+	Symbol         string
+	LowerLimit     *float64
+	UpperLimit     *float64
+	ReferencePrice *float64
+	Timestamp      int64
+	IsSnapshot     *uint8
+}
+
+// SBE body encoder for PriceLimits (fields only, no header).
+type PriceLimitsBodyEncoder struct{}
+
+func (PriceLimitsBodyEncoder) Encode(value PriceLimits, buf *[]byte) {
+	local := *buf
+	writeString(&local, value.Symbol)
+	var value_LowerLimit_v float64
+	if value.LowerLimit != nil {
+		value_LowerLimit_v = *value.LowerLimit
+	}
+	writeF64BE(&local, value_LowerLimit_v)
+	if value.LowerLimit != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	var value_UpperLimit_v float64
+	if value.UpperLimit != nil {
+		value_UpperLimit_v = *value.UpperLimit
+	}
+	writeF64BE(&local, value_UpperLimit_v)
+	if value.UpperLimit != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	var value_ReferencePrice_v float64
+	if value.ReferencePrice != nil {
+		value_ReferencePrice_v = *value.ReferencePrice
+	}
+	writeF64BE(&local, value_ReferencePrice_v)
+	if value.ReferencePrice != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	writeU64BE(&local, uint64(value.Timestamp))
+	var value_IsSnapshot_v uint8
+	if value.IsSnapshot != nil {
+		value_IsSnapshot_v = *value.IsSnapshot
+	}
+	local = append(local, uint8(value_IsSnapshot_v))
+	if value.IsSnapshot != nil {
+		local = append(local, 1)
+	} else {
+		local = append(local, 0)
+	}
+	*buf = local
+}
+
+// SBE body decoder for PriceLimits: reads fields at pos, returns the value and the new offset.
+func PriceLimitsBodyDecoderDecode(buf []byte, pos int) (PriceLimits, int, error) {
+	symbol := readString(buf, &pos)
+	lower_limit_v := readF64BE(buf, &pos)
+	var lower_limit *float64
+	if buf[pos] == 1 {
+		pos++
+		lower_limit = &lower_limit_v
+	} else {
+		pos++
+		lower_limit = nil
+	}
+	upper_limit_v := readF64BE(buf, &pos)
+	var upper_limit *float64
+	if buf[pos] == 1 {
+		pos++
+		upper_limit = &upper_limit_v
+	} else {
+		pos++
+		upper_limit = nil
+	}
+	reference_price_v := readF64BE(buf, &pos)
+	var reference_price *float64
+	if buf[pos] == 1 {
+		pos++
+		reference_price = &reference_price_v
+	} else {
+		pos++
+		reference_price = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := PriceLimits{
+		Symbol:         symbol,
+		LowerLimit:     lower_limit,
+		UpperLimit:     upper_limit,
+		ReferencePrice: reference_price,
+		Timestamp:      timestamp,
+		IsSnapshot:     is_snapshot,
+	}
+	return value, pos, nil
+}
+
+// SBE encoder for PriceLimits
+type PriceLimitsEncoder struct{}
+
+// Encode builds a complete message (header + body).
+func (PriceLimitsEncoder) Encode(Symbol string, LowerLimit *float64, UpperLimit *float64, ReferencePrice *float64, Timestamp int64, IsSnapshot *uint8) ([]byte, error) {
+	buf := make([]byte, 0, 256)
+	writeU16BE(&buf, SCHEMA_ID)
+	writeU16BE(&buf, 62)
+	writeU16BE(&buf, 0)
+	writeU16BE(&buf, 33)
+	writeString(&buf, Symbol)
+	var LowerLimit_v float64
+	if LowerLimit != nil {
+		LowerLimit_v = *LowerLimit
+	}
+	writeF64BE(&buf, LowerLimit_v)
+	if LowerLimit != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	var UpperLimit_v float64
+	if UpperLimit != nil {
+		UpperLimit_v = *UpperLimit
+	}
+	writeF64BE(&buf, UpperLimit_v)
+	if UpperLimit != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	var ReferencePrice_v float64
+	if ReferencePrice != nil {
+		ReferencePrice_v = *ReferencePrice
+	}
+	writeF64BE(&buf, ReferencePrice_v)
+	if ReferencePrice != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	writeU64BE(&buf, uint64(Timestamp))
+	var IsSnapshot_v uint8
+	if IsSnapshot != nil {
+		IsSnapshot_v = *IsSnapshot
+	}
+	buf = append(buf, uint8(IsSnapshot_v))
+	if IsSnapshot != nil {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf, nil
+}
+
+// SBE decoder for PriceLimits: validates the header and reads the body.
+// Returns the value, the offset just past the message, and an error.
+func PriceLimitsDecoderDecode(buf []byte) (PriceLimits, int, error) {
+	if len(buf) < 8 {
+		return PriceLimits{}, 0, fmt.Errorf("buffer too short for SBE header")
+	}
+	pos := 0
+	schemaID := readU16BE(buf, &pos)
+	tmplID := readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	_ = readU16BE(buf, &pos)
+	if schemaID != SCHEMA_ID {
+		return PriceLimits{}, pos, fmt.Errorf("invalid schema_id: %d", schemaID)
+	}
+	if tmplID != 62 {
+		return PriceLimits{}, pos, fmt.Errorf("invalid template_id: %d", tmplID)
+	}
+	symbol := readString(buf, &pos)
+	lower_limit_v := readF64BE(buf, &pos)
+	var lower_limit *float64
+	if buf[pos] == 1 {
+		pos++
+		lower_limit = &lower_limit_v
+	} else {
+		pos++
+		lower_limit = nil
+	}
+	upper_limit_v := readF64BE(buf, &pos)
+	var upper_limit *float64
+	if buf[pos] == 1 {
+		pos++
+		upper_limit = &upper_limit_v
+	} else {
+		pos++
+		upper_limit = nil
+	}
+	reference_price_v := readF64BE(buf, &pos)
+	var reference_price *float64
+	if buf[pos] == 1 {
+		pos++
+		reference_price = &reference_price_v
+	} else {
+		pos++
+		reference_price = nil
+	}
+	timestamp := int64(readU64BE(buf, &pos))
+	is_snapshot_v := readU8(buf, &pos)
+	var is_snapshot *uint8
+	if buf[pos] == 1 {
+		pos++
+		is_snapshot = &is_snapshot_v
+	} else {
+		pos++
+		is_snapshot = nil
+	}
+	value := PriceLimits{
+		Symbol:         symbol,
+		LowerLimit:     lower_limit,
+		UpperLimit:     upper_limit,
+		ReferencePrice: reference_price,
+		Timestamp:      timestamp,
+		IsSnapshot:     is_snapshot,
+	}
+	return value, pos, nil
+}

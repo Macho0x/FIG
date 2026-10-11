@@ -17,6 +17,7 @@ bindings caveats), start at [README.md](README.md) in this folder.
 | [TODO.md §18](../TODO.md#18-fig-10-release-criteria) | 1.0 release criteria · [§0 backlog](../TODO.md#0-active-backlog-fig-repo) |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | HA deployment and operations |
 | [PUBLISHING.md](PUBLISHING.md) | Build and install SDKs |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | SPEC vs crate vs git tag; `fig.h` contract |
 | [adr/README.md](adr/README.md) | Architecture decision records |
 | [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
@@ -131,6 +132,8 @@ Supported `--lang` values: `rust`, `sbe`, `sbe-go`, `sbe-cpp`, `sbe-csharp`, `sb
 | [`market_data`](../crates/fig-exchange-sim/src/market_data.rs) | Candles, trades, BBO, ticker aggregation |
 | [`account_state`](../crates/fig-exchange-sim/src/account_state.rs) | Balances, positions, funding, ledger |
 | [`auth`](../crates/fig-exchange-sim/src/auth.rs) | Simulator test harness: `fig-dev-{account}` path scoping (not production issuance) |
+| [`market_state`](../crates/fig-exchange-sim/src/market_state.rs) | Session status, security status, price collars |
+| [`md_rate`](../crates/fig-exchange-sim/src/md_rate.rs) | Public MD rate limits by tier (SPEC §9.3) |
 | [`matching`](../crates/fig-exchange-sim/src/matching.rs) | Price-time matching engine |
 | [`orderbook`](../crates/fig-exchange-sim/src/orderbook.rs) | Limit order book |
 

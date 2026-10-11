@@ -7035,3 +7035,174 @@ pub const MassCancelReportDecoder = struct {
     }
 };
 
+/// SBE message PriceLimitsRequest
+pub const PriceLimitsRequest = struct {
+    symbol: []const u8,
+};
+
+/// SBE body encoder for PriceLimitsRequest (fields only, no header).
+pub const PriceLimitsRequestBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: PriceLimitsRequest, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.symbol);
+    }
+};
+
+/// SBE body decoder for PriceLimitsRequest: reads fields at `pos`.
+pub const PriceLimitsRequestBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PriceLimitsRequest {
+        var value: PriceLimitsRequest = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE encoder for PriceLimitsRequest
+pub const PriceLimitsRequestEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 61);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 0);
+        try writeString(buf, symbol);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for PriceLimitsRequest: validates the header and reads the body.
+pub const PriceLimitsRequestDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PriceLimitsRequest {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 61) return error.InvalidTemplateId;
+        var value: PriceLimitsRequest = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        value.symbol = symbol;
+        return value;
+    }
+};
+
+/// SBE message PriceLimits
+pub const PriceLimits = struct {
+    symbol: []const u8,
+    lower_limit: ?f64,
+    upper_limit: ?f64,
+    reference_price: ?f64,
+    timestamp: i64,
+    is_snapshot: ?u8,
+};
+
+/// SBE body encoder for PriceLimits (fields only, no header).
+pub const PriceLimitsBodyEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, value: PriceLimits, buf: *std.ArrayList(u8)) !void {
+        _ = allocator;
+        try writeString(buf, value.symbol);
+        try writeF64BE(buf, value.lower_limit orelse 0);
+        try buf.append(if (value.lower_limit != null) 1 else 0);
+        try writeF64BE(buf, value.upper_limit orelse 0);
+        try buf.append(if (value.upper_limit != null) 1 else 0);
+        try writeF64BE(buf, value.reference_price orelse 0);
+        try buf.append(if (value.reference_price != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(value.timestamp)));
+        try buf.append(@intCast(value.is_snapshot orelse 0));
+        try buf.append(if (value.is_snapshot != null) 1 else 0);
+    }
+};
+
+/// SBE body decoder for PriceLimits: reads fields at `pos`.
+pub const PriceLimitsBodyDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8, pos: *usize) !PriceLimits {
+        var value: PriceLimits = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const lower_limit_v = readF64BE(buf, &pos);
+        var lower_limit: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; lower_limit = lower_limit_v; } else { pos += 1; }
+        const upper_limit_v = readF64BE(buf, &pos);
+        var upper_limit: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; upper_limit = upper_limit_v; } else { pos += 1; }
+        const reference_price_v = readF64BE(buf, &pos);
+        var reference_price: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; reference_price = reference_price_v; } else { pos += 1; }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.lower_limit = lower_limit;
+        value.upper_limit = upper_limit;
+        value.reference_price = reference_price;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+
+/// SBE encoder for PriceLimits
+pub const PriceLimitsEncoder = struct {
+    pub fn encode(allocator: std.mem.Allocator, symbol: []const u8, lower_limit: ?f64, upper_limit: ?f64, reference_price: ?f64, timestamp: i64, is_snapshot: ?u8) ![]u8 {
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
+        const buf = &list;
+        try writeU16BE(buf, SCHEMA_ID);
+        try writeU16BE(buf, 62);
+        try writeU16BE(buf, 0);
+        try writeU16BE(buf, 33);
+        try writeString(buf, symbol);
+        try writeF64BE(buf, lower_limit orelse 0);
+        try buf.append(if (lower_limit != null) 1 else 0);
+        try writeF64BE(buf, upper_limit orelse 0);
+        try buf.append(if (upper_limit != null) 1 else 0);
+        try writeF64BE(buf, reference_price orelse 0);
+        try buf.append(if (reference_price != null) 1 else 0);
+        try writeU64BE(buf, @as(u64, @bitCast(timestamp)));
+        try buf.append(@intCast(is_snapshot orelse 0));
+        try buf.append(if (is_snapshot != null) 1 else 0);
+        return buf.toOwnedSlice();
+    }
+};
+
+/// SBE decoder for PriceLimits: validates the header and reads the body.
+pub const PriceLimitsDecoder = struct {
+    pub fn decode(allocator: std.mem.Allocator, buf: []const u8) !PriceLimits {
+        if (buf.len < 8) return error.BufferTooShort;
+        var pos: usize = 0;
+        const schema_id = readU16BE(buf, &pos);
+        const tmpl_id = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        _ = readU16BE(buf, &pos);
+        if (schema_id != SCHEMA_ID) return error.InvalidSchemaId;
+        if (tmpl_id != 62) return error.InvalidTemplateId;
+        var value: PriceLimits = undefined;
+        const symbol = try readString(buf, &pos, allocator);
+        const lower_limit_v = readF64BE(buf, &pos);
+        var lower_limit: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; lower_limit = lower_limit_v; } else { pos += 1; }
+        const upper_limit_v = readF64BE(buf, &pos);
+        var upper_limit: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; upper_limit = upper_limit_v; } else { pos += 1; }
+        const reference_price_v = readF64BE(buf, &pos);
+        var reference_price: ?f64 = null;
+        if (buf[pos] == 1) { pos += 1; reference_price = reference_price_v; } else { pos += 1; }
+        const timestamp = @as(i64, @bitCast(readU64BE(buf, &pos)));
+        const is_snapshot_v = readU8(buf, &pos);
+        var is_snapshot: ?u8 = null;
+        if (buf[pos] == 1) { pos += 1; is_snapshot = is_snapshot_v; } else { pos += 1; }
+        value.symbol = symbol;
+        value.lower_limit = lower_limit;
+        value.upper_limit = upper_limit;
+        value.reference_price = reference_price;
+        value.timestamp = timestamp;
+        value.is_snapshot = is_snapshot;
+        return value;
+    }
+};
+

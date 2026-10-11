@@ -289,6 +289,16 @@ int main() {
         "0001002400000018000444454d4f00044141504c402400000000000040590000000000000000000000000000");
 
     bad += check(
+        "sbe.price_limits.demo",
+        fig::sbe::PriceLimitsEncoder::encode("AAPL", 10.0, 20.0, 15.0, 1700000000000000000LL, uint8_t{1}),
+        "0001003e0000002100044141504c402400000000000001403400000000000001402e0000000000000117979cfe362a00000101");
+
+    bad += check(
+        "sbe.price_limits_request.demo",
+        fig::sbe::PriceLimitsRequestEncoder::encode("AAPL"),
+        "0001003d0000000000044141504c");
+
+    bad += check(
         "sbe.public_trade_batch.demo",
         fig::sbe::PublicTradeBatchEncoder::encode("AAPL", std::vector<fig::sbe::PublicTrade>{fig::sbe::PublicTrade{.symbol = "MSFT", .trade_id = "TRADE-ID-3", .price = 103.0, .qty = 9.0, .side = fig::sbe::PublicTradeSide::Sell, .timestamp = 1700000000000000006LL}, fig::sbe::PublicTrade{.symbol = "AAPL", .trade_id = "TRADE-ID-4", .price = 104.0, .qty = 10.0, .side = fig::sbe::PublicTradeSide::Sell, .timestamp = 1700000000000000007LL}}, uint8_t{1}, "NEXT-2"),
         "000100190000000100044141504c000000020000002b00044d534654000a54524144452d49442d334059c0000000000040220000000000000217979cfe362a00060000002b00044141504c000a54524144452d49442d34405a00000000000040240000000000000217979cfe362a0007010100064e4558542d32");

@@ -51,6 +51,7 @@ outside this checklist.
 
 - [x] Per-channel rate limiting (`ChannelRateLimiter`) **wired into the receive path**
 - [x] Connection-level guard (`DoSGuard`: max channels, frame size, message rate) **wired into the receive path**
+- [x] Public market-data rate limits by tier (`MdRateLimiter`: public / authenticated / internal) on `marketdata/…` REQUEST and SUBSCRIBE (SPEC §9.3)
 - [x] Load test with sustained frame flood (`fig-load` smoke)
 - [x] Fragmentation/reassembly bounds
 

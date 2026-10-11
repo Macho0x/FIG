@@ -227,6 +227,14 @@ func TestAllSbeMessagesMatchConformanceVectors(t *testing.T) {
 		got, err := PositionUpdateEncoder{}.Encode("DEMO", "AAPL", 10.0, 100.0, 0.0)
 		check(t, "sbe.position_update.demo", "0001002400000018000444454d4f00044141504c402400000000000040590000000000000000000000000000", got, err)
 	})
+	t.Run("sbe.price_limits.demo", func(t *testing.T) {
+		got, err := PriceLimitsEncoder{}.Encode("AAPL", ptr(10.0), ptr(20.0), ptr(15.0), int64(1700000000000000000), ptr(uint8(1)))
+		check(t, "sbe.price_limits.demo", "0001003e0000002100044141504c402400000000000001403400000000000001402e0000000000000117979cfe362a00000101", got, err)
+	})
+	t.Run("sbe.price_limits_request.demo", func(t *testing.T) {
+		got, err := PriceLimitsRequestEncoder{}.Encode("AAPL")
+		check(t, "sbe.price_limits_request.demo", "0001003d0000000000044141504c", got, err)
+	})
 	t.Run("sbe.public_trade_batch.demo", func(t *testing.T) {
 		got, err := PublicTradeBatchEncoder{}.Encode("AAPL", []PublicTrade{PublicTrade{Symbol: "MSFT", TradeId: "TRADE-ID-3", Price: 103.0, Qty: 9.0, Side: PublicTradeSideSell, Timestamp: int64(1700000000000000006)}, PublicTrade{Symbol: "AAPL", TradeId: "TRADE-ID-4", Price: 104.0, Qty: 10.0, Side: PublicTradeSideSell, Timestamp: int64(1700000000000000007)}}, uint8(1), ptr("NEXT-2"))
 		check(t, "sbe.public_trade_batch.demo", "000100190000000100044141504c000000020000002b00044d534654000a54524144452d49442d334059c0000000000040220000000000000217979cfe362a00060000002b00044141504c000a54524144452d49442d34405a00000000000040240000000000000217979cfe362a0007010100064e4558542d32", got, err)

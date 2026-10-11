@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
         &args.addr,
         fig_exchange_sim::server::ServerOptions {
             print_ca: args.print_ca.clone(),
+            ..Default::default()
         },
     )
     .await?;

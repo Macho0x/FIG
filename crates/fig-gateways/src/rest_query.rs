@@ -487,6 +487,7 @@ mod tests {
             "/marketdata/ticker/all",
             "/marketdata/session",
             "/marketdata/AAPL/status",
+            "/marketdata/AAPL/limits",
             "/accounts/DEMO",
             "/accounts/DEMO/fills",
             "/accounts/DEMO/funding",

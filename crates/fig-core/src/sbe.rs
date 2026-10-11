@@ -12,9 +12,9 @@ use crate::messages::{
     MarketDataIncrementalRefresh, MarketDataSnapshot, MassCancelReport, MassCancelRequest,
     MiniTicker, NewOrderSingle, OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta,
     OrderBookRequest, OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
-    OrderType, PositionRequest, PositionSnapshot, PositionUpdate, PublicTradeBatch,
-    PublicTradeEvent, SecurityIdSource, SecurityStatus, SecurityStatusRequest, Side, SymbolTicker,
-    TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
+    OrderType, PositionRequest, PositionSnapshot, PositionUpdate, PriceLimits, PriceLimitsRequest,
+    PublicTradeBatch, PublicTradeEvent, SecurityIdSource, SecurityStatus, SecurityStatusRequest,
+    Side, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
     TradingSessionStatusRequest, UserLiquidation,
 };
 
@@ -736,5 +736,22 @@ pub fn encode_mass_cancel_report(m: &MassCancelReport) -> Vec<u8> {
         m.total_affected,
         m.status,
         m.timestamp,
+    )
+}
+
+/// Encode a `PriceLimitsRequest` SBE message (template 61).
+pub fn encode_price_limits_request(m: &PriceLimitsRequest) -> Vec<u8> {
+    PriceLimitsRequestEncoder::encode(m.symbol.clone())
+}
+
+/// Encode a `PriceLimits` SBE message (template 62).
+pub fn encode_price_limits(m: &PriceLimits) -> Vec<u8> {
+    PriceLimitsEncoder::encode(
+        m.symbol.clone(),
+        m.lower_limit.clone(),
+        m.upper_limit.clone(),
+        m.reference_price.clone(),
+        m.timestamp,
+        m.is_snapshot,
     )
 }

@@ -2,6 +2,26 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.4
+
+### Added
+- **Compatibility policy** ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)): SPEC `1.0.0`
+  changes only on a wire break; FSL is additive; `fig.h` is the multi-language contract;
+  crate minors may break Rust APIs; git `v1.0.x` is a release tag, not the protocol
+  version. crates.io / npm stay unpublished until a crate-API freeze.
+- **Tier-based public market-data rate limits** (SPEC §9.3): the reference broker
+  (`MdRateLimiter`) caps unauthenticated `marketdata/…` REQUEST/SUBSCRIBE at 32/session/s
+  and authenticated traffic at 256/session/s. Exceeding the cap returns `STREAM_ERROR` /
+  `RATE_LIMITED` / 429. `FIG_DEV_OPEN=1` is the internal (unlimited) tier.
+- **Price limits / collars** in `schemas/marketstate.fsl`: `PriceLimitsRequest` /
+  `PriceLimits` on `marketdata/{symbol}/limits` (GET + SUBSCRIBE). The simulator rejects
+  limit and stop prices outside a configured band with `PRICE_LIMIT_EXCEEDED`. Absent
+  limits mean no collar.
+
+### Changed
+- Conformance SBE coverage is 87 vectors (63 SBE), including the two price-limits
+  messages. Per-language parity drivers regenerated from the same samples.
+
 ## 1.4.3
 
 ### Changed

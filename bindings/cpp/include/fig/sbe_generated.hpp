@@ -7292,4 +7292,187 @@ inline MassCancelReport MassCancelReportDecoder::decode(const std::vector<uint8_
     return value;
 }
 
+// SBE message PriceLimitsRequest
+struct PriceLimitsRequest {
+    std::string symbol;
+};
+
+// SBE body encoder for PriceLimitsRequest (fields only, no header).
+struct PriceLimitsRequestBodyEncoder {
+    static void encode(const PriceLimitsRequest& value, std::vector<uint8_t>& buf);
+};
+
+inline void PriceLimitsRequestBodyEncoder::encode(const PriceLimitsRequest& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+}
+
+// SBE body decoder for PriceLimitsRequest: reads fields at pos.
+struct PriceLimitsRequestBodyDecoder {
+    static std::pair<PriceLimitsRequest, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<PriceLimitsRequest, std::size_t> PriceLimitsRequestBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    PriceLimitsRequest value{};
+        std::string symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    return {value, pos};
+}
+
+// SBE encoder for PriceLimitsRequest
+struct PriceLimitsRequestEncoder {
+    static std::vector<uint8_t> encode(std::string symbol);
+};
+
+inline std::vector<uint8_t> PriceLimitsRequestEncoder::encode(std::string symbol) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 61);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 0);
+        write_string(buf, symbol);
+        return buf;
+}
+
+// SBE decoder for PriceLimitsRequest: validates the header and reads the body.
+struct PriceLimitsRequestDecoder {
+    static PriceLimitsRequest decode(const std::vector<uint8_t>& buf);
+};
+
+inline PriceLimitsRequest PriceLimitsRequestDecoder::decode(const std::vector<uint8_t>& buf) {
+    PriceLimitsRequest value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 61) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+    value.symbol = symbol;
+    (void)value;
+    return value;
+}
+
+// SBE message PriceLimits
+struct PriceLimits {
+    std::string symbol;
+    std::optional<double> lower_limit;
+    std::optional<double> upper_limit;
+    std::optional<double> reference_price;
+    int64_t timestamp;
+    std::optional<uint8_t> is_snapshot;
+};
+
+// SBE body encoder for PriceLimits (fields only, no header).
+struct PriceLimitsBodyEncoder {
+    static void encode(const PriceLimits& value, std::vector<uint8_t>& buf);
+};
+
+inline void PriceLimitsBodyEncoder::encode(const PriceLimits& value, std::vector<uint8_t>& buf) {
+        write_string(buf, value.symbol);
+        write_f64_be(buf, value.lower_limit.value_or(0.0));
+        buf.push_back(value.lower_limit.has_value() ? 1 : 0);
+        write_f64_be(buf, value.upper_limit.value_or(0.0));
+        buf.push_back(value.upper_limit.has_value() ? 1 : 0);
+        write_f64_be(buf, value.reference_price.value_or(0.0));
+        buf.push_back(value.reference_price.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(value.timestamp));
+        buf.push_back(value.is_snapshot.value_or(0));
+        buf.push_back(value.is_snapshot.has_value() ? 1 : 0);
+}
+
+// SBE body decoder for PriceLimits: reads fields at pos.
+struct PriceLimitsBodyDecoder {
+    static std::pair<PriceLimits, std::size_t> decode(const std::vector<uint8_t>& buf, std::size_t pos);
+};
+
+inline std::pair<PriceLimits, std::size_t> PriceLimitsBodyDecoder::decode(const std::vector<uint8_t>& buf, std::size_t pos) {
+    PriceLimits value{};
+        std::string symbol = read_string(buf, pos);
+        double lower_limit_v = read_f64_be(buf, pos);
+        std::optional<double> lower_limit;
+        if (buf[pos++] == 1) lower_limit = lower_limit_v;
+        double upper_limit_v = read_f64_be(buf, pos);
+        std::optional<double> upper_limit;
+        if (buf[pos++] == 1) upper_limit = upper_limit_v;
+        double reference_price_v = read_f64_be(buf, pos);
+        std::optional<double> reference_price;
+        if (buf[pos++] == 1) reference_price = reference_price_v;
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.lower_limit = lower_limit;
+    value.upper_limit = upper_limit;
+    value.reference_price = reference_price;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    return {value, pos};
+}
+
+// SBE encoder for PriceLimits
+struct PriceLimitsEncoder {
+    static std::vector<uint8_t> encode(std::string symbol, std::optional<double> lower_limit, std::optional<double> upper_limit, std::optional<double> reference_price, int64_t timestamp, std::optional<uint8_t> is_snapshot);
+};
+
+inline std::vector<uint8_t> PriceLimitsEncoder::encode(std::string symbol, std::optional<double> lower_limit, std::optional<double> upper_limit, std::optional<double> reference_price, int64_t timestamp, std::optional<uint8_t> is_snapshot) {
+        std::vector<uint8_t> buf;
+        write_u16_be(buf, SCHEMA_ID);
+        write_u16_be(buf, 62);
+        write_u16_be(buf, 0);
+        write_u16_be(buf, 33);
+        write_string(buf, symbol);
+        write_f64_be(buf, lower_limit.value_or(0.0));
+        buf.push_back(lower_limit.has_value() ? 1 : 0);
+        write_f64_be(buf, upper_limit.value_or(0.0));
+        buf.push_back(upper_limit.has_value() ? 1 : 0);
+        write_f64_be(buf, reference_price.value_or(0.0));
+        buf.push_back(reference_price.has_value() ? 1 : 0);
+        write_u64_be(buf, static_cast<uint64_t>(timestamp));
+        buf.push_back(is_snapshot.value_or(0));
+        buf.push_back(is_snapshot.has_value() ? 1 : 0);
+        return buf;
+}
+
+// SBE decoder for PriceLimits: validates the header and reads the body.
+struct PriceLimitsDecoder {
+    static PriceLimits decode(const std::vector<uint8_t>& buf);
+};
+
+inline PriceLimits PriceLimitsDecoder::decode(const std::vector<uint8_t>& buf) {
+    PriceLimits value{};
+        if (buf.size() < 8) throw std::runtime_error("buffer too short for SBE header");
+        std::size_t pos = 0;
+        uint16_t schema_id = read_u16_be(buf, pos);
+        uint16_t tmpl_id = read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        (void)read_u16_be(buf, pos);
+        if (schema_id != SCHEMA_ID) throw std::runtime_error("invalid schema_id");
+        if (tmpl_id != 62) throw std::runtime_error("invalid template_id");
+        std::string symbol = read_string(buf, pos);
+        double lower_limit_v = read_f64_be(buf, pos);
+        std::optional<double> lower_limit;
+        if (buf[pos++] == 1) lower_limit = lower_limit_v;
+        double upper_limit_v = read_f64_be(buf, pos);
+        std::optional<double> upper_limit;
+        if (buf[pos++] == 1) upper_limit = upper_limit_v;
+        double reference_price_v = read_f64_be(buf, pos);
+        std::optional<double> reference_price;
+        if (buf[pos++] == 1) reference_price = reference_price_v;
+        int64_t timestamp = static_cast<int64_t>(read_u64_be(buf, pos));
+        uint8_t is_snapshot_v = take_u8(buf, pos);
+        std::optional<uint8_t> is_snapshot;
+        if (buf[pos++] == 1) is_snapshot = is_snapshot_v;
+    value.symbol = symbol;
+    value.lower_limit = lower_limit;
+    value.upper_limit = upper_limit;
+    value.reference_price = reference_price;
+    value.timestamp = timestamp;
+    value.is_snapshot = is_snapshot;
+    (void)value;
+    return value;
+}
+
 }

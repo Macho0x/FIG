@@ -26,11 +26,11 @@ use fig_core::messages::{
     OpenOrdersRequest, OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest,
     OrderBookSnapshot, OrderHistoryBatch, OrderHistoryRequest, OrderListStatus,
     OrderListStatusStatus, OrderType, PositionEntry, PositionRequest, PositionSnapshot,
-    PositionUpdate, Price, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
-    SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side,
-    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradingSessionStatus,
-    TradingSessionStatusHaltReason, TradingSessionStatusRequest, TradingSessionStatusStatus,
-    UserLiquidation,
+    PositionUpdate, Price, PriceLimits, PriceLimitsRequest, PublicTrade, PublicTradeBatch,
+    PublicTradeEvent, Quantity, SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest,
+    SecurityStatusStatus, Side, SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest,
+    TradingSessionStatus, TradingSessionStatusHaltReason, TradingSessionStatusRequest,
+    TradingSessionStatusStatus, UserLiquidation,
 };
 use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
 use std::path::Path;
@@ -894,6 +894,23 @@ pub fn sample_mass_cancel_report() -> MassCancelReport {
     }
 }
 
+pub fn sample_price_limits_request() -> PriceLimitsRequest {
+    PriceLimitsRequest {
+        symbol: "AAPL".to_string(),
+    }
+}
+
+pub fn sample_price_limits() -> PriceLimits {
+    PriceLimits {
+        symbol: "AAPL".to_string(),
+        lower_limit: Some(Price(10.0)),
+        upper_limit: Some(Price(20.0)),
+        reference_price: Some(Price(15.0)),
+        timestamp: 1_700_000_000_000_000_000,
+        is_snapshot: Some(true),
+    }
+}
+
 fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
     use fig_core::sbe::{
         encode_account_summary, encode_aggregate_trade_batch, encode_aggregate_trade_event,
@@ -913,11 +930,11 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         encode_open_orders_request, encode_open_orders_snapshot, encode_order_book_delta,
         encode_order_book_request, encode_order_book_snapshot, encode_order_history_batch,
         encode_order_history_request, encode_order_list_status, encode_position_request,
-        encode_position_snapshot, encode_position_update, encode_public_trade_batch,
-        encode_public_trade_event, encode_security_status, encode_security_status_request,
-        encode_symbol_ticker, encode_ticker_request, encode_trade_history_request,
-        encode_trading_session_status, encode_trading_session_status_request,
-        encode_user_liquidation,
+        encode_position_snapshot, encode_position_update, encode_price_limits,
+        encode_price_limits_request, encode_public_trade_batch, encode_public_trade_event,
+        encode_security_status, encode_security_status_request, encode_symbol_ticker,
+        encode_ticker_request, encode_trade_history_request, encode_trading_session_status,
+        encode_trading_session_status_request, encode_user_liquidation,
     };
 
     let encoded = match vector.message_type.as_str() {
@@ -1005,6 +1022,8 @@ fn run_sbe_vector(vector: &ConformanceVector) -> Result<()> {
         "SecurityStatus" => encode_security_status(&sample_security_status()),
         "MassCancelRequest" => encode_mass_cancel_request(&sample_mass_cancel_request()),
         "MassCancelReport" => encode_mass_cancel_report(&sample_mass_cancel_report()),
+        "PriceLimitsRequest" => encode_price_limits_request(&sample_price_limits_request()),
+        "PriceLimits" => encode_price_limits(&sample_price_limits()),
         other => return Err(anyhow!("unsupported sbe message_type: {other}")),
     };
     assert_hex(&vector.expected_hex, &encoded)?;

@@ -64,7 +64,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | Tier 3 SDK: pub/sub merge wrappers complete | both | perps + account merge helpers in `fig-client` |
 | ✅ | §16 binding compile smoke for new stream types (Go/C++/C++) | both | [§17.6](#176-codegen-conformance--testing) |
 | ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
-| ⬜ | Tier-based public MD rate limits | both | [§18.7](#187-post-10-outstanding-fig-project) |
+| ✅ | Tier-based public MD rate limits | both | `MdRateLimiter`: public / authenticated / internal on `marketdata/…` — [SPEC §9.3](SPEC.md) |
 | ✅ | JWT RS256/JWKS verification + key rotation | both | `fig_core::jwt_keys` (`FIG_JWT_JWKS`, `RsaKeySet`, `JwtVerifier`/`FnVerifier`) · [JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) |
 | 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
 
@@ -72,7 +72,8 @@ Detail sections (§18–21) add context; do not duplicate status here.
 
 | Status | Item | Track | Detail |
 |---|---|---|---|
-| ⬜ | Published artifacts (crates, bindings) + compatibility policy | both | [§19.1](#191-fig-project--protocol-release-maturity) |
+| ✅ | Compatibility policy | both | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — SPEC vs crate vs git tag; `fig.h` contract |
+| ⬜ | Published artifacts (crates, bindings) | both | Deferred until a crate-API freeze; [§19.1](#191-fig-project--protocol-release-maturity) |
 | ⬜ | Co-lo / tail-latency evidence on realistic topology | both | [§19.1](#191-fig-project--protocol-release-maturity) |
 | ✅ | Per-language SBE hex parity CI | both | [§19.2](#192-fig-project--client-ecosystem) |
 | ✅ | SBE-default order path documentation + examples | both | [docs/SBE_ORDER_PATH.md](docs/SBE_ORDER_PATH.md), `run_sbe_order_demo` |
@@ -103,7 +104,7 @@ session auth is `AUTH_TOKEN` / JWT / mTLS ([SPEC.md §9.3](SPEC.md),
 | ⬜ | FIX gateway: full institutional dialect matrix | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ✅ | FIX: mass cancel, trading session status, security status | institutional | FIX 35=q/r, 35=g/h, 35=e/f — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FIX: allocations, trade capture, multi-leg, IOI | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
-| 🔶 | FSL: market state & control (halts, auctions, pre-open, price limits) | institutional | `schemas/marketstate.fsl` + sim hub; price limits not in catalog — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
+| ✅ | FSL: market state & control (halts, auctions, pre-open, price limits) | institutional | `schemas/marketstate.fsl` + sim hub; `marketdata/{symbol}/limits` — [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | FSL: open interest, settlement prices, block trades | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ⬜ | Member entitlement model on wire (beyond path scoping) | institutional | [§21.1](#211-fig-project--wire-and-protocol-gaps) |
 | ✅ | MDP 3.0 / FAST adapter or multicast distribution ADR | institutional | [ADR 0009](docs/adr/0009-market-data-plane.md): TREE L2 native; ITCH L2 egress; no MDP |
@@ -206,7 +207,7 @@ Current open work is [§0](#0-active-backlog-fig-repo).
 | **Release gate** | Criteria tables ✅ + sign-off + SPEC → `1.0.0` | — |
 | **Wire codecs** | CBOR + SBE only (SPEC §3.3, §11.2) | Protobuf wire restoration (not planned) |
 | **Rust core** | §1–15 framing, transport, sessions, auth, observability | Open: Tier 4 frames in every language SDK ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) |
-| **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list subscribe is wired on `trading/accounts/{account}/orderlists`. Open catalog gaps stay in §0 (price limits, open interest, settlement, block trades). |
+| **Broker API** | §9.1 catalog in exchange-sim + gateway adapters | Order-list subscribe is wired on `trading/accounts/{account}/orderlists`. Open catalog gaps stay in §0 (open interest, settlement, block trades). |
 | **`fig-client`** | book, candles, account, mids, BBO, trades, mark, orders/executions | Shipped: funding, ledger, liquidations, agg trades ([§0.3](#03-p2--reference-client-and-sdk-polish)). Open: `AccountCache` on FFI/Python ([§0.7](#07-p4--long-horizon--optional)). No persistent multiplexer SDK in the tree. |
 | **Bindings** | `fig-ffi` + `fig-python` conformance CI; Go/C++/C#/TS/OCaml/Zig/Java FFI wrappers; generated SBE hex-checked; market-state helpers on `fig.h` | Open: native TREE per language ([§0.7](#07-p4--long-horizon--optional)). Per-language CBOR serializers remain 🔶 ([§16.2](#162-fsl-codegen-parity-track-a)). |
 | **0-RTT replay** | Client `connect_0rtt` + `MemoryReplayCache` | Shipped: server `accept_0rtt` verifies the resumption token; `RedisReplayCache` ([§0.2](#02-p1--security-and-correctness)) |
@@ -300,7 +301,9 @@ would treat FIG as production-grade wire infrastructure. Items marked 🏛 are
 | ✅ | Complete §18 sign-off + SPEC **1.0.0** stable | High | [§0.1](#01-p0--ship-fig-10) |
 | ✅ | All post-1.0 items accepted or ticketed | High | [§0.1](#01-p0--ship-fig-10) |
 
-Remaining §19.1 items are in [§0.4](#04-p3--shared-adoption-both-tracks).
+Compatibility policy: [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md). Remaining
+§19.1 item is published artifacts (crates.io / npm), deferred until a crate-API
+freeze — [§0.4](#04-p3--shared-adoption-both-tracks).
 
 ### 19.2 FIG project — client ecosystem
 
@@ -399,7 +402,7 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 | ⬜ | FIX gateway: full institutional dialect matrix | High | Today: Logon, D/F/G, ExecutionReport/CancelReject, resend (35=2), gap-fill (35=4), mass cancel (35=q/r), trading-session (35=g/h), security status (35=e/f), drop copy, and some MD. Still missing allocations, trade capture, multi-leg, and IOI — see `fix.rs` |
 | ✅ | FIX: mass cancel, trading session status, security status | High | FIX 35=q/r, 35=g/h, 35=e/f on native paths |
 | ⬜ | FIX: allocations, trade capture, multi-leg, IOI | High | Institutional order types |
-| 🔶 | FSL: market state & control (halts, auctions, pre-open, price limits) | High | `schemas/marketstate.fsl` + sim hub; price limits not in catalog |
+| ✅ | FSL: market state & control (halts, auctions, pre-open, price limits) | High | `schemas/marketstate.fsl` + sim hub; GET/SUBSCRIBE `marketdata/{symbol}/limits` |
 | ⬜ | FSL: open interest, settlement prices, block trades | High | Not in catalog |
 | ⬜ | FSL: regulatory / surveillance (bust/correct, give-up, trade reporting) | Medium | Out of current scope |
 | ⬜ | Member entitlement model on wire (beyond path scoping) | High | Channel arbitration, drop-copy entitlements |
@@ -437,7 +440,7 @@ for **new connectivity** or **internal crossing**, not replacing MDP 3.0 multica
 | Phase | Deliverable | FIG repo | Venue |
 |---|---|---|---|
 | **P1** | FIX drop-copy / order-entry bridge | ✅ order entry, drop copy, resend/gap-fill cert harness. Open: allocations, trade capture, multi-leg, IOI ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) | Member OMS integration |
-| **P2** | Market-state FSL domain + halts/auctions | 🔶 `schemas/marketstate.fsl` + sim hub (session, security, mass cancel). Price limits are not in the catalog ([§0.6](#06-p3--institutional-track-pick-one-track-at-a-time)) | Production supervision |
+| **P2** | Market-state FSL domain + halts/auctions | ✅ `schemas/marketstate.fsl` + sim hub (session, security, mass cancel, price limits). Open interest / settlement / block trades stay in [§0.6](#06-p3--institutional-track-pick-one-track-at-a-time) | Production supervision |
 | **P3** | MD distribution strategy | ✅ [ADR 0009](docs/adr/0009-market-data-plane.md) ITCH L2 egress (`--itch-addr`, `--itch-multicast`) | Keep incumbent multicast for HFT MD |
 
 **Rough effort:** Protocol surface ~**25–35%** for CME-equivalent connectivity;
@@ -452,7 +455,7 @@ institutional cert + MD distribution largely **greenfield** relative to current 
 | **§17 API catalog fit** | High | Low (different MD/order models) |
 | **Gateway migration value** | High (JSON WS → FIG) | Medium (order entry, drop copy, session/security/mass cancel; not alloc/TC/multi-leg/IOI) |
 | **Native FIG as primary wire** | Plausible for colo MM clients | Unlikely for core Globex MD |
-| **Biggest FIG-project gap** | Product FSL (TWAP/vaults/chain events) | FIX dialect still missing alloc / trade capture / multi-leg / IOI, plus price limits, open interest, settlement, and block trades. OUCH and ITCH adapters shipped. |
+| **Biggest FIG-project gap** | Product FSL (TWAP/vaults/chain events) | FIX dialect still missing alloc / trade capture / multi-leg / IOI, plus open interest, settlement, and block trades. OUCH and ITCH adapters shipped. |
 | **Biggest venue gap** | Chain + matching at scale | Clearing, cert, surveillance, MDP |
 | **Sensible first milestone** | Gateway + native FIG orders/MD | FIX drop-copy / order-entry bridge |
 | **Depends on** | §18 1.0 + §19 shared foundation | §18 1.0 + §19 shared foundation |
@@ -558,8 +561,8 @@ integration tests are the reference behavior.
 > parameters, C# namespace-level constants/helpers and nullable-reference optionals, and
 > `{Enum}Helpers` qualification leaking into the non-C# targets.
 >
-> **Vector coverage is complete.** Every message in the catalog has an SBE vector (85 vectors
-> total, including six market-state messages). Each sample is authored to exercise the non-degenerate paths —
+> **Vector coverage is complete.** Every message in the catalog has an SBE vector (87 vectors
+> total, including eight market-state messages). Each sample is authored to exercise the non-degenerate paths —
 > optionals present, lists with two distinct elements, enums at a non-first variant, non-empty
 > strings, timestamps in the `i64` range — and the runner re-encodes every sample and compares it
 > to the pinned hex, so a codec regression fails CI rather than silently re-pinning.
@@ -966,7 +969,7 @@ pagination. Gap-fill after live disconnect: client sends `CandleBarRequest` or
 
 | Status | Item | Priority | Notes |
 |---|---|---|---|
-| ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim. Tier-based public MD rate limits are still open — [§0.3](#03-p2--reference-client-and-sdk-polish) |
+| ✅ | Public `SUBSCRIBE` (no auth) | High | MD paths in exchange-sim. Public MD rate limits by tier (`MdRateLimiter`) — [SPEC §9.3](SPEC.md) |
 | ✅ | Private `SUBSCRIBE` (auth required) | High | `auth.rs` + `test_private_auth_required` |
 | ✅ | Snapshot then delta | High | `is_snapshot` on candles/BBO/ticker/balances/book; SPEC §9.1 |
 | ✅ | Sequence / gap detection | High | Book `sequence` + `SEQUENCE_NUM` ext; gap-fill in STREAMING.md |
@@ -1062,7 +1065,7 @@ add mappings here. REST `GET` ↔ native `REQUEST`/`RESPONSE`; WS topic ↔ nati
 | ✅ | Regenerate all schemas (`cargo xtask codegen`) | High | §17 types in `orders.fsl`; CI `codegen --check` green |
 | ✅ | SBE templates for hot-path streams | High | `fig_core::sbe` encoders (templates 9, 20, 22, 27, 33) |
 | ✅ | CBOR golden vectors per message | High | 17 CBOR vectors in `tests/conformance/vectors/v1.json` (snapshot/delta, paginated history, instrument catalog, post-only) |
-| ✅ | SBE golden vectors per message | High | 61 SBE vectors in the same file, including trading-session, security-status, and mass-cancel. File total is 85 (61 SBE, 17 CBOR, 6 frame, 1 channel). |
+| ✅ | SBE golden vectors per message | High | 63 SBE vectors in the same file, including trading-session, security-status, mass-cancel, and price-limits. File total is 87 (63 SBE, 17 CBOR, 6 frame, 1 channel). |
 | ✅ | Snapshot + delta vector pairs | High | `cbor.order_book_snapshot.demo` + `cbor.order_book_delta.demo` |
 | ✅ | Multi-codec exchange-sim dispatch | High | CBOR/SBE via `ContentType`; `multi_codec.rs` + integration test |
 | ✅ | E2E: public MD subscribe suite | High | BBO/trades/candles/book/agg-trade/mark tests |

@@ -51,6 +51,8 @@ import {
   PositionRequestEncoderEncode,
   PositionSnapshotEncoderEncode,
   PositionUpdateEncoderEncode,
+  PriceLimitsEncoderEncode,
+  PriceLimitsRequestEncoderEncode,
   PublicTradeBatchEncoderEncode,
   PublicTradeEventEncoderEncode,
   SecurityStatusEncoderEncode,
@@ -398,6 +400,18 @@ const hex = (b: Uint8Array) => Buffer.from(b).toString("hex");
   const got = PositionUpdateEncoderEncode("DEMO", "AAPL", 10.0, 100.0, 0.0);
   if (hex(got) !== want("sbe.position_update.demo")) {
     throw new Error("sbe.position_update.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.position_update.demo"));
+  }
+}
+{
+  const got = PriceLimitsEncoderEncode("AAPL", 10.0, 20.0, 15.0, 1700000000000000000n, 1);
+  if (hex(got) !== want("sbe.price_limits.demo")) {
+    throw new Error("sbe.price_limits.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.price_limits.demo"));
+  }
+}
+{
+  const got = PriceLimitsRequestEncoderEncode("AAPL");
+  if (hex(got) !== want("sbe.price_limits_request.demo")) {
+    throw new Error("sbe.price_limits_request.demo parity failed\n got " + hex(got) + "\nwant " + want("sbe.price_limits_request.demo"));
   }
 }
 {

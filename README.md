@@ -203,6 +203,7 @@ Venue adoption tracks: [TODO.md §19–22](TODO.md).
 - **Untrusted input is bounded**: frame-size caps, bounds-checked SBE decoders, ASCII-safe FIX
   parsing, validated TLV lengths — with `frame_decode` and `sbe_decode` fuzz targets in CI.
 - **Connection resource limits** (`DoSGuard`, `ChannelRateLimiter`) are enforced on the receive path.
+  Public `marketdata/…` is also capped by tier (`MdRateLimiter`; SPEC §9.3).
 - **Token signing keys rotate without downtime** (RS256/JWKS with `kid` selection):
   [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md).
 
@@ -223,6 +224,7 @@ Report a vulnerability: [SECURITY.md](SECURITY.md).
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | HA, TLS/PKI, configuration |
 | [docs/GATEWAY.md](docs/GATEWAY.md) | FIX / REST / WebSocket / OUCH / ITCH migration |
 | [docs/API.md](docs/API.md) | Crate and module map |
+| [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | SPEC vs crate vs git tag; `fig.h` contract |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Methodology and tail latencies |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Build, FSL workflow, conventions |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
@@ -237,7 +239,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.3** ([release notes](CHANGELOG.md)). Protocol version remains
+Latest release **1.4.4** ([release notes](CHANGELOG.md)). Protocol version remains
 [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only on a wire break. The schema
 catalog is additive. Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in

@@ -27,7 +27,8 @@ us a reasonable window to release a fix before publishing details.
 Protocol version remains [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only
 on a wire break. The schema catalog is additive. Rust library APIs may still
 change between minor releases. Security fixes land on the latest minor release
-line; older minor versions are not maintained. There are no published crates.io
+line; older minor versions are not maintained
+([COMPATIBILITY.md](docs/COMPATIBILITY.md)). There are no published crates.io
 artifacts yet — fixes are delivered as repository commits.
 
 | Version | Supported |
@@ -69,7 +70,8 @@ Documented per item in [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md):
 - Bounds-checked frame, SBE, FIX, and TLV decoding, with `frame_decode` and
   `sbe_decode` fuzz targets in CI.
 - Connection resource limits (`DoSGuard`, `ChannelRateLimiter`) enforced on the
-  receive path.
+  receive path. Public `marketdata/…` REQUEST/SUBSCRIBE is additionally capped
+  by tier (`MdRateLimiter`; SPEC §9.3).
 - Constant-time token comparison; JWT `alg` pinned to the expected algorithm.
 - Token signing-key rotation without downtime:
   [docs/JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md).

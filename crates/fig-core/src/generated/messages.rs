@@ -1816,3 +1816,42 @@ impl MassCancelReport {
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
 }
+
+/// Message: PriceLimitsRequest (channel: RequestResponse, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceLimitsRequest {
+    pub symbol: Symbol,
+}
+
+impl PriceLimitsRequest {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "request_response";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}
+
+/// Message: PriceLimits (channel: StreamItem, priority: Medium)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PriceLimits {
+    pub symbol: Symbol,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lower_limit: Option<Price>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upper_limit: Option<Price>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_price: Option<Price>,
+    pub timestamp: TradeTimestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_snapshot: Option<bool>,
+}
+
+impl PriceLimits {
+    /// Channel type for this message
+    pub const CHANNEL_TYPE: &str = "stream_item";
+    /// Priority level
+    pub const PRIORITY: &str = "medium";
+    /// Whether this message is idempotent
+    pub const IDEMPOTENT: bool = true;
+}

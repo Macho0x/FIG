@@ -290,6 +290,7 @@ Neither adapter adds a native path.
 | Public liq | `marketdata/liquidations` | `LiquidationTrade` | `@forceOrder` |
 | Trading session | `marketdata/session` | `TradingSessionStatus` | FIX 35=h; ITCH `S` |
 | Security status | `marketdata/{sym}/status` | `SecurityStatus` | FIX 35=f |
+| Price limits | `marketdata/{sym}/limits` | `PriceLimits` | Collars / circuit-breaker bands |
 | Executions | `trading/accounts/{acct}/executions` | `ExecutionReport` | HL `orderUpdates`; FIX drop-copy 35=8 |
 | Balances | `accounts/{acct}/balances` | `BalanceSnapshot`, `BalanceUpdate` | HL `spotState` |
 | Positions | `accounts/{acct}/positions` | `PositionSnapshot`, `PositionUpdate` | HL `clearinghouseState` |
@@ -317,6 +318,7 @@ Private rows require `AUTH_TOKEN` on each frame, scoped to `{acct}` in the path
 | Margin | `accounts/{acct}/margin` | GET → `MarginSummary` |
 | Trading session | `marketdata/session` | `TradingSessionStatusRequest` → `TradingSessionStatus` |
 | Security status | `marketdata/{sym}/status` | `SecurityStatusRequest` → `SecurityStatus` |
+| Price limits | `marketdata/{sym}/limits` | `PriceLimitsRequest` → `PriceLimits` |
 | Open orders | `trading/accounts/{acct}/orders/open` | `OpenOrdersRequest` → `OpenOrdersSnapshot` |
 | Mass cancel | `trading/accounts/{acct}/orders/masscancel` | `MassCancelRequest` → `MassCancelReport` (FIX 35=q / 35=r; not an OUCH message) |
 | Order history | `trading/accounts/{acct}/orders` | `OrderHistoryRequest` → `OrderHistoryBatch` (stream if large) |

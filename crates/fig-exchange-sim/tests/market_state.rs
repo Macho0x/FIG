@@ -1,4 +1,4 @@
-//! Session status, security status, and mass cancel against exchange-sim.
+//! Session status, security status, price limits, and mass cancel against exchange-sim.
 
 use std::time::Duration;
 
@@ -7,7 +7,9 @@ use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameDecoder, FrameType};
 use fig_core::messages::*;
 use fig_core::transport::client_config_insecure;
-use fig_exchange_sim::server::run_server;
+use fig_exchange_sim::market_state::MarketStateHub;
+use fig_exchange_sim::md_rate::MdRateConfig;
+use fig_exchange_sim::server::{handle_frame, run_server, ExchangeState};
 
 async fn connect_client(server_addr: std::net::SocketAddr) -> anyhow::Result<quinn::Connection> {
     let client_ep = quinn::Endpoint::client("127.0.0.1:0".parse()?)?;
@@ -132,6 +134,27 @@ async fn session_and_security_status_query() {
     .unwrap();
     assert_eq!(sec.symbol, "AAPL");
     assert_eq!(sec.status, SecurityStatusStatus::Trading);
+
+    let lim_frame = Frame::new(FrameType::Request, 3)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/limits",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "GET"));
+    let frames = send_and_receive(&conn, lim_frame).await.unwrap();
+    let limits: PriceLimits = decode_cbor(
+        &frames
+            .iter()
+            .find(|f| f.frame_type == FrameType::Response)
+            .unwrap()
+            .payload,
+    )
+    .unwrap();
+    assert_eq!(limits.symbol, "AAPL");
+    assert!(limits.lower_limit.is_none());
+    assert!(limits.upper_limit.is_none());
 }
 
 #[tokio::test]
@@ -156,6 +179,88 @@ async fn subscribe_session_snapshot() {
             && decode_cbor::<TradingSessionStatus>(&f.payload)
                 .is_ok_and(|s| s.status == TradingSessionStatusStatus::Open)
     }));
+}
+
+#[tokio::test]
+async fn subscribe_price_limits_snapshot() {
+    let endpoint = run_server("127.0.0.1:0").await.unwrap();
+    let conn = connect_client(endpoint.local_addr().unwrap())
+        .await
+        .unwrap();
+    let frame = Frame::new(FrameType::Subscribe, 4)
+        .with_seq(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/AAPL/limits",
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::RoutingKey,
+            "marketdata/AAPL/limits",
+        ));
+    let frames = send_and_receive(&conn, frame).await.unwrap();
+    assert!(frames.iter().any(|f| {
+        f.frame_type == FrameType::StreamItem
+            && decode_cbor::<PriceLimits>(&f.payload).is_ok_and(|l| l.symbol == "AAPL")
+    }));
+}
+
+#[tokio::test]
+async fn collar_rejects_limit_outside_band() {
+    let mut hub = MarketStateHub::default();
+    hub.set_price_limits("AAPL", Some(10.0), Some(20.0), Some(15.0));
+    let state = ExchangeState::for_test_with(
+        MdRateConfig {
+            honor_dev_open: false,
+            ..MdRateConfig::default()
+        },
+        hub,
+    );
+
+    let payload = encode_cbor(&order("PX-HI", "TEST", "AAPL", Side::Buy, 21.0)).unwrap();
+    let frame = Frame::new(FrameType::Request, 1)
+        .with_seq(1)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/TEST/orders",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+        .with_extension(auth("TEST"))
+        .with_payload(payload);
+    let frames = handle_frame(frame, &state, uuid::Uuid::nil(), None).await;
+    let err = frames
+        .iter()
+        .find(|f| f.frame_type == FrameType::StreamError)
+        .expect("collar STREAM_ERROR");
+    let msg = err
+        .extensions
+        .iter()
+        .find(|e| e.tag == ExtensionTag::ErrorMessage)
+        .and_then(|e| e.value.as_text());
+    assert_eq!(msg, Some("PRICE_LIMIT_EXCEEDED"));
+
+    let inside = encode_cbor(&order("PX-OK", "TEST", "AAPL", Side::Buy, 15.0)).unwrap();
+    let ok = Frame::new(FrameType::Request, 1)
+        .with_seq(2)
+        .with_schema_id(1)
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "trading/accounts/TEST/orders",
+        ))
+        .with_extension(Extension::text(ExtensionTag::Method, "POST"))
+        .with_extension(auth("TEST"))
+        .with_payload(inside);
+    let frames = handle_frame(ok, &state, uuid::Uuid::nil(), None).await;
+    assert!(
+        frames.iter().any(|f| f.frame_type == FrameType::StreamItem),
+        "in-band limit should rest or fill, got {frames:?}"
+    );
+    assert!(
+        frames
+            .iter()
+            .all(|f| f.frame_type != FrameType::StreamError),
+        "in-band limit must not STREAM_ERROR"
+    );
 }
 
 #[tokio::test]

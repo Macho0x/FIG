@@ -429,6 +429,7 @@ price-level messages. Byte layouts live in
 | `marketdata/liquidations` | pub/sub | `LiquidationTrade` | `@forceOrder` |
 | `marketdata/session` | pub/sub + GET | `TradingSessionStatus` | FIX 35=h |
 | `marketdata/{symbol}/status` | pub/sub + GET | `SecurityStatus` | FIX 35=f |
+| `marketdata/{symbol}/limits` | pub/sub + GET | `PriceLimits` | Price collars / circuit-breaker bands |
 
 Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
 
@@ -536,12 +537,26 @@ require authentication on every frame that opens or uses the channel:
 
 1. A client authenticated as account `A` MUST NOT subscribe or query paths for
    account `B` — the broker returns `403` / `STREAM_ERROR`.
-2. Public market data paths (`marketdata/…`) do not require auth unless the
-   venue policy adds rate limits by tier.
+2. Public market data paths (`marketdata/…`) do not require auth. Venues MAY
+   rate-limit those paths by **tier** (path class × auth presence). Exceeding
+   the cap MUST return `STREAM_ERROR` with `ErrorCode` `RATE_LIMITED` and
+   `StatusCode` `429`.
 3. Gateway proxies MUST forward `AUTH_TOKEN` (or terminate TLS and inject venue
    credentials) when translating private WS/REST to native FIG.
 4. Cross-account reads are rejected even when the token is valid for another
    account.
+
+**Public market-data tiers** (reference broker: `fig-exchange-sim`):
+
+| Tier | Qualifies when | Reference cap |
+|---|---|---|
+| Public | `marketdata/…` REQUEST or SUBSCRIBE, no `AUTH_TOKEN` | 32 frames / session / s |
+| Authenticated | `marketdata/…` with `AUTH_TOKEN` | 256 frames / session / s |
+| Internal | `FIG_DEV_OPEN=1` honored (development only) | unlimited |
+
+These caps are in addition to connection-level `DoSGuard` and per-channel
+`ChannelRateLimiter`. Private `accounts/…` and `trading/…` paths are not
+counted here; they remain auth-scoped.
 
 See [docs/STREAMING.md](docs/STREAMING.md) and [docs/TUTORIAL.md](docs/TUTORIAL.md)
 for subscribe examples with `AUTH_TOKEN`.
@@ -555,6 +570,11 @@ Semantics are enforced by the venue matching engine; FIG carries the flags on th
 |---|---|---|
 | `post_only: true` | Order must not take liquidity | Reject if limit would cross the book |
 | `reduce_only: true` | Order must not increase absolute position | Reject if order would open or add to position |
+
+When `PriceLimits` are published for a symbol, limit and stop prices MUST sit
+inside the collar. The reference broker rejects new orders outside the band
+with `STREAM_ERROR` / `PRICE_LIMIT_EXCEEDED`. Absent limits mean no collar.
+Market orders with no price are not collared.
 
 Gateway REST POST bodies pass these fields through JSON → CBOR unchanged
 (`"post_only": true`, `"reduce_only": true`). Native SBE/CBOR clients set them on

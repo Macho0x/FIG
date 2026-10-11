@@ -12,13 +12,14 @@ fn now_ns() -> i64 {
         .as_nanos() as i64
 }
 
-/// Venue-wide session plus per-symbol security status.
+/// Venue-wide session plus per-symbol security status and price collars.
 #[derive(Debug, Clone)]
 pub struct MarketStateHub {
     session_id: String,
     session_status: TradingSessionStatusStatus,
     halt_reason: Option<TradingSessionStatusHaltReason>,
     securities: HashMap<String, SecurityStatus>,
+    price_limits: HashMap<String, PriceLimits>,
 }
 
 impl Default for MarketStateHub {
@@ -28,6 +29,7 @@ impl Default for MarketStateHub {
             session_status: TradingSessionStatusStatus::Open,
             halt_reason: None,
             securities: HashMap::new(),
+            price_limits: HashMap::new(),
         }
     }
 }
@@ -99,6 +101,66 @@ impl MarketStateHub {
             _ => Ok(()),
         }
     }
+
+    pub fn price_limits(&self, symbol: &str) -> PriceLimits {
+        self.price_limits
+            .get(symbol)
+            .cloned()
+            .unwrap_or_else(|| PriceLimits {
+                symbol: symbol.to_string(),
+                lower_limit: None,
+                upper_limit: None,
+                reference_price: None,
+                timestamp: now_ns(),
+                is_snapshot: Some(true),
+            })
+    }
+
+    pub fn set_price_limits(
+        &mut self,
+        symbol: &str,
+        lower: Option<f64>,
+        upper: Option<f64>,
+        reference: Option<f64>,
+    ) {
+        self.price_limits.insert(
+            symbol.to_string(),
+            PriceLimits {
+                symbol: symbol.to_string(),
+                lower_limit: lower.map(Price),
+                upper_limit: upper.map(Price),
+                reference_price: reference.map(Price),
+                timestamp: now_ns(),
+                is_snapshot: Some(true),
+            },
+        );
+    }
+
+    /// Limit/stop prices must sit inside the collar when one is configured.
+    /// Market orders with no price are not collared here.
+    pub fn price_allowed(
+        &self,
+        symbol: &str,
+        price: Option<f64>,
+        stop_price: Option<f64>,
+    ) -> Result<(), &'static str> {
+        let Some(lim) = self.price_limits.get(symbol) else {
+            return Ok(());
+        };
+        for px in [price, stop_price].into_iter().flatten() {
+            if let Some(lo) = lim.lower_limit.as_ref() {
+                if px + f64::EPSILON < lo.0 {
+                    return Err("PRICE_LIMIT_EXCEEDED");
+                }
+            }
+            if let Some(hi) = lim.upper_limit.as_ref() {
+                if px > hi.0 + f64::EPSILON {
+                    return Err("PRICE_LIMIT_EXCEEDED");
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// `marketdata/session`
@@ -110,6 +172,16 @@ pub fn parse_session_path(path: &str) -> bool {
 pub fn parse_security_status_path(path: &str) -> Option<String> {
     let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() == 3 && parts[0] == "marketdata" && parts[2] == "status" {
+        Some(parts[1].to_string())
+    } else {
+        None
+    }
+}
+
+/// `marketdata/{symbol}/limits`
+pub fn parse_price_limits_path(path: &str) -> Option<String> {
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() == 3 && parts[0] == "marketdata" && parts[2] == "limits" {
         Some(parts[1].to_string())
     } else {
         None
@@ -157,5 +229,27 @@ mod tests {
             Some("AAPL")
         );
         assert!(parse_security_status_path("marketdata/session").is_none());
+        assert_eq!(
+            parse_price_limits_path("marketdata/AAPL/limits").as_deref(),
+            Some("AAPL")
+        );
+        assert!(parse_price_limits_path("marketdata/AAPL/status").is_none());
+    }
+
+    #[test]
+    fn collar_rejects_outside_band() {
+        let mut hub = MarketStateHub::default();
+        hub.set_price_limits("AAPL", Some(10.0), Some(20.0), Some(15.0));
+        assert!(hub.price_allowed("AAPL", Some(15.0), None).is_ok());
+        assert_eq!(
+            hub.price_allowed("AAPL", Some(9.0), None),
+            Err("PRICE_LIMIT_EXCEEDED")
+        );
+        assert_eq!(
+            hub.price_allowed("AAPL", Some(21.0), None),
+            Err("PRICE_LIMIT_EXCEEDED")
+        );
+        assert!(hub.price_allowed("BTC", Some(1.0), None).is_ok());
+        assert!(hub.price_allowed("AAPL", None, None).is_ok());
     }
 }

@@ -24,7 +24,9 @@ use crate::market_data::{
     parse_mark_query_path, parse_md_subscription, parse_ticker_query_path, parse_trade_query_path,
     StreamSubscription, SubscriptionKind,
 };
-use crate::market_state::{parse_security_status_path, parse_session_path};
+use crate::market_state::{
+    parse_price_limits_path, parse_security_status_path, parse_session_path,
+};
 use crate::matching::Fill;
 use crate::path_policy::validate_interaction;
 use crate::server::{make_error_frame, schema_id, ExchangeState};
@@ -105,6 +107,13 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
         let status = ms.security_status(&symbol);
         drop(ms);
         return respond_cbor(frame, &status, None);
+    }
+
+    if let Some(symbol) = parse_price_limits_path(&channel_path) {
+        let ms = state.market_state.lock().await;
+        let limits = ms.price_limits(&symbol);
+        drop(ms);
+        return respond_cbor(frame, &limits, None);
     }
 
     if parse_capabilities_path(&channel_path) {
@@ -628,6 +637,20 @@ pub async fn handle_market_subscribe(
                     &routing_key,
                     payload,
                     "marketdata/status",
+                )];
+            }
+            vec![ack_subscribe(frame)]
+        }
+        SubscriptionKind::PriceLimits { symbol } => {
+            let ms = state.market_state.lock().await;
+            let limits = ms.price_limits(&symbol);
+            drop(ms);
+            if let Ok(payload) = codec::encode_cbor(&limits) {
+                return vec![stream_item(
+                    frame.channel_id,
+                    &routing_key,
+                    payload,
+                    "marketdata/limits",
                 )];
             }
             vec![ack_subscribe(frame)]

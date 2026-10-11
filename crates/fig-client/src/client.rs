@@ -780,6 +780,23 @@ impl<'a> FigSdkClient<'a> {
         Err(ClientError::NoResponse)
     }
 
+    pub async fn request_price_limits(
+        &self,
+        symbol: &str,
+        channel_id: u16,
+    ) -> Result<fig_core::messages::PriceLimits, ClientError> {
+        let path = format!("marketdata/{symbol}/limits");
+        let frames = self
+            .request(channel_id, 0x01, &path, "GET", None, None)
+            .await?;
+        for f in frames {
+            if f.frame_type == FrameType::Response {
+                return decode_cbor(&f.payload).map_err(|e| ClientError::Codec(e.to_string()));
+            }
+        }
+        Err(ClientError::NoResponse)
+    }
+
     pub async fn request_security_status(
         &self,
         symbol: &str,

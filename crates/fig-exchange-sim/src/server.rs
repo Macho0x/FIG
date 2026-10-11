@@ -30,8 +30,11 @@ use crate::market_data::{
     parse_agg_trade_query_path, parse_all_mids_path, parse_mark_query_path, MarketDataHub,
     StreamSubscription,
 };
-use crate::market_state::{parse_security_status_path, parse_session_path, MarketStateHub};
+use crate::market_state::{
+    parse_price_limits_path, parse_security_status_path, parse_session_path, MarketStateHub,
+};
 use crate::matching::MatchingEngine;
+use crate::md_rate::{MdRateConfig, MdRateLimiter};
 
 /// Well-known schema IDs for trading messages.
 pub mod schema_id {
@@ -64,6 +67,32 @@ pub struct ExchangeState {
     pub market_data: Mutex<MarketDataHub>,
     pub accounts: Mutex<AccountHub>,
     pub market_state: Mutex<MarketStateHub>,
+    pub md_rate: MdRateLimiter,
+}
+
+impl ExchangeState {
+    /// In-memory broker state for unit and frame-level tests.
+    pub fn for_test() -> Arc<Self> {
+        Self::for_test_with(MdRateConfig::default(), MarketStateHub::default())
+    }
+
+    pub fn for_test_with(md_rate: MdRateConfig, market_state: MarketStateHub) -> Arc<Self> {
+        Arc::new(Self {
+            engine: Mutex::new(MatchingEngine::new()),
+            sessions: MemorySessionStore::new(),
+            file_sessions: DurableSessionStore::from_env().unwrap_or_else(|_| {
+                DurableSessionStore::File(fig_core::session::FileSessionStore::new(
+                    std::env::temp_dir().join("fig-exchange-sessions"),
+                ))
+            }),
+            subscriptions: Mutex::new(Vec::new()),
+            account_subscriptions: Mutex::new(Vec::new()),
+            market_data: Mutex::new(MarketDataHub::default()),
+            accounts: Mutex::new(AccountHub::default()),
+            market_state: Mutex::new(market_state),
+            md_rate: MdRateLimiter::new(md_rate),
+        })
+    }
 }
 
 /// Options for [`run_server_with`].
@@ -73,6 +102,8 @@ pub struct ServerOptions {
     /// (`FIG_TLS_CA=<path>`). Development convenience — production uses a real
     /// PKI, not a self-signed certificate.
     pub print_ca: Option<std::path::PathBuf>,
+    /// Public MD REQUEST/SUBSCRIBE caps (SPEC §9.3).
+    pub md_rate: MdRateConfig,
 }
 
 /// Start the FIG exchange server on the given address.
@@ -154,6 +185,7 @@ pub async fn run_server_with(addr: &str, options: ServerOptions) -> anyhow::Resu
         market_data: Mutex::new(MarketDataHub::default()),
         accounts: Mutex::new(AccountHub::default()),
         market_state: Mutex::new(MarketStateHub::default()),
+        md_rate: MdRateLimiter::new(options.md_rate),
     });
 
     info!("Waiting for connections...");
@@ -307,6 +339,9 @@ pub async fn handle_frame(
     session_id: uuid::Uuid,
     conn: Option<Arc<FigConnection>>,
 ) -> Vec<Frame> {
+    if let Some(err) = state.md_rate.admit(session_id, &frame) {
+        return vec![err];
+    }
     match frame.frame_type {
         FrameType::Control => handle_control(frame),
         FrameType::Request => handle_request(frame, state).await,
@@ -379,6 +414,7 @@ pub async fn handle_request(frame: Frame, state: &Arc<ExchangeState>) -> Vec<Fra
             || parse_all_mids_path(channel_path)
             || parse_session_path(channel_path)
             || parse_security_status_path(channel_path).is_some()
+            || parse_price_limits_path(channel_path).is_some()
             || channel_path.contains("/candles/")
             || channel_path.contains("/ticker")
             || (channel_path.contains("/trades") && !channel_path.contains("/orders"))
@@ -496,6 +532,14 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                 {
                     let ms = state.market_state.lock().await;
                     if let Err(code) = ms.orders_allowed(&order.symbol) {
+                        drop(ms);
+                        return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
+                    }
+                    if let Err(code) = ms.price_allowed(
+                        &order.symbol,
+                        order.price.as_ref().map(|p| p.0),
+                        order.stop_price.as_ref().map(|p| p.0),
+                    ) {
                         drop(ms);
                         return vec![make_error_frame(frame.channel_id, frame.stream_seq, code)];
                     }
@@ -965,4 +1009,13 @@ pub fn make_error_frame(channel_id: u16, stream_seq: u32, message: &str) -> Fram
         .with_seq(stream_seq)
         .with_extension(Extension::text(ExtensionTag::ErrorCode, "SERVER_ERROR"))
         .with_extension(Extension::text(ExtensionTag::ErrorMessage, message))
+}
+
+/// SPEC §9.3 public MD cap exceeded.
+pub fn make_rate_limited_frame(channel_id: u16, stream_seq: u32) -> Frame {
+    Frame::new(FrameType::StreamError, channel_id)
+        .with_seq(stream_seq)
+        .with_extension(Extension::text(ExtensionTag::ErrorCode, "RATE_LIMITED"))
+        .with_extension(Extension::text(ExtensionTag::ErrorMessage, "RATE_LIMITED"))
+        .with_extension(Extension::u16(ExtensionTag::StatusCode, 429))
 }

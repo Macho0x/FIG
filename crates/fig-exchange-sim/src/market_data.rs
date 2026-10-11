@@ -49,6 +49,7 @@ pub enum SubscriptionKind {
     Liquidations,
     Session,
     SecurityStatus { symbol: String },
+    PriceLimits { symbol: String },
 }
 
 #[derive(Clone)]
@@ -477,6 +478,11 @@ pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<Su
         .or_else(|| crate::market_state::parse_security_status_path(routing_key))
     {
         return Some(SubscriptionKind::SecurityStatus { symbol });
+    }
+    if let Some(symbol) = crate::market_state::parse_price_limits_path(channel_path)
+        .or_else(|| crate::market_state::parse_price_limits_path(routing_key))
+    {
+        return Some(SubscriptionKind::PriceLimits { symbol });
     }
     if parse_liquidations_subscription(routing_key, channel_path) {
         return Some(SubscriptionKind::Liquidations);

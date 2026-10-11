@@ -17,11 +17,11 @@ use crate::messages::{
     OpenOrdersSnapshot, OrdStatus, OrderBookDelta, OrderBookRequest, OrderBookSnapshot,
     OrderHistoryBatch, OrderHistoryRequest, OrderListStatus, OrderListStatusStatus, OrderType,
     PageInfo, PositionEntry, PositionRequest, PositionSnapshot, PositionUpdate, Price, PriceLevel,
-    PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity, SecurityIdSource, SecurityStatus,
-    SecurityStatusHaltReason, SecurityStatusRequest, SecurityStatusStatus, Side, Symbol,
-    SymbolTicker, TickerRequest, TimeInForce, TradeHistoryRequest, TradeTimestamp,
-    TradingSessionStatus, TradingSessionStatusHaltReason, TradingSessionStatusRequest,
-    TradingSessionStatusStatus, UserLiquidation,
+    PriceLimits, PriceLimitsRequest, PublicTrade, PublicTradeBatch, PublicTradeEvent, Quantity,
+    SecurityIdSource, SecurityStatus, SecurityStatusHaltReason, SecurityStatusRequest,
+    SecurityStatusStatus, Side, Symbol, SymbolTicker, TickerRequest, TimeInForce,
+    TradeHistoryRequest, TradeTimestamp, TradingSessionStatus, TradingSessionStatusHaltReason,
+    TradingSessionStatusRequest, TradingSessionStatusStatus, UserLiquidation,
 };
 
 // --- Bounds-checked SBE decode helpers ---
@@ -4414,6 +4414,124 @@ impl MassCancelReportBodyDecoder {
                 total_affected,
                 status,
                 timestamp,
+            },
+            pos,
+        ))
+    }
+}
+
+/// SBE body encoder for nested PriceLimitsRequest
+pub struct PriceLimitsRequestBodyEncoder;
+
+impl PriceLimitsRequestBodyEncoder {
+    pub fn encode(value: &PriceLimitsRequest, buf: &mut Vec<u8>) {
+        let symbol_bytes = value.symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+    }
+}
+
+/// SBE body decoder for nested PriceLimitsRequest
+pub struct PriceLimitsRequestBodyDecoder;
+
+impl PriceLimitsRequestBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(PriceLimitsRequest, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+
+        Ok((PriceLimitsRequest { symbol }, pos))
+    }
+}
+
+/// SBE body encoder for nested PriceLimits
+pub struct PriceLimitsBodyEncoder;
+
+impl PriceLimitsBodyEncoder {
+    pub fn encode(value: &PriceLimits, buf: &mut Vec<u8>) {
+        let symbol_bytes = value.symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.extend_from_slice(
+            &value
+                .lower_limit
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if value.lower_limit.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(
+            &value
+                .upper_limit
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if value.upper_limit.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(
+            &value
+                .reference_price
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if value.reference_price.is_some() {
+            1
+        } else {
+            0
+        });
+        buf.extend_from_slice(&value.timestamp.to_be_bytes());
+        buf.push(value.is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(value.is_snapshot.is_some()));
+    }
+}
+
+/// SBE body decoder for nested PriceLimits
+pub struct PriceLimitsBodyDecoder;
+
+impl PriceLimitsBodyDecoder {
+    pub fn decode(buf: &[u8]) -> Result<(PriceLimits, usize), String> {
+        let mut pos: usize = 0;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+        let lower_limit_raw = sbe_f64(buf, &mut pos)?;
+        let lower_limit = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(lower_limit_raw))
+        } else {
+            None
+        };
+        let upper_limit_raw = sbe_f64(buf, &mut pos)?;
+        let upper_limit = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(upper_limit_raw))
+        } else {
+            None
+        };
+        let reference_price_raw = sbe_f64(buf, &mut pos)?;
+        let reference_price = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(reference_price_raw))
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok((
+            PriceLimits {
+                symbol,
+                lower_limit,
+                upper_limit,
+                reference_price,
+                timestamp,
+                is_snapshot,
             },
             pos,
         ))
@@ -10145,6 +10263,192 @@ impl MassCancelReportDecoder {
             total_affected,
             status,
             timestamp,
+        })
+    }
+}
+
+/// SBE encoder for PriceLimitsRequest
+pub struct PriceLimitsRequestEncoder;
+
+impl PriceLimitsRequestEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(symbol: Symbol) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&61u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+
+        buf
+    }
+}
+
+/// SBE decoder for PriceLimitsRequest
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriceLimitsRequestDecoder {
+    pub symbol: Symbol,
+}
+
+impl PriceLimitsRequestDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 61 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+
+        Ok(Self { symbol })
+    }
+}
+
+/// SBE encoder for PriceLimits
+pub struct PriceLimitsEncoder;
+
+impl PriceLimitsEncoder {
+    /// Encode this message into a byte buffer.
+    /// Returns the filled buffer.
+    pub fn encode(
+        symbol: Symbol,
+        lower_limit: Option<Price>,
+        upper_limit: Option<Price>,
+        reference_price: Option<Price>,
+        timestamp: TradeTimestamp,
+        is_snapshot: Option<bool>,
+    ) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // SBE Message Header (8 bytes)
+        buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
+        buf.extend_from_slice(&62u16.to_be_bytes()); // template_id
+        buf.extend_from_slice(&0u16.to_be_bytes()); // version
+        buf.extend_from_slice(&33u16.to_be_bytes()); // block_length
+
+        // Fixed fields
+        let symbol_bytes = symbol.as_bytes();
+        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
+        buf.extend_from_slice(symbol_bytes);
+        buf.extend_from_slice(
+            &lower_limit
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if lower_limit.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(
+            &upper_limit
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if upper_limit.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(
+            &reference_price
+                .as_ref()
+                .map(|v| v.0)
+                .unwrap_or(0.0)
+                .to_be_bytes(),
+        );
+        buf.push(if reference_price.is_some() { 1 } else { 0 });
+        buf.extend_from_slice(&timestamp.to_be_bytes());
+        buf.push(is_snapshot.unwrap_or(false) as u8);
+        buf.push(u8::from(is_snapshot.is_some()));
+
+        buf
+    }
+}
+
+/// SBE decoder for PriceLimits
+#[derive(Debug, Clone, PartialEq)]
+pub struct PriceLimitsDecoder {
+    pub symbol: Symbol,
+    pub lower_limit: Option<Price>,
+    pub upper_limit: Option<Price>,
+    pub reference_price: Option<Price>,
+    pub timestamp: TradeTimestamp,
+    pub is_snapshot: Option<bool>,
+}
+
+impl PriceLimitsDecoder {
+    /// Decode from a byte buffer.
+    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+        if buf.len() < 8 {
+            return Err("buffer too short for SBE header".to_string());
+        }
+
+        let schema_id = u16::from_be_bytes([buf[0], buf[1]]);
+        let tmpl_id = u16::from_be_bytes([buf[2], buf[3]]);
+        // version = u16::from_be_bytes([buf[4], buf[5]]);
+        // block_length = u16::from_be_bytes([buf[6], buf[7]]);
+
+        if schema_id != 1 {
+            return Err(format!("invalid schema_id: {}", schema_id));
+        }
+        if tmpl_id != 62 {
+            return Err(format!("invalid template_id: {}", tmpl_id));
+        }
+
+        let mut pos: usize = 8;
+
+        let symbol = sbe_str(buf, &mut pos)?;
+        let lower_limit_raw = sbe_f64(buf, &mut pos)?;
+        let lower_limit = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(lower_limit_raw))
+        } else {
+            None
+        };
+        let upper_limit_raw = sbe_f64(buf, &mut pos)?;
+        let upper_limit = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(upper_limit_raw))
+        } else {
+            None
+        };
+        let reference_price_raw = sbe_f64(buf, &mut pos)?;
+        let reference_price = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(Price(reference_price_raw))
+        } else {
+            None
+        };
+        let timestamp_raw = sbe_i64(buf, &mut pos)?;
+        let timestamp = timestamp_raw;
+        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
+        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
+            Some(is_snapshot_val != 0)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            symbol,
+            lower_limit,
+            upper_limit,
+            reference_price,
+            timestamp,
+            is_snapshot,
         })
     }
 }

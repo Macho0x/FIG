@@ -45,6 +45,13 @@ streams still half-close after the response.
 | Public liquidations | `marketdata/liquidations` | `LiquidationTrade` | Binance `@forceOrder` |
 | Trading session | `marketdata/session` | `TradingSessionStatus` | FIX 35=h |
 | Security status | `marketdata/{symbol}/status` | `SecurityStatus` | FIX 35=f |
+| Price limits | `marketdata/{symbol}/limits` | `PriceLimits` | Collars / circuit-breaker bands |
+
+Unauthenticated `marketdata/…` REQUEST and SUBSCRIBE are rate-limited by
+tier (SPEC §9.3). The reference broker returns `STREAM_ERROR` /
+`RATE_LIMITED` / 429 when the public bucket is exhausted. Presenting
+`AUTH_TOKEN` uses the authenticated bucket. `FIG_DEV_OPEN=1` is the
+internal (unlimited) tier and is development-only.
 
 Intervals use FIG names: `1m`, `5m`, `1h`, `1d` (not “klines”).
 

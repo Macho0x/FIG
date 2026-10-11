@@ -98,6 +98,13 @@ async fn sdk_helpers_request_and_subscribe_smoke() {
         .await
         .expect("security status");
     assert_eq!(sec.symbol, "AAPL");
+    let limits = sdk
+        .request_price_limits("AAPL", 18)
+        .await
+        .expect("price limits");
+    assert_eq!(limits.symbol, "AAPL");
+    assert!(limits.lower_limit.is_none());
+    assert!(limits.upper_limit.is_none());
     let raw = sdk
         .request(12, 0x01, "marketdata/session", "GET", None, None)
         .await

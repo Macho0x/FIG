@@ -7147,4 +7147,179 @@ public static class CapabilityPathDecoder
         }
     }
 
+    /// <summary>SBE message PriceLimitsRequest</summary>
+    public class PriceLimitsRequest
+    {
+        public string Symbol;
+    }
+
+    /// <summary>SBE body encoder for PriceLimitsRequest (fields only, no header).</summary>
+    public static class PriceLimitsRequestBodyEncoder
+    {
+        public static void Encode(PriceLimitsRequest value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+        }
+    }
+
+    /// <summary>SBE body decoder for PriceLimitsRequest: reads fields at pos.</summary>
+    public static class PriceLimitsRequestBodyDecoder
+    {
+        public static (PriceLimitsRequest Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PriceLimitsRequest();
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for PriceLimitsRequest</summary>
+    public static class PriceLimitsRequestEncoder
+    {
+        public static byte[] Encode(string Symbol)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 61);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteString(buf, Symbol);
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for PriceLimitsRequest: validates the header and reads the body.</summary>
+    public static class PriceLimitsRequestDecoder
+    {
+        public static PriceLimitsRequest Decode(byte[] buf)
+        {
+            var value = new PriceLimitsRequest();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 61) throw new InvalidOperationException("invalid template_id");
+            string symbol = Wire.ReadString(buf, ref pos);
+            value.Symbol = symbol;
+            return value;
+        }
+    }
+
+    /// <summary>SBE message PriceLimits</summary>
+    public class PriceLimits
+    {
+        public string Symbol;
+        public double? LowerLimit;
+        public double? UpperLimit;
+        public double? ReferencePrice;
+        public long Timestamp;
+        public byte? IsSnapshot;
+    }
+
+    /// <summary>SBE body encoder for PriceLimits (fields only, no header).</summary>
+    public static class PriceLimitsBodyEncoder
+    {
+        public static void Encode(PriceLimits value, List<byte> buf)
+        {
+            Wire.WriteString(buf, value.Symbol);
+            Wire.WriteF64BE(buf, value.LowerLimit ?? 0.0);
+            buf.Add((byte)(value.LowerLimit.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.UpperLimit ?? 0.0);
+            buf.Add((byte)(value.UpperLimit.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, value.ReferencePrice ?? 0.0);
+            buf.Add((byte)(value.ReferencePrice.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(value.Timestamp));
+            buf.Add(value.IsSnapshot ?? (byte)0);
+            buf.Add((byte)(value.IsSnapshot.HasValue ? 1 : 0));
+        }
+    }
+
+    /// <summary>SBE body decoder for PriceLimits: reads fields at pos.</summary>
+    public static class PriceLimitsBodyDecoder
+    {
+        public static (PriceLimits Value, int Pos) Decode(byte[] buf, int pos)
+        {
+            var value = new PriceLimits();
+            string symbol = Wire.ReadString(buf, ref pos);
+            double lower_limit_v = Wire.ReadF64BE(buf, ref pos);
+            double? lower_limit = buf[pos++] == 1 ? lower_limit_v : null;
+            double upper_limit_v = Wire.ReadF64BE(buf, ref pos);
+            double? upper_limit = buf[pos++] == 1 ? upper_limit_v : null;
+            double reference_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? reference_price = buf[pos++] == 1 ? reference_price_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LowerLimit = lower_limit;
+            value.UpperLimit = upper_limit;
+            value.ReferencePrice = reference_price;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return (value, pos);
+        }
+    }
+
+    /// <summary>SBE encoder for PriceLimits</summary>
+    public static class PriceLimitsEncoder
+    {
+        public static byte[] Encode(string Symbol, double? LowerLimit, double? UpperLimit, double? ReferencePrice, long Timestamp, byte? IsSnapshot)
+        {
+            var buf = new List<byte>();
+            Wire.WriteU16BE(buf, Schema.SCHEMA_ID);
+            Wire.WriteU16BE(buf, 62);
+            Wire.WriteU16BE(buf, 0);
+            Wire.WriteU16BE(buf, 33);
+            Wire.WriteString(buf, Symbol);
+            Wire.WriteF64BE(buf, LowerLimit ?? 0.0);
+            buf.Add((byte)(LowerLimit.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, UpperLimit ?? 0.0);
+            buf.Add((byte)(UpperLimit.HasValue ? 1 : 0));
+            Wire.WriteF64BE(buf, ReferencePrice ?? 0.0);
+            buf.Add((byte)(ReferencePrice.HasValue ? 1 : 0));
+            Wire.WriteU64BE(buf, (ulong)(Timestamp));
+            buf.Add(IsSnapshot ?? (byte)0);
+            buf.Add((byte)(IsSnapshot.HasValue ? 1 : 0));
+            return buf.ToArray();
+        }
+    }
+
+    /// <summary>SBE decoder for PriceLimits: validates the header and reads the body.</summary>
+    public static class PriceLimitsDecoder
+    {
+        public static PriceLimits Decode(byte[] buf)
+        {
+            var value = new PriceLimits();
+            if (buf.Length < 8) throw new InvalidOperationException("buffer too short for SBE header");
+            int pos = 0;
+            ushort schemaId = Wire.ReadU16BE(buf, ref pos);
+            ushort tmplId = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            _ = Wire.ReadU16BE(buf, ref pos);
+            if (schemaId != Schema.SCHEMA_ID) throw new InvalidOperationException("invalid schema_id");
+            if (tmplId != 62) throw new InvalidOperationException("invalid template_id");
+            string symbol = Wire.ReadString(buf, ref pos);
+            double lower_limit_v = Wire.ReadF64BE(buf, ref pos);
+            double? lower_limit = buf[pos++] == 1 ? lower_limit_v : null;
+            double upper_limit_v = Wire.ReadF64BE(buf, ref pos);
+            double? upper_limit = buf[pos++] == 1 ? upper_limit_v : null;
+            double reference_price_v = Wire.ReadF64BE(buf, ref pos);
+            double? reference_price = buf[pos++] == 1 ? reference_price_v : null;
+            long timestamp = (long)Wire.ReadU64BE(buf, ref pos);
+            byte is_snapshot_v = Wire.TakeU8(buf, ref pos);
+            byte? is_snapshot = buf[pos++] == 1 ? is_snapshot_v : null;
+            value.Symbol = symbol;
+            value.LowerLimit = lower_limit;
+            value.UpperLimit = upper_limit;
+            value.ReferencePrice = reference_price;
+            value.Timestamp = timestamp;
+            value.IsSnapshot = is_snapshot;
+            return value;
+        }
+    }
+
 }

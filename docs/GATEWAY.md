@@ -158,7 +158,7 @@ maps to native `SUBSCRIBE` on `marketdata/aapl/ticker`. Hyperliquid-shaped JSON
 
 - [ ] Replace self-signed certs with proper PKI or mTLS (`FIG_MTLS=1` on exchange-sim).
 - [ ] Multi-node: shared sessions via `RedisSessionStore` (`fig-core` feature `session-redis`). See [DEPLOYMENT.md](DEPLOYMENT.md).
-- [ ] Enable rate limiting and DoS guards (`DoSGuard`, `ChannelRateLimiter`).
+- [ ] Enable rate limiting and DoS guards (`DoSGuard`, `ChannelRateLimiter`, public MD `MdRateLimiter`).
 - [ ] Export metrics: `fig-observability` or `fig-gateway --metrics-addr`.
 - [ ] Liveness: `fig-gateway --health-addr` for orchestrators.
 - [ ] Wire gateway adapters to forward translated frames to your FIG backend (`--fig-backend`).

@@ -2,6 +2,8 @@
 
 FIG is developed as a Rust workspace. Published crates.io/npm packages are not
 automated in this repo — build from source or vendor artifacts in your CI.
+Integrator contract: [COMPATIBILITY.md](COMPATIBILITY.md). Do not publish
+crates.io or npm until a release is willing to freeze the Rust crate API.
 
 ## Rust
 
@@ -71,7 +73,9 @@ cargo publish -p fig-client
 ```
 
 Requires crates.io credentials and version bumps in workspace `Cargo.toml`
-(`[workspace.package] version`). That crate version is independent of
+(`[workspace.package] version`). **Do not run this until** the crate API is
+intentionally frozen; today crate minors may break Rust APIs
+([COMPATIBILITY.md](COMPATIBILITY.md)). That crate version is independent of
 [SPEC.md](../SPEC.md) protocol `1.0.0` (bump SPEC only on a wire break).
 
 `fig_version()` (C ABI) returns `CARGO_PKG_VERSION`.

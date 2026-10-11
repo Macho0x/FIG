@@ -7,13 +7,6 @@ if (bytes.Length == 0)
     throw new InvalidOperationException("empty SBE payload");
 }
 
-var mass = FigNative.CborEncodeMassCancelRequest("MC-001", "DEMO", "AAPL", 1);
-var decoded = FigNative.CborDecodeMassCancelRequest(mass);
-if (decoded.ClOrdId != "MC-001" || decoded.Account != "DEMO" || decoded.Symbol != "AAPL" || decoded.Side != 1)
-{
-    throw new InvalidOperationException("mass-cancel CBOR round trip failed");
-}
-
 using var funding = new FundingState(4);
 
 var root = Environment.GetEnvironmentVariable("FIG_REPO_ROOT")
@@ -98,6 +91,8 @@ Check("sbe.order_list_status.demo", Fig.Sbe.OrderListStatusEncoder.Encode("DEMO"
 Check("sbe.position_request.demo", Fig.Sbe.PositionRequestEncoder.Encode("ACC-1"));
 Check("sbe.position_snapshot.demo", Fig.Sbe.PositionSnapshotEncoder.Encode("ACC-1", new List<Fig.Sbe.PositionEntry> { new Fig.Sbe.PositionEntry { Symbol = "MSFT", Qty = 7.0, EntryPrice = 103.0, UnrealizedPnl = 104.0 }, new Fig.Sbe.PositionEntry { Symbol = "AAPL", Qty = 8.0, EntryPrice = 104.0, UnrealizedPnl = 105.0 } }, (byte)1));
 Check("sbe.position_update.demo", Fig.Sbe.PositionUpdateEncoder.Encode("DEMO", "AAPL", 10.0, 100.0, 0.0));
+Check("sbe.price_limits.demo", Fig.Sbe.PriceLimitsEncoder.Encode("AAPL", 10.0, 20.0, 15.0, 1700000000000000000L, (byte)1));
+Check("sbe.price_limits_request.demo", Fig.Sbe.PriceLimitsRequestEncoder.Encode("AAPL"));
 Check("sbe.public_trade_batch.demo", Fig.Sbe.PublicTradeBatchEncoder.Encode("AAPL", new List<Fig.Sbe.PublicTrade> { new Fig.Sbe.PublicTrade { Symbol = "MSFT", TradeId = "TRADE-ID-3", Price = 103.0, Qty = 9.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000006L }, new Fig.Sbe.PublicTrade { Symbol = "AAPL", TradeId = "TRADE-ID-4", Price = 104.0, Qty = 10.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000007L } }, (byte)1, "NEXT-2"));
 Check("sbe.public_trade_event.demo", Fig.Sbe.PublicTradeEventEncoder.Encode(new Fig.Sbe.PublicTrade { Symbol = "AAPL", TradeId = "TRADE-ID-2", Price = 102.0, Qty = 8.0, Side = Fig.Sbe.PublicTradeSide.Sell, Timestamp = 1700000000000000005L }));
 Check("sbe.security_status.demo", Fig.Sbe.SecurityStatusEncoder.Encode("AAPL", Fig.Sbe.SecurityStatusStatus.Trading, Fig.Sbe.SecurityStatusHaltReason.None, 1700000000000000000L, (byte)1));

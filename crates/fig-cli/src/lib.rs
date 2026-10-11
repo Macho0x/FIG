@@ -186,7 +186,7 @@ pub fn log_frames(label: &str, frames: &[Frame]) {
     }
 }
 
-/// Run all seven demo flows against a connected FIG server.
+/// Run demo flows against a connected FIG server.
 pub async fn run_demos(conn: &Connection) -> Result<()> {
     let client = FigSdkClient::new(conn);
 
@@ -328,7 +328,18 @@ pub async fn run_demos(conn: &Connection) -> Result<()> {
     log_frames("margin", &margin_frames);
     assert_subscribe_ack("margin", &margin_frames)?;
 
-    info!("=== Demo 7: PING/PONG ===");
+    info!("=== Demo 7: market state (session, security, price limits) ===");
+    let session = client.request_session_status(15).await?;
+    info!("  Session: {:?}", session.status);
+    let security = client.request_security_status("AAPL", 16).await?;
+    info!("  Security {}: {:?}", security.symbol, security.status);
+    let limits = client.request_price_limits("AAPL", 17).await?;
+    info!(
+        "  Price limits {}: lower={:?} upper={:?}",
+        limits.symbol, limits.lower_limit, limits.upper_limit
+    );
+
+    info!("=== Demo 8: PING/PONG ===");
     let ping_frames = client.send_and_read(Frame::ping()).await?;
     log_frames("ping", &ping_frames);
     assert_pong("ping", &ping_frames)?;

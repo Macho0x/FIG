@@ -88,7 +88,7 @@ streams still half-close after the response.
 | mTLS | `FIG_MTLS=1` **and** `FIG_MTLS_CA=/path/to/client-ca.pem` to verify client certificates. `FIG_MTLS=1` without `FIG_MTLS_CA` accepts any client certificate (logged warning, development only) |
 | Auth | Venue-issued `AUTH_TOKEN` on private paths ([SPEC §9.3](../SPEC.md)); token comparison is constant-time. RS256 via `FIG_JWT_JWKS`; rotation: [JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md) |
 | Resumption tokens (0-RTT) | Server-signed HMAC-SHA256; set `FIG_RESUMPTION_KEY` to the **same** value on every node that must accept the same tokens. Servers reject unsigned/forged tokens ([SPEC §10.1](../SPEC.md)) |
-| DoS limits | `DoSGuard` (max channels, frame size, message rate) + per-channel `ChannelRateLimiter`, enforced on every connection |
+| DoS limits | `DoSGuard` (max channels, frame size, message rate) + per-channel `ChannelRateLimiter` on every connection. Public `marketdata/…` REQUEST/SUBSCRIBE is also capped by tier (`MdRateLimiter`: 32/s unauthenticated, 256/s with `AUTH_TOKEN`; SPEC §9.3) |
 | Frame size | 1 MiB hard cap in `FrameDecoder` (`MAX_FRAME_SIZE`); oversize length prefixes are rejected before buffering |
 | Dev bypass | `FIG_TLS_INSECURE=1`, `FIG_DEV_OPEN=1` — **never** in production. Set `FIG_PRODUCTION=1` so a stray `FIG_DEV_OPEN` is refused rather than silently disabling auth |
 

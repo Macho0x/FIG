@@ -1,6 +1,6 @@
 // FIG Schema Language — Market state and control (§21)
 // Merged by `cargo xtask codegen` with orders.fsl (well-known id 0x01).
-// Halts, trading-session status, security status, and mass cancel.
+// Halts, trading-session status, security status, mass cancel, and price collars.
 
 schema trading.orders v1.0.0 {
     description: "Market state and control messages (§21.1)"
@@ -9,6 +9,7 @@ schema trading.orders v1.0.0 {
     type Symbol: string(max_len: 32, uppercase: true)
     type ClientOrderId: string(max_len: 20, pattern: "[A-Za-z0-9\\-]+")
     type TradeTimestamp: int64
+    type Price: decimal64(precision: 8, min: 0)
 
     message TradingSessionStatusRequest {
         channel_type: request_response
@@ -65,6 +66,24 @@ schema trading.orders v1.0.0 {
         timestamp: TradeTimestamp @6
     }
 
+    // Price collars / circuit-breaker bands. Absent limits mean no collar.
+    message PriceLimitsRequest {
+        channel_type: request_response
+
+        symbol: Symbol @1
+    }
+
+    message PriceLimits {
+        channel_type: stream_item
+
+        symbol: Symbol @1
+        lower_limit: Price @2 optional
+        upper_limit: Price @3 optional
+        reference_price: Price @4 optional
+        timestamp: TradeTimestamp @5
+        is_snapshot: bool @6 optional
+    }
+
     gateway fix {
         message MassCancelRequest -> MsgType: "q" {
             cl_ord_id -> tag: 11
@@ -96,5 +115,7 @@ schema trading.orders v1.0.0 {
         message SecurityStatus -> method: SSE path: "/marketdata/{symbol}/status"
         message MassCancelRequest -> method: POST path: "/trading/accounts/{account}/orders/masscancel"
         message MassCancelReport -> method: POST path: "/trading/accounts/{account}/orders/masscancel"
+        message PriceLimitsRequest -> method: GET path: "/marketdata/{symbol}/limits"
+        message PriceLimits -> method: SSE path: "/marketdata/{symbol}/limits"
     }
 }

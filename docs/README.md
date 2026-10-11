@@ -15,11 +15,13 @@ Guides below are how-to: they must match the spec, not replace it.
 | Rotate JWT signing keys | [JWT_KEY_ROTATION.md](JWT_KEY_ROTATION.md) |
 | Colo SBE order entry | [SBE_ORDER_PATH.md](SBE_ORDER_PATH.md) |
 | Language bindings | [bindings/README.md](../bindings/README.md) · [PUBLISHING.md](PUBLISHING.md) |
+| Pin a version | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | Crate / module map | [API.md](API.md) |
 | Change FSL or the protocol | [CONTRIBUTING.md](../CONTRIBUTING.md) · [AGENTS.md](../AGENTS.md) · [adr/](adr/) |
 
 **Crate version** (workspace `Cargo.toml`) is independent of
-**protocol version** ([SPEC.md](../SPEC.md) `1.0.0`). Bump SPEC only on a wire break.
+**protocol version** ([SPEC.md](../SPEC.md) `1.0.0`) and of git `v1.0.x`
+release tags. Full policy: [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ## Two I/O patterns (do not mix)
 

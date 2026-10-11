@@ -6098,3 +6098,148 @@ export function MassCancelReportDecoderDecode(buf: Uint8Array): MassCancelReport
   return value;
 }
 
+/** SBE message PriceLimitsRequest */
+export interface PriceLimitsRequest {
+  symbol: string;
+}
+
+/** SBE body encoder for PriceLimitsRequest (fields only, no header). */
+export function PriceLimitsRequestBodyEncoderEncode(value: PriceLimitsRequest, buf: number[]): void {
+  writeString(buf, value.symbol);
+}
+
+/** SBE body decoder for PriceLimitsRequest: reads fields at `pos`. */
+export function PriceLimitsRequestBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PriceLimitsRequest {
+  const symbol = readString(buf, pos);
+  const value: PriceLimitsRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE encoder for PriceLimitsRequest — returns the complete message. */
+export function PriceLimitsRequestEncoderEncode(symbol: string): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 61);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 0);
+  writeString(buf, symbol);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for PriceLimitsRequest: validates the header and reads the body. */
+export function PriceLimitsRequestDecoderDecode(buf: Uint8Array): PriceLimitsRequest {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 61) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const value: PriceLimitsRequest = {
+    symbol: symbol,
+  };
+  return value;
+}
+
+/** SBE message PriceLimits */
+export interface PriceLimits {
+  symbol: string;
+  lower_limit: number | null;
+  upper_limit: number | null;
+  reference_price: number | null;
+  timestamp: bigint;
+  is_snapshot: number | null;
+}
+
+/** SBE body encoder for PriceLimits (fields only, no header). */
+export function PriceLimitsBodyEncoderEncode(value: PriceLimits, buf: number[]): void {
+  writeString(buf, value.symbol);
+  writeF64BE(buf, value.lower_limit ?? 0);
+  buf.push(value.lower_limit != null ? 1 : 0);
+  writeF64BE(buf, value.upper_limit ?? 0);
+  buf.push(value.upper_limit != null ? 1 : 0);
+  writeF64BE(buf, value.reference_price ?? 0);
+  buf.push(value.reference_price != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, value.timestamp));
+  buf.push(value.is_snapshot ?? 0);
+  buf.push(value.is_snapshot != null ? 1 : 0);
+}
+
+/** SBE body decoder for PriceLimits: reads fields at `pos`. */
+export function PriceLimitsBodyDecoderDecode(buf: Uint8Array, pos: { value: number }): PriceLimits {
+  const symbol = readString(buf, pos);
+  const lower_limit_v = readF64BE(buf, pos);
+  const lower_limit = buf[pos.value++] === 1 ? lower_limit_v : null;
+  const upper_limit_v = readF64BE(buf, pos);
+  const upper_limit = buf[pos.value++] === 1 ? upper_limit_v : null;
+  const reference_price_v = readF64BE(buf, pos);
+  const reference_price = buf[pos.value++] === 1 ? reference_price_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: PriceLimits = {
+    symbol: symbol,
+    lower_limit: lower_limit,
+    upper_limit: upper_limit,
+    reference_price: reference_price,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+
+/** SBE encoder for PriceLimits — returns the complete message. */
+export function PriceLimitsEncoderEncode(symbol: string, lower_limit: number | null, upper_limit: number | null, reference_price: number | null, timestamp: bigint, is_snapshot: number | null): Uint8Array {
+  const buf: number[] = [];
+  writeU16BE(buf, SCHEMA_ID);
+  writeU16BE(buf, 62);
+  writeU16BE(buf, 0);
+  writeU16BE(buf, 33);
+  writeString(buf, symbol);
+  writeF64BE(buf, lower_limit ?? 0);
+  buf.push(lower_limit != null ? 1 : 0);
+  writeF64BE(buf, upper_limit ?? 0);
+  buf.push(upper_limit != null ? 1 : 0);
+  writeF64BE(buf, reference_price ?? 0);
+  buf.push(reference_price != null ? 1 : 0);
+  writeU64BE(buf, BigInt.asUintN(64, timestamp));
+  buf.push(is_snapshot ?? 0);
+  buf.push(is_snapshot != null ? 1 : 0);
+  return new Uint8Array(buf);
+}
+
+/** SBE decoder for PriceLimits: validates the header and reads the body. */
+export function PriceLimitsDecoderDecode(buf: Uint8Array): PriceLimits {
+  if (buf.length < 8) throw new Error("buffer too short for SBE header");
+  const pos = { value: 0 };
+  const schemaId = readU16BE(buf, pos);
+  const tmplId = readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  readU16BE(buf, pos);
+  if (schemaId !== SCHEMA_ID) throw new Error("invalid schema_id");
+  if (tmplId !== 62) throw new Error("invalid template_id");
+  const symbol = readString(buf, pos);
+  const lower_limit_v = readF64BE(buf, pos);
+  const lower_limit = buf[pos.value++] === 1 ? lower_limit_v : null;
+  const upper_limit_v = readF64BE(buf, pos);
+  const upper_limit = buf[pos.value++] === 1 ? upper_limit_v : null;
+  const reference_price_v = readF64BE(buf, pos);
+  const reference_price = buf[pos.value++] === 1 ? reference_price_v : null;
+  const timestamp = BigInt.asIntN(64, readU64BE(buf, pos));
+  const is_snapshot_v = readU8(buf, pos);
+  const is_snapshot = buf[pos.value++] === 1 ? is_snapshot_v : null;
+  const value: PriceLimits = {
+    symbol: symbol,
+    lower_limit: lower_limit,
+    upper_limit: upper_limit,
+    reference_price: reference_price,
+    timestamp: timestamp,
+    is_snapshot: is_snapshot,
+  };
+  return value;
+}
+

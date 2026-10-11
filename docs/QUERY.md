@@ -38,6 +38,7 @@ Order history (>50 rows in exchange-sim) uses this pattern today.
 | Mark price | `marketdata/{symbol}/mark` | `MarkPriceRequest` | `MarkPriceUpdate` |
 | Trading session | `marketdata/session` | `TradingSessionStatusRequest` | `TradingSessionStatus` |
 | Security status | `marketdata/{symbol}/status` | `SecurityStatusRequest` | `SecurityStatus` |
+| Price limits | `marketdata/{symbol}/limits` | `PriceLimitsRequest` | `PriceLimits` |
 | Account summary | `accounts/{account}` | (empty GET) | `AccountSummary` |
 | Margin summary | `accounts/{account}/margin` | (empty GET) | `MarginSummary` |
 | Open orders | `trading/accounts/{account}/orders/open` | `OpenOrdersRequest` | `OpenOrdersSnapshot` |
