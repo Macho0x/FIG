@@ -24,9 +24,11 @@ us a reasonable window to release a fix before publishing details.
 
 ## Supported versions
 
-The wire format is frozen at SPEC `1.0.0`. Security fixes land on the latest
-minor release line; older minor versions are not maintained. There are no
-published crates.io artifacts yet — fixes are delivered as repository commits.
+Protocol version remains [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only
+on a wire break. The schema catalog is additive. Rust library APIs may still
+change between minor releases. Security fixes land on the latest minor release
+line; older minor versions are not maintained. There are no published crates.io
+artifacts yet — fixes are delivered as repository commits.
 
 | Version | Supported |
 |---|---|
