@@ -18,6 +18,7 @@ bindings caveats), start at [README.md](README.md) in this folder.
 | [DEPLOYMENT.md](DEPLOYMENT.md) | HA deployment and operations |
 | [PUBLISHING.md](PUBLISHING.md) | Build and install SDKs |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | SPEC vs crate vs git tag; `fig.h` contract |
+| [BENCHMARKS.md](BENCHMARKS.md) | msgs/sec, tail latency, Criterion methodology |
 | [adr/README.md](adr/README.md) | Architecture decision records |
 | [adr/0004-fsl-single-source-of-truth.md](adr/0004-fsl-single-source-of-truth.md) | FSL schema evolution & multi-language codegen |
 | [adr/0006-broker-api-parity.md](adr/0006-broker-api-parity.md) | Native FIG first; broker API parity policy |
@@ -202,18 +203,22 @@ c.ping()
 
 ## `fig-bench` — benchmarks
 
-Criterion microbenches plus a tail-latency harness (`fig-latency` / `latency_bench`).
+Three layers: Criterion mean time, HDR tail latency, wall-clock msgs/sec.
 
 | Suite | Role |
 |---|---|
-| `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` | Criterion mean/median regression |
+| `frame_bench`, `codec_bench`, `gateway_bench`, `matching_bench`, `transport_bench`, `alloc_bench` | Criterion mean/median + elems/s regression |
 | `fig-latency`, `latency_bench` | HDR Histogram p50 / p99 / p99.9 per operation |
+| `fig-throughput` | Sustained msgs/sec over `FIG_THROUGHPUT_SECS` |
+| `fig-load` | Encode/decode flood smoke (CI), not for citing rates |
 
 ```bash
 cargo bench -p fig-bench
 cargo bench -p fig-bench --features alloc --bench alloc_bench
 cargo run --release -p fig-bench --bin fig-latency
 FIG_LATENCY_ITERS=1000 cargo run --release -p fig-bench --bin fig-latency
+cargo run --release -p fig-bench --bin fig-throughput
+FIG_THROUGHPUT_SECS=1 cargo run --release -p fig-bench --bin fig-throughput
 ```
 
 See [BENCHMARKS.md](BENCHMARKS.md) for methodology and reference numbers.

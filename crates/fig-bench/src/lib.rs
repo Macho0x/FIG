@@ -1,11 +1,13 @@
 //! FIG benchmark utilities.
 //!
 //! Criterion microbenches live under `benches/`. Tail-latency percentile
-//! reporting is in [`latency`] and exposed via the `fig-latency` binary.
+//! reporting is in [`latency`] (`fig-latency`). Sustained msgs/sec is in
+//! [`throughput`] (`fig-throughput`).
 
 pub mod criterion_config;
 pub mod latency;
 pub mod matching_latency;
+pub mod throughput;
 
 #[cfg(test)]
 mod tests {

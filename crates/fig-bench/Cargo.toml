@@ -16,6 +16,10 @@ path = "src/bin/fig-latency.rs"
 name = "fig-load"
 path = "src/bin/fig-load.rs"
 
+[[bin]]
+name = "fig-throughput"
+path = "src/bin/fig-throughput.rs"
+
 [dependencies]
 fig-core = { workspace = true }
 fig-gateways = { workspace = true }

@@ -33,7 +33,7 @@ fig-fsl           — FSL schema language parser, multi-target codegen, ftlc CLI
 fig-gateways      — FIX, REST, WebSocket, SSE, SoupBin OUCH, and ITCH L2 adapters
 fig-exchange-sim  — Order book, matching engine, FIG server
 fig-cli           — Native FIG demo client (seven validated flows)
-fig-bench         — Criterion microbenches + fig-latency tail harness
+fig-bench         — Criterion microbenches, fig-latency tails, fig-throughput msgs/sec
 ```
 
 See [docs/API.md](docs/API.md) for the module index and [docs/README.md](docs/README.md)

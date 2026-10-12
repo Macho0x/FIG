@@ -235,15 +235,16 @@ Set `FIG_DEV_OPEN=1` when running the simulator to disable this check locally.
 cargo bench -p fig-bench
 cargo bench -p fig-bench --features alloc --bench alloc_bench
 cargo run --release -p fig-bench --bin fig-latency
+cargo run --release -p fig-bench --bin fig-throughput
 ```
 
-Criterion microbenches cover frame codec, TREE round-trip latency, gateway
-adapter comparison (FIX vs REST vs native FIG), matching engine throughput,
-and allocation patterns.
+Criterion microbenches cover frame codec, TREE round-trip, gateway adapter
+comparison (FIX vs REST vs native FIG), matching engine, and allocation
+patterns. They now also print **elems/s**.
 
 The `fig-latency` binary reports **tail latency percentiles** (p50 / p99 /
-p99.9) using HDR Histogram — one sample per operation. Use
-`FIG_LATENCY_ITERS=1000` for a quick smoke run. See [BENCHMARKS.md](BENCHMARKS.md).
+p99.9). The `fig-throughput` binary reports **msgs/sec** over a wall-clock
+duration (`FIG_THROUGHPUT_SECS`, default 3). See [BENCHMARKS.md](BENCHMARKS.md).
 
 ## 9. Docker
 

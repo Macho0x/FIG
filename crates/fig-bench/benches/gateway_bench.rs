@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use fig_bench::criterion_config::criterion;
 
 use fig_core::messages::{
@@ -210,6 +210,7 @@ fn bench_protocol_comparison_new_order(c: &mut Criterion) {
     let sbe_wire = encode_new_order_single(&order);
 
     let mut group = c.benchmark_group("protocol_comparison_new_order");
+    group.throughput(Throughput::Elements(1));
     group.bench_function("fix_parse", |b| {
         b.iter(|| {
             let tags = parse_fix_message(black_box(&fix_msg)).unwrap();

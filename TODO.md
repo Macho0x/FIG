@@ -70,7 +70,7 @@ Detail sections (§18–21) add context; do not duplicate status here.
 | ✅ | Live subscribe without EOF wait (`fig.h` + Python + Go/C++/C#/Java) | both | `fig_client_subscribe` / `FigPySubscription`; `ffi_subscribe_live_positions_on_fill` |
 | ✅ | Tier-based public MD rate limits | both | `MdRateLimiter`: public / authenticated / internal on `marketdata/…` — [SPEC §9.3](SPEC.md) |
 | ✅ | JWT RS256/JWKS verification + key rotation | both | `fig_core::jwt_keys` (`FIG_JWT_JWKS`, `RsaKeySet`, `JwtVerifier`/`FnVerifier`) · [JWT_KEY_ROTATION.md](docs/JWT_KEY_ROTATION.md) |
-| 🔶 | Throughput benchmarks (msgs/sec) | both | [Appendix §12](#12-benchmarks-fig-bench) |
+| ✅ | Throughput benchmarks (msgs/sec) | both | `fig-throughput` + Criterion `Throughput::Elements`; [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
 
 ### 0.4 P3 — Shared adoption (both tracks)
 
@@ -1357,10 +1357,8 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | TREE transport benchmarks (round-trip latency) | Medium | cold-start + steady-state in transport_bench; CI smoke-tests steady-state |
 | ✅ | Tail-latency harness (p99 / p99.9) | Medium | `fig-latency` binary + `latency_bench`; HDR Histogram per-operation samples |
 | ✅ | Comparison benchmarks vs FIX/REST/WS | Medium | protocol_comparison_new_order group in gateway_bench |
-| 🔶 | Throughput benchmarks (msgs/sec) | Medium | `tree_ping_pong_throughput_x16` restored in transport_bench |
+| ✅ | Throughput benchmarks (msgs/sec) | Medium | `fig-throughput` (CPU/codec/matching + TREE persistent/pipeline/new-stream); Criterion `Throughput::Elements`; persistent TREE reads `recv_frame` after `accept_frame` |
 | ✅ | Memory allocation benchmarks | Low | `alloc_bench.rs`; run with `--features alloc` |
-
-If you want the full transport throughput benchmark back in CI later, we'll need a proper server-side multi-frame read path first.
 
 ---
 

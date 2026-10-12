@@ -88,13 +88,16 @@ fn bench_order_book_add(c: &mut Criterion) {
 
 fn bench_order_book_add_single(c: &mut Criterion) {
     let order = make_resting_order("ORD-1", Side::Buy, "AAPL", 100.0, 10.0);
-    c.bench_function("order_book_add_single", |b| {
+    let mut group = c.benchmark_group("matching");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("order_book_add_single", |b| {
         b.iter(|| {
             let mut book = OrderBook::new("AAPL".to_string());
             book.add_order(black_box(order.clone()));
             black_box(book);
         })
     });
+    group.finish();
 }
 
 fn bench_matching_engine_process_order(c: &mut Criterion) {
@@ -102,7 +105,9 @@ fn bench_matching_engine_process_order(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("matching");
     group.sampling_mode(SamplingMode::Flat);
-    group.throughput(Throughput::Elements(501));
+    // One iteration = populate 500 resting sells + one marketable buy.
+    // Count the marketable order, not the setup inserts.
+    group.throughput(Throughput::Elements(1));
 
     group.bench_function("matching_engine_process_order", |b| {
         b.iter(|| {
@@ -126,7 +131,9 @@ fn bench_matching_engine_process_order(c: &mut Criterion) {
 }
 
 fn bench_matching_engine_cancel(c: &mut Criterion) {
-    c.bench_function("matching_engine_cancel", |b| {
+    let mut group = c.benchmark_group("matching");
+    group.throughput(Throughput::Elements(1));
+    group.bench_function("matching_engine_cancel", |b| {
         b.iter(|| {
             let mut engine = MatchingEngine::new();
             let order = make_limit_order("CXL-1", Side::Buy, "AAPL", 100.0, 50.0);
@@ -143,6 +150,7 @@ fn bench_matching_engine_cancel(c: &mut Criterion) {
             black_box(cancelled);
         })
     });
+    group.finish();
 }
 
 criterion_group! {

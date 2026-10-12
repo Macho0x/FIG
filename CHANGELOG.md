@@ -2,6 +2,20 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.6
+
+### Added
+- **Throughput harness** (`fig-throughput`): wall-clock msgs/sec for frame
+  encode/decode, SBE vs CBOR `NewOrderSingle`, in-repo FIX parse, matching
+  insert/cancel, and TREE ping/pong. TREE includes a persistent-channel path
+  (`recv_frame` after `accept_frame`) and a 32-deep pipeline, not only a new
+  stream per ping. Methodology and tables: [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+  CI smokes `FIG_THROUGHPUT_SECS=1`.
+
+### Changed
+- Criterion codec, frame, matching, and protocol-comparison groups report
+  `Throughput::Elements` (elems/s) alongside mean time.
+
 ## 1.4.5
 
 ### Added

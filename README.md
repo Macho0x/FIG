@@ -225,7 +225,7 @@ Report a vulnerability: [SECURITY.md](SECURITY.md).
 | [docs/GATEWAY.md](docs/GATEWAY.md) | FIX / REST / WebSocket / OUCH / ITCH migration |
 | [docs/API.md](docs/API.md) | Crate and module map |
 | [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) | SPEC vs crate vs git tag; `fig.h` contract |
-| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Methodology and tail latencies |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | Methodology, msgs/sec, and tail latencies |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) | Build, FSL workflow, conventions |
 | [CHANGELOG.md](CHANGELOG.md) | Release notes |
 
@@ -239,7 +239,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.5** ([release notes](CHANGELOG.md)). Protocol version remains
+Latest release **1.4.6** ([release notes](CHANGELOG.md)). Protocol version remains
 [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only on a wire break. The schema
 catalog is additive. Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in

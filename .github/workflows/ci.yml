@@ -168,6 +168,8 @@ jobs:
         run: FIG_LATENCY_ITERS=200 cargo run --release -p fig-bench --bin fig-latency
       - name: Run load harness (smoke)
         run: FIG_LOAD_SECS=3 cargo run --release -p fig-bench --bin fig-load
+      - name: Run throughput harness (smoke)
+        run: FIG_THROUGHPUT_SECS=1 FIG_THROUGHPUT_WARMUP_MS=50 cargo run --release -p fig-bench --bin fig-throughput
       - name: Build Go binding (smoke)
         run: |
           cargo build -p fig-ffi

@@ -17,6 +17,7 @@ Guides below are how-to: they must match the spec, not replace it.
 | Language bindings | [bindings/README.md](../bindings/README.md) · [PUBLISHING.md](PUBLISHING.md) |
 | Pin a version | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | Crate / module map | [API.md](API.md) |
+| Cite latency or msgs/sec | [BENCHMARKS.md](BENCHMARKS.md) |
 | Change FSL or the protocol | [CONTRIBUTING.md](../CONTRIBUTING.md) · [AGENTS.md](../AGENTS.md) · [adr/](adr/) |
 
 **Crate version** (workspace `Cargo.toml`) is independent of

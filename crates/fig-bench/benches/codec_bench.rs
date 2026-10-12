@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use fig_bench::criterion_config::criterion;
 
 use fig_core::codec::{decode_cbor, encode_cbor};
@@ -47,76 +47,57 @@ fn make_execution_report() -> ExecutionReport {
     }
 }
 
-fn bench_cbor_encode_order(c: &mut Criterion) {
+fn bench_codecs(c: &mut Criterion) {
     let order = make_order();
-    c.bench_function("cbor_encode_order", |b| {
+    let report = make_execution_report();
+    let cbor_order = encode_cbor(&order).unwrap();
+    let sbe_order = encode_new_order_single(&order);
+
+    let mut group = c.benchmark_group("codec");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("cbor_encode_order", |b| {
         b.iter(|| {
             let encoded = encode_cbor(black_box(&order)).unwrap();
             black_box(encoded);
         })
     });
-}
-
-fn bench_cbor_decode_order(c: &mut Criterion) {
-    let order = make_order();
-    let encoded = encode_cbor(&order).unwrap();
-    c.bench_function("cbor_decode_order", |b| {
+    group.bench_function("cbor_decode_order", |b| {
         b.iter(|| {
-            let decoded: NewOrderSingle = decode_cbor(black_box(&encoded)).unwrap();
+            let decoded: NewOrderSingle = decode_cbor(black_box(&cbor_order)).unwrap();
             black_box(decoded);
         })
     });
-}
-
-fn bench_sbe_encode_order(c: &mut Criterion) {
-    let order = make_order();
-    c.bench_function("sbe_encode_order", |b| {
+    group.bench_function("sbe_encode_order", |b| {
         b.iter(|| {
             let encoded = encode_new_order_single(black_box(&order));
             black_box(encoded);
         })
     });
-}
-
-fn bench_sbe_decode_order(c: &mut Criterion) {
-    let order = make_order();
-    let encoded = encode_new_order_single(&order);
-    c.bench_function("sbe_decode_order", |b| {
+    group.bench_function("sbe_decode_order", |b| {
         b.iter(|| {
-            let decoded = decode_new_order_single(black_box(&encoded)).unwrap();
+            let decoded = decode_new_order_single(black_box(&sbe_order)).unwrap();
             black_box(decoded);
         })
     });
-}
-
-fn bench_cbor_encode_execution_report(c: &mut Criterion) {
-    let report = make_execution_report();
-    c.bench_function("cbor_encode_execution_report", |b| {
+    group.bench_function("cbor_encode_execution_report", |b| {
         b.iter(|| {
             let encoded = encode_cbor(black_box(&report)).unwrap();
             black_box(encoded);
         })
     });
-}
-
-fn bench_sbe_encode_execution_report(c: &mut Criterion) {
-    let report = make_execution_report();
-    c.bench_function("sbe_encode_execution_report", |b| {
+    group.bench_function("sbe_encode_execution_report", |b| {
         b.iter(|| {
             let encoded = encode_execution_report(black_box(&report));
             black_box(encoded);
         })
     });
+    group.finish();
 }
 
 criterion_group! {
     name = benches;
     config = criterion();
-    targets = bench_cbor_encode_order,
-        bench_cbor_decode_order,
-        bench_sbe_encode_order,
-        bench_sbe_decode_order,
-        bench_cbor_encode_execution_report,
-        bench_sbe_encode_execution_report,
+    targets = bench_codecs,
 }
 criterion_main!(benches);

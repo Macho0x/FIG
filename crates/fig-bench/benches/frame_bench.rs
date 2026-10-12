@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use fig_bench::criterion_config::criterion;
 
 use fig_core::ext::{Extension, ExtensionTag};
@@ -25,34 +25,34 @@ fn make_request_frame() -> Frame {
         .with_ack_requested()
 }
 
-fn bench_frame_encode(c: &mut Criterion) {
+fn bench_frames(c: &mut Criterion) {
     let frame = make_request_frame();
-    c.bench_function("frame_encode", |b| {
+    let encoded = frame.encode().unwrap();
+    let large_payload = vec![0xAB; 10 * 1024];
+    let large_frame = Frame::new(FrameType::Request, 1)
+        .with_seq(42)
+        .with_schema_id(0x01)
+        .with_extension(Extension::text(ExtensionTag::RequestUri, "/trading/orders"))
+        .with_payload(large_payload);
+
+    let mut group = c.benchmark_group("frame");
+    group.throughput(Throughput::Elements(1));
+
+    group.bench_function("frame_encode", |b| {
         b.iter(|| {
             let encoded = frame.encode().unwrap();
             black_box(encoded);
         })
     });
-}
-
-fn bench_frame_decode(c: &mut Criterion) {
-    let frame = make_request_frame();
-    let encoded = frame.encode().unwrap();
-    c.bench_function("frame_decode", |b| {
+    group.bench_function("frame_decode", |b| {
         b.iter(|| {
             let (decoded, _consumed) = Frame::decode(black_box(&encoded)).unwrap();
             black_box(decoded);
         })
     });
-}
-
-fn bench_frame_decoder_streaming(c: &mut Criterion) {
-    let frame = make_request_frame();
-    let encoded = frame.encode().unwrap();
-    c.bench_function("frame_decoder_streaming", |b| {
+    group.bench_function("frame_decoder_streaming", |b| {
         b.iter(|| {
             let mut decoder = FrameDecoder::new();
-            // Feed in 1KB chunks (simulating TREE stream reads)
             for chunk in encoded.chunks(1024) {
                 decoder.feed(chunk);
             }
@@ -60,30 +60,18 @@ fn bench_frame_decoder_streaming(c: &mut Criterion) {
             black_box(result);
         })
     });
-}
-
-fn bench_frame_encode_large_payload(c: &mut Criterion) {
-    let large_payload = vec![0xAB; 10 * 1024]; // 10KB payload
-    let frame = Frame::new(FrameType::Request, 1)
-        .with_seq(42)
-        .with_schema_id(0x01)
-        .with_extension(Extension::text(ExtensionTag::RequestUri, "/trading/orders"))
-        .with_payload(large_payload);
-
-    c.bench_function("frame_encode_large_payload", |b| {
+    group.bench_function("frame_encode_large_payload", |b| {
         b.iter(|| {
-            let encoded = frame.encode().unwrap();
+            let encoded = large_frame.encode().unwrap();
             black_box(encoded);
         })
     });
+    group.finish();
 }
 
 criterion_group! {
     name = benches;
     config = criterion();
-    targets = bench_frame_encode,
-        bench_frame_decode,
-        bench_frame_decoder_streaming,
-        bench_frame_encode_large_payload,
+    targets = bench_frames,
 }
 criterion_main!(benches);

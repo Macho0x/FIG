@@ -1,12 +1,23 @@
 use std::cell::Cell;
+use std::sync::Arc;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode, Throughput};
 use fig_bench::criterion_config::criterion_slow;
+use fig_core::dos::DoSGuard;
 use fig_core::frame::Frame;
+use fig_core::rate_limit::ChannelRateLimiter;
 use fig_core::transport::{
-    client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigServer,
+    client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigConnection,
+    FigServer,
 };
 use tokio::runtime::Runtime;
+
+fn lift_dos(conn: FigConnection) -> FigConnection {
+    conn.with_limits(
+        Arc::new(DoSGuard::new(65_535, 1024 * 1024, u64::MAX / 4)),
+        Arc::new(ChannelRateLimiter::new(u64::MAX / 4)),
+    )
+}
 
 const MAX_STREAMS_PER_CONN: u16 = 64;
 
@@ -19,6 +30,7 @@ fn tree_ping_pong_cold_start(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("transport");
     group.sampling_mode(SamplingMode::Flat);
+    group.throughput(Throughput::Elements(1));
 
     group.bench_function("tree_ping_pong_cold_start", |b| {
         b.iter(|| {
@@ -83,6 +95,7 @@ fn tree_ping_pong_steady_state(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("transport");
     group.sampling_mode(SamplingMode::Flat);
+    group.throughput(Throughput::Elements(1));
 
     group.bench_function("tree_ping_pong_steady_state", |b| {
         b.iter(|| {
@@ -158,11 +171,79 @@ fn tree_ping_pong_throughput(c: &mut Criterion) {
     group.finish();
 }
 
+/// Persistent-channel throughput: 32 pipelined ping/pongs on one stream.
+///
+/// The server keeps reading the accepted channel (`recv_frame` after
+/// `accept_frame`) so this is not a new-stream-per-message measurement.
+fn tree_ping_pong_pipeline_persistent(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    let (cert, key) = generate_self_signed_cert().unwrap();
+    let server_cfg = server_config(cert, key).unwrap();
+    let client_cfg = client_config_insecure().unwrap();
+
+    let server = rt
+        .block_on(FigServer::bind("127.0.0.1:0".parse().unwrap(), server_cfg))
+        .unwrap();
+    let addr = server.local_addr().unwrap();
+
+    rt.spawn(async move {
+        while let Ok(conn) = server.accept().await {
+            let conn = Arc::new(lift_dos(conn));
+            tokio::spawn(async move {
+                loop {
+                    let (ch, frame) = match conn.accept_frame().await {
+                        Ok(pair) => pair,
+                        Err(_) => break,
+                    };
+                    if frame.control_subtype() == Some(fig_core::frame::ControlSubtype::Ping) {
+                        let _ = conn.send_frame(ch, &Frame::pong()).await;
+                    }
+                    let conn_ch = Arc::clone(&conn);
+                    tokio::spawn(async move {
+                        while let Ok(frame) = conn_ch.recv_frame(ch).await {
+                            if frame.control_subtype()
+                                == Some(fig_core::frame::ControlSubtype::Ping)
+                            {
+                                let _ = conn_ch.send_frame(ch, &Frame::pong()).await;
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    });
+
+    let conn = rt.block_on(async {
+        let client = FigClient::new(client_cfg).unwrap();
+        lift_dos(client.connect(addr, "localhost").await.unwrap())
+    });
+
+    let mut group = c.benchmark_group("transport");
+    group.sampling_mode(SamplingMode::Flat);
+    group.throughput(Throughput::Elements(32));
+
+    group.bench_function("tree_ping_pong_pipeline_persistent_x32", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                for _ in 0..32 {
+                    conn.send_frame(1, &Frame::ping()).await.unwrap();
+                }
+                for _ in 0..32 {
+                    black_box(conn.recv_frame(1).await.unwrap());
+                }
+            });
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group! {
     name = benches;
     config = criterion_slow();
     targets = tree_ping_pong_cold_start,
         tree_ping_pong_steady_state,
         tree_ping_pong_throughput,
+        tree_ping_pong_pipeline_persistent,
 }
 criterion_main!(benches);

@@ -1,4 +1,8 @@
 //! Load / flood smoke harness.
+//!
+//! Encodes and decodes a Request frame until `FIG_LOAD_SECS` elapses. This is
+//! the CI flood guard (`FIG_LOAD_SECS=3`), not the published msgs/sec suite —
+//! use `fig-throughput` for that.
 
 use std::time::{Duration, Instant};
 
