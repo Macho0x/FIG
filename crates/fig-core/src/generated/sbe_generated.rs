@@ -91,7 +91,12 @@ fn sbe_str(buf: &[u8], pos: &mut usize) -> Result<String, String> {
     let len = sbe_u16(buf, pos)? as usize;
     let bytes = sbe_take(buf, pos, len)?;
     match std::str::from_utf8(bytes) {
-        Ok(s) => Ok(s.to_string()),
+        Ok(s) => {
+            let mut out = String::new();
+            out.reserve_exact(s.len());
+            out.push_str(s);
+            Ok(out)
+        }
         Err(e) => Err(format!("invalid UTF-8: {}", e)),
     }
 }
@@ -4794,116 +4799,31 @@ impl BatchReportBodyDecoder {
 pub struct NewOrderSingleEncoder;
 
 impl NewOrderSingleEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        side: NewOrderSingleSide,
-        order_qty: Quantity,
-        price: Option<Price>,
-        stop_price: Option<Price>,
-        symbol: Symbol,
-        order_type: NewOrderSingleOrderType,
-        time_in_force: NewOrderSingleTimeInForce,
-        expire_time: Option<TradeTimestamp>,
-        account: Option<String>,
-        strategy_id: Option<String>,
-        security_id: Option<String>,
-        id_source: Option<NewOrderSingleIdSource>,
-        security_exchange: Option<String>,
-        post_only: Option<bool>,
-        reduce_only: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &NewOrderSingle, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&1u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&38u16.to_be_bytes()); // block_length
+        NewOrderSingleBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        buf.push(side as u8);
-        buf.extend_from_slice(&order_qty.0.to_be_bytes());
-        buf.extend_from_slice(&price.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(
-            &stop_price
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if stop_price.is_some() { 1 } else { 0 });
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.push(order_type as u8);
-        buf.push(time_in_force as u8);
-        buf.extend_from_slice(&expire_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(expire_time.is_some()));
-        buf.push(if account.is_some() { 1 } else { 0 });
-        if let Some(ref s) = account {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.push(if strategy_id.is_some() { 1 } else { 0 });
-        if let Some(ref s) = strategy_id {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.push(if security_id.is_some() { 1 } else { 0 });
-        if let Some(ref s) = security_id {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.push(id_source.map(|v| v as u8).unwrap_or(0));
-        buf.push(u8::from(id_source.is_some()));
-        buf.push(if security_exchange.is_some() { 1 } else { 0 });
-        if let Some(ref s) = security_exchange {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.push(post_only.unwrap_or(false) as u8);
-        buf.push(u8::from(post_only.is_some()));
-        buf.push(reduce_only.unwrap_or(false) as u8);
-        buf.push(u8::from(reduce_only.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &NewOrderSingle) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 38);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for NewOrderSingle
-#[derive(Debug, Clone, PartialEq)]
-pub struct NewOrderSingleDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub side: NewOrderSingleSide,
-    pub order_qty: Quantity,
-    pub price: Option<Price>,
-    pub stop_price: Option<Price>,
-    pub symbol: Symbol,
-    pub order_type: NewOrderSingleOrderType,
-    pub time_in_force: NewOrderSingleTimeInForce,
-    pub expire_time: Option<TradeTimestamp>,
-    pub account: Option<String>,
-    pub strategy_id: Option<String>,
-    pub security_id: Option<String>,
-    pub id_source: Option<NewOrderSingleIdSource>,
-    pub security_exchange: Option<String>,
-    pub post_only: Option<bool>,
-    pub reduce_only: Option<bool>,
-}
+pub struct NewOrderSingleDecoder;
 
 impl NewOrderSingleDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<NewOrderSingle, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -4920,105 +4840,11 @@ impl NewOrderSingleDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let side_raw = sbe_u8(buf, &mut pos)?;
-        let side = NewOrderSingleSide::from_value(side_raw)
-            .ok_or_else(|| format!("invalid NewOrderSingleSide value: {}", side_raw))?;
-        let order_qty_raw = sbe_f64(buf, &mut pos)?;
-        let order_qty = Quantity(order_qty_raw);
-        let price_raw = sbe_f64(buf, &mut pos)?;
-        let price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(price_raw))
-        } else {
-            None
-        };
-        let stop_price_raw = sbe_f64(buf, &mut pos)?;
-        let stop_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(stop_price_raw))
-        } else {
-            None
-        };
-        let symbol = sbe_str(buf, &mut pos)?;
-        let order_type_raw = sbe_u8(buf, &mut pos)?;
-        let order_type = NewOrderSingleOrderType::from_value(order_type_raw)
-            .ok_or_else(|| format!("invalid NewOrderSingleOrderType value: {}", order_type_raw))?;
-        let time_in_force_raw = sbe_u8(buf, &mut pos)?;
-        let time_in_force =
-            NewOrderSingleTimeInForce::from_value(time_in_force_raw).ok_or_else(|| {
-                format!(
-                    "invalid NewOrderSingleTimeInForce value: {}",
-                    time_in_force_raw
-                )
-            })?;
-        let expire_time_raw = sbe_i64(buf, &mut pos)?;
-        let expire_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(expire_time_raw)
-        } else {
-            None
-        };
-        let account = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let strategy_id = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let security_id = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let id_source_raw = sbe_u8(buf, &mut pos)?;
-        let id_source = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(
-                NewOrderSingleIdSource::from_value(id_source_raw).ok_or_else(|| {
-                    format!("invalid NewOrderSingleIdSource value: {}", id_source_raw)
-                })?,
-            )
-        } else {
-            None
-        };
-        let security_exchange = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let post_only_val = sbe_u8(buf, &mut pos)?;
-        let post_only = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(post_only_val != 0)
-        } else {
-            None
-        };
-        let reduce_only_val = sbe_u8(buf, &mut pos)?;
-        let reduce_only = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(reduce_only_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            cl_ord_id,
-            side,
-            order_qty,
-            price,
-            stop_price,
-            symbol,
-            order_type,
-            time_in_force,
-            expire_time,
-            account,
-            strategy_id,
-            security_id,
-            id_source,
-            security_exchange,
-            post_only,
-            reduce_only,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = NewOrderSingleBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5026,54 +4852,31 @@ impl NewOrderSingleDecoder {
 pub struct CancelRequestEncoder;
 
 impl CancelRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        orig_cl_ord_id: ClientOrderId,
-        symbol: Symbol,
-        side: CancelRequestSide,
-        order_qty: Option<Quantity>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CancelRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&2u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&9u16.to_be_bytes()); // block_length
+        CancelRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let orig_cl_ord_id_bytes = orig_cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(orig_cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(orig_cl_ord_id_bytes);
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.push(side as u8);
-        buf.extend_from_slice(&order_qty.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if order_qty.is_some() { 1 } else { 0 });
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CancelRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 9);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CancelRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct CancelRequestDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub orig_cl_ord_id: ClientOrderId,
-    pub symbol: Symbol,
-    pub side: CancelRequestSide,
-    pub order_qty: Option<Quantity>,
-}
+pub struct CancelRequestDecoder;
 
 impl CancelRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CancelRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5090,28 +4893,11 @@ impl CancelRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
-        let symbol = sbe_str(buf, &mut pos)?;
-        let side_raw = sbe_u8(buf, &mut pos)?;
-        let side = CancelRequestSide::from_value(side_raw)
-            .ok_or_else(|| format!("invalid CancelRequestSide value: {}", side_raw))?;
-        let order_qty_raw = sbe_f64(buf, &mut pos)?;
-        let order_qty = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Quantity(order_qty_raw))
-        } else {
-            None
-        };
-
-        Ok(Self {
-            cl_ord_id,
-            orig_cl_ord_id,
-            symbol,
-            side,
-            order_qty,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CancelRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5119,57 +4905,31 @@ impl CancelRequestDecoder {
 pub struct CancelReplaceRequestEncoder;
 
 impl CancelReplaceRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        orig_cl_ord_id: ClientOrderId,
-        symbol: Symbol,
-        side: CancelReplaceRequestSide,
-        order_qty: Quantity,
-        price: Option<Price>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CancelReplaceRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&3u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&17u16.to_be_bytes()); // block_length
+        CancelReplaceRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let orig_cl_ord_id_bytes = orig_cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(orig_cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(orig_cl_ord_id_bytes);
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.push(side as u8);
-        buf.extend_from_slice(&order_qty.0.to_be_bytes());
-        buf.extend_from_slice(&price.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if price.is_some() { 1 } else { 0 });
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CancelReplaceRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 17);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CancelReplaceRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct CancelReplaceRequestDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub orig_cl_ord_id: ClientOrderId,
-    pub symbol: Symbol,
-    pub side: CancelReplaceRequestSide,
-    pub order_qty: Quantity,
-    pub price: Option<Price>,
-}
+pub struct CancelReplaceRequestDecoder;
 
 impl CancelReplaceRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CancelReplaceRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5186,31 +4946,11 @@ impl CancelReplaceRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
-        let symbol = sbe_str(buf, &mut pos)?;
-        let side_raw = sbe_u8(buf, &mut pos)?;
-        let side = CancelReplaceRequestSide::from_value(side_raw)
-            .ok_or_else(|| format!("invalid CancelReplaceRequestSide value: {}", side_raw))?;
-        let order_qty_raw = sbe_f64(buf, &mut pos)?;
-        let order_qty = Quantity(order_qty_raw);
-        let price_raw = sbe_f64(buf, &mut pos)?;
-        let price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(price_raw))
-        } else {
-            None
-        };
-
-        Ok(Self {
-            cl_ord_id,
-            orig_cl_ord_id,
-            symbol,
-            side,
-            order_qty,
-            price,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CancelReplaceRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5218,87 +4958,31 @@ impl CancelReplaceRequestDecoder {
 pub struct ExecutionReportEncoder;
 
 impl ExecutionReportEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        order_id: String,
-        exec_id: String,
-        exec_type: ExecutionReportExecType,
-        ord_status: ExecutionReportOrdStatus,
-        side: ExecutionReportSide,
-        last_qty: Option<Quantity>,
-        last_price: Option<Price>,
-        leaves_qty: Quantity,
-        cum_qty: Quantity,
-        avg_price: Price,
-        symbol: Symbol,
-        transact_time: TradeTimestamp,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &ExecutionReport, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&4u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&51u16.to_be_bytes()); // block_length
+        ExecutionReportBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let order_id_bytes = order_id.as_bytes();
-        buf.extend_from_slice(&(order_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(order_id_bytes);
-        let exec_id_bytes = exec_id.as_bytes();
-        buf.extend_from_slice(&(exec_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(exec_id_bytes);
-        buf.push(exec_type as u8);
-        buf.push(ord_status as u8);
-        buf.push(side as u8);
-        buf.extend_from_slice(&last_qty.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if last_qty.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(
-            &last_price
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if last_price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&leaves_qty.0.to_be_bytes());
-        buf.extend_from_slice(&cum_qty.0.to_be_bytes());
-        buf.extend_from_slice(&avg_price.0.to_be_bytes());
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&transact_time.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &ExecutionReport) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 51);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for ExecutionReport
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExecutionReportDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub order_id: String,
-    pub exec_id: String,
-    pub exec_type: ExecutionReportExecType,
-    pub ord_status: ExecutionReportOrdStatus,
-    pub side: ExecutionReportSide,
-    pub last_qty: Option<Quantity>,
-    pub last_price: Option<Price>,
-    pub leaves_qty: Quantity,
-    pub cum_qty: Quantity,
-    pub avg_price: Price,
-    pub symbol: Symbol,
-    pub transact_time: TradeTimestamp,
-}
+pub struct ExecutionReportDecoder;
 
 impl ExecutionReportDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<ExecutionReport, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5315,57 +4999,11 @@ impl ExecutionReportDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let order_id = sbe_str(buf, &mut pos)?;
-        let exec_id = sbe_str(buf, &mut pos)?;
-        let exec_type_raw = sbe_u8(buf, &mut pos)?;
-        let exec_type = ExecutionReportExecType::from_value(exec_type_raw)
-            .ok_or_else(|| format!("invalid ExecutionReportExecType value: {}", exec_type_raw))?;
-        let ord_status_raw = sbe_u8(buf, &mut pos)?;
-        let ord_status = ExecutionReportOrdStatus::from_value(ord_status_raw)
-            .ok_or_else(|| format!("invalid ExecutionReportOrdStatus value: {}", ord_status_raw))?;
-        let side_raw = sbe_u8(buf, &mut pos)?;
-        let side = ExecutionReportSide::from_value(side_raw)
-            .ok_or_else(|| format!("invalid ExecutionReportSide value: {}", side_raw))?;
-        let last_qty_raw = sbe_f64(buf, &mut pos)?;
-        let last_qty = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Quantity(last_qty_raw))
-        } else {
-            None
-        };
-        let last_price_raw = sbe_f64(buf, &mut pos)?;
-        let last_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(last_price_raw))
-        } else {
-            None
-        };
-        let leaves_qty_raw = sbe_f64(buf, &mut pos)?;
-        let leaves_qty = Quantity(leaves_qty_raw);
-        let cum_qty_raw = sbe_f64(buf, &mut pos)?;
-        let cum_qty = Quantity(cum_qty_raw);
-        let avg_price_raw = sbe_f64(buf, &mut pos)?;
-        let avg_price = Price(avg_price_raw);
-        let symbol = sbe_str(buf, &mut pos)?;
-        let transact_time_raw = sbe_i64(buf, &mut pos)?;
-        let transact_time = transact_time_raw;
-
-        Ok(Self {
-            cl_ord_id,
-            order_id,
-            exec_id,
-            exec_type,
-            ord_status,
-            side,
-            last_qty,
-            last_price,
-            leaves_qty,
-            cum_qty,
-            avg_price,
-            symbol,
-            transact_time,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = ExecutionReportBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5373,50 +5011,31 @@ impl ExecutionReportDecoder {
 pub struct CancelRejectEncoder;
 
 impl CancelRejectEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        orig_cl_ord_id: ClientOrderId,
-        reject_reason: CancelRejectRejectReason,
-        symbol: Symbol,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CancelReject, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&5u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        CancelRejectBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let orig_cl_ord_id_bytes = orig_cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(orig_cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(orig_cl_ord_id_bytes);
-        buf.push(reject_reason as u8);
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CancelReject) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CancelReject
-#[derive(Debug, Clone, PartialEq)]
-pub struct CancelRejectDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub orig_cl_ord_id: ClientOrderId,
-    pub reject_reason: CancelRejectRejectReason,
-    pub symbol: Symbol,
-}
+pub struct CancelRejectDecoder;
 
 impl CancelRejectDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CancelReject, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5433,26 +5052,11 @@ impl CancelRejectDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let orig_cl_ord_id = sbe_str(buf, &mut pos)?;
-        let reject_reason_raw = sbe_u8(buf, &mut pos)?;
-        let reject_reason =
-            CancelRejectRejectReason::from_value(reject_reason_raw).ok_or_else(|| {
-                format!(
-                    "invalid CancelRejectRejectReason value: {}",
-                    reject_reason_raw
-                )
-            })?;
-        let symbol = sbe_str(buf, &mut pos)?;
-
-        Ok(Self {
-            cl_ord_id,
-            orig_cl_ord_id,
-            reject_reason,
-            symbol,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CancelRejectBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5460,71 +5064,31 @@ impl CancelRejectDecoder {
 pub struct MarketDataSnapshotEncoder;
 
 impl MarketDataSnapshotEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        exchange: String,
-        bids: Vec<PriceLevel>,
-        asks: Vec<PriceLevel>,
-        timestamp: TradeTimestamp,
-        sequence: Option<u64>,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarketDataSnapshot, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&6u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&17u16.to_be_bytes()); // block_length
+        MarketDataSnapshotBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        let exchange_bytes = exchange.as_bytes();
-        buf.extend_from_slice(&(exchange_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(exchange_bytes);
-        buf.extend_from_slice(&(bids.len() as u32).to_be_bytes());
-        for item in &bids {
-            let mut item_buf = Vec::new();
-            PriceLevelEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&(asks.len() as u32).to_be_bytes());
-        for item in &asks {
-            let mut item_buf = Vec::new();
-            PriceLevelEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.extend_from_slice(&sequence.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(sequence.is_some()));
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarketDataSnapshot) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 17);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarketDataSnapshot
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarketDataSnapshotDecoder {
-    pub symbol: Symbol,
-    pub exchange: String,
-    pub bids: Vec<PriceLevel>,
-    pub asks: Vec<PriceLevel>,
-    pub timestamp: TradeTimestamp,
-    pub sequence: Option<u64>,
-    pub is_snapshot: Option<bool>,
-}
+pub struct MarketDataSnapshotDecoder;
 
 impl MarketDataSnapshotDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarketDataSnapshot, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5541,60 +5105,11 @@ impl MarketDataSnapshotDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let exchange = sbe_str(buf, &mut pos)?;
-        let bids_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
-        for _ in 0..bids_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PriceLevel length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            bids.push(item);
-        }
-        let asks_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
-        for _ in 0..asks_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PriceLevel length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            asks.push(item);
-        }
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let sequence_raw = sbe_u64(buf, &mut pos)?;
-        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sequence_raw)
-        } else {
-            None
-        };
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            exchange,
-            bids,
-            asks,
-            timestamp,
-            sequence,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarketDataSnapshotBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5602,53 +5117,31 @@ impl MarketDataSnapshotDecoder {
 pub struct MarketDataIncrementalRefreshEncoder;
 
 impl MarketDataIncrementalRefreshEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        updates: Vec<MarketDataUpdate>,
-        timestamp: TradeTimestamp,
-        sequence: Option<u64>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarketDataIncrementalRefresh, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&7u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&16u16.to_be_bytes()); // block_length
+        MarketDataIncrementalRefreshBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&(updates.len() as u32).to_be_bytes());
-        for item in &updates {
-            let mut item_buf = Vec::new();
-            MarketDataUpdateEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.extend_from_slice(&sequence.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(sequence.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarketDataIncrementalRefresh) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 16);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarketDataIncrementalRefresh
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarketDataIncrementalRefreshDecoder {
-    pub symbol: Symbol,
-    pub updates: Vec<MarketDataUpdate>,
-    pub timestamp: TradeTimestamp,
-    pub sequence: Option<u64>,
-}
+pub struct MarketDataIncrementalRefreshDecoder;
 
 impl MarketDataIncrementalRefreshDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarketDataIncrementalRefresh, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5665,38 +5158,11 @@ impl MarketDataIncrementalRefreshDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let updates_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut updates =
-            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
-        for _ in 0..updates_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            updates.push(item);
-        }
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let sequence_raw = sbe_u64(buf, &mut pos)?;
-        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sequence_raw)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            updates,
-            timestamp,
-            sequence,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarketDataIncrementalRefreshBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5704,41 +5170,31 @@ impl MarketDataIncrementalRefreshDecoder {
 pub struct OrderBookRequestEncoder;
 
 impl OrderBookRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol, depth: Option<u32>, at_time: Option<TradeTimestamp>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderBookRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&8u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&12u16.to_be_bytes()); // block_length
+        OrderBookRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&depth.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(depth.is_some()));
-        buf.extend_from_slice(&at_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(at_time.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderBookRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 12);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderBookRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderBookRequestDecoder {
-    pub symbol: Symbol,
-    pub depth: Option<u32>,
-    pub at_time: Option<TradeTimestamp>,
-}
+pub struct OrderBookRequestDecoder;
 
 impl OrderBookRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderBookRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5755,27 +5211,11 @@ impl OrderBookRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let depth_raw = sbe_u32(buf, &mut pos)?;
-        let depth = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(depth_raw)
-        } else {
-            None
-        };
-        let at_time_raw = sbe_i64(buf, &mut pos)?;
-        let at_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(at_time_raw)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            depth,
-            at_time,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderBookRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5783,71 +5223,31 @@ impl OrderBookRequestDecoder {
 pub struct OrderBookSnapshotEncoder;
 
 impl OrderBookSnapshotEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        exchange: String,
-        bids: Vec<PriceLevel>,
-        asks: Vec<PriceLevel>,
-        timestamp: TradeTimestamp,
-        sequence: Option<u64>,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderBookSnapshot, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&9u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&17u16.to_be_bytes()); // block_length
+        OrderBookSnapshotBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        let exchange_bytes = exchange.as_bytes();
-        buf.extend_from_slice(&(exchange_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(exchange_bytes);
-        buf.extend_from_slice(&(bids.len() as u32).to_be_bytes());
-        for item in &bids {
-            let mut item_buf = Vec::new();
-            PriceLevelEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&(asks.len() as u32).to_be_bytes());
-        for item in &asks {
-            let mut item_buf = Vec::new();
-            PriceLevelEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.extend_from_slice(&sequence.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(sequence.is_some()));
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderBookSnapshot) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 17);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderBookSnapshot
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderBookSnapshotDecoder {
-    pub symbol: Symbol,
-    pub exchange: String,
-    pub bids: Vec<PriceLevel>,
-    pub asks: Vec<PriceLevel>,
-    pub timestamp: TradeTimestamp,
-    pub sequence: Option<u64>,
-    pub is_snapshot: Option<bool>,
-}
+pub struct OrderBookSnapshotDecoder;
 
 impl OrderBookSnapshotDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderBookSnapshot, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5864,60 +5264,11 @@ impl OrderBookSnapshotDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let exchange = sbe_str(buf, &mut pos)?;
-        let bids_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut bids = Vec::with_capacity(sbe_capacity(bids_count, buf.len().saturating_sub(pos)));
-        for _ in 0..bids_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PriceLevel length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            bids.push(item);
-        }
-        let asks_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut asks = Vec::with_capacity(sbe_capacity(asks_count, buf.len().saturating_sub(pos)));
-        for _ in 0..asks_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PriceLevelDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PriceLevel length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            asks.push(item);
-        }
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let sequence_raw = sbe_u64(buf, &mut pos)?;
-        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sequence_raw)
-        } else {
-            None
-        };
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            exchange,
-            bids,
-            asks,
-            timestamp,
-            sequence,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderBookSnapshotBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -5925,53 +5276,31 @@ impl OrderBookSnapshotDecoder {
 pub struct OrderBookDeltaEncoder;
 
 impl OrderBookDeltaEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        updates: Vec<MarketDataUpdate>,
-        timestamp: TradeTimestamp,
-        sequence: Option<u64>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderBookDelta, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&10u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&16u16.to_be_bytes()); // block_length
+        OrderBookDeltaBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&(updates.len() as u32).to_be_bytes());
-        for item in &updates {
-            let mut item_buf = Vec::new();
-            MarketDataUpdateEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.extend_from_slice(&sequence.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(sequence.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderBookDelta) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 16);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderBookDelta
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderBookDeltaDecoder {
-    pub symbol: Symbol,
-    pub updates: Vec<MarketDataUpdate>,
-    pub timestamp: TradeTimestamp,
-    pub sequence: Option<u64>,
-}
+pub struct OrderBookDeltaDecoder;
 
 impl OrderBookDeltaDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderBookDelta, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -5988,38 +5317,11 @@ impl OrderBookDeltaDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let updates_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut updates =
-            Vec::with_capacity(sbe_capacity(updates_count, buf.len().saturating_sub(pos)));
-        for _ in 0..updates_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = MarketDataUpdateDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "MarketDataUpdate length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            updates.push(item);
-        }
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let sequence_raw = sbe_u64(buf, &mut pos)?;
-        let sequence = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sequence_raw)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            updates,
-            timestamp,
-            sequence,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderBookDeltaBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6027,33 +5329,31 @@ impl OrderBookDeltaDecoder {
 pub struct AggregateTradeEventEncoder;
 
 impl AggregateTradeEventEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(trade: AggregateTrade) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AggregateTradeEvent, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&11u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        AggregateTradeEventBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        AggregateTradeEncoder::encode(&trade, &mut buf);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AggregateTradeEvent) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AggregateTradeEvent
-#[derive(Debug, Clone, PartialEq)]
-pub struct AggregateTradeEventDecoder {
-    pub trade: AggregateTrade,
-}
+pub struct AggregateTradeEventDecoder;
 
 impl AggregateTradeEventDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AggregateTradeEvent, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6070,15 +5370,11 @@ impl AggregateTradeEventDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
         let rest = buf
-            .get(pos..)
-            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
-        let (trade, trade_n) = AggregateTradeDecoder::decode(rest)?;
-        pos += trade_n;
-
-        Ok(Self { trade })
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AggregateTradeEventBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6086,57 +5382,31 @@ impl AggregateTradeEventDecoder {
 pub struct AggregateTradeRequestEncoder;
 
 impl AggregateTradeRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AggregateTradeRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&12u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        AggregateTradeRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AggregateTradeRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AggregateTradeRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct AggregateTradeRequestDecoder {
-    pub symbol: Symbol,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct AggregateTradeRequestDecoder;
 
 impl AggregateTradeRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AggregateTradeRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6153,40 +5423,11 @@ impl AggregateTradeRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AggregateTradeRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6194,57 +5435,31 @@ impl AggregateTradeRequestDecoder {
 pub struct AggregateTradeBatchEncoder;
 
 impl AggregateTradeBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        trades: Vec<AggregateTrade>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AggregateTradeBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&13u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        AggregateTradeBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&(trades.len() as u32).to_be_bytes());
-        for item in &trades {
-            let mut item_buf = Vec::new();
-            AggregateTradeEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AggregateTradeBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AggregateTradeBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct AggregateTradeBatchDecoder {
-    pub symbol: Symbol,
-    pub trades: Vec<AggregateTrade>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct AggregateTradeBatchDecoder;
 
 impl AggregateTradeBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AggregateTradeBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6261,36 +5476,11 @@ impl AggregateTradeBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let trades_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut trades =
-            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
-        for _ in 0..trades_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = AggregateTradeDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "AggregateTrade length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            trades.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            trades,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AggregateTradeBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6298,50 +5488,31 @@ impl AggregateTradeBatchDecoder {
 pub struct MiniTickerEncoder;
 
 impl MiniTickerEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        last_price: Price,
-        volume: Quantity,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MiniTicker, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&14u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&25u16.to_be_bytes()); // block_length
+        MiniTickerBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&last_price.0.to_be_bytes());
-        buf.extend_from_slice(&volume.0.to_be_bytes());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MiniTicker) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 25);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MiniTicker
-#[derive(Debug, Clone, PartialEq)]
-pub struct MiniTickerDecoder {
-    pub symbol: Symbol,
-    pub last_price: Price,
-    pub volume: Quantity,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct MiniTickerDecoder;
 
 impl MiniTickerDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MiniTicker, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6358,29 +5529,11 @@ impl MiniTickerDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let last_price_raw = sbe_f64(buf, &mut pos)?;
-        let last_price = Price(last_price_raw);
-        let volume_raw = sbe_f64(buf, &mut pos)?;
-        let volume = Quantity(volume_raw);
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            last_price,
-            volume,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MiniTickerBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6388,30 +5541,31 @@ impl MiniTickerDecoder {
 pub struct AllMidsRequestEncoder;
 
 impl AllMidsRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode() -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AllMidsRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&15u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        AllMidsRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AllMidsRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AllMidsRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct AllMidsRequestDecoder {}
+pub struct AllMidsRequestDecoder;
 
 impl AllMidsRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AllMidsRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6428,9 +5582,11 @@ impl AllMidsRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        Ok(Self {})
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AllMidsRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6438,39 +5594,31 @@ impl AllMidsRequestDecoder {
 pub struct AllMidsBatchEncoder;
 
 impl AllMidsBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(tickers: Vec<MiniTicker>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AllMidsBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&16u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        AllMidsBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        buf.extend_from_slice(&(tickers.len() as u32).to_be_bytes());
-        for item in &tickers {
-            let mut item_buf = Vec::new();
-            MiniTickerBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AllMidsBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AllMidsBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct AllMidsBatchDecoder {
-    pub tickers: Vec<MiniTicker>,
-}
+pub struct AllMidsBatchDecoder;
 
 impl AllMidsBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AllMidsBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6487,24 +5635,11 @@ impl AllMidsBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let tickers_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut tickers =
-            Vec::with_capacity(sbe_capacity(tickers_count, buf.len().saturating_sub(pos)));
-        for _ in 0..tickers_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = MiniTickerBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "MiniTicker length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            tickers.push(item);
-        }
-
-        Ok(Self { tickers })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AllMidsBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6512,61 +5647,31 @@ impl AllMidsBatchDecoder {
 pub struct MarkPriceUpdateEncoder;
 
 impl MarkPriceUpdateEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        mark_price: Price,
-        index_price: Option<Price>,
-        funding_rate: Option<f64>,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarkPriceUpdate, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&17u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&33u16.to_be_bytes()); // block_length
+        MarkPriceUpdateBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&mark_price.0.to_be_bytes());
-        buf.extend_from_slice(
-            &index_price
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if index_price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&funding_rate.unwrap_or(0.0).to_be_bytes());
-        buf.push(if funding_rate.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarkPriceUpdate) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 33);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarkPriceUpdate
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarkPriceUpdateDecoder {
-    pub symbol: Symbol,
-    pub mark_price: Price,
-    pub index_price: Option<Price>,
-    pub funding_rate: Option<f64>,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct MarkPriceUpdateDecoder;
 
 impl MarkPriceUpdateDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarkPriceUpdate, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6583,40 +5688,11 @@ impl MarkPriceUpdateDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let mark_price_raw = sbe_f64(buf, &mut pos)?;
-        let mark_price = Price(mark_price_raw);
-        let index_price_raw = sbe_f64(buf, &mut pos)?;
-        let index_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(index_price_raw))
-        } else {
-            None
-        };
-        let funding_rate_raw = sbe_f64(buf, &mut pos)?;
-        let funding_rate = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(funding_rate_raw)
-        } else {
-            None
-        };
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            mark_price,
-            index_price,
-            funding_rate,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarkPriceUpdateBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6624,35 +5700,31 @@ impl MarkPriceUpdateDecoder {
 pub struct MarkPriceRequestEncoder;
 
 impl MarkPriceRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarkPriceRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&18u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        MarkPriceRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarkPriceRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarkPriceRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarkPriceRequestDecoder {
-    pub symbol: Symbol,
-}
+pub struct MarkPriceRequestDecoder;
 
 impl MarkPriceRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarkPriceRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6669,11 +5741,11 @@ impl MarkPriceRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-
-        Ok(Self { symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarkPriceRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6681,33 +5753,31 @@ impl MarkPriceRequestDecoder {
 pub struct LiquidationTradeEventEncoder;
 
 impl LiquidationTradeEventEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(trade: LiquidationTrade) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &LiquidationTradeEvent, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&19u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        LiquidationTradeEventBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        LiquidationTradeEncoder::encode(&trade, &mut buf);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &LiquidationTradeEvent) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for LiquidationTradeEvent
-#[derive(Debug, Clone, PartialEq)]
-pub struct LiquidationTradeEventDecoder {
-    pub trade: LiquidationTrade,
-}
+pub struct LiquidationTradeEventDecoder;
 
 impl LiquidationTradeEventDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<LiquidationTradeEvent, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6724,15 +5794,11 @@ impl LiquidationTradeEventDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
         let rest = buf
-            .get(pos..)
-            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
-        let (trade, trade_n) = LiquidationTradeDecoder::decode(rest)?;
-        pos += trade_n;
-
-        Ok(Self { trade })
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = LiquidationTradeEventBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6740,33 +5806,31 @@ impl LiquidationTradeEventDecoder {
 pub struct CandleBarEventEncoder;
 
 impl CandleBarEventEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(bar: CandleBar) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CandleBarEvent, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&20u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        CandleBarEventBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        CandleBarEncoder::encode(&bar, &mut buf);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CandleBarEvent) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CandleBarEvent
-#[derive(Debug, Clone, PartialEq)]
-pub struct CandleBarEventDecoder {
-    pub bar: CandleBar,
-}
+pub struct CandleBarEventDecoder;
 
 impl CandleBarEventDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CandleBarEvent, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6783,15 +5847,11 @@ impl CandleBarEventDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
         let rest = buf
-            .get(pos..)
-            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
-        let (bar, bar_n) = CandleBarDecoder::decode(rest)?;
-        pos += bar_n;
-
-        Ok(Self { bar })
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CandleBarEventBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6799,62 +5859,31 @@ impl CandleBarEventDecoder {
 pub struct CandleBarRequestEncoder;
 
 impl CandleBarRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        interval: CandleInterval,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CandleBarRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&21u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        CandleBarRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        let interval_bytes = interval.as_bytes();
-        buf.extend_from_slice(&(interval_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(interval_bytes);
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CandleBarRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CandleBarRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct CandleBarRequestDecoder {
-    pub symbol: Symbol,
-    pub interval: CandleInterval,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct CandleBarRequestDecoder;
 
 impl CandleBarRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CandleBarRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6871,42 +5900,11 @@ impl CandleBarRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let interval = sbe_str(buf, &mut pos)?;
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            interval,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CandleBarRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -6914,62 +5912,31 @@ impl CandleBarRequestDecoder {
 pub struct CandleBarBatchEncoder;
 
 impl CandleBarBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        interval: CandleInterval,
-        bars: Vec<CandleBar>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CandleBarBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&22u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        CandleBarBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        let interval_bytes = interval.as_bytes();
-        buf.extend_from_slice(&(interval_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(interval_bytes);
-        buf.extend_from_slice(&(bars.len() as u32).to_be_bytes());
-        for item in &bars {
-            let mut item_buf = Vec::new();
-            CandleBarEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CandleBarBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CandleBarBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct CandleBarBatchDecoder {
-    pub symbol: Symbol,
-    pub interval: CandleInterval,
-    pub bars: Vec<CandleBar>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct CandleBarBatchDecoder;
 
 impl CandleBarBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CandleBarBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -6986,37 +5953,11 @@ impl CandleBarBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let interval = sbe_str(buf, &mut pos)?;
-        let bars_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut bars = Vec::with_capacity(sbe_capacity(bars_count, buf.len().saturating_sub(pos)));
-        for _ in 0..bars_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = CandleBarDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "CandleBar length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            bars.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            interval,
-            bars,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CandleBarBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7024,33 +5965,31 @@ impl CandleBarBatchDecoder {
 pub struct PublicTradeEventEncoder;
 
 impl PublicTradeEventEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(trade: PublicTrade) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PublicTradeEvent, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&23u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        PublicTradeEventBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        PublicTradeEncoder::encode(&trade, &mut buf);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PublicTradeEvent) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PublicTradeEvent
-#[derive(Debug, Clone, PartialEq)]
-pub struct PublicTradeEventDecoder {
-    pub trade: PublicTrade,
-}
+pub struct PublicTradeEventDecoder;
 
 impl PublicTradeEventDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PublicTradeEvent, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7067,15 +6006,11 @@ impl PublicTradeEventDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
         let rest = buf
-            .get(pos..)
-            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
-        let (trade, trade_n) = PublicTradeDecoder::decode(rest)?;
-        pos += trade_n;
-
-        Ok(Self { trade })
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PublicTradeEventBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7083,57 +6018,31 @@ impl PublicTradeEventDecoder {
 pub struct TradeHistoryRequestEncoder;
 
 impl TradeHistoryRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &TradeHistoryRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&24u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        TradeHistoryRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &TradeHistoryRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for TradeHistoryRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct TradeHistoryRequestDecoder {
-    pub symbol: Symbol,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct TradeHistoryRequestDecoder;
 
 impl TradeHistoryRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<TradeHistoryRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7150,40 +6059,11 @@ impl TradeHistoryRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = TradeHistoryRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7191,57 +6071,31 @@ impl TradeHistoryRequestDecoder {
 pub struct PublicTradeBatchEncoder;
 
 impl PublicTradeBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        trades: Vec<PublicTrade>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PublicTradeBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&25u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        PublicTradeBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&(trades.len() as u32).to_be_bytes());
-        for item in &trades {
-            let mut item_buf = Vec::new();
-            PublicTradeEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PublicTradeBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PublicTradeBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct PublicTradeBatchDecoder {
-    pub symbol: Symbol,
-    pub trades: Vec<PublicTrade>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct PublicTradeBatchDecoder;
 
 impl PublicTradeBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PublicTradeBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7258,36 +6112,11 @@ impl PublicTradeBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let trades_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut trades =
-            Vec::with_capacity(sbe_capacity(trades_count, buf.len().saturating_sub(pos)));
-        for _ in 0..trades_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PublicTradeDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PublicTrade length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            trades.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            trades,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PublicTradeBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7295,60 +6124,31 @@ impl PublicTradeBatchDecoder {
 pub struct BestBidOfferEncoder;
 
 impl BestBidOfferEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        bid_price: Option<Price>,
-        bid_qty: Option<Quantity>,
-        ask_price: Option<Price>,
-        ask_qty: Option<Quantity>,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &BestBidOffer, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&26u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&41u16.to_be_bytes()); // block_length
+        BestBidOfferBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&bid_price.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if bid_price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&bid_qty.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if bid_qty.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&ask_price.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if ask_price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&ask_qty.as_ref().map(|v| v.0).unwrap_or(0.0).to_be_bytes());
-        buf.push(if ask_qty.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &BestBidOffer) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 41);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for BestBidOffer
-#[derive(Debug, Clone, PartialEq)]
-pub struct BestBidOfferDecoder {
-    pub symbol: Symbol,
-    pub bid_price: Option<Price>,
-    pub bid_qty: Option<Quantity>,
-    pub ask_price: Option<Price>,
-    pub ask_qty: Option<Quantity>,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct BestBidOfferDecoder;
 
 impl BestBidOfferDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<BestBidOffer, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7365,51 +6165,11 @@ impl BestBidOfferDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let bid_price_raw = sbe_f64(buf, &mut pos)?;
-        let bid_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(bid_price_raw))
-        } else {
-            None
-        };
-        let bid_qty_raw = sbe_f64(buf, &mut pos)?;
-        let bid_qty = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Quantity(bid_qty_raw))
-        } else {
-            None
-        };
-        let ask_price_raw = sbe_f64(buf, &mut pos)?;
-        let ask_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(ask_price_raw))
-        } else {
-            None
-        };
-        let ask_qty_raw = sbe_f64(buf, &mut pos)?;
-        let ask_qty = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Quantity(ask_qty_raw))
-        } else {
-            None
-        };
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            bid_price,
-            bid_qty,
-            ask_price,
-            ask_qty,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = BestBidOfferBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7417,65 +6177,31 @@ impl BestBidOfferDecoder {
 pub struct SymbolTickerEncoder;
 
 impl SymbolTickerEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        last_price: Price,
-        price_change: f64,
-        price_change_pct: f64,
-        volume: Quantity,
-        high: Price,
-        low: Price,
-        open: Price,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &SymbolTicker, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&27u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&65u16.to_be_bytes()); // block_length
+        SymbolTickerBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&last_price.0.to_be_bytes());
-        buf.extend_from_slice(&price_change.to_be_bytes());
-        buf.extend_from_slice(&price_change_pct.to_be_bytes());
-        buf.extend_from_slice(&volume.0.to_be_bytes());
-        buf.extend_from_slice(&high.0.to_be_bytes());
-        buf.extend_from_slice(&low.0.to_be_bytes());
-        buf.extend_from_slice(&open.0.to_be_bytes());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &SymbolTicker) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 65);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for SymbolTicker
-#[derive(Debug, Clone, PartialEq)]
-pub struct SymbolTickerDecoder {
-    pub symbol: Symbol,
-    pub last_price: Price,
-    pub price_change: f64,
-    pub price_change_pct: f64,
-    pub volume: Quantity,
-    pub high: Price,
-    pub low: Price,
-    pub open: Price,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct SymbolTickerDecoder;
 
 impl SymbolTickerDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<SymbolTicker, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7492,44 +6218,11 @@ impl SymbolTickerDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let last_price_raw = sbe_f64(buf, &mut pos)?;
-        let last_price = Price(last_price_raw);
-        let price_change_raw = sbe_f64(buf, &mut pos)?;
-        let price_change = price_change_raw;
-        let price_change_pct_raw = sbe_f64(buf, &mut pos)?;
-        let price_change_pct = price_change_pct_raw;
-        let volume_raw = sbe_f64(buf, &mut pos)?;
-        let volume = Quantity(volume_raw);
-        let high_raw = sbe_f64(buf, &mut pos)?;
-        let high = Price(high_raw);
-        let low_raw = sbe_f64(buf, &mut pos)?;
-        let low = Price(low_raw);
-        let open_raw = sbe_f64(buf, &mut pos)?;
-        let open = Price(open_raw);
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            last_price,
-            price_change,
-            price_change_pct,
-            volume,
-            high,
-            low,
-            open,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = SymbolTickerBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7537,35 +6230,31 @@ impl SymbolTickerDecoder {
 pub struct TickerRequestEncoder;
 
 impl TickerRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &TickerRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&28u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        TickerRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &TickerRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for TickerRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct TickerRequestDecoder {
-    pub symbol: Symbol,
-}
+pub struct TickerRequestDecoder;
 
 impl TickerRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<TickerRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7582,11 +6271,11 @@ impl TickerRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-
-        Ok(Self { symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = TickerRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7594,30 +6283,31 @@ impl TickerRequestDecoder {
 pub struct InstrumentCatalogRequestEncoder;
 
 impl InstrumentCatalogRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode() -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &InstrumentCatalogRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&29u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        InstrumentCatalogRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &InstrumentCatalogRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for InstrumentCatalogRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct InstrumentCatalogRequestDecoder {}
+pub struct InstrumentCatalogRequestDecoder;
 
 impl InstrumentCatalogRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<InstrumentCatalogRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7634,9 +6324,11 @@ impl InstrumentCatalogRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        Ok(Self {})
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = InstrumentCatalogRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7644,39 +6336,31 @@ impl InstrumentCatalogRequestDecoder {
 pub struct InstrumentCatalogResponseEncoder;
 
 impl InstrumentCatalogResponseEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(instruments: Vec<InstrumentMetadata>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &InstrumentCatalogResponse, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&30u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        InstrumentCatalogResponseBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        buf.extend_from_slice(&(instruments.len() as u32).to_be_bytes());
-        for item in &instruments {
-            let mut item_buf = Vec::new();
-            InstrumentMetadataEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &InstrumentCatalogResponse) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for InstrumentCatalogResponse
-#[derive(Debug, Clone, PartialEq)]
-pub struct InstrumentCatalogResponseDecoder {
-    pub instruments: Vec<InstrumentMetadata>,
-}
+pub struct InstrumentCatalogResponseDecoder;
 
 impl InstrumentCatalogResponseDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<InstrumentCatalogResponse, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7693,26 +6377,11 @@ impl InstrumentCatalogResponseDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let instruments_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut instruments = Vec::with_capacity(sbe_capacity(
-            instruments_count,
-            buf.len().saturating_sub(pos),
-        ));
-        for _ in 0..instruments_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = InstrumentMetadataDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "InstrumentMetadata length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            instruments.push(item);
-        }
-
-        Ok(Self { instruments })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = InstrumentCatalogResponseBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7720,43 +6389,31 @@ impl InstrumentCatalogResponseDecoder {
 pub struct AccountSummaryEncoder;
 
 impl AccountSummaryEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(account: String, balance: f64, buying_power: f64, currency: String) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &AccountSummary, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&31u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&16u16.to_be_bytes()); // block_length
+        AccountSummaryBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&balance.to_be_bytes());
-        buf.extend_from_slice(&buying_power.to_be_bytes());
-        let currency_bytes = currency.as_bytes();
-        buf.extend_from_slice(&(currency_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(currency_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &AccountSummary) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 16);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for AccountSummary
-#[derive(Debug, Clone, PartialEq)]
-pub struct AccountSummaryDecoder {
-    pub account: String,
-    pub balance: f64,
-    pub buying_power: f64,
-    pub currency: String,
-}
+pub struct AccountSummaryDecoder;
 
 impl AccountSummaryDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<AccountSummary, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7773,21 +6430,11 @@ impl AccountSummaryDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let balance_raw = sbe_f64(buf, &mut pos)?;
-        let balance = balance_raw;
-        let buying_power_raw = sbe_f64(buf, &mut pos)?;
-        let buying_power = buying_power_raw;
-        let currency = sbe_str(buf, &mut pos)?;
-
-        Ok(Self {
-            account,
-            balance,
-            buying_power,
-            currency,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = AccountSummaryBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7795,57 +6442,31 @@ impl AccountSummaryDecoder {
 pub struct MarginSummaryEncoder;
 
 impl MarginSummaryEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        balance: f64,
-        buying_power: f64,
-        equity: f64,
-        margin_used: f64,
-        available: f64,
-        currency: String,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarginSummary, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&32u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&40u16.to_be_bytes()); // block_length
+        MarginSummaryBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&balance.to_be_bytes());
-        buf.extend_from_slice(&buying_power.to_be_bytes());
-        buf.extend_from_slice(&equity.to_be_bytes());
-        buf.extend_from_slice(&margin_used.to_be_bytes());
-        buf.extend_from_slice(&available.to_be_bytes());
-        let currency_bytes = currency.as_bytes();
-        buf.extend_from_slice(&(currency_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(currency_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarginSummary) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 40);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarginSummary
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarginSummaryDecoder {
-    pub account: String,
-    pub balance: f64,
-    pub buying_power: f64,
-    pub equity: f64,
-    pub margin_used: f64,
-    pub available: f64,
-    pub currency: String,
-}
+pub struct MarginSummaryDecoder;
 
 impl MarginSummaryDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarginSummary, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7862,30 +6483,11 @@ impl MarginSummaryDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let balance_raw = sbe_f64(buf, &mut pos)?;
-        let balance = balance_raw;
-        let buying_power_raw = sbe_f64(buf, &mut pos)?;
-        let buying_power = buying_power_raw;
-        let equity_raw = sbe_f64(buf, &mut pos)?;
-        let equity = equity_raw;
-        let margin_used_raw = sbe_f64(buf, &mut pos)?;
-        let margin_used = margin_used_raw;
-        let available_raw = sbe_f64(buf, &mut pos)?;
-        let available = available_raw;
-        let currency = sbe_str(buf, &mut pos)?;
-
-        Ok(Self {
-            account,
-            balance,
-            buying_power,
-            equity,
-            margin_used,
-            available,
-            currency,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarginSummaryBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7893,50 +6495,31 @@ impl MarginSummaryDecoder {
 pub struct BalanceSnapshotEncoder;
 
 impl BalanceSnapshotEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        balances: Vec<BalanceEntry>,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &BalanceSnapshot, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&33u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        BalanceSnapshotBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(balances.len() as u32).to_be_bytes());
-        for item in &balances {
-            let mut item_buf = Vec::new();
-            BalanceEntryEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &BalanceSnapshot) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for BalanceSnapshot
-#[derive(Debug, Clone, PartialEq)]
-pub struct BalanceSnapshotDecoder {
-    pub account: String,
-    pub balances: Vec<BalanceEntry>,
-    pub is_snapshot: Option<bool>,
-}
+pub struct BalanceSnapshotDecoder;
 
 impl BalanceSnapshotDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<BalanceSnapshot, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -7953,35 +6536,11 @@ impl BalanceSnapshotDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let balances_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut balances =
-            Vec::with_capacity(sbe_capacity(balances_count, buf.len().saturating_sub(pos)));
-        for _ in 0..balances_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = BalanceEntryDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "BalanceEntry length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            balances.push(item);
-        }
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            balances,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = BalanceSnapshotBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -7989,54 +6548,31 @@ impl BalanceSnapshotDecoder {
 pub struct BalanceUpdateEncoder;
 
 impl BalanceUpdateEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        asset: String,
-        delta: f64,
-        total: f64,
-        available: f64,
-        reason: BalanceUpdateReason,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &BalanceUpdate, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&34u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&25u16.to_be_bytes()); // block_length
+        BalanceUpdateBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        let asset_bytes = asset.as_bytes();
-        buf.extend_from_slice(&(asset_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(asset_bytes);
-        buf.extend_from_slice(&delta.to_be_bytes());
-        buf.extend_from_slice(&total.to_be_bytes());
-        buf.extend_from_slice(&available.to_be_bytes());
-        buf.push(reason.to_value());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &BalanceUpdate) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 25);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for BalanceUpdate
-#[derive(Debug, Clone, PartialEq)]
-pub struct BalanceUpdateDecoder {
-    pub account: String,
-    pub asset: String,
-    pub delta: f64,
-    pub total: f64,
-    pub available: f64,
-    pub reason: BalanceUpdateReason,
-}
+pub struct BalanceUpdateDecoder;
 
 impl BalanceUpdateDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<BalanceUpdate, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8053,28 +6589,11 @@ impl BalanceUpdateDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let asset = sbe_str(buf, &mut pos)?;
-        let delta_raw = sbe_f64(buf, &mut pos)?;
-        let delta = delta_raw;
-        let total_raw = sbe_f64(buf, &mut pos)?;
-        let total = total_raw;
-        let available_raw = sbe_f64(buf, &mut pos)?;
-        let available = available_raw;
-        let reason_raw = sbe_u8(buf, &mut pos)?;
-        let reason = BalanceUpdateReason::from_value(reason_raw)
-            .ok_or_else(|| format!("invalid BalanceUpdateReason value: {}", reason_raw))?;
-
-        Ok(Self {
-            account,
-            asset,
-            delta,
-            total,
-            available,
-            reason,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = BalanceUpdateBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8082,50 +6601,31 @@ impl BalanceUpdateDecoder {
 pub struct PositionSnapshotEncoder;
 
 impl PositionSnapshotEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        positions: Vec<PositionEntry>,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PositionSnapshot, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&35u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        PositionSnapshotBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(positions.len() as u32).to_be_bytes());
-        for item in &positions {
-            let mut item_buf = Vec::new();
-            PositionEntryEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PositionSnapshot) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PositionSnapshot
-#[derive(Debug, Clone, PartialEq)]
-pub struct PositionSnapshotDecoder {
-    pub account: String,
-    pub positions: Vec<PositionEntry>,
-    pub is_snapshot: Option<bool>,
-}
+pub struct PositionSnapshotDecoder;
 
 impl PositionSnapshotDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PositionSnapshot, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8142,35 +6642,11 @@ impl PositionSnapshotDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let positions_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut positions =
-            Vec::with_capacity(sbe_capacity(positions_count, buf.len().saturating_sub(pos)));
-        for _ in 0..positions_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = PositionEntryDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "PositionEntry length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            positions.push(item);
-        }
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            positions,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PositionSnapshotBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8178,51 +6654,31 @@ impl PositionSnapshotDecoder {
 pub struct PositionUpdateEncoder;
 
 impl PositionUpdateEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        symbol: Symbol,
-        qty: Quantity,
-        entry_price: Price,
-        unrealized_pnl: f64,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PositionUpdate, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&36u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
+        PositionUpdateBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&qty.0.to_be_bytes());
-        buf.extend_from_slice(&entry_price.0.to_be_bytes());
-        buf.extend_from_slice(&unrealized_pnl.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PositionUpdate) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 24);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PositionUpdate
-#[derive(Debug, Clone, PartialEq)]
-pub struct PositionUpdateDecoder {
-    pub account: String,
-    pub symbol: Symbol,
-    pub qty: Quantity,
-    pub entry_price: Price,
-    pub unrealized_pnl: f64,
-}
+pub struct PositionUpdateDecoder;
 
 impl PositionUpdateDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PositionUpdate, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8239,24 +6695,11 @@ impl PositionUpdateDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = sbe_str(buf, &mut pos)?;
-        let qty_raw = sbe_f64(buf, &mut pos)?;
-        let qty = Quantity(qty_raw);
-        let entry_price_raw = sbe_f64(buf, &mut pos)?;
-        let entry_price = Price(entry_price_raw);
-        let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
-        let unrealized_pnl = unrealized_pnl_raw;
-
-        Ok(Self {
-            account,
-            symbol,
-            qty,
-            entry_price,
-            unrealized_pnl,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PositionUpdateBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8264,40 +6707,31 @@ impl PositionUpdateDecoder {
 pub struct MarginUpdateEncoder;
 
 impl MarginUpdateEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(account: String, summary: MarginSummary, is_snapshot: Option<bool>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MarginUpdate, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&37u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        MarginUpdateBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        MarginSummaryBodyEncoder::encode(&summary, &mut buf);
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MarginUpdate) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MarginUpdate
-#[derive(Debug, Clone, PartialEq)]
-pub struct MarginUpdateDecoder {
-    pub account: String,
-    pub summary: MarginSummary,
-    pub is_snapshot: Option<bool>,
-}
+pub struct MarginUpdateDecoder;
 
 impl MarginUpdateDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MarginUpdate, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8314,26 +6748,11 @@ impl MarginUpdateDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
         let rest = buf
-            .get(pos..)
-            .ok_or_else(|| format!("sbe: offset {} out of range", pos))?;
-        let (summary, summary_n) = MarginSummaryBodyDecoder::decode(rest)?;
-        pos += summary_n;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            summary,
-            is_snapshot,
-        })
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MarginUpdateBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8341,51 +6760,31 @@ impl MarginUpdateDecoder {
 pub struct UserLiquidationEncoder;
 
 impl UserLiquidationEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        symbol: Symbol,
-        qty: Quantity,
-        price: Price,
-        timestamp: TradeTimestamp,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &UserLiquidation, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&38u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
+        UserLiquidationBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(&qty.0.to_be_bytes());
-        buf.extend_from_slice(&price.0.to_be_bytes());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &UserLiquidation) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 24);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for UserLiquidation
-#[derive(Debug, Clone, PartialEq)]
-pub struct UserLiquidationDecoder {
-    pub account: String,
-    pub symbol: Symbol,
-    pub qty: Quantity,
-    pub price: Price,
-    pub timestamp: TradeTimestamp,
-}
+pub struct UserLiquidationDecoder;
 
 impl UserLiquidationDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<UserLiquidation, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8402,24 +6801,11 @@ impl UserLiquidationDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = sbe_str(buf, &mut pos)?;
-        let qty_raw = sbe_f64(buf, &mut pos)?;
-        let qty = Quantity(qty_raw);
-        let price_raw = sbe_f64(buf, &mut pos)?;
-        let price = Price(price_raw);
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-
-        Ok(Self {
-            account,
-            symbol,
-            qty,
-            price,
-            timestamp,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = UserLiquidationBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8427,53 +6813,31 @@ impl UserLiquidationDecoder {
 pub struct OrderListStatusEncoder;
 
 impl OrderListStatusEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        list_id: String,
-        status: OrderListStatusStatus,
-        symbol: Option<Symbol>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderListStatus, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&39u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        OrderListStatusBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        let list_id_bytes = list_id.as_bytes();
-        buf.extend_from_slice(&(list_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(list_id_bytes);
-        buf.push(status.to_value());
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderListStatus) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderListStatus
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderListStatusDecoder {
-    pub account: String,
-    pub list_id: String,
-    pub status: OrderListStatusStatus,
-    pub symbol: Option<Symbol>,
-}
+pub struct OrderListStatusDecoder;
 
 impl OrderListStatusDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderListStatus, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8490,25 +6854,11 @@ impl OrderListStatusDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let list_id = sbe_str(buf, &mut pos)?;
-        let status_raw = sbe_u8(buf, &mut pos)?;
-        let status = OrderListStatusStatus::from_value(status_raw)
-            .ok_or_else(|| format!("invalid OrderListStatusStatus value: {}", status_raw))?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            list_id,
-            status,
-            symbol,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderListStatusBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8516,65 +6866,31 @@ impl OrderListStatusDecoder {
 pub struct FillHistoryRequestEncoder;
 
 impl FillHistoryRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        symbol: Option<Symbol>,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &FillHistoryRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&40u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        FillHistoryRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &FillHistoryRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for FillHistoryRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct FillHistoryRequestDecoder {
-    pub account: String,
-    pub symbol: Option<Symbol>,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct FillHistoryRequestDecoder;
 
 impl FillHistoryRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<FillHistoryRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8591,46 +6907,11 @@ impl FillHistoryRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            symbol,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = FillHistoryRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8638,57 +6919,31 @@ impl FillHistoryRequestDecoder {
 pub struct FillHistoryBatchEncoder;
 
 impl FillHistoryBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        fills: Vec<ExecutionReport>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &FillHistoryBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&41u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        FillHistoryBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(fills.len() as u32).to_be_bytes());
-        for item in &fills {
-            let mut item_buf = Vec::new();
-            ExecutionReportBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &FillHistoryBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for FillHistoryBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct FillHistoryBatchDecoder {
-    pub account: String,
-    pub fills: Vec<ExecutionReport>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct FillHistoryBatchDecoder;
 
 impl FillHistoryBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<FillHistoryBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8705,36 +6960,11 @@ impl FillHistoryBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let fills_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut fills =
-            Vec::with_capacity(sbe_capacity(fills_count, buf.len().saturating_sub(pos)));
-        for _ in 0..fills_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "ExecutionReport length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            fills.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            fills,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = FillHistoryBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8742,54 +6972,31 @@ impl FillHistoryBatchDecoder {
 pub struct FundingPaymentEncoder;
 
 impl FundingPaymentEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        symbol: Option<Symbol>,
-        amount: f64,
-        rate: f64,
-        timestamp: TradeTimestamp,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &FundingPayment, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&42u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&24u16.to_be_bytes()); // block_length
+        FundingPaymentBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.extend_from_slice(&amount.to_be_bytes());
-        buf.extend_from_slice(&rate.to_be_bytes());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &FundingPayment) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 24);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for FundingPayment
-#[derive(Debug, Clone, PartialEq)]
-pub struct FundingPaymentDecoder {
-    pub account: String,
-    pub symbol: Option<Symbol>,
-    pub amount: f64,
-    pub rate: f64,
-    pub timestamp: TradeTimestamp,
-}
+pub struct FundingPaymentDecoder;
 
 impl FundingPaymentDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<FundingPayment, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8806,28 +7013,11 @@ impl FundingPaymentDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let amount_raw = sbe_f64(buf, &mut pos)?;
-        let amount = amount_raw;
-        let rate_raw = sbe_f64(buf, &mut pos)?;
-        let rate = rate_raw;
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-
-        Ok(Self {
-            account,
-            symbol,
-            amount,
-            rate,
-            timestamp,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = FundingPaymentBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8835,57 +7025,31 @@ impl FundingPaymentDecoder {
 pub struct FundingHistoryRequestEncoder;
 
 impl FundingHistoryRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &FundingHistoryRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&43u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        FundingHistoryRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &FundingHistoryRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for FundingHistoryRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct FundingHistoryRequestDecoder {
-    pub account: String,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct FundingHistoryRequestDecoder;
 
 impl FundingHistoryRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<FundingHistoryRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -8902,40 +7066,11 @@ impl FundingHistoryRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = FundingHistoryRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -8943,57 +7078,31 @@ impl FundingHistoryRequestDecoder {
 pub struct FundingHistoryBatchEncoder;
 
 impl FundingHistoryBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        payments: Vec<FundingPayment>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &FundingHistoryBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&44u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        FundingHistoryBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(payments.len() as u32).to_be_bytes());
-        for item in &payments {
-            let mut item_buf = Vec::new();
-            FundingPaymentBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &FundingHistoryBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for FundingHistoryBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct FundingHistoryBatchDecoder {
-    pub account: String,
-    pub payments: Vec<FundingPayment>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct FundingHistoryBatchDecoder;
 
 impl FundingHistoryBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<FundingHistoryBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9010,36 +7119,11 @@ impl FundingHistoryBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let payments_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut payments =
-            Vec::with_capacity(sbe_capacity(payments_count, buf.len().saturating_sub(pos)));
-        for _ in 0..payments_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = FundingPaymentBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "FundingPayment length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            payments.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            payments,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = FundingHistoryBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9047,59 +7131,31 @@ impl FundingHistoryBatchDecoder {
 pub struct LedgerUpdateEncoder;
 
 impl LedgerUpdateEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        asset: String,
-        delta: f64,
-        kind: LedgerUpdateKind,
-        timestamp: TradeTimestamp,
-        reference_id: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &LedgerUpdate, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&45u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&17u16.to_be_bytes()); // block_length
+        LedgerUpdateBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        let asset_bytes = asset.as_bytes();
-        buf.extend_from_slice(&(asset_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(asset_bytes);
-        buf.extend_from_slice(&delta.to_be_bytes());
-        buf.push(kind.to_value());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(if reference_id.is_some() { 1 } else { 0 });
-        if let Some(ref s) = reference_id {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &LedgerUpdate) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 17);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for LedgerUpdate
-#[derive(Debug, Clone, PartialEq)]
-pub struct LedgerUpdateDecoder {
-    pub account: String,
-    pub asset: String,
-    pub delta: f64,
-    pub kind: LedgerUpdateKind,
-    pub timestamp: TradeTimestamp,
-    pub reference_id: Option<String>,
-}
+pub struct LedgerUpdateDecoder;
 
 impl LedgerUpdateDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<LedgerUpdate, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9116,31 +7172,11 @@ impl LedgerUpdateDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let asset = sbe_str(buf, &mut pos)?;
-        let delta_raw = sbe_f64(buf, &mut pos)?;
-        let delta = delta_raw;
-        let kind_raw = sbe_u8(buf, &mut pos)?;
-        let kind = LedgerUpdateKind::from_value(kind_raw)
-            .ok_or_else(|| format!("invalid LedgerUpdateKind value: {}", kind_raw))?;
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let reference_id = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            asset,
-            delta,
-            kind,
-            timestamp,
-            reference_id,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = LedgerUpdateBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9148,57 +7184,31 @@ impl LedgerUpdateDecoder {
 pub struct LedgerHistoryRequestEncoder;
 
 impl LedgerHistoryRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &LedgerHistoryRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&46u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        LedgerHistoryRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &LedgerHistoryRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for LedgerHistoryRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct LedgerHistoryRequestDecoder {
-    pub account: String,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct LedgerHistoryRequestDecoder;
 
 impl LedgerHistoryRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<LedgerHistoryRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9215,40 +7225,11 @@ impl LedgerHistoryRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = LedgerHistoryRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9256,57 +7237,31 @@ impl LedgerHistoryRequestDecoder {
 pub struct LedgerHistoryBatchEncoder;
 
 impl LedgerHistoryBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        entries: Vec<LedgerUpdate>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &LedgerHistoryBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&47u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        LedgerHistoryBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(entries.len() as u32).to_be_bytes());
-        for item in &entries {
-            let mut item_buf = Vec::new();
-            LedgerUpdateBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &LedgerHistoryBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for LedgerHistoryBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct LedgerHistoryBatchDecoder {
-    pub account: String,
-    pub entries: Vec<LedgerUpdate>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct LedgerHistoryBatchDecoder;
 
 impl LedgerHistoryBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<LedgerHistoryBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9323,36 +7278,11 @@ impl LedgerHistoryBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let entries_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut entries =
-            Vec::with_capacity(sbe_capacity(entries_count, buf.len().saturating_sub(pos)));
-        for _ in 0..entries_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = LedgerUpdateBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "LedgerUpdate length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            entries.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            entries,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = LedgerHistoryBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9360,42 +7290,31 @@ impl LedgerHistoryBatchDecoder {
 pub struct OpenOrdersRequestEncoder;
 
 impl OpenOrdersRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(account: String, symbol: Option<Symbol>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OpenOrdersRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&48u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        OpenOrdersRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OpenOrdersRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OpenOrdersRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct OpenOrdersRequestDecoder {
-    pub account: String,
-    pub symbol: Option<Symbol>,
-}
+pub struct OpenOrdersRequestDecoder;
 
 impl OpenOrdersRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OpenOrdersRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9412,16 +7331,11 @@ impl OpenOrdersRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self { account, symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OpenOrdersRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9429,50 +7343,31 @@ impl OpenOrdersRequestDecoder {
 pub struct OpenOrdersSnapshotEncoder;
 
 impl OpenOrdersSnapshotEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        orders: Vec<ExecutionReport>,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OpenOrdersSnapshot, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&49u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        OpenOrdersSnapshotBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(orders.len() as u32).to_be_bytes());
-        for item in &orders {
-            let mut item_buf = Vec::new();
-            ExecutionReportBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OpenOrdersSnapshot) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OpenOrdersSnapshot
-#[derive(Debug, Clone, PartialEq)]
-pub struct OpenOrdersSnapshotDecoder {
-    pub account: String,
-    pub orders: Vec<ExecutionReport>,
-    pub is_snapshot: Option<bool>,
-}
+pub struct OpenOrdersSnapshotDecoder;
 
 impl OpenOrdersSnapshotDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OpenOrdersSnapshot, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9489,35 +7384,11 @@ impl OpenOrdersSnapshotDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let orders_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut orders =
-            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
-        for _ in 0..orders_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "ExecutionReport length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            orders.push(item);
-        }
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            orders,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OpenOrdersSnapshotBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9525,65 +7396,31 @@ impl OpenOrdersSnapshotDecoder {
 pub struct OrderHistoryRequestEncoder;
 
 impl OrderHistoryRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        symbol: Option<Symbol>,
-        start_time: Option<TradeTimestamp>,
-        end_time: Option<TradeTimestamp>,
-        limit: Option<u32>,
-        cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderHistoryRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&50u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&20u16.to_be_bytes()); // block_length
+        OrderHistoryRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.extend_from_slice(&start_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(start_time.is_some()));
-        buf.extend_from_slice(&end_time.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(end_time.is_some()));
-        buf.extend_from_slice(&limit.unwrap_or(0).to_be_bytes());
-        buf.push(u8::from(limit.is_some()));
-        buf.push(if cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderHistoryRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 20);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderHistoryRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderHistoryRequestDecoder {
-    pub account: String,
-    pub symbol: Option<Symbol>,
-    pub start_time: Option<TradeTimestamp>,
-    pub end_time: Option<TradeTimestamp>,
-    pub limit: Option<u32>,
-    pub cursor: Option<String>,
-}
+pub struct OrderHistoryRequestDecoder;
 
 impl OrderHistoryRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderHistoryRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9600,46 +7437,11 @@ impl OrderHistoryRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let start_time_raw = sbe_i64(buf, &mut pos)?;
-        let start_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(start_time_raw)
-        } else {
-            None
-        };
-        let end_time_raw = sbe_i64(buf, &mut pos)?;
-        let end_time = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(end_time_raw)
-        } else {
-            None
-        };
-        let limit_raw = sbe_u32(buf, &mut pos)?;
-        let limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(limit_raw)
-        } else {
-            None
-        };
-        let cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            symbol,
-            start_time,
-            end_time,
-            limit,
-            cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderHistoryRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9647,57 +7449,31 @@ impl OrderHistoryRequestDecoder {
 pub struct OrderHistoryBatchEncoder;
 
 impl OrderHistoryBatchEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        account: String,
-        orders: Vec<ExecutionReport>,
-        has_more: bool,
-        next_cursor: Option<String>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &OrderHistoryBatch, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&51u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        OrderHistoryBatchBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(orders.len() as u32).to_be_bytes());
-        for item in &orders {
-            let mut item_buf = Vec::new();
-            ExecutionReportBodyEncoder::encode(item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.push(has_more as u8);
-        buf.push(if next_cursor.is_some() { 1 } else { 0 });
-        if let Some(ref s) = next_cursor {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &OrderHistoryBatch) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for OrderHistoryBatch
-#[derive(Debug, Clone, PartialEq)]
-pub struct OrderHistoryBatchDecoder {
-    pub account: String,
-    pub orders: Vec<ExecutionReport>,
-    pub has_more: bool,
-    pub next_cursor: Option<String>,
-}
+pub struct OrderHistoryBatchDecoder;
 
 impl OrderHistoryBatchDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<OrderHistoryBatch, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9714,36 +7490,11 @@ impl OrderHistoryBatchDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-        let orders_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut orders =
-            Vec::with_capacity(sbe_capacity(orders_count, buf.len().saturating_sub(pos)));
-        for _ in 0..orders_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = ExecutionReportBodyDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "ExecutionReport length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            orders.push(item);
-        }
-        let has_more = sbe_u8(buf, &mut pos)? != 0;
-        let next_cursor = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            account,
-            orders,
-            has_more,
-            next_cursor,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = OrderHistoryBatchBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9751,30 +7502,31 @@ impl OrderHistoryBatchDecoder {
 pub struct CapabilitiesRequestEncoder;
 
 impl CapabilitiesRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode() -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CapabilitiesRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&52u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        CapabilitiesRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CapabilitiesRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CapabilitiesRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct CapabilitiesRequestDecoder {}
+pub struct CapabilitiesRequestDecoder;
 
 impl CapabilitiesRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CapabilitiesRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9791,9 +7543,11 @@ impl CapabilitiesRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        Ok(Self {})
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CapabilitiesRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9801,63 +7555,31 @@ impl CapabilitiesRequestDecoder {
 pub struct CapabilitiesResponseEncoder;
 
 impl CapabilitiesResponseEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        schema_ids: Vec<u8>,
-        paths: Vec<CapabilityPath>,
-        symbols: Vec<Symbol>,
-        intervals: Vec<CandleInterval>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &CapabilitiesResponse, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&53u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        CapabilitiesResponseBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        buf.extend_from_slice(&(schema_ids.len() as u32).to_be_bytes());
-        for item in &schema_ids {
-            buf.push(*item);
-        }
-        buf.extend_from_slice(&(paths.len() as u32).to_be_bytes());
-        for item in &paths {
-            let mut item_buf = Vec::new();
-            CapabilityPathEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&(symbols.len() as u32).to_be_bytes());
-        for item in &symbols {
-            let b = item.as_bytes();
-            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.extend_from_slice(&(intervals.len() as u32).to_be_bytes());
-        for item in &intervals {
-            let b = item.as_bytes();
-            buf.extend_from_slice(&(b.len() as u32).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &CapabilitiesResponse) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for CapabilitiesResponse
-#[derive(Debug, Clone, PartialEq)]
-pub struct CapabilitiesResponseDecoder {
-    pub schema_ids: Vec<u8>,
-    pub paths: Vec<CapabilityPath>,
-    pub symbols: Vec<Symbol>,
-    pub intervals: Vec<CandleInterval>,
-}
+pub struct CapabilitiesResponseDecoder;
 
 impl CapabilitiesResponseDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<CapabilitiesResponse, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9874,53 +7596,11 @@ impl CapabilitiesResponseDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let schema_ids_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut schema_ids = Vec::with_capacity(sbe_capacity(
-            schema_ids_count,
-            buf.len().saturating_sub(pos),
-        ));
-        for _ in 0..schema_ids_count {
-            schema_ids.push(sbe_u8(buf, &mut pos)?);
-        }
-        let paths_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut paths =
-            Vec::with_capacity(sbe_capacity(paths_count, buf.len().saturating_sub(pos)));
-        for _ in 0..paths_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = CapabilityPathDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "CapabilityPath length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            paths.push(item);
-        }
-        let symbols_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut symbols =
-            Vec::with_capacity(sbe_capacity(symbols_count, buf.len().saturating_sub(pos)));
-        for _ in 0..symbols_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            symbols.push(String::from_utf8_lossy(item_bytes).into_owned());
-        }
-        let intervals_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut intervals =
-            Vec::with_capacity(sbe_capacity(intervals_count, buf.len().saturating_sub(pos)));
-        for _ in 0..intervals_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            intervals.push(String::from_utf8_lossy(item_bytes).into_owned());
-        }
-
-        Ok(Self {
-            schema_ids,
-            paths,
-            symbols,
-            intervals,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = CapabilitiesResponseBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9928,35 +7608,31 @@ impl CapabilitiesResponseDecoder {
 pub struct PositionRequestEncoder;
 
 impl PositionRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(account: String) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PositionRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&54u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        PositionRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PositionRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PositionRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct PositionRequestDecoder {
-    pub account: String,
-}
+pub struct PositionRequestDecoder;
 
 impl PositionRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PositionRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -9973,11 +7649,11 @@ impl PositionRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let account = sbe_str(buf, &mut pos)?;
-
-        Ok(Self { account })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PositionRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -9985,38 +7661,31 @@ impl PositionRequestDecoder {
 pub struct TradingSessionStatusRequestEncoder;
 
 impl TradingSessionStatusRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Option<Symbol>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &TradingSessionStatusRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&55u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        TradingSessionStatusRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &TradingSessionStatusRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for TradingSessionStatusRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct TradingSessionStatusRequestDecoder {
-    pub symbol: Option<Symbol>,
-}
+pub struct TradingSessionStatusRequestDecoder;
 
 impl TradingSessionStatusRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<TradingSessionStatusRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10033,15 +7702,11 @@ impl TradingSessionStatusRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-
-        Ok(Self { symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = TradingSessionStatusRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10049,59 +7714,31 @@ impl TradingSessionStatusRequestDecoder {
 pub struct TradingSessionStatusEncoder;
 
 impl TradingSessionStatusEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Option<Symbol>,
-        trading_session_id: String,
-        status: TradingSessionStatusStatus,
-        halt_reason: Option<TradingSessionStatusHaltReason>,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &TradingSessionStatus, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&56u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&11u16.to_be_bytes()); // block_length
+        TradingSessionStatusBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        let trading_session_id_bytes = trading_session_id.as_bytes();
-        buf.extend_from_slice(&(trading_session_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(trading_session_id_bytes);
-        buf.push(status.to_value());
-        buf.push(halt_reason.map(|v| v.to_value()).unwrap_or(0));
-        buf.push(u8::from(halt_reason.is_some()));
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &TradingSessionStatus) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 11);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for TradingSessionStatus
-#[derive(Debug, Clone, PartialEq)]
-pub struct TradingSessionStatusDecoder {
-    pub symbol: Option<Symbol>,
-    pub trading_session_id: String,
-    pub status: TradingSessionStatusStatus,
-    pub halt_reason: Option<TradingSessionStatusHaltReason>,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct TradingSessionStatusDecoder;
 
 impl TradingSessionStatusDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<TradingSessionStatus, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10118,47 +7755,11 @@ impl TradingSessionStatusDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let trading_session_id = sbe_str(buf, &mut pos)?;
-        let status_raw = sbe_u8(buf, &mut pos)?;
-        let status = TradingSessionStatusStatus::from_value(status_raw)
-            .ok_or_else(|| format!("invalid TradingSessionStatusStatus value: {}", status_raw))?;
-        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
-        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(
-                TradingSessionStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
-                    format!(
-                        "invalid TradingSessionStatusHaltReason value: {}",
-                        halt_reason_raw
-                    )
-                })?,
-            )
-        } else {
-            None
-        };
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            trading_session_id,
-            status,
-            halt_reason,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = TradingSessionStatusBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10166,35 +7767,31 @@ impl TradingSessionStatusDecoder {
 pub struct SecurityStatusRequestEncoder;
 
 impl SecurityStatusRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &SecurityStatusRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&57u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        SecurityStatusRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &SecurityStatusRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for SecurityStatusRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct SecurityStatusRequestDecoder {
-    pub symbol: Symbol,
-}
+pub struct SecurityStatusRequestDecoder;
 
 impl SecurityStatusRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<SecurityStatusRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10211,11 +7808,11 @@ impl SecurityStatusRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-
-        Ok(Self { symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = SecurityStatusRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10223,51 +7820,31 @@ impl SecurityStatusRequestDecoder {
 pub struct SecurityStatusEncoder;
 
 impl SecurityStatusEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        status: SecurityStatusStatus,
-        halt_reason: Option<SecurityStatusHaltReason>,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &SecurityStatus, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&58u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&11u16.to_be_bytes()); // block_length
+        SecurityStatusBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.push(status.to_value());
-        buf.push(halt_reason.map(|v| v.to_value()).unwrap_or(0));
-        buf.push(u8::from(halt_reason.is_some()));
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &SecurityStatus) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 11);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for SecurityStatus
-#[derive(Debug, Clone, PartialEq)]
-pub struct SecurityStatusDecoder {
-    pub symbol: Symbol,
-    pub status: SecurityStatusStatus,
-    pub halt_reason: Option<SecurityStatusHaltReason>,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct SecurityStatusDecoder;
 
 impl SecurityStatusDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<SecurityStatus, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10284,41 +7861,11 @@ impl SecurityStatusDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let status_raw = sbe_u8(buf, &mut pos)?;
-        let status = SecurityStatusStatus::from_value(status_raw)
-            .ok_or_else(|| format!("invalid SecurityStatusStatus value: {}", status_raw))?;
-        let halt_reason_raw = sbe_u8(buf, &mut pos)?;
-        let halt_reason = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(
-                SecurityStatusHaltReason::from_value(halt_reason_raw).ok_or_else(|| {
-                    format!(
-                        "invalid SecurityStatusHaltReason value: {}",
-                        halt_reason_raw
-                    )
-                })?,
-            )
-        } else {
-            None
-        };
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            status,
-            halt_reason,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = SecurityStatusBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10326,54 +7873,31 @@ impl SecurityStatusDecoder {
 pub struct MassCancelRequestEncoder;
 
 impl MassCancelRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        account: String,
-        symbol: Option<Symbol>,
-        side: Option<MassCancelRequestSide>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MassCancelRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&59u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&1u16.to_be_bytes()); // block_length
+        MassCancelRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.push(side.map(|v| v as u8).unwrap_or(0));
-        buf.push(u8::from(side.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MassCancelRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 1);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MassCancelRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct MassCancelRequestDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub account: String,
-    pub symbol: Option<Symbol>,
-    pub side: Option<MassCancelRequestSide>,
-}
+pub struct MassCancelRequestDecoder;
 
 impl MassCancelRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MassCancelRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10390,31 +7914,11 @@ impl MassCancelRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let side_raw = sbe_u8(buf, &mut pos)?;
-        let side = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(
-                MassCancelRequestSide::from_value(side_raw)
-                    .ok_or_else(|| format!("invalid MassCancelRequestSide value: {}", side_raw))?,
-            )
-        } else {
-            None
-        };
-
-        Ok(Self {
-            cl_ord_id,
-            account,
-            symbol,
-            side,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MassCancelRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10422,59 +7926,31 @@ impl MassCancelRequestDecoder {
 pub struct MassCancelReportEncoder;
 
 impl MassCancelReportEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        cl_ord_id: ClientOrderId,
-        account: String,
-        symbol: Option<Symbol>,
-        total_affected: u32,
-        status: MassCancelReportStatus,
-        timestamp: TradeTimestamp,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &MassCancelReport, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&60u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&13u16.to_be_bytes()); // block_length
+        MassCancelReportBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let cl_ord_id_bytes = cl_ord_id.as_bytes();
-        buf.extend_from_slice(&(cl_ord_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(cl_ord_id_bytes);
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(if symbol.is_some() { 1 } else { 0 });
-        if let Some(ref s) = symbol {
-            let b = s.as_bytes();
-            buf.extend_from_slice(&(b.len() as u16).to_be_bytes());
-            buf.extend_from_slice(b);
-        }
-        buf.extend_from_slice(&total_affected.to_be_bytes());
-        buf.push(status.to_value());
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &MassCancelReport) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 13);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for MassCancelReport
-#[derive(Debug, Clone, PartialEq)]
-pub struct MassCancelReportDecoder {
-    pub cl_ord_id: ClientOrderId,
-    pub account: String,
-    pub symbol: Option<Symbol>,
-    pub total_affected: u32,
-    pub status: MassCancelReportStatus,
-    pub timestamp: TradeTimestamp,
-}
+pub struct MassCancelReportDecoder;
 
 impl MassCancelReportDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<MassCancelReport, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10491,31 +7967,11 @@ impl MassCancelReportDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let cl_ord_id = sbe_str(buf, &mut pos)?;
-        let account = sbe_str(buf, &mut pos)?;
-        let symbol = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(sbe_str(buf, &mut pos)?)
-        } else {
-            None
-        };
-        let total_affected_raw = sbe_u32(buf, &mut pos)?;
-        let total_affected = total_affected_raw;
-        let status_raw = sbe_u8(buf, &mut pos)?;
-        let status = MassCancelReportStatus::from_value(status_raw)
-            .ok_or_else(|| format!("invalid MassCancelReportStatus value: {}", status_raw))?;
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-
-        Ok(Self {
-            cl_ord_id,
-            account,
-            symbol,
-            total_affected,
-            status,
-            timestamp,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = MassCancelReportBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10523,35 +7979,31 @@ impl MassCancelReportDecoder {
 pub struct PriceLimitsRequestEncoder;
 
 impl PriceLimitsRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(symbol: Symbol) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PriceLimitsRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&61u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        PriceLimitsRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PriceLimitsRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PriceLimitsRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct PriceLimitsRequestDecoder {
-    pub symbol: Symbol,
-}
+pub struct PriceLimitsRequestDecoder;
 
 impl PriceLimitsRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PriceLimitsRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10568,11 +8020,11 @@ impl PriceLimitsRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-
-        Ok(Self { symbol })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PriceLimitsRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10580,74 +8032,31 @@ impl PriceLimitsRequestDecoder {
 pub struct PriceLimitsEncoder;
 
 impl PriceLimitsEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        symbol: Symbol,
-        lower_limit: Option<Price>,
-        upper_limit: Option<Price>,
-        reference_price: Option<Price>,
-        timestamp: TradeTimestamp,
-        is_snapshot: Option<bool>,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &PriceLimits, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&62u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&33u16.to_be_bytes()); // block_length
+        PriceLimitsBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let symbol_bytes = symbol.as_bytes();
-        buf.extend_from_slice(&(symbol_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(symbol_bytes);
-        buf.extend_from_slice(
-            &lower_limit
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if lower_limit.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(
-            &upper_limit
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if upper_limit.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(
-            &reference_price
-                .as_ref()
-                .map(|v| v.0)
-                .unwrap_or(0.0)
-                .to_be_bytes(),
-        );
-        buf.push(if reference_price.is_some() { 1 } else { 0 });
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-        buf.push(is_snapshot.unwrap_or(false) as u8);
-        buf.push(u8::from(is_snapshot.is_some()));
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &PriceLimits) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 33);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for PriceLimits
-#[derive(Debug, Clone, PartialEq)]
-pub struct PriceLimitsDecoder {
-    pub symbol: Symbol,
-    pub lower_limit: Option<Price>,
-    pub upper_limit: Option<Price>,
-    pub reference_price: Option<Price>,
-    pub timestamp: TradeTimestamp,
-    pub is_snapshot: Option<bool>,
-}
+pub struct PriceLimitsDecoder;
 
 impl PriceLimitsDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<PriceLimits, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10664,44 +8073,11 @@ impl PriceLimitsDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let symbol = sbe_str(buf, &mut pos)?;
-        let lower_limit_raw = sbe_f64(buf, &mut pos)?;
-        let lower_limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(lower_limit_raw))
-        } else {
-            None
-        };
-        let upper_limit_raw = sbe_f64(buf, &mut pos)?;
-        let upper_limit = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(upper_limit_raw))
-        } else {
-            None
-        };
-        let reference_price_raw = sbe_f64(buf, &mut pos)?;
-        let reference_price = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(Price(reference_price_raw))
-        } else {
-            None
-        };
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-        let is_snapshot_val = sbe_u8(buf, &mut pos)?;
-        let is_snapshot = if sbe_u8(buf, &mut pos)? == 1 {
-            Some(is_snapshot_val != 0)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            symbol,
-            lower_limit,
-            upper_limit,
-            reference_price,
-            timestamp,
-            is_snapshot,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = PriceLimitsBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10709,47 +8085,31 @@ impl PriceLimitsDecoder {
 pub struct BatchRequestEncoder;
 
 impl BatchRequestEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(batch_id: ClientOrderId, account: String, actions: Vec<BatchAction>) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &BatchRequest, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&63u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&0u16.to_be_bytes()); // block_length
+        BatchRequestBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let batch_id_bytes = batch_id.as_bytes();
-        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(batch_id_bytes);
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.extend_from_slice(&(actions.len() as u32).to_be_bytes());
-        for item in &actions {
-            let mut item_buf = Vec::new();
-            BatchActionEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &BatchRequest) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 0);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for BatchRequest
-#[derive(Debug, Clone, PartialEq)]
-pub struct BatchRequestDecoder {
-    pub batch_id: ClientOrderId,
-    pub account: String,
-    pub actions: Vec<BatchAction>,
-}
+pub struct BatchRequestDecoder;
 
 impl BatchRequestDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<BatchRequest, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10766,30 +8126,11 @@ impl BatchRequestDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let batch_id = sbe_str(buf, &mut pos)?;
-        let account = sbe_str(buf, &mut pos)?;
-        let actions_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut actions =
-            Vec::with_capacity(sbe_capacity(actions_count, buf.len().saturating_sub(pos)));
-        for _ in 0..actions_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = BatchActionDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "BatchAction length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            actions.push(item);
-        }
-
-        Ok(Self {
-            batch_id,
-            account,
-            actions,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = BatchRequestBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }
 
@@ -10797,57 +8138,31 @@ impl BatchRequestDecoder {
 pub struct BatchReportEncoder;
 
 impl BatchReportEncoder {
-    /// Encode this message into a byte buffer.
-    /// Returns the filled buffer.
-    pub fn encode(
-        batch_id: ClientOrderId,
-        account: String,
-        outcome: BatchReportOutcome,
-        results: Vec<BatchResult>,
-        timestamp: TradeTimestamp,
-    ) -> Vec<u8> {
-        let mut buf = Vec::new();
-
+    /// Append this message (header + body) onto `buf`.
+    /// The caller should `buf.clear()` first when reusing the allocation.
+    pub fn encode_into(value: &BatchReport, buf: &mut Vec<u8>) {
         // SBE Message Header (8 bytes)
         buf.extend_from_slice(&1u16.to_be_bytes()); // schema_id
         buf.extend_from_slice(&64u16.to_be_bytes()); // template_id
         buf.extend_from_slice(&0u16.to_be_bytes()); // version
         buf.extend_from_slice(&9u16.to_be_bytes()); // block_length
+        BatchReportBodyEncoder::encode(value, buf);
+    }
 
-        // Fixed fields
-        let batch_id_bytes = batch_id.as_bytes();
-        buf.extend_from_slice(&(batch_id_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(batch_id_bytes);
-        let account_bytes = account.as_bytes();
-        buf.extend_from_slice(&(account_bytes.len() as u16).to_be_bytes());
-        buf.extend_from_slice(account_bytes);
-        buf.push(outcome.to_value());
-        buf.extend_from_slice(&(results.len() as u32).to_be_bytes());
-        for item in &results {
-            let mut item_buf = Vec::new();
-            BatchResultEncoder::encode(&item, &mut item_buf);
-            buf.extend_from_slice(&(item_buf.len() as u32).to_be_bytes());
-            buf.extend_from_slice(&item_buf);
-        }
-        buf.extend_from_slice(&timestamp.to_be_bytes());
-
+    /// Encode this message into a new buffer.
+    pub fn encode(value: &BatchReport) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(8 + 9);
+        Self::encode_into(value, &mut buf);
         buf
     }
 }
 
 /// SBE decoder for BatchReport
-#[derive(Debug, Clone, PartialEq)]
-pub struct BatchReportDecoder {
-    pub batch_id: ClientOrderId,
-    pub account: String,
-    pub outcome: BatchReportOutcome,
-    pub results: Vec<BatchResult>,
-    pub timestamp: TradeTimestamp,
-}
+pub struct BatchReportDecoder;
 
 impl BatchReportDecoder {
-    /// Decode from a byte buffer.
-    pub fn decode(buf: &[u8]) -> Result<Self, String> {
+    /// Decode from a byte buffer into the FSL message type.
+    pub fn decode(buf: &[u8]) -> Result<BatchReport, String> {
         if buf.len() < 8 {
             return Err("buffer too short for SBE header".to_string());
         }
@@ -10864,36 +8179,10 @@ impl BatchReportDecoder {
             return Err(format!("invalid template_id: {}", tmpl_id));
         }
 
-        let mut pos: usize = 8;
-
-        let batch_id = sbe_str(buf, &mut pos)?;
-        let account = sbe_str(buf, &mut pos)?;
-        let outcome_raw = sbe_u8(buf, &mut pos)?;
-        let outcome = BatchReportOutcome::from_value(outcome_raw)
-            .ok_or_else(|| format!("invalid BatchReportOutcome value: {}", outcome_raw))?;
-        let results_count = sbe_u32(buf, &mut pos)? as usize;
-        let mut results =
-            Vec::with_capacity(sbe_capacity(results_count, buf.len().saturating_sub(pos)));
-        for _ in 0..results_count {
-            let item_len = sbe_u32(buf, &mut pos)? as usize;
-            let item_bytes = sbe_take(buf, &mut pos, item_len)?;
-            let (item, n) = BatchResultDecoder::decode(item_bytes)?;
-            if n != item_len {
-                return Err(format!(
-                    "BatchResult length mismatch: expected {item_len}, got {n}"
-                ));
-            }
-            results.push(item);
-        }
-        let timestamp_raw = sbe_i64(buf, &mut pos)?;
-        let timestamp = timestamp_raw;
-
-        Ok(Self {
-            batch_id,
-            account,
-            outcome,
-            results,
-            timestamp,
-        })
+        let rest = buf
+            .get(8..)
+            .ok_or_else(|| "buffer too short for SBE header".to_string())?;
+        let (msg, _) = BatchReportBodyDecoder::decode(rest)?;
+        Ok(msg)
     }
 }

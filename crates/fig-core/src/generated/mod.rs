@@ -7,6 +7,7 @@
     unused_variables,
     unused_mut,
     unused_assignments,
+    unused_imports,
     dead_code
 )]
 #[path = "sbe_generated.rs"]

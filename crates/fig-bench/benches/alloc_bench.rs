@@ -43,20 +43,17 @@ fn bench_decoder_reuse(c: &mut Criterion) {
     });
 }
 
-#[cfg(feature = "alloc")]
 fn bench_encode_into_reused_vec(c: &mut Criterion) {
     let frame = make_payload_frame(4);
-    let mut buf = vec![0u8; frame.encoded_size()];
+    let mut buf = Vec::with_capacity(frame.encoded_size());
     c.bench_function("encode_into_reused_vec_4kb", |b| {
         b.iter(|| {
-            let encoded = frame.encode().unwrap();
-            buf[..encoded.len()].copy_from_slice(&encoded);
-            black_box(&buf[..encoded.len()]);
+            frame.encode_into(&mut buf).unwrap();
+            black_box(&buf[..]);
         });
     });
 }
 
-#[cfg(feature = "alloc")]
 criterion_group! {
     name = alloc_benches;
     config = criterion();
@@ -64,15 +61,6 @@ criterion_group! {
         bench_decode_allocating,
         bench_decoder_reuse,
         bench_encode_into_reused_vec,
-}
-
-#[cfg(not(feature = "alloc"))]
-criterion_group! {
-    name = alloc_benches;
-    config = criterion();
-    targets = bench_encode_allocating,
-        bench_decode_allocating,
-        bench_decoder_reuse,
 }
 
 criterion_main!(alloc_benches);

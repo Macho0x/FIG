@@ -421,48 +421,48 @@ pub fn parse_fix_message(input: &[u8]) -> FixResult<Vec<(u32, String)>> {
         input
     };
 
-    let body = data.to_vec();
-
-    // Split on SOH
-    let fields: Vec<&[u8]> = body.split(|b| *b == SOH).collect();
-
-    // Verify checksum before parsing.
-    // The checksum is computed over all bytes in the message up to but NOT
-    // including the "10=XXX" field (the SOH before 10= is included).
-    if let Some(last_field) = fields.last() {
-        if !last_field.starts_with(b"10=") {
-            return Err(FixError::MissingChecksum);
-        }
-        // Find the position of "10=" in the body to compute checksum over
-        // everything before it.
-        let checksum_pos = body
-            .windows(3)
-            .rposition(|w| w == b"10=")
-            .unwrap_or(body.len());
-        let expected = compute_checksum(&body[..checksum_pos]);
-
-        let checksum_str =
-            std::str::from_utf8(&last_field[3..]).map_err(|_| FixError::InvalidTagValue {
-                pos: body.len() - last_field.len(),
-                reason: "checksum not valid UTF-8".to_string(),
-            })?;
-        let actual: u8 = checksum_str
-            .parse()
-            .map_err(|_| FixError::InvalidTagValue {
-                pos: body.len() - last_field.len(),
-                reason: format!("invalid checksum value: {}", checksum_str),
-            })?;
-        if expected != actual {
-            return Err(FixError::ChecksumMismatch { expected, actual });
-        }
-    } else {
+    let last_start = data
+        .iter()
+        .rposition(|&b| b == SOH)
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let last_field = data.get(last_start..).unwrap_or(&[]);
+    if !last_field.starts_with(b"10=") {
         return Err(FixError::MissingChecksum);
     }
 
-    // Parse all tag=value pairs
-    let mut pairs = Vec::new();
-    for (i, field) in fields.iter().enumerate() {
-        let pos = fields[..i].iter().map(|f| f.len() + 1).sum::<usize>();
+    // Checksum covers every byte up to (not including) the last "10=" field.
+    // The SOH before tag 10 is included.
+    let checksum_pos = data
+        .windows(3)
+        .rposition(|w| w == b"10=")
+        .unwrap_or(data.len());
+    let expected = compute_checksum(&data[..checksum_pos]);
+
+    let checksum_str =
+        std::str::from_utf8(&last_field[3..]).map_err(|_| FixError::InvalidTagValue {
+            pos: last_start,
+            reason: "checksum not valid UTF-8".to_string(),
+        })?;
+    let actual: u8 = checksum_str
+        .parse()
+        .map_err(|_| FixError::InvalidTagValue {
+            pos: last_start,
+            reason: format!("invalid checksum value: {checksum_str}"),
+        })?;
+    if expected != actual {
+        return Err(FixError::ChecksumMismatch { expected, actual });
+    }
+
+    let field_count = data.iter().filter(|b| **b == SOH).count() + 1;
+    let mut pairs = Vec::with_capacity(field_count);
+    let mut start = 0usize;
+    for i in 0..=data.len() {
+        if i != data.len() && data[i] != SOH {
+            continue;
+        }
+        let field = &data[start..i];
+        let pos = start;
 
         let field_str = std::str::from_utf8(field).map_err(|_| FixError::InvalidTagValue {
             pos,
@@ -483,9 +483,8 @@ pub fn parse_fix_message(input: &[u8]) -> FixResult<Vec<(u32, String)>> {
                 reason: format!("invalid tag number: {}", &field_str[..eq_pos]),
             })?;
 
-        let value = field_str[eq_pos + 1..].to_string();
-
-        pairs.push((tag, value));
+        pairs.push((tag, field_str[eq_pos + 1..].to_string()));
+        start = i + 1;
     }
 
     Ok(pairs)

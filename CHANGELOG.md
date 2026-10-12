@@ -2,6 +2,30 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.7
+
+### Added
+- `Frame::encode_into` and SBE `*Encoder::encode_into` reuse a caller `Vec`.
+  TREE `send_frame` encodes into a per-connection scratch buffer. Public
+  `fig_core::sbe::encode_*` wrappers still return a new `Vec`;
+  `encode_new_order_single_into` (and report/cancel variants) are the reuse
+  path. `fig-throughput` encode scenarios use `encode_into`.
+- `codec::is_sbe_content_type` for the native trading content type
+  (`application/fig+sbe`).
+
+### Changed
+- Generated SBE message encoders take `&Message` (no per-field clone into
+  positional args). Decoders return the FSL message type via the body codec
+  after the 8-byte header check.
+- `FigConnection` keeps send/recv stream mutexes in the map across writes
+  and reuses a 64 KiB read buffer per channel.
+- FIX `parse_fix_message` scans SOH on the input slice (no `body.to_vec()`).
+- Matching engine no longer clones the incoming order to apply `MarketOnClose`
+  / pegged type mapping.
+- [docs/BENCHMARKS.md](docs/BENCHMARKS.md): `encode_into` methodology, SBE as
+  the trading hot path, pipeline as the sustained TREE number, and a fresh
+  3 s table on this host.
+
 ## 1.4.6
 
 ### Added

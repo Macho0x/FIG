@@ -65,7 +65,7 @@
 //! | [`codec`] | CBOR encode/decode helpers; JSON ↔ CBOR for gateways |
 //! | [`compression`] | zstd payload compression |
 //! | [`fragment`] | Payload fragmentation and reassembly |
-//! | [`sbe`] | SBE binary encoder/decoder for trading messages (zero-alloc) |
+//! | [`sbe`] | SBE binary encoder/decoder for trading messages (`encode_into` reuse) |
 //! | [`error`] | Error types: `FrameError`, `ChannelError`, `SessionError` |
 //! | [`auth`] | Authentication methods: token-based and mTLS |
 //! | [`jwt`] | HS256 JWT bearer token encode/decode |

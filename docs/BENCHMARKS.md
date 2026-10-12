@@ -52,10 +52,13 @@ CI smokes Criterion with `--sample-size 10`, `FIG_LATENCY_ITERS=200`, `FIG_LOAD_
 `fig-throughput` runs each scenario for a **fixed duration** after a warmup, then prints `ops / wall_seconds`.
 
 - **CPU / codec / matching:** inner batches of 1024 ops between `Instant::now` checks so the clock is not on the 300 ns path. `std::hint::black_box` keeps LLVM from deleting the work.
+- **`frame_encode` / `sbe_encode_new_order`:** reuse one output `Vec` via `encode_into` (same path TREE `send_frame` uses). Decode benches still allocate the decoded value.
 - **Matching `matching_insert_cancel`:** one non-crossing limit insert plus one cancel on a 1000-level ask book. The book depth stays constant. One op = one insert/cancel pair.
-- **TREE `tree_round_trip_persistent`:** ping then pong on **one** channel. The server keeps reading that channel (`recv_frame` after the first `accept_frame`). Rate ≈ 1 / localhost RTT.
-- **TREE `tree_pipeline_persistent_x32`:** send 32 pings, then receive 32 pongs, on that same channel. This is the sustained-stream msgs/sec number, not 1/RTT.
+- **TREE `tree_round_trip_persistent`:** ping then pong on **one** channel. The server keeps reading that channel (`recv_frame` after the first `accept_frame`). Rate ≈ 1 / localhost RTT. Do not cite this as sustained msgs/sec.
+- **TREE `tree_pipeline_persistent_x32`:** send 32 pings, then receive 32 pongs, on that same channel. **This is the sustained-stream msgs/sec number**, not 1/RTT.
 - **TREE `tree_round_trip_new_stream`:** a new bidirectional QUIC stream per ping (the older Criterion `tree_ping_pong_throughput_x16` shape). Measures stream-open cost as well as RTT.
+
+Native trading payloads should use `application/fig+sbe`. CBOR remains the default when `ContentType` is absent (self-describing / Schema ID 0x00). SBE decode is several times faster than CBOR decode on this stack.
 
 TREE benches call `FigConnection::with_limits` to lift `DoSGuard` (default 100_000 msgs/sec/connection) and `ChannelRateLimiter` (default **10_000 msgs/sec/channel**). Production connections keep those caps. A rate that exceeds 10_000 /s on one channel is a ceiling, not what a default venue process will admit.
 
@@ -85,21 +88,24 @@ and call it a speedup.
 
 ### CPU / codec / matching
 
+Encode scenarios reuse one output buffer (`encode_into`). Do not compare those
+msgs/sec figures to 1.4.6 allocating-`encode()` numbers.
+
 | Scenario | ops | msgs/sec | Implied ns/op | One op |
 |---|---:|---:|---:|---|
-| `frame_encode` | 9,726,976 | **3,242,158** | 308 | Encode Request (header + TLV + payload) |
-| `frame_decode` | 9,886,720 | **3,295,566** | 303 | `Frame::decode` of that Request |
-| `sbe_encode_new_order` | 8,363,008 | **2,787,418** | 359 | SBE `NewOrderSingle` encode |
-| `sbe_decode_new_order` | 8,817,664 | **2,939,100** | 340 | SBE `NewOrderSingle` decode |
-| `cbor_encode_new_order` | 4,635,648 | **1,545,006** | 647 | CBOR `NewOrderSingle` encode |
-| `cbor_decode_new_order` | 1,395,712 | **465,188** | 2,150 | CBOR `NewOrderSingle` decode |
-| `fix_parse_new_order` | 1,419,264 | **473,049** | 2,114 | In-repo FIX 4.4 NewOrderSingle parse |
-| `matching_insert_cancel` | 2,504,704 | **834,393** | 1,199 | Non-crossing insert + cancel, 1000-level book |
+| `frame_encode` | 13,605,888 | **4,535,186** | 220 | Encode Request into a reused `Vec` |
+| `frame_decode` | 10,051,584 | **3,350,318** | 298 | `Frame::decode` of that Request |
+| `sbe_encode_new_order` | 42,762,240 | **14,253,974** | 70 | SBE `NewOrderSingle` `encode_into` |
+| `sbe_decode_new_order` | 7,568,384 | **2,522,703** | 396 | SBE `NewOrderSingle` decode |
+| `cbor_encode_new_order` | 5,432,320 | **1,810,669** | 552 | CBOR `NewOrderSingle` encode |
+| `cbor_decode_new_order` | 1,452,032 | **483,742** | 2,067 | CBOR `NewOrderSingle` decode |
+| `fix_parse_new_order` | 2,029,568 | **676,498** | 1,478 | In-repo FIX 4.4 NewOrderSingle parse |
+| `matching_insert_cancel` | 2,999,296 | **999,572** | 1,000 | Non-crossing insert + cancel, 1000-level book |
 
 Relative rates on this run (same harness, same second):
 
-- SBE encode is **1.8×** CBOR encode; SBE decode is **6.3×** CBOR decode.
-- SBE decode is **6.2×** the in-repo FIX parser (not a generic FIX stack).
+- SBE encode is **7.9×** CBOR encode; SBE decode is **5.2×** CBOR decode.
+- SBE decode is **3.7×** the in-repo FIX parser (not a generic FIX stack).
 
 CPU ops are multiples of 1,024 (inner batch). The last batch can overshoot the
 window by up to 1,023 ops; the rate uses actual wall time.
@@ -110,15 +116,15 @@ DoS / channel caps **lifted**. Production default is 10,000 msgs/sec/channel.
 
 | Scenario | ops | msgs/sec | Implied μs/op | What it is |
 |---|---:|---:|---:|---|
-| `tree_round_trip_persistent` | 22,366 | **7,455** | 134 | Ping/pong on one reused channel (≈ 1/RTT) |
-| `tree_pipeline_persistent_x32` | 172,768 | **57,580** | 17 | 32 in-flight pings on that channel |
-| `tree_round_trip_new_stream` | 5,000 | **1,667** | 600 | New bidi QUIC stream per ping |
+| `tree_round_trip_persistent` | 25,298 | **8,432** | 119 | Ping/pong on one reused channel (≈ 1/RTT) |
+| `tree_pipeline_persistent_x32` | 187,456 | **62,477** | 16 | 32 in-flight pings on that channel |
+| `tree_round_trip_new_stream` | 5,199 | **1,733** | 577 | New bidi QUIC stream per ping |
 
 Cite `tree_pipeline_persistent_x32` for sustained-stream msgs/sec. Cite
 `tree_round_trip_persistent` for round-trip bound. Cite
 `tree_round_trip_new_stream` only when the claim is stream-open cost.
 
-`57,580 /s` is above the production 10,000/channel cap — it is a ceiling with
+`62,477 /s` is above the production 10,000/channel cap — it is a ceiling with
 limiters off, not a default-process rate. Localhost is not a colo SLA.
 
 ---

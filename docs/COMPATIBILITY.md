@@ -23,7 +23,7 @@ API; that is not this policy.
 
 Examples that are easy to mix up, and are not the same thing:
 
-- SPEC `1.0.0` + crate `1.4.6` + git tag `v1.0.25` can all describe one commit.
+- SPEC `1.0.0` + crate `1.4.7` + git tag `v1.0.25` can all describe one commit.
 - A docs-only crate bump still cuts the next `v1.0.x` tag unless the commit
   message contains `[skip release]`.
 
@@ -70,7 +70,7 @@ entry points, not by reimplementing TREE.
 ## Rust crate API
 
 Crate **minor** versions (`1.4` → `1.5`) **may break** Rust APIs (`fig-core`,
-`fig-client`, `fig-gateways`, …). Patch versions (`1.4.5` → `1.4.6`) are for
+`fig-client`, `fig-gateways`, …). Patch versions (`1.4.6` → `1.4.7`) are for
 docs, additive helpers, and fixes that keep existing Rust call sites compiling.
 
 Security fixes land on the **latest crate minor** only. Older minors are not

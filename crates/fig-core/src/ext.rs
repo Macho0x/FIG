@@ -352,6 +352,12 @@ impl Extension {
 /// desynchronise the peer's TLV walk.
 pub fn encode_extensions(extensions: &[Extension]) -> FrameResult<Vec<u8>> {
     let mut buf = Vec::with_capacity(encoded_extensions_len(extensions));
+    encode_extensions_into(extensions, &mut buf)?;
+    Ok(buf)
+}
+
+/// Append TLV-encoded extensions onto `buf`.
+pub fn encode_extensions_into(extensions: &[Extension], buf: &mut Vec<u8>) -> FrameResult<()> {
     for ext in extensions {
         // Tag (2 bytes, big-endian)
         buf.extend_from_slice(&ext.tag.code().to_be_bytes());
@@ -370,7 +376,7 @@ pub fn encode_extensions(extensions: &[Extension]) -> FrameResult<Vec<u8>> {
         // Value
         buf.extend_from_slice(&value_bytes);
     }
-    Ok(buf)
+    Ok(())
 }
 
 /// Encoded size (tag + length + value) of a list of extensions.

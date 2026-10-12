@@ -306,7 +306,12 @@ fn generate_sbe_bounds_helpers() -> String {
     out.push_str("    let len = sbe_u16(buf, pos)? as usize;\n");
     out.push_str("    let bytes = sbe_take(buf, pos, len)?;\n");
     out.push_str("    match std::str::from_utf8(bytes) {\n");
-    out.push_str("        Ok(s) => Ok(s.to_string()),\n");
+    out.push_str("        Ok(s) => {\n");
+    out.push_str("            let mut out = String::new();\n");
+    out.push_str("            out.reserve_exact(s.len());\n");
+    out.push_str("            out.push_str(s);\n");
+    out.push_str("            Ok(out)\n");
+    out.push_str("        }\n");
     out.push_str("        Err(e) => Err(format!(\"invalid UTF-8: {}\", e)),\n");
     out.push_str("    }\n");
     out.push_str("}\n\n");
@@ -544,7 +549,6 @@ fn generate_message_field_init(field: &Field, _msg_name: &str) -> String {
 
 #[derive(Clone, Copy)]
 pub(crate) enum SbeEnumStyle {
-    WirePerContext,
     MessagesShared,
 }
 
@@ -622,6 +626,7 @@ pub(crate) fn generate_sbe_message_encoder(
 ) -> String {
     let encoder_name = format!("{}Encoder", msg.name);
     let version: u16 = 0;
+    let _ = (struct_names, message_names);
 
     let block_length = compute_block_length(&msg.fields);
 
@@ -629,13 +634,12 @@ pub(crate) fn generate_sbe_message_encoder(
     out.push_str(&format!("/// SBE encoder for {}\n", msg.name));
     out.push_str(&format!("pub struct {};\n\n", encoder_name));
     out.push_str(&format!("impl {} {{\n", encoder_name));
-    out.push_str("    /// Encode this message into a byte buffer.\n");
-    out.push_str("    /// Returns the filled buffer.\n");
+    out.push_str("    /// Append this message (header + body) onto `buf`.\n");
+    out.push_str("    /// The caller should `buf.clear()` first when reusing the allocation.\n");
     out.push_str(&format!(
-        "    pub fn encode({}) -> Vec<u8> {{\n",
-        encoder_params(msg)
+        "    pub fn encode_into(value: &{}, buf: &mut Vec<u8>) {{\n",
+        msg.name
     ));
-    out.push_str("        let mut buf = Vec::new();\n\n");
     out.push_str("        // SBE Message Header (8 bytes)\n");
     out.push_str(&format!(
         "        buf.extend_from_slice(&{}u16.to_be_bytes()); // schema_id\n",
@@ -650,32 +654,32 @@ pub(crate) fn generate_sbe_message_encoder(
         version
     ));
     out.push_str(&format!(
-        "        buf.extend_from_slice(&{}u16.to_be_bytes()); // block_length\n\n",
+        "        buf.extend_from_slice(&{}u16.to_be_bytes()); // block_length\n",
         block_length
     ));
-
-    // Write fixed fields and variable fields
-    out.push_str("        // Fixed fields\n");
-    for field in &msg.fields {
-        out.push_str(&generate_encode_field(
-            field,
-            &msg.name,
-            struct_names,
-            message_names,
-            SbeEnumStyle::WirePerContext,
-            "buf",
-            "",
-            false,
-        ));
-    }
-
-    out.push_str("\n        buf\n");
+    out.push_str(&format!(
+        "        {}BodyEncoder::encode(value, buf);\n",
+        msg.name
+    ));
+    out.push_str("    }\n\n");
+    out.push_str("    /// Encode this message into a new buffer.\n");
+    out.push_str(&format!(
+        "    pub fn encode(value: &{}) -> Vec<u8> {{\n",
+        msg.name
+    ));
+    out.push_str(&format!(
+        "        let mut buf = Vec::with_capacity(8 + {});\n",
+        block_length
+    ));
+    out.push_str("        Self::encode_into(value, &mut buf);\n");
+    out.push_str("        buf\n");
     out.push_str("    }\n");
     out.push_str("}\n");
     out
 }
 
 /// Generate the encoder function parameter list
+#[allow(dead_code)]
 pub(crate) fn encoder_params(msg: &Message) -> String {
     let mut params = Vec::new();
     for field in &msg.fields {
@@ -698,27 +702,18 @@ pub(crate) fn generate_sbe_message_decoder(
     message_names: &std::collections::HashSet<String>,
 ) -> String {
     let decoder_name = format!("{}Decoder", msg.name);
+    let _ = (struct_names, message_names);
     let mut out = String::new();
 
-    // Decoder struct with all fields
     out.push_str(&format!("/// SBE decoder for {}\n", msg.name));
-    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
-    out.push_str(&format!("pub struct {} {{\n", decoder_name));
-    for field in &msg.fields {
-        let rust_type = sbe_field_type_name_for_message(&field.field_type, &msg.name, &field.name);
-        let field_type = if field.optional {
-            format!("Option<{}>", rust_type)
-        } else {
-            rust_type
-        };
-        out.push_str(&format!("    pub {}: {},\n", field.name, field_type));
-    }
-    out.push_str("}\n\n");
+    out.push_str(&format!("pub struct {};\n\n", decoder_name));
 
-    // Decode impl
     out.push_str(&format!("impl {} {{\n", decoder_name));
-    out.push_str("    /// Decode from a byte buffer.\n");
-    out.push_str("    pub fn decode(buf: &[u8]) -> Result<Self, String> {\n");
+    out.push_str("    /// Decode from a byte buffer into the FSL message type.\n");
+    out.push_str(&format!(
+        "    pub fn decode(buf: &[u8]) -> Result<{}, String> {{\n",
+        msg.name
+    ));
     out.push_str("        if buf.len() < 8 {\n");
     out.push_str("            return Err(\"buffer too short for SBE header\".to_string());\n");
     out.push_str("        }\n\n");
@@ -735,26 +730,14 @@ pub(crate) fn generate_sbe_message_decoder(
     out.push_str(&format!("        if tmpl_id != {} {{\n", template_id));
     out.push_str("            return Err(format!(\"invalid template_id: {}\", tmpl_id));\n");
     out.push_str("        }\n\n");
-
-    out.push_str("        let mut pos: usize = 8;\n\n");
-
-    // Decode each field
-    for field in &msg.fields {
-        out.push_str(&generate_decode_field(
-            field,
-            &msg.name,
-            struct_names,
-            message_names,
-            SbeEnumStyle::WirePerContext,
-        ));
-    }
-
-    // Build return value
-    out.push_str("\n        Ok(Self {\n");
-    for field in &msg.fields {
-        out.push_str(&format!("            {},\n", field.name));
-    }
-    out.push_str("        })\n");
+    out.push_str("        let rest = buf.get(8..).ok_or_else(|| {\n");
+    out.push_str("            \"buffer too short for SBE header\".to_string()\n");
+    out.push_str("        })?;\n");
+    out.push_str(&format!(
+        "        let (msg, _) = {}BodyDecoder::decode(rest)?;\n",
+        msg.name
+    ));
+    out.push_str("        Ok(msg)\n");
     out.push_str("    }\n");
     out.push_str("}\n");
     out
@@ -1517,6 +1500,9 @@ mod tests {
 
         assert!(code.contains("GreetingEncoder"));
         assert!(code.contains("GreetingDecoder"));
+        assert!(code.contains("encode_into"));
+        assert!(code.contains("GreetingBodyEncoder::encode"));
+        assert!(code.contains("GreetingBodyDecoder::decode"));
         assert!(code.contains("GreetingLanguage"));
         assert!(!code.contains("pub enum GreetingLanguage"));
     }

@@ -24,7 +24,9 @@ use fig_core::messages::{
     CancelRequest, NewOrderSingle, OrderType, Price, Quantity, Side, TimeInForce,
 };
 use fig_core::rate_limit::ChannelRateLimiter;
-use fig_core::sbe::{decode_new_order_single, encode_new_order_single};
+use fig_core::sbe::{
+    decode_new_order_single, encode_new_order_single, encode_new_order_single_into,
+};
 use fig_core::transport::{
     client_config_insecure, generate_self_signed_cert, server_config, FigClient, FigConnection,
     FigServer,
@@ -179,14 +181,16 @@ fn lift_dos(conn: FigConnection) -> FigConnection {
 
 pub fn frame_encode(warmup: Duration, measure: Duration) -> ThroughputReport {
     let frame = make_request_frame();
+    let mut buf = Vec::with_capacity(frame.encoded_size());
     let (ops, elapsed) = run_cpu_loop(warmup, measure, || {
-        black_box(frame.encode().expect("encode"));
+        frame.encode_into(&mut buf).expect("encode");
+        black_box(&buf[..]);
     });
     ThroughputReport {
         name: "frame_encode",
         ops,
         elapsed,
-        notes: "16-byte header + TLV + payload",
+        notes: "16-byte header + TLV + payload (encode_into reuse)",
     }
 }
 
@@ -206,14 +210,16 @@ pub fn frame_decode(warmup: Duration, measure: Duration) -> ThroughputReport {
 
 pub fn sbe_encode_new_order(warmup: Duration, measure: Duration) -> ThroughputReport {
     let order = make_order();
+    let mut buf = Vec::new();
     let (ops, elapsed) = run_cpu_loop(warmup, measure, || {
-        black_box(encode_new_order_single(black_box(&order)));
+        encode_new_order_single_into(black_box(&order), &mut buf);
+        black_box(&buf[..]);
     });
     ThroughputReport {
         name: "sbe_encode_new_order",
         ops,
         elapsed,
-        notes: "NewOrderSingle SBE encode",
+        notes: "NewOrderSingle SBE encode (encode_into reuse)",
     }
 }
 

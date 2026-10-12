@@ -49,7 +49,7 @@ cargo doc --workspace --no-deps --open
 | [`migration`](../crates/fig-core/src/migration.rs) | Connection migration tokens and channel reconstruction |
 | [`codec`](../crates/fig-core/src/codec.rs) | CBOR helpers; JSON ↔ CBOR for gateways |
 | [`replay`](../crates/fig-core/src/replay.rs) | 0-RTT resumption token replay cache |
-| [`sbe`](../crates/fig-core/src/sbe.rs) | Zero-alloc SBE encoder/decoder |
+| [`sbe`](../crates/fig-core/src/sbe.rs) | SBE encoder/decoder (`encode` / `encode_into`) |
 | [`compression`](../crates/fig-core/src/compression.rs) | zstd payload compression |
 | [`fragment`](../crates/fig-core/src/fragment.rs) | Payload fragmentation and reassembly |
 | [`control`](../crates/fig-core/src/control.rs) | CONTROL frame dispatcher (PING, AUTH_REFRESH, SEQ_RESET, …) |

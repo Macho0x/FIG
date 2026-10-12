@@ -46,7 +46,10 @@ use crate::session_token::SessionSigner;
 struct RecvHalf {
     recv: quinn::RecvStream,
     decoder: FrameDecoder,
+    read_buf: Vec<u8>,
 }
+
+const STREAM_READ_BUF: usize = 65536;
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -527,8 +530,10 @@ pub struct FigConnection {
     conn: Connection,
     channels: Arc<Mutex<ChannelManager>>,
     session_store: MemorySessionStore,
-    send_streams: Mutex<HashMap<u16, quinn::SendStream>>,
-    recv_streams: Mutex<HashMap<u16, RecvHalf>>,
+    send_streams: Mutex<HashMap<u16, Arc<Mutex<quinn::SendStream>>>>,
+    recv_streams: Mutex<HashMap<u16, Arc<Mutex<RecvHalf>>>>,
+    /// Reused frame-encode scratch (copied out before the QUIC write).
+    encode_buf: Mutex<Vec<u8>>,
     /// Connection-level resource guard (channel count, frame size, msg rate).
     dos: Arc<DoSGuard>,
     /// Per-channel message rate limiter.
@@ -556,6 +561,7 @@ impl FigConnection {
             session_store: MemorySessionStore::new(),
             send_streams: Mutex::new(HashMap::new()),
             recv_streams: Mutex::new(HashMap::new()),
+            encode_buf: Mutex::new(Vec::with_capacity(256)),
             dos: Arc::new(DoSGuard::with_defaults()),
             channel_limits: Arc::new(ChannelRateLimiter::new(DEFAULT_CHANNEL_MSG_PER_SEC)),
             resumption_token: Mutex::new(None),
@@ -628,11 +634,30 @@ impl FigConnection {
         recv: quinn::RecvStream,
         decoder: FrameDecoder,
     ) {
-        self.send_streams.lock().await.insert(channel_id, send);
-        self.recv_streams
+        self.insert_bi_buf(channel_id, send, recv, decoder, vec![0u8; STREAM_READ_BUF])
+            .await;
+    }
+
+    async fn insert_bi_buf(
+        &self,
+        channel_id: u16,
+        send: quinn::SendStream,
+        recv: quinn::RecvStream,
+        decoder: FrameDecoder,
+        read_buf: Vec<u8>,
+    ) {
+        self.send_streams
             .lock()
             .await
-            .insert(channel_id, RecvHalf { recv, decoder });
+            .insert(channel_id, Arc::new(Mutex::new(send)));
+        self.recv_streams.lock().await.insert(
+            channel_id,
+            Arc::new(Mutex::new(RecvHalf {
+                recv,
+                decoder,
+                read_buf,
+            })),
+        );
     }
 
     /// Reconstruct channel state from a restored session after 0-RTT resumption.
@@ -795,7 +820,11 @@ impl FigConnection {
     /// has `has_credits()` / `consume_credit()`, but they are not yet wired
     /// here. Sending currently ignores credit exhaustion.
     pub async fn send_frame(&self, channel_id: u16, frame: &Frame) -> Result<(), FrameError> {
-        let data = frame.encode()?;
+        let data = {
+            let mut buf = self.encode_buf.lock().await;
+            frame.encode_into(&mut buf)?;
+            bytes::Bytes::copy_from_slice(&buf)
+        };
 
         if !self.send_streams.lock().await.contains_key(&channel_id) {
             let (send, recv) = self
@@ -806,14 +835,17 @@ impl FigConnection {
             self.insert_bi(channel_id, send, recv, FrameDecoder::new())
                 .await;
         }
-        let mut send = self
+        let send = self
             .send_streams
             .lock()
             .await
-            .remove(&channel_id)
+            .get(&channel_id)
+            .cloned()
             .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing send stream")))?;
-        let write = send.write_all(&data).await;
-        self.send_streams.lock().await.insert(channel_id, send);
+        let write = {
+            let mut stream = send.lock().await;
+            stream.write_all(&data).await
+        };
         match write {
             Ok(()) => {}
             Err(quinn::WriteError::Stopped(error_code)) => {
@@ -864,30 +896,37 @@ impl FigConnection {
                 .await;
         }
 
-        let mut buf = vec![0u8; 65536];
+        let ch = self
+            .recv_streams
+            .lock()
+            .await
+            .get(&channel_id)
+            .cloned()
+            .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing recv stream")))?;
         loop {
-            let mut ch = self
-                .recv_streams
-                .lock()
-                .await
-                .remove(&channel_id)
-                .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing recv stream")))?;
-            if let Some(result) = ch.decoder.decode_next() {
-                self.recv_streams.lock().await.insert(channel_id, ch);
+            let mut half = ch.lock().await;
+            if let Some(result) = half.decoder.decode_next() {
+                drop(half);
                 let frame = result?;
                 self.admit_frame(&frame)?;
                 self.observe_resumption_token(&frame).await;
                 return Ok(frame);
             }
-            match ch.recv.read(&mut buf).await {
+            let n = {
+                let RecvHalf { recv, read_buf, .. } = &mut *half;
+                recv.read(read_buf).await
+            };
+            match n {
                 Ok(Some(n)) => {
-                    ch.decoder.feed(&buf[..n]);
-                    self.recv_streams.lock().await.insert(channel_id, ch);
+                    let RecvHalf {
+                        decoder, read_buf, ..
+                    } = &mut *half;
+                    decoder.feed(&read_buf[..n]);
                 }
                 Ok(None) => {
-                    let leftover = ch.decoder.decode_next();
-                    let buffered = ch.decoder.buffered_len();
-                    self.recv_streams.lock().await.insert(channel_id, ch);
+                    let leftover = half.decoder.decode_next();
+                    let buffered = half.decoder.buffered_len();
+                    drop(half);
                     if let Some(result) = leftover {
                         let frame = result?;
                         self.admit_frame(&frame)?;
@@ -900,7 +939,7 @@ impl FigConnection {
                     });
                 }
                 Err(quinn::ReadError::Reset(error_code)) => {
-                    self.recv_streams.lock().await.insert(channel_id, ch);
+                    drop(half);
                     let code: u64 = error_code.into();
                     return Err(FrameError::IoError(std::io::Error::new(
                         std::io::ErrorKind::ConnectionReset,
@@ -911,7 +950,7 @@ impl FigConnection {
                     )));
                 }
                 Err(e) => {
-                    self.recv_streams.lock().await.insert(channel_id, ch);
+                    drop(half);
                     return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
                 }
             }
@@ -936,7 +975,7 @@ impl FigConnection {
             .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
 
         let mut decoder = FrameDecoder::new();
-        let mut buf = vec![0u8; 65536];
+        let mut buf = vec![0u8; STREAM_READ_BUF];
         let mut frames = Vec::new();
         loop {
             match recv.read(&mut buf).await {
@@ -974,7 +1013,7 @@ impl FigConnection {
 
         // Read the first frame to determine the channel ID.
         let mut decoder = FrameDecoder::new();
-        let mut buf = vec![0u8; 65536];
+        let mut buf = vec![0u8; STREAM_READ_BUF];
 
         let frame = loop {
             match recv.read(&mut buf).await {
@@ -1021,7 +1060,8 @@ impl FigConnection {
         self.admit_frame(&frame)?;
         self.observe_resumption_token(&frame).await;
 
-        self.insert_bi(channel_id, send, recv, decoder).await;
+        self.insert_bi_buf(channel_id, send, recv, decoder, buf)
+            .await;
 
         Ok((channel_id, frame))
     }
@@ -1082,9 +1122,10 @@ impl FigConnection {
     /// Drain additional frames already buffered on a channel decoder.
     pub async fn recv_buffered_frames(&self, channel_id: u16) -> Vec<Frame> {
         let mut out = Vec::new();
-        let mut recvs = self.recv_streams.lock().await;
-        if let Some(ch) = recvs.get_mut(&channel_id) {
-            while let Some(Ok(frame)) = ch.decoder.decode_next() {
+        let ch = self.recv_streams.lock().await.get(&channel_id).cloned();
+        if let Some(ch) = ch {
+            let mut half = ch.lock().await;
+            while let Some(Ok(frame)) = half.decoder.decode_next() {
                 out.push(frame);
             }
         }
@@ -1095,7 +1136,8 @@ impl FigConnection {
     ///
     /// Finishes the send stream and cleans up the HashMap entry.
     pub async fn close_channel_stream(&self, channel_id: u16) -> Result<(), ChannelError> {
-        if let Some(mut send) = self.send_streams.lock().await.remove(&channel_id) {
+        if let Some(send) = self.send_streams.lock().await.remove(&channel_id) {
+            let mut send = send.lock().await;
             let _ = send.finish();
         }
         self.recv_streams.lock().await.remove(&channel_id);

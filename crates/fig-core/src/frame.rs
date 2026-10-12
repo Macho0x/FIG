@@ -118,25 +118,30 @@ impl FrameType {
     pub fn has_payload(&self) -> bool {
         !matches!(self, FrameType::Control | FrameType::Unsubscribe)
     }
+
+    /// Wire name for spans and logs (no allocation).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FrameType::Control => "CONTROL",
+            FrameType::Request => "REQUEST",
+            FrameType::Response => "RESPONSE",
+            FrameType::StreamOpen => "STREAM_OPEN",
+            FrameType::StreamItem => "STREAM_ITEM",
+            FrameType::StreamClose => "STREAM_CLOSE",
+            FrameType::StreamError => "STREAM_ERROR",
+            FrameType::OneWay => "ONE_WAY",
+            FrameType::Subscribe => "SUBSCRIBE",
+            FrameType::Unsubscribe => "UNSUBSCRIBE",
+            FrameType::AckRange => "ACK_RANGE",
+            FrameType::FlowControl => "FLOW_CONTROL",
+            FrameType::Redirect => "REDIRECT",
+        }
+    }
 }
 
 impl std::fmt::Display for FrameType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            FrameType::Control => write!(f, "CONTROL"),
-            FrameType::Request => write!(f, "REQUEST"),
-            FrameType::Response => write!(f, "RESPONSE"),
-            FrameType::StreamOpen => write!(f, "STREAM_OPEN"),
-            FrameType::StreamItem => write!(f, "STREAM_ITEM"),
-            FrameType::StreamClose => write!(f, "STREAM_CLOSE"),
-            FrameType::StreamError => write!(f, "STREAM_ERROR"),
-            FrameType::OneWay => write!(f, "ONE_WAY"),
-            FrameType::Subscribe => write!(f, "SUBSCRIBE"),
-            FrameType::Unsubscribe => write!(f, "UNSUBSCRIBE"),
-            FrameType::AckRange => write!(f, "ACK_RANGE"),
-            FrameType::FlowControl => write!(f, "FLOW_CONTROL"),
-            FrameType::Redirect => write!(f, "REDIRECT"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -417,17 +422,27 @@ impl Frame {
 
     /// Encode this frame into bytes (big-endian, network byte order).
     pub fn encode(&self) -> FrameResult<Vec<u8>> {
-        let _span = span_encode(self.channel_id, &self.frame_type.to_string()).entered();
+        let mut buf = Vec::with_capacity(self.encoded_size());
+        self.encode_into(&mut buf)?;
+        Ok(buf)
+    }
+
+    /// Encode this frame into `buf`, replacing its previous contents.
+    ///
+    /// Reuses `buf`'s allocation when it is large enough. This is the
+    /// encode path used by TREE `send_frame`.
+    pub fn encode_into(&self, buf: &mut Vec<u8>) -> FrameResult<()> {
+        let _span = span_encode(self.channel_id, self.frame_type.as_str()).entered();
         METRICS.frames_encoded.fetch_add(1, Ordering::Relaxed);
 
-        // Encode extensions
-        let ext_bytes = if !self.extensions.is_empty() {
-            ext::encode_extensions(&self.extensions)?
-        } else {
-            Vec::new()
-        };
+        buf.clear();
 
-        let total_length = HEADER_SIZE + ext_bytes.len() + self.payload.len();
+        let ext_len = if self.extensions.is_empty() {
+            0
+        } else {
+            ext::encoded_extensions_len(&self.extensions)
+        };
+        let total_length = HEADER_SIZE + ext_len + self.payload.len();
         if total_length > u32::MAX as usize {
             return Err(FrameError::InvalidHeader(total_length));
         }
@@ -439,7 +454,7 @@ impl Frame {
             self.flags
         };
 
-        let mut buf = Vec::with_capacity(total_length);
+        buf.reserve(total_length);
 
         // Length (4 bytes, big-endian)
         buf.write_u32::<BigEndian>(total_length as u32)?;
@@ -458,13 +473,12 @@ impl Frame {
         // Reserved (2 bytes)
         buf.write_u16::<BigEndian>(0)?;
 
-        // Extensions
-        buf.extend_from_slice(&ext_bytes);
-
-        // Payload
+        if !self.extensions.is_empty() {
+            ext::encode_extensions_into(&self.extensions, buf)?;
+        }
         buf.extend_from_slice(&self.payload);
 
-        Ok(buf)
+        Ok(())
     }
 
     /// Decode a frame from bytes.
@@ -1156,6 +1170,12 @@ mod tests {
         let size = frame.encoded_size();
         let encoded = frame.encode().unwrap();
         assert_eq!(size, encoded.len());
+
+        let mut reused = Vec::new();
+        frame.encode_into(&mut reused).unwrap();
+        assert_eq!(reused, encoded);
+        frame.encode_into(&mut reused).unwrap();
+        assert_eq!(reused, encoded);
     }
 
     #[test]

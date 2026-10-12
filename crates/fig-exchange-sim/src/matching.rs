@@ -454,11 +454,9 @@ impl MatchingEngine {
         }
 
         let match_type = Self::effective_match_type(&order.order_type);
-        let mut match_order = order.clone();
-        match_order.order_type = match_type;
 
         let mut fills = Vec::new();
-        let mut remaining_qty = match_order.order_qty.0;
+        let mut remaining_qty = order.order_qty.0;
         let mut cum_qty = 0.0;
         let mut total_value = 0.0;
 
@@ -479,9 +477,7 @@ impl MatchingEngine {
                 }
 
                 // For limit orders, check if the price crosses
-                if match_order.order_type == OrderType::Limit
-                    || match_order.order_type == OrderType::StopLimit
-                {
+                if match_type == OrderType::Limit || match_type == OrderType::StopLimit {
                     if is_buy && level.price.0 > order.price.as_ref().map_or(f64::MAX, |p| p.0) {
                         break;
                     }
@@ -556,7 +552,7 @@ impl MatchingEngine {
         }
 
         let can_rest = remaining_qty > 0.0
-            && match_order.order_type == OrderType::Limit
+            && match_type == OrderType::Limit
             && !matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok);
 
         // If there's remaining qty and it's a limit order, rest it on the book
@@ -585,7 +581,7 @@ impl MatchingEngine {
 
         let reject_reason = if fills.is_empty() && resting_order.is_none() {
             if matches!(order.time_in_force, TimeInForce::Ioc | TimeInForce::Fok)
-                || matches!(match_order.order_type, OrderType::Market)
+                || matches!(match_type, OrderType::Market)
             {
                 Some("No liquidity".to_string())
             } else {

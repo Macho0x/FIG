@@ -6,6 +6,12 @@
 //! for convenience.
 
 use crate::error::FrameError;
+use crate::ext::{CONTENT_TYPE_CBOR, CONTENT_TYPE_SBE};
+
+/// True when `ContentType` names FIG SBE (including the short alias).
+pub fn is_sbe_content_type(content_type: &str) -> bool {
+    content_type == CONTENT_TYPE_SBE || content_type == "application/sbe"
+}
 
 /// Encode a serializable value to CBOR bytes.
 ///
@@ -57,6 +63,10 @@ pub fn cbor_to_json(cbor: &[u8]) -> Result<String, FrameError> {
 }
 
 /// Extract the payload content type from frame extensions (defaults to CBOR).
+///
+/// Absent `ContentType` stays CBOR for wire compatibility. Native trading
+/// clients should set [`CONTENT_TYPE_SBE`] — SBE encode/decode is several
+/// times faster than CBOR on this stack.
 pub fn frame_content_type(frame: &crate::frame::Frame) -> &str {
     use crate::ext::ExtensionTag;
     frame
@@ -64,7 +74,7 @@ pub fn frame_content_type(frame: &crate::frame::Frame) -> &str {
         .iter()
         .find(|e| e.tag == ExtensionTag::ContentType)
         .and_then(|e| e.value.as_text())
-        .unwrap_or("application/cbor")
+        .unwrap_or(CONTENT_TYPE_CBOR)
 }
 
 /// Decode a `NewOrderSingle` from a FIG frame (CBOR or SBE).
@@ -72,10 +82,8 @@ pub fn decode_new_order_single_frame(
     frame: &crate::frame::Frame,
 ) -> Result<crate::messages::NewOrderSingle, FrameError> {
     match frame_content_type(frame) {
-        "application/fig+sbe" | "application/sbe" => {
-            crate::sbe::decode_new_order_single(&frame.payload)
-                .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
-        }
+        ct if is_sbe_content_type(ct) => crate::sbe::decode_new_order_single(&frame.payload)
+            .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}"))),
         _ => decode_cbor(&frame.payload),
     }
 }
@@ -85,9 +93,10 @@ pub fn encode_new_order_single_payload(
     order: &crate::messages::NewOrderSingle,
     content_type: &str,
 ) -> Result<Vec<u8>, FrameError> {
-    match content_type {
-        "application/fig+sbe" | "application/sbe" => Ok(crate::sbe::encode_new_order_single(order)),
-        _ => encode_cbor(order),
+    if is_sbe_content_type(content_type) {
+        Ok(crate::sbe::encode_new_order_single(order))
+    } else {
+        encode_cbor(order)
     }
 }
 
@@ -115,11 +124,10 @@ pub fn encode_execution_report_frame(
     frame: &crate::frame::Frame,
     report: &crate::messages::ExecutionReport,
 ) -> Result<Vec<u8>, FrameError> {
-    match frame_content_type(frame) {
-        "application/fig+sbe" | "application/sbe" => {
-            Ok(crate::sbe::encode_execution_report(report))
-        }
-        _ => encode_cbor(report),
+    if is_sbe_content_type(frame_content_type(frame)) {
+        Ok(crate::sbe::encode_execution_report(report))
+    } else {
+        encode_cbor(report)
     }
 }
 
@@ -127,12 +135,11 @@ pub fn encode_execution_report_frame(
 pub fn decode_cancel_request_frame(
     frame: &crate::frame::Frame,
 ) -> Result<crate::messages::CancelRequest, FrameError> {
-    match frame_content_type(frame) {
-        "application/fig+sbe" | "application/sbe" => {
-            crate::sbe::decode_cancel_request(&frame.payload)
-                .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
-        }
-        _ => decode_cbor(&frame.payload),
+    if is_sbe_content_type(frame_content_type(frame)) {
+        crate::sbe::decode_cancel_request(&frame.payload)
+            .map_err(|e| FrameError::CborDecodeError(format!("sbe decode: {e}")))
+    } else {
+        decode_cbor(&frame.payload)
     }
 }
 
