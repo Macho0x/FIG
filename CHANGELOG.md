@@ -2,6 +2,14 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.8
+
+### Added
+- README front page now diagrams the end-to-end flow: connection and channel
+  topology (native and gateway clients), order entry (`REQUEST` →
+  `ExecutionReport` plus private account streams), market-data subscribe with
+  0-RTT resume and gap fill, and the frame layout.
+
 ## 1.4.7
 
 ### Added

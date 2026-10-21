@@ -26,7 +26,7 @@ credentials on the wire. See [SPEC.md §1.3](SPEC.md).
 ## Contents
 
 [Why FIG](#why-fig) · [Try it in 60 seconds](#try-it-in-60-seconds) · [What FIG gives you](#what-fig-gives-you) ·
-[One connection, three flows](#one-connection-three-flows) · [Client code](#client-code) ·
+[How the flow works](#how-the-flow-works) · [Client code](#client-code) ·
 [Languages](#languages) · [Adopting FIG](#adopting-fig) · [Security](#security) ·
 [Documentation](#documentation) · [Status](#status) · [Contributing](#contributing)
 
@@ -107,21 +107,99 @@ Field layouts and what is not implemented: [docs/GATEWAY.md](docs/GATEWAY.md).
 
 ---
 
-## One connection, three flows
+## How the flow works
 
-One TREE connection; each logical stream is a **channel**, addressed by a path extension on the frame.
+One TREE connection carries every interaction. Work is multiplexed into **channels** — one TREE
+stream per logical conversation, with independent sequence numbers — and every message is a
+**frame** addressed to a channel and a `CHANNEL_PATH`.
+
+### One connection, many channels
 
 ```mermaid
-flowchart LR
-  C["FIG client<br/>fig-cli · fig-core · bindings"] -- "TREE · TLS 1.3 · ALPN fig/1" --> S["FIG server — your venue<br/>frames · channels · sessions · auth"]
-  S --> O["trading/accounts/{acct}/orders<br/>→ ExecutionReport"]
-  S --> M["marketdata/AAPL/candles/5m<br/>→ CandleBarEvent"]
-  S --> B["accounts/{acct}/balances<br/>→ BalanceSnapshot · BalanceUpdate"]
-  L["Legacy FIX / REST / WS / OUCH / ITCH clients"] --> G["fig-gateway"] --> S
+flowchart TB
+  subgraph CL["Clients"]
+    N["Native FIG<br/>fig-cli · fig-core · FFI bindings"]
+    L["Legacy<br/>FIX · REST · WebSocket · OUCH · ITCH"]
+  end
+
+  L -->|translate to native frames| GW["fig-gateway<br/>migration edge"]
+  N --> TREE
+  GW --> TREE
+
+  subgraph TREE["TREE connection · TLS 1.3 · ALPN fig/1"]
+    F["Frames<br/>16-byte header · TLV extensions · payload"]
+    F --> CH0["Channel 0 · CONTROL<br/>PING · SETTINGS · AUTH_REFRESH"]
+    F --> CH1["Channel 1 · REQUEST/RESPONSE<br/>trading/accounts/acct/orders"]
+    F --> CH3["Channel 3 · SUBSCRIBE<br/>marketdata/AAPL/candles/5m"]
+    F --> CH5["Channel 5 · SUBSCRIBE<br/>accounts/acct/balances"]
+  end
+
+  CH1 --> V["Venue<br/>matching · market data · accounts"]
+  CH3 --> V
+  CH5 --> V
 ```
 
 Public market data needs no token. Private paths carry `AUTH_TOKEN` and are scoped to the
 `{account}` segment of the path. Full path catalog: [SPEC.md §9.1](SPEC.md).
+
+### Order entry — one REQUEST, several responses
+
+A `REQUEST` on a trading path gets exactly one `RESPONSE` on that channel. Fills and balance
+updates arrive independently on the private channels you subscribed to.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as FIG client
+  participant S as Venue / FIG server
+  participant E as Matching engine
+  C->>S: STREAM_OPEN channel 1 · session mode · AUTH_TOKEN
+  C->>S: REQUEST NewOrderSingle · SBE payload
+  S->>E: validate and match
+  E-->>S: fill
+  S-->>C: STREAM_ITEM ExecutionReport
+  S-->>C: RESPONSE 200 · channel 1 closes
+  S-->>C: STREAM_ITEM BalanceUpdate · channel 5
+```
+
+### Market data — SUBSCRIBE, then resume with a gap fill
+
+`SUBSCRIBE` keeps the channel open after the snapshot. If the transport drops, the session is
+restored with 0-RTT and missing history is fetched with a normal `REQUEST` before resuming.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant S as FIG server
+  C->>S: STREAM_OPEN channel 3 · session mode
+  C->>S: SUBSCRIBE marketdata/AAPL/candles/5m
+  S-->>C: STREAM_ITEM CandleBarEvent · snapshot
+  loop each trade / interval close
+    S-->>C: STREAM_ITEM CandleBarEvent · seq N+1
+  end
+  Note over C,S: Transport drops. Session and subscription state persist.
+  C->>S: TREE 0-RTT reconnect · same SESSION_ID
+  C->>S: REQUEST CandleBarRequest · fill the gap
+  S-->>C: RESPONSE CandleBarBatch
+  C->>S: SUBSCRIBE Method RESUME · .well-known/resume
+  S-->>C: STREAM_ITEM CandleBarEvent · stream resumes
+```
+
+### What is on the wire
+
+```mermaid
+flowchart LR
+  H["Fixed header · 16 B"] -.-> T["TLV extensions · optional"]
+  T -.-> P["Payload · SBE or CBOR"]
+
+  H -.- H1["Length 32<br/>Type 8 · Flags 8<br/>Channel ID 16<br/>Stream Seq 32<br/>HeaderCount 8 · SchemaID 8"]
+  T -.- T1["Tag 16 · Length 16 · Value<br/>ROUTING_KEY · CHANNEL_PATH<br/>AUTH_TOKEN · TRACE_ID"]
+  P -.- P1["SBE on the trading hot path<br/>CBOR for gateways and flexible streams"]
+```
+
+Every frame carries a Schema ID, a per-channel sequence number, and trace/correlation IDs.
+Normative layout and extension tags: [SPEC.md §3](SPEC.md).
 
 ---
 
@@ -239,7 +317,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.7** ([release notes](CHANGELOG.md)). Protocol version remains
+Latest release **1.4.8** ([release notes](CHANGELOG.md)). Protocol version remains
 [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only on a wire break. The schema
 catalog is additive. Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in
