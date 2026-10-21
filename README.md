@@ -37,15 +37,22 @@ credentials on the wire. See [SPEC.md §1.3](SPEC.md).
 Today's trading stacks are three protocols pretending to be one — three auth models, three error
 models, three observability pipelines. FIG collapses them onto a single connection.
 
-| Problem today | With FIG |
-|---|---|
-| FIX needs several round trips to connect | Session resumption over QUIC 0-RTT — 1 RTT new, 0 RTT resumed |
-| FIX is ASCII with 200–500 B of header overhead | Binary 16-byte fixed header + compact TLV extensions |
-| REST is stateless — no session, no sequencing | Three channel modes: stateless, session, affinity |
-| WebSocket has no schema or semantics | Schema-native framing: every frame carries a Schema ID |
-| Each protocol needs its own auth and tracing | One auth model, one error model, one tracing pipeline |
-| One session per TCP connection | 65,535 concurrent channels per TREE connection |
-| Heavy parse cost on hot paths | Bounds-checked SBE decode (measured figures: [docs/BENCHMARKS.md](docs/BENCHMARKS.md)) |
+| | **FIG (native SBE)** | FIX 4.4 ASCII | HTTP/1.1 + JSON | WebSocket |
+|---|---|---|---|---|
+| **Minimum header** | **16 B** fixed, TLVs only when needed | 200–500 B | 200–800 B | 2–10 B framing only |
+| **Parse cost** | **~0.3 μs** SBE decode | ~4.8 μs tag=value parse | ~1.8 μs headers only | Application-defined |
+| **Handshake to first message** | 1 RTT new · **0 RTT resumed** | 4 RTTs (TCP + TLS + Logon) | 3–5 RTTs | 2–3 RTTs |
+| **Multiplexing** | **65,535 channels/connection** | 1 session/connection | 6 streams (browser) / HTTP/2 | 1 stream/connection |
+| **Resume after drop** | 0-RTT, sequenced replay | Full reconnect | Stateless — no session | Full reconnect |
+| **Schema, ordering, auth** | Schema ID + per-channel seq + `AUTH_TOKEN` | tag=value, session seq, Logon | None — app-defined | None — app-defined |
+
+Header bytes are not the whole cost. WebSocket's 2–10 B is framing only; FIG's 16 B also carries
+the channel, sequence, schema, and flags, while FIX and JSON repeat routing, auth, and IDs in every
+message. Parse and handshake figures are single-host in-repo measurements — methodology and
+caveats: [docs/BENCHMARKS.md](docs/BENCHMARKS.md); normative table: [SPEC.md §14](SPEC.md).
+
+Beyond the wire, one auth model (`AUTH_TOKEN` / mTLS), one error model, and trace/correlation IDs
+in every frame replace four per-protocol stacks.
 
 ---
 
@@ -317,7 +324,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.8** ([release notes](CHANGELOG.md)). Protocol version remains
+Latest release **1.4.9** ([release notes](CHANGELOG.md)). Protocol version remains
 [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only on a wire break. The schema
 catalog is additive. Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in

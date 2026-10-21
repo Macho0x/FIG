@@ -2,6 +2,14 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.9
+
+### Changed
+- README "Why FIG" now leads with a quantitative protocol comparison:
+  16-byte FIG header vs FIX / HTTP+JSON / WebSocket, parse cost, handshake
+  RTTs, multiplexing, resumption, and where schema/sequencing/auth live.
+  Figures link to the in-repo benchmark methodology and SPEC §14.
+
 ## 1.4.8
 
 ### Added

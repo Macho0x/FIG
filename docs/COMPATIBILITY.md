@@ -23,7 +23,7 @@ API; that is not this policy.
 
 Examples that are easy to mix up, and are not the same thing:
 
-- SPEC `1.0.0` + crate `1.4.8` + git tag `v1.0.25` can all describe one commit.
+- SPEC `1.0.0` + crate `1.4.9` + git tag `v1.0.25` can all describe one commit.
 - A docs-only crate bump still cuts the next `v1.0.x` tag unless the commit
   message contains `[skip release]`.
 
