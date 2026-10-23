@@ -42,12 +42,13 @@ cargo doc --workspace --no-deps --open
 |---|---|
 | [`frame`](../crates/fig-core/src/frame.rs) | 16-byte header encode/decode, streaming `FrameDecoder` |
 | [`ext`](../crates/fig-core/src/ext.rs) | TLV extension tags (29 tags) |
-| [`channel`](../crates/fig-core/src/channel.rs) | Channel lifecycle, unidirectional streams, sequence numbers |
+| [`channel`](../crates/fig-core/src/channel.rs) | Channel lifecycle, sequence numbers, per-channel send credits |
 | [`session`](../crates/fig-core/src/session.rs) | Session model; `MemorySessionStore`, `FileSessionStore`, optional `RedisSessionStore` (`session-redis` feature) |
 | [`transport`](../crates/fig-core/src/transport.rs) | TREE transport, `FigConnection`, 0-RTT, migration, replay cache |
 | [`tcp`](../crates/fig-core/src/tcp.rs) | TCP downgrade mode (`FIG\x01` magic prefix) |
 | [`migration`](../crates/fig-core/src/migration.rs) | Connection migration tokens and channel reconstruction |
 | [`codec`](../crates/fig-core/src/codec.rs) | CBOR helpers; JSON ↔ CBOR for gateways |
+| [`constraints`](../crates/fig-core/src/constraints.rs) | `decimal64` scale/bounds and constrained-string checks used by generated codecs |
 | [`replay`](../crates/fig-core/src/replay.rs) | 0-RTT resumption token replay cache |
 | [`sbe`](../crates/fig-core/src/sbe.rs) | SBE encoder/decoder (`encode` / `encode_into`) |
 | [`compression`](../crates/fig-core/src/compression.rs) | zstd payload compression |

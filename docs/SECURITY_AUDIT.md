@@ -46,6 +46,8 @@ outside this checklist.
 - [x] Extension TLV encoding rejects values > `u16::MAX` (no silent truncation)
 - [x] Variable-length binary extensions (`REDIRECT_TOKEN`, `IDEMPOTENCY_KEY`) decode without truncation
 - [x] Fuzz frame decoder (`cargo fuzz run frame_decode`) and SBE decoder (`cargo fuzz run sbe_decode`) in CI
+- [x] FSL `decimal64` scale/bounds and `string` max length, pattern, and uppercase checks on CBOR and SBE decode (`fig_core::constraints`)
+- [x] mTLS `AUTH_REFRESH` requires a non-nil session and a token equal to the client certificate fingerprint
 
 ## DoS / Abuse
 

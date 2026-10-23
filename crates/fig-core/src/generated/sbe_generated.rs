@@ -453,19 +453,18 @@ impl AggregateTradeDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            AggregateTrade {
-                symbol,
-                agg_trade_id,
-                price,
-                qty,
-                side,
-                first_trade_id,
-                last_trade_id,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = AggregateTrade {
+            symbol,
+            agg_trade_id,
+            price,
+            qty,
+            side,
+            first_trade_id,
+            last_trade_id,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -502,16 +501,15 @@ impl LiquidationTradeDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            LiquidationTrade {
-                symbol,
-                side,
-                price,
-                qty,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = LiquidationTrade {
+            symbol,
+            side,
+            price,
+            qty,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -545,14 +543,13 @@ impl PriceLevelDecoder {
             None
         };
 
-        Ok((
-            PriceLevel {
-                price,
-                qty,
-                order_count,
-            },
-            pos,
-        ))
+        let decoded = PriceLevel {
+            price,
+            qty,
+            order_count,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -586,15 +583,14 @@ impl MarketDataUpdateDecoder {
         let qty_raw = sbe_f64(buf, &mut pos)?;
         let qty = Quantity(qty_raw);
 
-        Ok((
-            MarketDataUpdate {
-                side,
-                action,
-                price,
-                qty,
-            },
-            pos,
-        ))
+        let decoded = MarketDataUpdate {
+            side,
+            action,
+            price,
+            qty,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -653,22 +649,21 @@ impl CandleBarDecoder {
             None
         };
 
-        Ok((
-            CandleBar {
-                symbol,
-                interval,
-                open,
-                high,
-                low,
-                close,
-                volume,
-                bar_start,
-                bar_end,
-                is_final,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = CandleBar {
+            symbol,
+            interval,
+            open,
+            high,
+            low,
+            close,
+            volume,
+            bar_start,
+            bar_end,
+            is_final,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -709,17 +704,16 @@ impl PublicTradeDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            PublicTrade {
-                symbol,
-                trade_id,
-                price,
-                qty,
-                side,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = PublicTrade {
+            symbol,
+            trade_id,
+            price,
+            qty,
+            side,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -789,18 +783,17 @@ impl InstrumentMetadataDecoder {
             None
         };
 
-        Ok((
-            InstrumentMetadata {
-                instrument_id,
-                symbol,
-                product_kind,
-                margin_asset,
-                display_name,
-                tick_size,
-                lot_size,
-            },
-            pos,
-        ))
+        let decoded = InstrumentMetadata {
+            instrument_id,
+            symbol,
+            product_kind,
+            margin_asset,
+            display_name,
+            tick_size,
+            lot_size,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -833,15 +826,14 @@ impl BalanceEntryDecoder {
         let hold_raw = sbe_f64(buf, &mut pos)?;
         let hold = hold_raw;
 
-        Ok((
-            BalanceEntry {
-                asset,
-                total,
-                available,
-                hold,
-            },
-            pos,
-        ))
+        let decoded = BalanceEntry {
+            asset,
+            total,
+            available,
+            hold,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -874,15 +866,14 @@ impl PositionEntryDecoder {
         let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
         let unrealized_pnl = unrealized_pnl_raw;
 
-        Ok((
-            PositionEntry {
-                symbol,
-                qty,
-                entry_price,
-                unrealized_pnl,
-            },
-            pos,
-        ))
+        let decoded = PositionEntry {
+            symbol,
+            qty,
+            entry_price,
+            unrealized_pnl,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -915,13 +906,12 @@ impl PageInfoDecoder {
             None
         };
 
-        Ok((
-            PageInfo {
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = PageInfo {
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -951,14 +941,13 @@ impl CapabilityPathDecoder {
             .ok_or_else(|| format!("invalid CapabilityPathPattern value: {}", pattern_raw))?;
         let auth_required = sbe_u8(buf, &mut pos)? != 0;
 
-        Ok((
-            CapabilityPath {
-                path,
-                pattern,
-                auth_required,
-            },
-            pos,
-        ))
+        let decoded = CapabilityPath {
+            path,
+            pattern,
+            auth_required,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1024,15 +1013,14 @@ impl BatchActionDecoder {
             None
         };
 
-        Ok((
-            BatchAction {
-                kind,
-                new_order,
-                cancel,
-                replace,
-            },
-            pos,
-        ))
+        let decoded = BatchAction {
+            kind,
+            new_order,
+            cancel,
+            replace,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1078,16 +1066,15 @@ impl BatchResultDecoder {
             None
         };
 
-        Ok((
-            BatchResult {
-                index,
-                kind,
-                cl_ord_id,
-                status,
-                reject_reason,
-            },
-            pos,
-        ))
+        let decoded = BatchResult {
+            index,
+            kind,
+            cl_ord_id,
+            status,
+            reject_reason,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1243,27 +1230,26 @@ impl NewOrderSingleBodyDecoder {
             None
         };
 
-        Ok((
-            NewOrderSingle {
-                cl_ord_id,
-                side,
-                order_qty,
-                price,
-                stop_price,
-                symbol,
-                order_type,
-                time_in_force,
-                expire_time,
-                account,
-                strategy_id,
-                security_id,
-                id_source,
-                security_exchange,
-                post_only,
-                reduce_only,
-            },
-            pos,
-        ))
+        let decoded = NewOrderSingle {
+            cl_ord_id,
+            side,
+            order_qty,
+            price,
+            stop_price,
+            symbol,
+            order_type,
+            time_in_force,
+            expire_time,
+            account,
+            strategy_id,
+            security_id,
+            id_source,
+            security_exchange,
+            post_only,
+            reduce_only,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1314,16 +1300,15 @@ impl CancelRequestBodyDecoder {
             None
         };
 
-        Ok((
-            CancelRequest {
-                cl_ord_id,
-                orig_cl_ord_id,
-                symbol,
-                side,
-                order_qty,
-            },
-            pos,
-        ))
+        let decoded = CancelRequest {
+            cl_ord_id,
+            orig_cl_ord_id,
+            symbol,
+            side,
+            order_qty,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1377,17 +1362,16 @@ impl CancelReplaceRequestBodyDecoder {
             None
         };
 
-        Ok((
-            CancelReplaceRequest {
-                cl_ord_id,
-                orig_cl_ord_id,
-                symbol,
-                side,
-                order_qty,
-                price,
-            },
-            pos,
-        ))
+        let decoded = CancelReplaceRequest {
+            cl_ord_id,
+            orig_cl_ord_id,
+            symbol,
+            side,
+            order_qty,
+            price,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1477,24 +1461,23 @@ impl ExecutionReportBodyDecoder {
         let transact_time_raw = sbe_i64(buf, &mut pos)?;
         let transact_time = transact_time_raw;
 
-        Ok((
-            ExecutionReport {
-                cl_ord_id,
-                order_id,
-                exec_id,
-                exec_type,
-                ord_status,
-                side,
-                last_qty,
-                last_price,
-                leaves_qty,
-                cum_qty,
-                avg_price,
-                symbol,
-                transact_time,
-            },
-            pos,
-        ))
+        let decoded = ExecutionReport {
+            cl_ord_id,
+            order_id,
+            exec_id,
+            exec_type,
+            ord_status,
+            side,
+            last_qty,
+            last_price,
+            leaves_qty,
+            cum_qty,
+            avg_price,
+            symbol,
+            transact_time,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1530,15 +1513,14 @@ impl CancelRejectBodyDecoder {
             .ok_or_else(|| format!("invalid CancelRejectReason value: {}", reject_reason_raw))?;
         let symbol = sbe_str(buf, &mut pos)?;
 
-        Ok((
-            CancelReject {
-                cl_ord_id,
-                orig_cl_ord_id,
-                reject_reason,
-                symbol,
-            },
-            pos,
-        ))
+        let decoded = CancelReject {
+            cl_ord_id,
+            orig_cl_ord_id,
+            reject_reason,
+            symbol,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1625,18 +1607,17 @@ impl MarketDataSnapshotBodyDecoder {
             None
         };
 
-        Ok((
-            MarketDataSnapshot {
-                symbol,
-                exchange,
-                bids,
-                asks,
-                timestamp,
-                sequence,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = MarketDataSnapshot {
+            symbol,
+            exchange,
+            bids,
+            asks,
+            timestamp,
+            sequence,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1692,15 +1673,14 @@ impl MarketDataIncrementalRefreshBodyDecoder {
             None
         };
 
-        Ok((
-            MarketDataIncrementalRefresh {
-                symbol,
-                updates,
-                timestamp,
-                sequence,
-            },
-            pos,
-        ))
+        let decoded = MarketDataIncrementalRefresh {
+            symbol,
+            updates,
+            timestamp,
+            sequence,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1740,14 +1720,13 @@ impl OrderBookRequestBodyDecoder {
             None
         };
 
-        Ok((
-            OrderBookRequest {
-                symbol,
-                depth,
-                at_time,
-            },
-            pos,
-        ))
+        let decoded = OrderBookRequest {
+            symbol,
+            depth,
+            at_time,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1834,18 +1813,17 @@ impl OrderBookSnapshotBodyDecoder {
             None
         };
 
-        Ok((
-            OrderBookSnapshot {
-                symbol,
-                exchange,
-                bids,
-                asks,
-                timestamp,
-                sequence,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = OrderBookSnapshot {
+            symbol,
+            exchange,
+            bids,
+            asks,
+            timestamp,
+            sequence,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1901,15 +1879,14 @@ impl OrderBookDeltaBodyDecoder {
             None
         };
 
-        Ok((
-            OrderBookDelta {
-                symbol,
-                updates,
-                timestamp,
-                sequence,
-            },
-            pos,
-        ))
+        let decoded = OrderBookDelta {
+            symbol,
+            updates,
+            timestamp,
+            sequence,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1935,7 +1912,9 @@ impl AggregateTradeEventBodyDecoder {
         let (trade, trade_n) = AggregateTradeDecoder::decode(rest)?;
         pos += trade_n;
 
-        Ok((AggregateTradeEvent { trade }, pos))
+        let decoded = AggregateTradeEvent { trade };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -1994,16 +1973,15 @@ impl AggregateTradeRequestBodyDecoder {
             None
         };
 
-        Ok((
-            AggregateTradeRequest {
-                symbol,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = AggregateTradeRequest {
+            symbol,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2061,15 +2039,14 @@ impl AggregateTradeBatchBodyDecoder {
             None
         };
 
-        Ok((
-            AggregateTradeBatch {
-                symbol,
-                trades,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = AggregateTradeBatch {
+            symbol,
+            trades,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2110,16 +2087,15 @@ impl MiniTickerBodyDecoder {
             None
         };
 
-        Ok((
-            MiniTicker {
-                symbol,
-                last_price,
-                volume,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = MiniTicker {
+            symbol,
+            last_price,
+            volume,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2137,7 +2113,9 @@ impl AllMidsRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(AllMidsRequest, usize), String> {
         let mut pos: usize = 0;
 
-        Ok((AllMidsRequest {}, pos))
+        let decoded = AllMidsRequest {};
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2178,7 +2156,9 @@ impl AllMidsBatchBodyDecoder {
             tickers.push(item);
         }
 
-        Ok((AllMidsBatch { tickers }, pos))
+        let decoded = AllMidsBatch { tickers };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2239,17 +2219,16 @@ impl MarkPriceUpdateBodyDecoder {
             None
         };
 
-        Ok((
-            MarkPriceUpdate {
-                symbol,
-                mark_price,
-                index_price,
-                funding_rate,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = MarkPriceUpdate {
+            symbol,
+            mark_price,
+            index_price,
+            funding_rate,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2273,7 +2252,9 @@ impl MarkPriceRequestBodyDecoder {
 
         let symbol = sbe_str(buf, &mut pos)?;
 
-        Ok((MarkPriceRequest { symbol }, pos))
+        let decoded = MarkPriceRequest { symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2299,7 +2280,9 @@ impl LiquidationTradeEventBodyDecoder {
         let (trade, trade_n) = LiquidationTradeDecoder::decode(rest)?;
         pos += trade_n;
 
-        Ok((LiquidationTradeEvent { trade }, pos))
+        let decoded = LiquidationTradeEvent { trade };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2325,7 +2308,9 @@ impl CandleBarEventBodyDecoder {
         let (bar, bar_n) = CandleBarDecoder::decode(rest)?;
         pos += bar_n;
 
-        Ok((CandleBarEvent { bar }, pos))
+        let decoded = CandleBarEvent { bar };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2388,17 +2373,16 @@ impl CandleBarRequestBodyDecoder {
             None
         };
 
-        Ok((
-            CandleBarRequest {
-                symbol,
-                interval,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = CandleBarRequest {
+            symbol,
+            interval,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2459,16 +2443,15 @@ impl CandleBarBatchBodyDecoder {
             None
         };
 
-        Ok((
-            CandleBarBatch {
-                symbol,
-                interval,
-                bars,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = CandleBarBatch {
+            symbol,
+            interval,
+            bars,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2494,7 +2477,9 @@ impl PublicTradeEventBodyDecoder {
         let (trade, trade_n) = PublicTradeDecoder::decode(rest)?;
         pos += trade_n;
 
-        Ok((PublicTradeEvent { trade }, pos))
+        let decoded = PublicTradeEvent { trade };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2553,16 +2538,15 @@ impl TradeHistoryRequestBodyDecoder {
             None
         };
 
-        Ok((
-            TradeHistoryRequest {
-                symbol,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = TradeHistoryRequest {
+            symbol,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2620,15 +2604,14 @@ impl PublicTradeBatchBodyDecoder {
             None
         };
 
-        Ok((
-            PublicTradeBatch {
-                symbol,
-                trades,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = PublicTradeBatch {
+            symbol,
+            trades,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2723,18 +2706,17 @@ impl BestBidOfferBodyDecoder {
             None
         };
 
-        Ok((
-            BestBidOffer {
-                symbol,
-                bid_price,
-                bid_qty,
-                ask_price,
-                ask_qty,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = BestBidOffer {
+            symbol,
+            bid_price,
+            bid_qty,
+            ask_price,
+            ask_qty,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2790,21 +2772,20 @@ impl SymbolTickerBodyDecoder {
             None
         };
 
-        Ok((
-            SymbolTicker {
-                symbol,
-                last_price,
-                price_change,
-                price_change_pct,
-                volume,
-                high,
-                low,
-                open,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = SymbolTicker {
+            symbol,
+            last_price,
+            price_change,
+            price_change_pct,
+            volume,
+            high,
+            low,
+            open,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2828,7 +2809,9 @@ impl TickerRequestBodyDecoder {
 
         let symbol = sbe_str(buf, &mut pos)?;
 
-        Ok((TickerRequest { symbol }, pos))
+        let decoded = TickerRequest { symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2846,7 +2829,9 @@ impl InstrumentCatalogRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(InstrumentCatalogRequest, usize), String> {
         let mut pos: usize = 0;
 
-        Ok((InstrumentCatalogRequest {}, pos))
+        let decoded = InstrumentCatalogRequest {};
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2889,7 +2874,9 @@ impl InstrumentCatalogResponseBodyDecoder {
             instruments.push(item);
         }
 
-        Ok((InstrumentCatalogResponse { instruments }, pos))
+        let decoded = InstrumentCatalogResponse { instruments };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2923,15 +2910,14 @@ impl AccountSummaryBodyDecoder {
         let buying_power = buying_power_raw;
         let currency = sbe_str(buf, &mut pos)?;
 
-        Ok((
-            AccountSummary {
-                account,
-                balance,
-                buying_power,
-                currency,
-            },
-            pos,
-        ))
+        let decoded = AccountSummary {
+            account,
+            balance,
+            buying_power,
+            currency,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -2974,18 +2960,17 @@ impl MarginSummaryBodyDecoder {
         let available = available_raw;
         let currency = sbe_str(buf, &mut pos)?;
 
-        Ok((
-            MarginSummary {
-                account,
-                balance,
-                buying_power,
-                equity,
-                margin_used,
-                available,
-                currency,
-            },
-            pos,
-        ))
+        let decoded = MarginSummary {
+            account,
+            balance,
+            buying_power,
+            equity,
+            margin_used,
+            available,
+            currency,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3038,14 +3023,13 @@ impl BalanceSnapshotBodyDecoder {
             None
         };
 
-        Ok((
-            BalanceSnapshot {
-                account,
-                balances,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = BalanceSnapshot {
+            account,
+            balances,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3086,17 +3070,16 @@ impl BalanceUpdateBodyDecoder {
         let reason = BalanceUpdateReason::from_value(reason_raw)
             .ok_or_else(|| format!("invalid BalanceUpdateReason value: {}", reason_raw))?;
 
-        Ok((
-            BalanceUpdate {
-                account,
-                asset,
-                delta,
-                total,
-                available,
-                reason,
-            },
-            pos,
-        ))
+        let decoded = BalanceUpdate {
+            account,
+            asset,
+            delta,
+            total,
+            available,
+            reason,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3149,14 +3132,13 @@ impl PositionSnapshotBodyDecoder {
             None
         };
 
-        Ok((
-            PositionSnapshot {
-                account,
-                positions,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = PositionSnapshot {
+            account,
+            positions,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3193,16 +3175,15 @@ impl PositionUpdateBodyDecoder {
         let unrealized_pnl_raw = sbe_f64(buf, &mut pos)?;
         let unrealized_pnl = unrealized_pnl_raw;
 
-        Ok((
-            PositionUpdate {
-                account,
-                symbol,
-                qty,
-                entry_price,
-                unrealized_pnl,
-            },
-            pos,
-        ))
+        let decoded = PositionUpdate {
+            account,
+            symbol,
+            qty,
+            entry_price,
+            unrealized_pnl,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3240,14 +3221,13 @@ impl MarginUpdateBodyDecoder {
             None
         };
 
-        Ok((
-            MarginUpdate {
-                account,
-                summary,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = MarginUpdate {
+            account,
+            summary,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3284,16 +3264,15 @@ impl UserLiquidationBodyDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            UserLiquidation {
-                account,
-                symbol,
-                qty,
-                price,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = UserLiquidation {
+            account,
+            symbol,
+            qty,
+            price,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3336,15 +3315,14 @@ impl OrderListStatusBodyDecoder {
             None
         };
 
-        Ok((
-            OrderListStatus {
-                account,
-                list_id,
-                status,
-                symbol,
-            },
-            pos,
-        ))
+        let decoded = OrderListStatus {
+            account,
+            list_id,
+            status,
+            symbol,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3414,17 +3392,16 @@ impl FillHistoryRequestBodyDecoder {
             None
         };
 
-        Ok((
-            FillHistoryRequest {
-                account,
-                symbol,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = FillHistoryRequest {
+            account,
+            symbol,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3482,15 +3459,14 @@ impl FillHistoryBatchBodyDecoder {
             None
         };
 
-        Ok((
-            FillHistoryBatch {
-                account,
-                fills,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = FillHistoryBatch {
+            account,
+            fills,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3534,16 +3510,15 @@ impl FundingPaymentBodyDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            FundingPayment {
-                account,
-                symbol,
-                amount,
-                rate,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = FundingPayment {
+            account,
+            symbol,
+            amount,
+            rate,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3602,16 +3577,15 @@ impl FundingHistoryRequestBodyDecoder {
             None
         };
 
-        Ok((
-            FundingHistoryRequest {
-                account,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = FundingHistoryRequest {
+            account,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3669,15 +3643,14 @@ impl FundingHistoryBatchBodyDecoder {
             None
         };
 
-        Ok((
-            FundingHistoryBatch {
-                account,
-                payments,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = FundingHistoryBatch {
+            account,
+            payments,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3726,17 +3699,16 @@ impl LedgerUpdateBodyDecoder {
             None
         };
 
-        Ok((
-            LedgerUpdate {
-                account,
-                asset,
-                delta,
-                kind,
-                timestamp,
-                reference_id,
-            },
-            pos,
-        ))
+        let decoded = LedgerUpdate {
+            account,
+            asset,
+            delta,
+            kind,
+            timestamp,
+            reference_id,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3795,16 +3767,15 @@ impl LedgerHistoryRequestBodyDecoder {
             None
         };
 
-        Ok((
-            LedgerHistoryRequest {
-                account,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = LedgerHistoryRequest {
+            account,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3862,15 +3833,14 @@ impl LedgerHistoryBatchBodyDecoder {
             None
         };
 
-        Ok((
-            LedgerHistoryBatch {
-                account,
-                entries,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = LedgerHistoryBatch {
+            account,
+            entries,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3905,7 +3875,9 @@ impl OpenOrdersRequestBodyDecoder {
             None
         };
 
-        Ok((OpenOrdersRequest { account, symbol }, pos))
+        let decoded = OpenOrdersRequest { account, symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -3958,14 +3930,13 @@ impl OpenOrdersSnapshotBodyDecoder {
             None
         };
 
-        Ok((
-            OpenOrdersSnapshot {
-                account,
-                orders,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = OpenOrdersSnapshot {
+            account,
+            orders,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4035,17 +4006,16 @@ impl OrderHistoryRequestBodyDecoder {
             None
         };
 
-        Ok((
-            OrderHistoryRequest {
-                account,
-                symbol,
-                start_time,
-                end_time,
-                limit,
-                cursor,
-            },
-            pos,
-        ))
+        let decoded = OrderHistoryRequest {
+            account,
+            symbol,
+            start_time,
+            end_time,
+            limit,
+            cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4103,15 +4073,14 @@ impl OrderHistoryBatchBodyDecoder {
             None
         };
 
-        Ok((
-            OrderHistoryBatch {
-                account,
-                orders,
-                has_more,
-                next_cursor,
-            },
-            pos,
-        ))
+        let decoded = OrderHistoryBatch {
+            account,
+            orders,
+            has_more,
+            next_cursor,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4129,7 +4098,9 @@ impl CapabilitiesRequestBodyDecoder {
     pub fn decode(buf: &[u8]) -> Result<(CapabilitiesRequest, usize), String> {
         let mut pos: usize = 0;
 
-        Ok((CapabilitiesRequest {}, pos))
+        let decoded = CapabilitiesRequest {};
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4210,15 +4181,14 @@ impl CapabilitiesResponseBodyDecoder {
             intervals.push(String::from_utf8_lossy(item_bytes).into_owned());
         }
 
-        Ok((
-            CapabilitiesResponse {
-                schema_ids,
-                paths,
-                symbols,
-                intervals,
-            },
-            pos,
-        ))
+        let decoded = CapabilitiesResponse {
+            schema_ids,
+            paths,
+            symbols,
+            intervals,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4242,7 +4212,9 @@ impl PositionRequestBodyDecoder {
 
         let account = sbe_str(buf, &mut pos)?;
 
-        Ok((PositionRequest { account }, pos))
+        let decoded = PositionRequest { account };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4273,7 +4245,9 @@ impl TradingSessionStatusRequestBodyDecoder {
             None
         };
 
-        Ok((TradingSessionStatusRequest { symbol }, pos))
+        let decoded = TradingSessionStatusRequest { symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4338,17 +4312,16 @@ impl TradingSessionStatusBodyDecoder {
             None
         };
 
-        Ok((
-            TradingSessionStatus {
-                symbol,
-                trading_session_id,
-                status,
-                halt_reason,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = TradingSessionStatus {
+            symbol,
+            trading_session_id,
+            status,
+            halt_reason,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4372,7 +4345,9 @@ impl SecurityStatusRequestBodyDecoder {
 
         let symbol = sbe_str(buf, &mut pos)?;
 
-        Ok((SecurityStatusRequest { symbol }, pos))
+        let decoded = SecurityStatusRequest { symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4426,16 +4401,15 @@ impl SecurityStatusBodyDecoder {
             None
         };
 
-        Ok((
-            SecurityStatus {
-                symbol,
-                status,
-                halt_reason,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = SecurityStatus {
+            symbol,
+            status,
+            halt_reason,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4485,15 +4459,14 @@ impl MassCancelRequestBodyDecoder {
             None
         };
 
-        Ok((
-            MassCancelRequest {
-                cl_ord_id,
-                account,
-                symbol,
-                side,
-            },
-            pos,
-        ))
+        let decoded = MassCancelRequest {
+            cl_ord_id,
+            account,
+            symbol,
+            side,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4542,17 +4515,16 @@ impl MassCancelReportBodyDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            MassCancelReport {
-                cl_ord_id,
-                account,
-                symbol,
-                total_affected,
-                status,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = MassCancelReport {
+            cl_ord_id,
+            account,
+            symbol,
+            total_affected,
+            status,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4576,7 +4548,9 @@ impl PriceLimitsRequestBodyDecoder {
 
         let symbol = sbe_str(buf, &mut pos)?;
 
-        Ok((PriceLimitsRequest { symbol }, pos))
+        let decoded = PriceLimitsRequest { symbol };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4660,17 +4634,16 @@ impl PriceLimitsBodyDecoder {
             None
         };
 
-        Ok((
-            PriceLimits {
-                symbol,
-                lower_limit,
-                upper_limit,
-                reference_price,
-                timestamp,
-                is_snapshot,
-            },
-            pos,
-        ))
+        let decoded = PriceLimits {
+            symbol,
+            lower_limit,
+            upper_limit,
+            reference_price,
+            timestamp,
+            is_snapshot,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4719,14 +4692,13 @@ impl BatchRequestBodyDecoder {
             actions.push(item);
         }
 
-        Ok((
-            BatchRequest {
-                batch_id,
-                account,
-                actions,
-            },
-            pos,
-        ))
+        let decoded = BatchRequest {
+            batch_id,
+            account,
+            actions,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 
@@ -4782,16 +4754,15 @@ impl BatchReportBodyDecoder {
         let timestamp_raw = sbe_i64(buf, &mut pos)?;
         let timestamp = timestamp_raw;
 
-        Ok((
-            BatchReport {
-                batch_id,
-                account,
-                outcome,
-                results,
-                timestamp,
-            },
-            pos,
-        ))
+        let decoded = BatchReport {
+            batch_id,
+            account,
+            outcome,
+            results,
+            timestamp,
+        };
+        decoded.validate()?;
+        Ok((decoded, pos))
     }
 }
 

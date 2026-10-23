@@ -12,13 +12,47 @@ pub type ClientOrderId = String;
 
 /// Type: Price
 /// Constraints: precision: 8, min: 0
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Price(pub f64);
+
+impl serde::Serialize for Price {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = crate::constraints::quantize_decimal(self.0, 8, Some(0.0), None)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+        serializer.serialize_f64(value)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Price {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+        let value = crate::constraints::check_decimal(value, 8, Some(0.0), None)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+        Ok(Self(value))
+    }
+}
 
 /// Type: Quantity
 /// Constraints: precision: 0, min: 0, max: 999999999
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Quantity(pub f64);
+
+impl serde::Serialize for Quantity {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let value = crate::constraints::quantize_decimal(self.0, 0, Some(0.0), Some(999999999.0))
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+        serializer.serialize_f64(value)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Quantity {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+        let value = crate::constraints::check_decimal(value, 0, Some(0.0), Some(999999999.0))
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+        Ok(Self(value))
+    }
+}
 
 /// Type: Symbol
 /// Constraints: max_len: 32, uppercase: true
@@ -42,24 +76,52 @@ pub type MarginAsset = String;
 /// Struct type: AggregateTrade
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AggregateTrade {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub agg_trade_id: String,
     pub price: Price,
     pub qty: Quantity,
     pub side: Side,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub first_trade_id: String,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub last_trade_id: String,
     pub timestamp: TradeTimestamp,
+}
+
+impl AggregateTrade {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.agg_trade_id, Some(32), None, false)?;
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_text(&self.first_trade_id, Some(32), None, false)?;
+        crate::constraints::check_text(&self.last_trade_id, Some(32), None, false)?;
+        Ok(())
+    }
 }
 
 /// Struct type: LiquidationTrade
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LiquidationTrade {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub side: Side,
     pub price: Price,
     pub qty: Quantity,
     pub timestamp: TradeTimestamp,
+}
+
+impl LiquidationTrade {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
 }
 
 /// Struct type: PriceLevel
@@ -71,6 +133,15 @@ pub struct PriceLevel {
     pub order_count: Option<u32>,
 }
 
+impl PriceLevel {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
+}
+
 /// Struct type: MarketDataUpdate
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarketDataUpdate {
@@ -80,10 +151,21 @@ pub struct MarketDataUpdate {
     pub qty: Quantity,
 }
 
+impl MarketDataUpdate {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
+}
+
 /// Struct type: CandleBar
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CandleBar {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l8_u0", serialize_with = "se_text_l8_u0")]
     pub interval: CandleInterval,
     pub open: Price,
     pub high: Price,
@@ -97,10 +179,26 @@ pub struct CandleBar {
     pub is_snapshot: Option<bool>,
 }
 
+impl CandleBar {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.interval, Some(8), None, false)?;
+        crate::constraints::check_decimal(self.open.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.high.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.low.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.close.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.volume.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
+}
+
 /// Struct type: PublicTrade
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicTrade {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub trade_id: String,
     pub price: Price,
     pub qty: Quantity,
@@ -108,54 +206,165 @@ pub struct PublicTrade {
     pub timestamp: TradeTimestamp,
 }
 
+impl PublicTrade {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.trade_id, Some(32), None, false)?;
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
+}
+
 /// Struct type: InstrumentMetadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InstrumentMetadata {
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub instrument_id: InstrumentId,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l8_u0", serialize_with = "se_text_l8_u0")]
     pub product_kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l16_u1",
+        serialize_with = "se_opt_text_l16_u1"
+    )]
     pub margin_asset: Option<MarginAsset>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_dec_p8_p0_n",
+        serialize_with = "se_opt_dec_p8_p0_n"
+    )]
     pub tick_size: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_dec_p8_p0_n",
+        serialize_with = "se_opt_dec_p8_p0_n"
+    )]
     pub lot_size: Option<f64>,
+}
+
+impl InstrumentMetadata {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.instrument_id, Some(16), None, false)?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.product_kind, Some(8), None, false)?;
+        if let Some(ref v) = self.margin_asset {
+            crate::constraints::check_text(v, Some(16), None, true)?;
+        }
+        if let Some(ref v) = self.display_name {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        if let Some(ref v) = self.tick_size {
+            crate::constraints::check_decimal(*v, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.lot_size {
+            crate::constraints::check_decimal(*v, 8, Some(0.0), None)?;
+        }
+        Ok(())
+    }
 }
 
 /// Struct type: BalanceEntry
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceEntry {
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub asset: String,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub total: f64,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub available: f64,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub hold: f64,
+}
+
+impl BalanceEntry {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.asset, Some(16), None, false)?;
+        crate::constraints::check_decimal(self.total, 8, None, None)?;
+        crate::constraints::check_decimal(self.available, 8, None, None)?;
+        crate::constraints::check_decimal(self.hold, 8, None, None)?;
+        Ok(())
+    }
 }
 
 /// Struct type: PositionEntry
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PositionEntry {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub qty: Quantity,
     pub entry_price: Price,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub unrealized_pnl: f64,
+}
+
+impl PositionEntry {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.entry_price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.unrealized_pnl, 2, None, None)?;
+        Ok(())
+    }
 }
 
 /// Struct type: PageInfo
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PageInfo {
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
+}
+
+impl PageInfo {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Struct type: CapabilityPath
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapabilityPath {
+    #[serde(
+        deserialize_with = "de_text_l128_u0",
+        serialize_with = "se_text_l128_u0"
+    )]
     pub path: String,
     pub pattern: CapabilityPathPattern,
     pub auth_required: bool,
+}
+
+impl CapabilityPath {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.path, Some(128), None, false)?;
+        Ok(())
+    }
 }
 
 /// Struct type: BatchAction
@@ -170,15 +379,56 @@ pub struct BatchAction {
     pub replace: Option<CancelReplaceRequest>,
 }
 
+impl BatchAction {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(ref v) = self.new_order {
+            v.validate()?;
+        }
+        if let Some(ref v) = self.cancel {
+            v.validate()?;
+        }
+        if let Some(ref v) = self.replace {
+            v.validate()?;
+        }
+        Ok(())
+    }
+}
+
 /// Struct type: BatchResult
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchResult {
     pub index: u32,
     pub kind: BatchResultKind,
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
     pub status: BatchResultStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub reject_reason: Option<String>,
+}
+
+impl BatchResult {
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        if let Some(ref v) = self.reject_reason {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -728,6 +978,10 @@ impl TradingSessionStatusStatus {
 /// NOT idempotent
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NewOrderSingle {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
     pub side: Side,
     pub order_qty: Quantity,
@@ -735,20 +989,41 @@ pub struct NewOrderSingle {
     pub price: Option<Price>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_price: Option<Price>,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub order_type: OrderType,
     pub time_in_force: TimeInForce,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expire_time: Option<TradeTimestamp>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u0",
+        serialize_with = "se_opt_text_l32_u0"
+    )]
     pub account: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub strategy_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l48_u0",
+        serialize_with = "se_opt_text_l48_u0"
+    )]
     pub security_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_source: Option<SecurityIdSource>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l16_u0",
+        serialize_with = "se_opt_text_l16_u0"
+    )]
     pub security_exchange: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_only: Option<bool>,
@@ -765,14 +1040,54 @@ impl NewOrderSingle {
     pub const PRIORITY: &str = "high";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = false;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_decimal(self.order_qty.0, 0, Some(0.0), Some(999999999.0))?;
+        if let Some(ref v) = self.price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.stop_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.account {
+            crate::constraints::check_text(v, Some(32), None, false)?;
+        }
+        if let Some(ref v) = self.strategy_id {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        if let Some(ref v) = self.security_id {
+            crate::constraints::check_text(v, Some(48), None, false)?;
+        }
+        if let Some(ref v) = self.security_exchange {
+            crate::constraints::check_text(v, Some(16), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: CancelRequest (channel: RequestResponse, priority: High)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CancelRequest {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub orig_cl_ord_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub side: Side,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -788,14 +1103,44 @@ impl CancelRequest {
     pub const PRIORITY: &str = "high";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(
+            &self.orig_cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.order_qty {
+            crate::constraints::check_decimal(v.0, 0, Some(0.0), Some(999999999.0))?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: CancelReplaceRequest (channel: RequestResponse, priority: High)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CancelReplaceRequest {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub orig_cl_ord_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub side: Side,
     pub order_qty: Quantity,
@@ -812,14 +1157,42 @@ impl CancelReplaceRequest {
     pub const PRIORITY: &str = "high";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(
+            &self.orig_cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.order_qty.0, 0, Some(0.0), Some(999999999.0))?;
+        if let Some(ref v) = self.price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: ExecutionReport (channel: StreamItem, priority: High)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionReport {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub order_id: String,
+    #[serde(deserialize_with = "de_text_l20_u0", serialize_with = "se_text_l20_u0")]
     pub exec_id: String,
     pub exec_type: ExecType,
     pub ord_status: OrdStatus,
@@ -831,6 +1204,7 @@ pub struct ExecutionReport {
     pub leaves_qty: Quantity,
     pub cum_qty: Quantity,
     pub avg_price: Price,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub transact_time: TradeTimestamp,
 }
@@ -844,15 +1218,47 @@ impl ExecutionReport {
     pub const PRIORITY: &str = "high";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.order_id, Some(32), None, false)?;
+        crate::constraints::check_text(&self.exec_id, Some(20), None, false)?;
+        if let Some(ref v) = self.last_qty {
+            crate::constraints::check_decimal(v.0, 0, Some(0.0), Some(999999999.0))?;
+        }
+        if let Some(ref v) = self.last_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        crate::constraints::check_decimal(self.leaves_qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.cum_qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.avg_price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: CancelReject (channel: RequestResponse, priority: Medium)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CancelReject {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub orig_cl_ord_id: ClientOrderId,
     pub reject_reason: CancelRejectReason,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
 }
 
@@ -865,12 +1271,32 @@ impl CancelReject {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(
+            &self.orig_cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: MarketDataSnapshot (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarketDataSnapshot {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub exchange: String,
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
@@ -888,11 +1314,25 @@ impl MarketDataSnapshot {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.exchange, Some(16), None, false)?;
+        for item in &self.bids {
+            item.validate()?;
+        }
+        for item in &self.asks {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: MarketDataIncrementalRefresh (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarketDataIncrementalRefresh {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub updates: Vec<MarketDataUpdate>,
     pub timestamp: TradeTimestamp,
@@ -907,11 +1347,21 @@ impl MarketDataIncrementalRefresh {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        for item in &self.updates {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OrderBookRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
@@ -926,12 +1376,20 @@ impl OrderBookRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: OrderBookSnapshot (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookSnapshot {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub exchange: String,
     pub bids: Vec<PriceLevel>,
     pub asks: Vec<PriceLevel>,
@@ -949,11 +1407,25 @@ impl OrderBookSnapshot {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.exchange, Some(16), None, false)?;
+        for item in &self.bids {
+            item.validate()?;
+        }
+        for item in &self.asks {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OrderBookDelta (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookDelta {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub updates: Vec<MarketDataUpdate>,
     pub timestamp: TradeTimestamp,
@@ -968,6 +1440,15 @@ impl OrderBookDelta {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        for item in &self.updates {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: AggregateTradeEvent (channel: StreamItem, priority: Medium)
@@ -983,11 +1464,18 @@ impl AggregateTradeEvent {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        self.trade.validate()?;
+        Ok(())
+    }
 }
 
 /// Message: AggregateTradeRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AggregateTradeRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -995,7 +1483,12 @@ pub struct AggregateTradeRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1006,15 +1499,30 @@ impl AggregateTradeRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: AggregateTradeBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AggregateTradeBatch {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub trades: Vec<AggregateTrade>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1025,11 +1533,24 @@ impl AggregateTradeBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        for item in &self.trades {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: MiniTicker (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MiniTicker {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub last_price: Price,
     pub volume: Quantity,
@@ -1045,6 +1566,14 @@ impl MiniTicker {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.last_price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.volume.0, 0, Some(0.0), Some(999999999.0))?;
+        Ok(())
+    }
 }
 
 /// Message: AllMidsRequest (channel: RequestResponse, priority: Medium)
@@ -1058,6 +1587,11 @@ impl AllMidsRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Message: AllMidsBatch (channel: RequestResponse, priority: Medium)
@@ -1073,16 +1607,30 @@ impl AllMidsBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        for item in &self.tickers {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: MarkPriceUpdate (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarkPriceUpdate {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub mark_price: Price,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index_price: Option<Price>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_dec_p8_n_n",
+        serialize_with = "se_opt_dec_p8_n_n"
+    )]
     pub funding_rate: Option<f64>,
     pub timestamp: TradeTimestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1096,11 +1644,25 @@ impl MarkPriceUpdate {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.mark_price.0, 8, Some(0.0), None)?;
+        if let Some(ref v) = self.index_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.funding_rate {
+            crate::constraints::check_decimal(*v, 8, None, None)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: MarkPriceRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarkPriceRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
 }
 
@@ -1111,6 +1673,12 @@ impl MarkPriceRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: LiquidationTradeEvent (channel: StreamItem, priority: Medium)
@@ -1126,6 +1694,12 @@ impl LiquidationTradeEvent {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        self.trade.validate()?;
+        Ok(())
+    }
 }
 
 /// Message: CandleBarEvent (channel: StreamItem, priority: Medium)
@@ -1141,12 +1715,20 @@ impl CandleBarEvent {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        self.bar.validate()?;
+        Ok(())
+    }
 }
 
 /// Message: CandleBarRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CandleBarRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l8_u0", serialize_with = "se_text_l8_u0")]
     pub interval: CandleInterval,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1154,7 +1736,12 @@ pub struct CandleBarRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1165,16 +1752,33 @@ impl CandleBarRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.interval, Some(8), None, false)?;
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: CandleBarBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CandleBarBatch {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
+    #[serde(deserialize_with = "de_text_l8_u0", serialize_with = "se_text_l8_u0")]
     pub interval: CandleInterval,
     pub bars: Vec<CandleBar>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1185,6 +1789,19 @@ impl CandleBarBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_text(&self.interval, Some(8), None, false)?;
+        for item in &self.bars {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: PublicTradeEvent (channel: StreamItem, priority: Medium)
@@ -1200,11 +1817,18 @@ impl PublicTradeEvent {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        self.trade.validate()?;
+        Ok(())
+    }
 }
 
 /// Message: TradeHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TradeHistoryRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1212,7 +1836,12 @@ pub struct TradeHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1223,15 +1852,30 @@ impl TradeHistoryRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: PublicTradeBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicTradeBatch {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub trades: Vec<PublicTrade>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1242,11 +1886,24 @@ impl PublicTradeBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        for item in &self.trades {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: BestBidOffer (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BestBidOffer {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bid_price: Option<Price>,
@@ -1268,14 +1925,35 @@ impl BestBidOffer {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.bid_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.bid_qty {
+            crate::constraints::check_decimal(v.0, 0, Some(0.0), Some(999999999.0))?;
+        }
+        if let Some(ref v) = self.ask_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.ask_qty {
+            crate::constraints::check_decimal(v.0, 0, Some(0.0), Some(999999999.0))?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: SymbolTicker (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SymbolTicker {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub last_price: Price,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub price_change: f64,
+    #[serde(deserialize_with = "de_dec_p4_n_n", serialize_with = "se_dec_p4_n_n")]
     pub price_change_pct: f64,
     pub volume: Quantity,
     pub high: Price,
@@ -1293,11 +1971,25 @@ impl SymbolTicker {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.last_price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.price_change, 8, None, None)?;
+        crate::constraints::check_decimal(self.price_change_pct, 4, None, None)?;
+        crate::constraints::check_decimal(self.volume.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.high.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.low.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.open.0, 8, Some(0.0), None)?;
+        Ok(())
+    }
 }
 
 /// Message: TickerRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TickerRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
 }
 
@@ -1308,6 +2000,12 @@ impl TickerRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: InstrumentCatalogRequest (channel: RequestResponse, priority: Medium)
@@ -1321,6 +2019,11 @@ impl InstrumentCatalogRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Message: InstrumentCatalogResponse (channel: RequestResponse, priority: Medium)
@@ -1336,14 +2039,26 @@ impl InstrumentCatalogResponse {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        for item in &self.instruments {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: AccountSummary (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountSummary {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub balance: f64,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub buying_power: f64,
+    #[serde(deserialize_with = "de_text_l3_u0", serialize_with = "se_text_l3_u0")]
     pub currency: String,
 }
 
@@ -1354,17 +2069,33 @@ impl AccountSummary {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_decimal(self.balance, 2, None, None)?;
+        crate::constraints::check_decimal(self.buying_power, 2, None, None)?;
+        crate::constraints::check_text(&self.currency, Some(3), None, false)?;
+        Ok(())
+    }
 }
 
 /// Message: MarginSummary (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarginSummary {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub balance: f64,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub buying_power: f64,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub equity: f64,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub margin_used: f64,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub available: f64,
+    #[serde(deserialize_with = "de_text_l3_u0", serialize_with = "se_text_l3_u0")]
     pub currency: String,
 }
 
@@ -1375,11 +2106,24 @@ impl MarginSummary {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_decimal(self.balance, 2, None, None)?;
+        crate::constraints::check_decimal(self.buying_power, 2, None, None)?;
+        crate::constraints::check_decimal(self.equity, 2, None, None)?;
+        crate::constraints::check_decimal(self.margin_used, 2, None, None)?;
+        crate::constraints::check_decimal(self.available, 2, None, None)?;
+        crate::constraints::check_text(&self.currency, Some(3), None, false)?;
+        Ok(())
+    }
 }
 
 /// Message: BalanceSnapshot (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceSnapshot {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub balances: Vec<BalanceEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1393,15 +2137,29 @@ impl BalanceSnapshot {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.balances {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: BalanceUpdate (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BalanceUpdate {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub asset: String,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub delta: f64,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub total: f64,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub available: f64,
     pub reason: BalanceUpdateReason,
 }
@@ -1413,11 +2171,22 @@ impl BalanceUpdate {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_text(&self.asset, Some(16), None, false)?;
+        crate::constraints::check_decimal(self.delta, 8, None, None)?;
+        crate::constraints::check_decimal(self.total, 8, None, None)?;
+        crate::constraints::check_decimal(self.available, 8, None, None)?;
+        Ok(())
+    }
 }
 
 /// Message: PositionSnapshot (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PositionSnapshot {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub positions: Vec<PositionEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1431,15 +2200,27 @@ impl PositionSnapshot {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.positions {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: PositionUpdate (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PositionUpdate {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub qty: Quantity,
     pub entry_price: Price,
+    #[serde(deserialize_with = "de_dec_p2_n_n", serialize_with = "se_dec_p2_n_n")]
     pub unrealized_pnl: f64,
 }
 
@@ -1450,11 +2231,22 @@ impl PositionUpdate {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.entry_price.0, 8, Some(0.0), None)?;
+        crate::constraints::check_decimal(self.unrealized_pnl, 2, None, None)?;
+        Ok(())
+    }
 }
 
 /// Message: MarginUpdate (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MarginUpdate {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub summary: MarginSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1468,12 +2260,21 @@ impl MarginUpdate {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        self.summary.validate()?;
+        Ok(())
+    }
 }
 
 /// Message: UserLiquidation (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UserLiquidation {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub qty: Quantity,
     pub price: Price,
@@ -1487,15 +2288,31 @@ impl UserLiquidation {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        crate::constraints::check_decimal(self.qty.0, 0, Some(0.0), Some(999999999.0))?;
+        crate::constraints::check_decimal(self.price.0, 8, Some(0.0), None)?;
+        Ok(())
+    }
 }
 
 /// Message: OrderListStatus (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderListStatus {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub list_id: String,
     pub status: OrderListStatusStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
 }
 
@@ -1506,13 +2323,29 @@ impl OrderListStatus {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_text(&self.list_id, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: FillHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FillHistoryRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1520,7 +2353,12 @@ pub struct FillHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1531,15 +2369,33 @@ impl FillHistoryRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: FillHistoryBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FillHistoryBatch {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub fills: Vec<ExecutionReport>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1550,15 +2406,35 @@ impl FillHistoryBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.fills {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: FundingPayment (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FundingPayment {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub amount: f64,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub rate: f64,
     pub timestamp: TradeTimestamp,
 }
@@ -1570,11 +2446,23 @@ impl FundingPayment {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        crate::constraints::check_decimal(self.amount, 8, None, None)?;
+        crate::constraints::check_decimal(self.rate, 8, None, None)?;
+        Ok(())
+    }
 }
 
 /// Message: FundingHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FundingHistoryRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1582,7 +2470,12 @@ pub struct FundingHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1593,15 +2486,30 @@ impl FundingHistoryRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: FundingHistoryBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FundingHistoryBatch {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub payments: Vec<FundingPayment>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1612,17 +2520,37 @@ impl FundingHistoryBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.payments {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: LedgerUpdate (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LedgerUpdate {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub asset: String,
+    #[serde(deserialize_with = "de_dec_p8_n_n", serialize_with = "se_dec_p8_n_n")]
     pub delta: f64,
     pub kind: LedgerUpdateKind,
     pub timestamp: TradeTimestamp,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub reference_id: Option<String>,
 }
 
@@ -1633,11 +2561,23 @@ impl LedgerUpdate {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        crate::constraints::check_text(&self.asset, Some(16), None, false)?;
+        crate::constraints::check_decimal(self.delta, 8, None, None)?;
+        if let Some(ref v) = self.reference_id {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: LedgerHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LedgerHistoryRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1645,7 +2585,12 @@ pub struct LedgerHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1656,15 +2601,30 @@ impl LedgerHistoryRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: LedgerHistoryBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LedgerHistoryBatch {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub entries: Vec<LedgerUpdate>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1675,13 +2635,31 @@ impl LedgerHistoryBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.entries {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OpenOrdersRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenOrdersRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
 }
 
@@ -1692,11 +2670,21 @@ impl OpenOrdersRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OpenOrdersSnapshot (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OpenOrdersSnapshot {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub orders: Vec<ExecutionReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1710,13 +2698,28 @@ impl OpenOrdersSnapshot {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.orders {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OrderHistoryRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderHistoryRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<TradeTimestamp>,
@@ -1724,7 +2727,12 @@ pub struct OrderHistoryRequest {
     pub end_time: Option<TradeTimestamp>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub cursor: Option<String>,
 }
 
@@ -1735,15 +2743,33 @@ impl OrderHistoryRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        if let Some(ref v) = self.cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: OrderHistoryBatch (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderHistoryBatch {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub orders: Vec<ExecutionReport>,
     pub has_more: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l64_u0",
+        serialize_with = "se_opt_text_l64_u0"
+    )]
     pub next_cursor: Option<String>,
 }
 
@@ -1754,6 +2780,18 @@ impl OrderHistoryBatch {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.orders {
+            item.validate()?;
+        }
+        if let Some(ref v) = self.next_cursor {
+            crate::constraints::check_text(v, Some(64), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: CapabilitiesRequest (channel: RequestResponse, priority: Medium)
@@ -1767,6 +2805,11 @@ impl CapabilitiesRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// Message: CapabilitiesResponse (channel: RequestResponse, priority: Medium)
@@ -1774,7 +2817,15 @@ impl CapabilitiesRequest {
 pub struct CapabilitiesResponse {
     pub schema_ids: Vec<u8>,
     pub paths: Vec<CapabilityPath>,
+    #[serde(
+        deserialize_with = "de_vec_text_l32_u1",
+        serialize_with = "se_vec_text_l32_u1"
+    )]
     pub symbols: Vec<Symbol>,
+    #[serde(
+        deserialize_with = "de_vec_text_l8_u0",
+        serialize_with = "se_vec_text_l8_u0"
+    )]
     pub intervals: Vec<CandleInterval>,
 }
 
@@ -1785,11 +2836,26 @@ impl CapabilitiesResponse {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        for item in &self.paths {
+            item.validate()?;
+        }
+        for item in &self.symbols {
+            crate::constraints::check_text(item, Some(32), None, true)?;
+        }
+        for item in &self.intervals {
+            crate::constraints::check_text(item, Some(8), None, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: PositionRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PositionRequest {
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
 }
 
@@ -1800,12 +2866,23 @@ impl PositionRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        Ok(())
+    }
 }
 
 /// Message: TradingSessionStatusRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TradingSessionStatusRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
 }
 
@@ -1816,13 +2893,27 @@ impl TradingSessionStatusRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: TradingSessionStatus (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TradingSessionStatus {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
+    #[serde(deserialize_with = "de_text_l16_u0", serialize_with = "se_text_l16_u0")]
     pub trading_session_id: String,
     pub status: TradingSessionStatusStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1839,11 +2930,21 @@ impl TradingSessionStatus {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        crate::constraints::check_text(&self.trading_session_id, Some(16), None, false)?;
+        Ok(())
+    }
 }
 
 /// Message: SecurityStatusRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SecurityStatusRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
 }
 
@@ -1854,11 +2955,18 @@ impl SecurityStatusRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: SecurityStatus (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SecurityStatus {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     pub status: SecurityStatusStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1875,15 +2983,31 @@ impl SecurityStatus {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: MassCancelRequest (channel: RequestResponse, priority: Medium)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MassCancelRequest {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub side: Option<Side>,
@@ -1898,15 +3022,40 @@ impl MassCancelRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: MassCancelReport (channel: RequestResponse, priority: Medium)
 /// Correlation field: cl_ord_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MassCancelReport {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub cl_ord_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "de_opt_text_l32_u1",
+        serialize_with = "se_opt_text_l32_u1"
+    )]
     pub symbol: Option<Symbol>,
     pub total_affected: u32,
     pub status: MassCancelReportStatus,
@@ -1922,11 +3071,27 @@ impl MassCancelReport {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(
+            &self.cl_ord_id,
+            Some(20),
+            Some("[A-Za-z0-9\\\\-]+"),
+            false,
+        )?;
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        if let Some(ref v) = self.symbol {
+            crate::constraints::check_text(v, Some(32), None, true)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: PriceLimitsRequest (channel: RequestResponse, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PriceLimitsRequest {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
 }
 
@@ -1937,11 +3102,18 @@ impl PriceLimitsRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        Ok(())
+    }
 }
 
 /// Message: PriceLimits (channel: StreamItem, priority: Medium)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PriceLimits {
+    #[serde(deserialize_with = "de_text_l32_u1", serialize_with = "se_text_l32_u1")]
     pub symbol: Symbol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lower_limit: Option<Price>,
@@ -1961,13 +3133,33 @@ impl PriceLimits {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.symbol, Some(32), None, true)?;
+        if let Some(ref v) = self.lower_limit {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.upper_limit {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        if let Some(ref v) = self.reference_price {
+            crate::constraints::check_decimal(v.0, 8, Some(0.0), None)?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: BatchRequest (channel: RequestResponse, priority: Medium)
 /// Correlation field: batch_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchRequest {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub batch_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub actions: Vec<BatchAction>,
 }
@@ -1981,13 +3173,28 @@ impl BatchRequest {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.batch_id, Some(20), Some("[A-Za-z0-9\\\\-]+"), false)?;
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.actions {
+            item.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Message: BatchReport (channel: RequestResponse, priority: Medium)
 /// Correlation field: batch_id
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchReport {
+    #[serde(
+        deserialize_with = "de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b",
+        serialize_with = "se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b"
+    )]
     pub batch_id: ClientOrderId,
+    #[serde(deserialize_with = "de_text_l32_u0", serialize_with = "se_text_l32_u0")]
     pub account: String,
     pub outcome: BatchReportOutcome,
     pub results: Vec<BatchResult>,
@@ -2003,4 +3210,406 @@ impl BatchReport {
     pub const PRIORITY: &str = "medium";
     /// Whether this message is idempotent
     pub const IDEMPOTENT: bool = true;
+
+    /// Reject fields that violate schema constraints.
+    pub fn validate(&self) -> Result<(), String> {
+        crate::constraints::check_text(&self.batch_id, Some(20), Some("[A-Za-z0-9\\\\-]+"), false)?;
+        crate::constraints::check_text(&self.account, Some(32), None, false)?;
+        for item in &self.results {
+            item.validate()?;
+        }
+        Ok(())
+    }
+}
+
+fn de_dec_p2_n_n<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+    let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_decimal(value, 2, None, None)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_dec_p2_n_n<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+    let value = crate::constraints::quantize_decimal(*value, 2, None, None)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_f64(value)
+}
+
+fn de_dec_p4_n_n<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+    let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_decimal(value, 4, None, None)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_dec_p4_n_n<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+    let value = crate::constraints::quantize_decimal(*value, 4, None, None)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_f64(value)
+}
+
+fn de_dec_p8_n_n<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+    let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_decimal(value, 8, None, None)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_dec_p8_n_n<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+    let value = crate::constraints::quantize_decimal(*value, 8, None, None)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_f64(value)
+}
+
+fn de_opt_dec_p8_n_n<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f64>, D::Error> {
+    let value = <Option<f64> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_decimal(*v, 8, None, None)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_dec_p8_n_n<S: serde::Serializer>(
+    value: &Option<f64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(v) => {
+            let q = crate::constraints::quantize_decimal(*v, 8, None, None)
+                .map_err(<S::Error as serde::ser::Error>::custom)?;
+            serializer.serialize_some(&q)
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
+fn de_opt_dec_p8_p0_n<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f64>, D::Error> {
+    let value = <Option<f64> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_decimal(*v, 8, Some(0.0), None)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_dec_p8_p0_n<S: serde::Serializer>(
+    value: &Option<f64>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match value {
+        Some(v) => {
+            let q = crate::constraints::quantize_decimal(*v, 8, Some(0.0), None)
+                .map_err(<S::Error as serde::ser::Error>::custom)?;
+            serializer.serialize_some(&q)
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
+fn de_text_l128_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(128), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l128_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(128), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_text_l16_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(16), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l16_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(16), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_opt_text_l16_u0<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(16), None, false)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l16_u0<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(16), None, false)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_opt_text_l16_u1<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(16), None, true)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l16_u1<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(16), None, true)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_text_l20_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(20), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l20_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(20), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(20), Some("[A-Za-z0-9\\\\-]+"), false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l20_u0_5b412d5a612d7a302d395c5c2d5d2b<S: serde::Serializer>(
+    value: &String,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(20), Some("[A-Za-z0-9\\\\-]+"), false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_text_l32_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(32), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l32_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(32), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_opt_text_l32_u0<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(32), None, false)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l32_u0<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(32), None, false)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_text_l32_u1<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(32), None, true)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l32_u1<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(32), None, true)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_opt_text_l32_u1<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(32), None, true)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l32_u1<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(32), None, true)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_vec_text_l32_u1<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    let value = <Vec<String> as serde::Deserialize>::deserialize(deserializer)?;
+    for v in &value {
+        crate::constraints::check_text(v, Some(32), None, true)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_vec_text_l32_u1<S: serde::Serializer>(
+    value: &Vec<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    for v in value {
+        crate::constraints::check_text(v, Some(32), None, true)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Vec<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_text_l3_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(3), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l3_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(3), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_opt_text_l48_u0<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(48), None, false)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l48_u0<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(48), None, false)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_opt_text_l64_u0<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = <Option<String> as serde::Deserialize>::deserialize(deserializer)?;
+    if let Some(ref v) = value {
+        crate::constraints::check_text(v, Some(64), None, false)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_opt_text_l64_u0<S: serde::Serializer>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if let Some(v) = value {
+        crate::constraints::check_text(v, Some(64), None, false)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Option<String> as serde::Serialize>::serialize(value, serializer)
+}
+
+fn de_text_l8_u0<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    crate::constraints::check_text(&value, Some(8), None, false)
+        .map_err(<D::Error as serde::de::Error>::custom)?;
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_text_l8_u0<S: serde::Serializer>(value: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    crate::constraints::check_text(value, Some(8), None, false)
+        .map_err(<S::Error as serde::ser::Error>::custom)?;
+    serializer.serialize_str(value)
+}
+
+fn de_vec_text_l8_u0<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error> {
+    let value = <Vec<String> as serde::Deserialize>::deserialize(deserializer)?;
+    for v in &value {
+        crate::constraints::check_text(v, Some(8), None, false)
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+    }
+    Ok(value)
+}
+
+#[allow(clippy::ptr_arg)]
+fn se_vec_text_l8_u0<S: serde::Serializer>(
+    value: &Vec<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    for v in value {
+        crate::constraints::check_text(v, Some(8), None, false)
+            .map_err(<S::Error as serde::ser::Error>::custom)?;
+    }
+    <Vec<String> as serde::Serialize>::serialize(value, serializer)
 }

@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use fig_core::codec;
 use fig_core::ext::{Extension, ExtensionTag};
-use fig_core::frame::{ControlSubtype, Frame, FrameType};
+use fig_core::frame::{Frame, FrameType};
 use fig_core::messages::*;
 use fig_core::session::{MemorySessionStore, Session, SessionStore};
 use fig_core::session_token::SessionSigner;
@@ -343,7 +343,7 @@ pub async fn handle_frame(
         return vec![err];
     }
     match frame.frame_type {
-        FrameType::Control => handle_control(frame),
+        FrameType::Control => handle_control(frame, session_id, conn).await,
         FrameType::Request => handle_request(frame, state).await,
         FrameType::Subscribe => handle_subscribe(frame, state, session_id, conn).await,
         FrameType::Unsubscribe => handle_unsubscribe(frame, state, conn).await,
@@ -358,26 +358,39 @@ pub async fn handle_frame(
     }
 }
 
-pub fn handle_control(frame: Frame) -> Vec<Frame> {
+/// `exec_id` is `string(max_len: 20)`. A dashed UUID does not fit.
+fn short_exec_id() -> String {
+    Uuid::new_v4().simple().to_string()[..20].to_string()
+}
+
+pub async fn handle_control(
+    frame: Frame,
+    session_id: Uuid,
+    conn: Option<Arc<FigConnection>>,
+) -> Vec<Frame> {
     if frame.payload.is_empty() {
         return vec![];
     }
 
-    let subtype = frame.payload[0];
-    match ControlSubtype::from_code(subtype) {
-        Some(ControlSubtype::Ping) => {
-            info!("PING received on channel {}", frame.channel_id);
-            let pong = Frame::pong();
-            vec![pong]
-        }
-        Some(ControlSubtype::Settings) => {
-            info!("SETTINGS received");
-            // Acknowledge with a SETTINGS response
-            let settings = Frame::control(ControlSubtype::Settings).with_seq(0);
-            vec![settings]
-        }
-        _ => {
-            warn!("Unhandled control subtype: 0x{:02x}", subtype);
+    // Dev mode accepts a refresh for any non-nil session. Everywhere else the
+    // token method is an empty secret, so a refresh cannot bypass auth.
+    let auth = if crate::auth::dev_open() {
+        fig_core::AuthMethod::None
+    } else {
+        fig_core::AuthMethod::Token(String::new())
+    };
+
+    let result = if let Some(conn) = conn {
+        conn.dispatch_control(&frame, &auth, &session_id).await
+    } else {
+        let mut mgr = fig_core::ChannelManager::new(true);
+        fig_core::handle_control_frame(&frame, &auth, &mut mgr, &session_id)
+            .map(|action| fig_core::control_action_frames(&action))
+    };
+    match result {
+        Ok(frames) => frames,
+        Err(e) => {
+            warn!("control frame on channel {}: {e}", frame.channel_id);
             vec![]
         }
     }
@@ -555,7 +568,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                             .get(&order.symbol)
                             .map(|p| p.qty.0)
                             .unwrap_or(0.0);
-                        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+                        let is_buy = matches!(order.side, Side::Buy);
                         let would_increase = (is_buy && pos >= 0.0) || (!is_buy && pos <= 0.0);
                         if pos.abs() < f64::EPSILON || would_increase {
                             drop(accounts);
@@ -580,7 +593,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     let report = ExecutionReport {
                         cl_ord_id: order.cl_ord_id.clone(),
                         order_id: fill.fill_id.clone(),
-                        exec_id: format!("EX-{}", Uuid::new_v4()),
+                        exec_id: short_exec_id(),
                         exec_type: fill.exec_type,
                         ord_status: fill.ord_status,
                         side: fill.side,
@@ -699,7 +712,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                         let report = ExecutionReport {
                             cl_ord_id: cancel.cl_ord_id.clone(),
                             order_id: format!("OX-{}", cancel.orig_cl_ord_id),
-                            exec_id: format!("EX-{}", Uuid::new_v4()),
+                            exec_id: short_exec_id(),
                             exec_type: ExecType::Canceled,
                             ord_status: OrdStatus::Canceled,
                             side: cancel.side,
@@ -779,7 +792,7 @@ pub async fn handle_trading_request(frame: Frame, state: &Arc<ExchangeState>) ->
                     let report = ExecutionReport {
                         cl_ord_id: replace.cl_ord_id.clone(),
                         order_id: fill.fill_id.clone(),
-                        exec_id: format!("EX-{}", Uuid::new_v4()),
+                        exec_id: short_exec_id(),
                         exec_type: fill.exec_type,
                         ord_status: fill.ord_status,
                         side: fill.side,

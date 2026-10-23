@@ -145,33 +145,39 @@ impl AuthMethod {
     pub fn verify_refresh_token(
         &self,
         token: &[u8],
-        _session_id: &Uuid,
+        session_id: &Uuid,
     ) -> Result<AuthToken, AuthError> {
+        // Invalid UTF-8 is rejected before the session check so a corrupt
+        // token is not reported as an unknown session.
+        let token_str = std::str::from_utf8(token).map_err(|_| AuthError::InvalidToken)?;
+        if session_id.is_nil() {
+            return Err(AuthError::InvalidSession);
+        }
         match self {
             AuthMethod::None => {
-                // In dev mode, accept any token
-                Ok(AuthToken::DevToken(
-                    String::from_utf8_lossy(token).to_string(),
-                ))
+                if token_str.is_empty() {
+                    return Err(AuthError::InvalidToken);
+                }
+                Ok(AuthToken::DevToken(token_str.to_string()))
             }
             AuthMethod::Token(expected) => {
-                let token_str = std::str::from_utf8(token).map_err(|_| AuthError::InvalidToken)?;
                 if verify_token(token_str, expected) {
                     Ok(AuthToken::BearerToken(token_str.to_string()))
                 } else {
                     Err(AuthError::TokenMismatch)
                 }
             }
-            AuthMethod::Mtls { .. } => {
-                // For mTLS, the token refresh relies on the certificate
-                // still being valid. Accept any non-empty token as a
-                // placeholder for now.
-                if token.is_empty() {
-                    Err(AuthError::InvalidToken)
+            AuthMethod::Mtls { fingerprint, .. } => {
+                if token_str.is_empty() {
+                    return Err(AuthError::InvalidToken);
+                }
+                // The refresh token must be the certificate fingerprint, not
+                // an attacker-chosen string. The returned bearer is that
+                // fingerprint, compared in constant time via `verify_token`.
+                if verify_token(token_str, fingerprint) {
+                    Ok(AuthToken::BearerToken(fingerprint.clone()))
                 } else {
-                    Ok(AuthToken::BearerToken(
-                        String::from_utf8_lossy(token).to_string(),
-                    ))
+                    Err(AuthError::TokenMismatch)
                 }
             }
         }
@@ -300,7 +306,8 @@ mod tests {
     #[test]
     fn test_verify_refresh_token_none_accepts_any() {
         let auth = AuthMethod::None;
-        let result = auth.verify_refresh_token(b"anything", &Uuid::nil());
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"anything", &session);
         assert!(result.is_ok());
         let token = result.unwrap();
         match token {
@@ -310,9 +317,17 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_refresh_token_nil_session() {
+        let auth = AuthMethod::None;
+        let result = auth.verify_refresh_token(b"anything", &Uuid::nil());
+        assert!(matches!(result, Err(AuthError::InvalidSession)));
+    }
+
+    #[test]
     fn test_verify_refresh_token_valid() {
         let auth = AuthMethod::Token("secret-key".into());
-        let result = auth.verify_refresh_token(b"secret-key", &Uuid::nil());
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"secret-key", &session);
         assert!(result.is_ok());
         let token = result.unwrap();
         assert_eq!(token.as_str(), "secret-key");
@@ -321,7 +336,8 @@ mod tests {
     #[test]
     fn test_verify_refresh_token_mismatch() {
         let auth = AuthMethod::Token("secret-key".into());
-        let result = auth.verify_refresh_token(b"wrong-key", &Uuid::nil());
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"wrong-key", &session);
         assert!(result.is_err());
         match result {
             Err(AuthError::TokenMismatch) => {}
@@ -332,7 +348,7 @@ mod tests {
     #[test]
     fn test_verify_refresh_token_invalid_utf8() {
         let auth = AuthMethod::Token("secret-key".into());
-        // Invalid UTF-8 bytes
+        // Invalid UTF-8 bytes are reported before the session check.
         let invalid = vec![0xFF, 0xFE, 0xFD];
         let result = auth.verify_refresh_token(&invalid, &Uuid::nil());
         assert!(result.is_err());
@@ -343,13 +359,25 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_refresh_token_mtls_nonempty() {
+    fn test_verify_refresh_token_mtls_fingerprint() {
         let auth = AuthMethod::Mtls {
             cn: "client".into(),
             fingerprint: "abc".into(),
         };
-        let result = auth.verify_refresh_token(b"mtls-token", &Uuid::nil());
-        assert!(result.is_ok());
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"abc", &session).unwrap();
+        assert_eq!(result.as_str(), "abc");
+    }
+
+    #[test]
+    fn test_verify_refresh_token_mtls_unbound() {
+        let auth = AuthMethod::Mtls {
+            cn: "client".into(),
+            fingerprint: "abc".into(),
+        };
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"mtls-token", &session);
+        assert!(matches!(result, Err(AuthError::TokenMismatch)));
     }
 
     #[test]
@@ -358,7 +386,8 @@ mod tests {
             cn: "client".into(),
             fingerprint: "abc".into(),
         };
-        let result = auth.verify_refresh_token(b"", &Uuid::nil());
+        let session = Uuid::new_v4();
+        let result = auth.verify_refresh_token(b"", &session);
         assert!(result.is_err());
         match result {
             Err(AuthError::InvalidToken) => {}

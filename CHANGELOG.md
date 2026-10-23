@@ -2,6 +2,17 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.10
+
+### Fixed
+- FSL `decimal64` and constrained `string` fields are enforced. CBOR uses checked serde; SBE decoders call `validate()`. The 8-byte slot stays IEEE-754 binary64, and a value already on scale keeps its bits. SPEC stays `1.0.0`.
+- The reference matcher rests `SellShort` and `SellShortExempt` on the ask. OUCH and ITCH encode those sides as `S`. `best_bid` / `best_ask` return the level's aggregate size. Non-finite or off-scale prices and quantities are rejected, as is a duplicate `cl_ord_id`.
+- `FigConnection` charges one send credit per application frame. A channel that has not received `FLOW_CONTROL` gets an implicit window of 65,536 on first send. The first peer grant replaces that window. `CONTROL` and `FLOW_CONTROL` are free, and inbound `FLOW_CONTROL` is applied before the application sees the stream. The exchange simulator dispatches CONTROL on the live path. `RESEND` is accepted and does not replay history.
+- mTLS `AUTH_REFRESH` accepts only a non-nil session whose token matches the certificate fingerprint.
+
+### Changed
+- Simulator `exec_id` values fit `string(max_len: 20)`.
+
 ## 1.4.9
 
 ### Changed

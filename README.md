@@ -324,7 +324,7 @@ cargo run -p xtask -- check-gateway     # gateway catalog completeness
 
 ## Status
 
-Latest release **1.4.9** ([release notes](CHANGELOG.md)). Protocol version remains
+Latest release **1.4.10** ([release notes](CHANGELOG.md)). Protocol version remains
 [SPEC.md](SPEC.md) 1.0.0 (*Stable*) and changes only on a wire break. The schema
 catalog is additive. Rust library APIs may still change between minor releases.
 There are no published crates.io / npm artifacts yet — build from source or vendor artifacts in

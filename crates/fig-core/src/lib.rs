@@ -74,6 +74,7 @@
 //! | [`rate_limit`] | Token-bucket per-channel rate limiting |
 //! | [`dos`] | Connection-level DoS guard and flood detection |
 //! | [`trace`] | W3C traceparent ↔ TRACE_ID extension |
+//! | [`constraints`] | FSL decimal64 and string constraint checks |
 //! | [`control`] | Control frame dispatcher: PING/PONG, AUTH_REFRESH, SEQ_RESET |
 //! | [`observability`] | Tracing spans and atomic metrics counters |
 
@@ -82,6 +83,7 @@ pub mod channel;
 pub mod channel_auth;
 pub mod codec;
 pub mod compression;
+pub mod constraints;
 pub mod control;
 pub mod dos;
 pub mod durable_session;

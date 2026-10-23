@@ -65,6 +65,14 @@ pub fn encode_stock_directory(stock: &str) -> Vec<u8> {
     buf
 }
 
+/// ITCH buy/sell indicator. Short sales are sells (`S`).
+fn side_byte(side: Side) -> u8 {
+    match side {
+        Side::Buy => b'B',
+        Side::Sell | Side::SellShort | Side::SellShortExempt => b'S',
+    }
+}
+
 /// Price-level update. `action`: `S` snapshot, `U` update, `D` delete.
 pub fn encode_price_level(
     stock: &str,
@@ -78,10 +86,7 @@ pub fn encode_price_level(
     buf.push(MSG_LEVEL);
     buf.extend_from_slice(&now_ns().to_be_bytes());
     buf.extend_from_slice(&pad(stock, STOCK_LEN));
-    buf.push(match side {
-        Side::Buy | Side::SellShortExempt => b'B',
-        Side::Sell | Side::SellShort => b'S',
-    });
+    buf.push(side_byte(side));
     buf.extend_from_slice(&price_to_wire(price).to_be_bytes());
     buf.extend_from_slice(&qty.to_be_bytes());
     buf.push(level);
@@ -96,10 +101,7 @@ pub fn encode_trade(stock: &str, price: f64, qty: u32, side: Side) -> Vec<u8> {
     buf.extend_from_slice(&pad(stock, STOCK_LEN));
     buf.extend_from_slice(&price_to_wire(price).to_be_bytes());
     buf.extend_from_slice(&qty.to_be_bytes());
-    buf.push(match side {
-        Side::Buy | Side::SellShortExempt => b'B',
-        Side::Sell | Side::SellShort => b'S',
-    });
+    buf.push(side_byte(side));
     buf
 }
 

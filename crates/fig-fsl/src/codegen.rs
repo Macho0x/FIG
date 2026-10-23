@@ -1,11 +1,114 @@
+use std::collections::BTreeMap;
+
 use crate::ast::*;
 
 /// Rust code generator from FSL AST
 pub struct RustCodegen;
 
+/// Constraint-aware emission state for one schema.
+struct GenCtx {
+    kinds: BTreeMap<String, TypeKind>,
+    helpers: BTreeMap<String, Helper>,
+}
+
+#[derive(Clone)]
+enum TypeKind {
+    /// `Price` / `Quantity`: checked by the newtype's serde impl.
+    Decimal(DecSpec),
+    /// `type X = String` with max_len, pattern, or uppercase.
+    Text(TextSpec),
+    /// Struct or message that emits `validate()`.
+    Node,
+}
+
+#[derive(Clone)]
+struct DecSpec {
+    precision: u8,
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+#[derive(Clone)]
+struct TextSpec {
+    max_len: Option<usize>,
+    pattern: Option<String>,
+    uppercase: bool,
+}
+
+impl TextSpec {
+    fn any(&self) -> bool {
+        self.max_len.is_some() || self.pattern.is_some() || self.uppercase
+    }
+}
+
+#[derive(Clone)]
+enum WireCheck {
+    Dec(DecSpec),
+    Text(TextSpec),
+}
+
+struct Helper {
+    check: WireCheck,
+    plain: bool,
+    opt: bool,
+    vec: bool,
+    opt_vec: bool,
+}
+
+impl GenCtx {
+    fn from_schema(schema: &Schema) -> Self {
+        let mut kinds = BTreeMap::new();
+        for td in &schema.type_defs {
+            if td.fields.is_some() {
+                kinds.insert(td.name.clone(), TypeKind::Node);
+            } else if matches!(td.name.as_str(), "Price" | "Quantity") {
+                kinds.insert(
+                    td.name.clone(),
+                    TypeKind::Decimal(dec_from(&td.constraints)),
+                );
+            } else if matches!(td.base_type, Some(BaseType::String)) {
+                let text = text_from(&td.constraints);
+                if text.any() {
+                    kinds.insert(td.name.clone(), TypeKind::Text(text));
+                }
+            }
+        }
+        for msg in &schema.messages {
+            kinds.insert(msg.name.clone(), TypeKind::Node);
+        }
+        for msg in &schema.messages {
+            for field in &msg.fields {
+                if let FieldType::InlineStruct(_) = &field.field_type {
+                    kinds.insert(
+                        format!("{}{}", msg.name, pascal_case(&field.name)),
+                        TypeKind::Node,
+                    );
+                }
+            }
+        }
+        for td in &schema.type_defs {
+            if let Some(fields) = &td.fields {
+                for field in fields {
+                    if let FieldType::InlineStruct(_) = &field.field_type {
+                        kinds.insert(
+                            format!("{}{}", td.name, pascal_case(&field.name)),
+                            TypeKind::Node,
+                        );
+                    }
+                }
+            }
+        }
+        Self {
+            kinds,
+            helpers: BTreeMap::new(),
+        }
+    }
+}
+
 impl RustCodegen {
     /// Generate Rust source code as a String
     pub fn generate(schema: &Schema) -> String {
+        let mut ctx = GenCtx::from_schema(schema);
         let mut out = String::new();
 
         // File header
@@ -29,7 +132,7 @@ impl RustCodegen {
         // Generate type definitions (aliases first, then structs)
         for td in &schema.type_defs {
             if td.fields.is_none() {
-                out.push_str(&Self::generate_type_alias(td));
+                out.push_str(&Self::generate_type_alias(td, &ctx));
                 out.push('\n');
             }
         }
@@ -37,7 +140,7 @@ impl RustCodegen {
         // Generate struct type definitions
         for td in &schema.type_defs {
             if td.fields.is_some() {
-                out.push_str(&Self::generate_struct_type(td));
+                out.push_str(&Self::generate_struct_type(td, &mut ctx));
                 out.push('\n');
             }
         }
@@ -101,7 +204,7 @@ impl RustCodegen {
         let mut struct_entries: Vec<_> = inline_struct_names.iter().collect();
         struct_entries.sort_by(|a, b| a.0.cmp(b.0));
         for (name, fields) in struct_entries {
-            out.push_str(&Self::generate_inline_struct(name, fields));
+            out.push_str(&Self::generate_inline_struct(name, fields, &mut ctx));
             out.push('\n');
         }
 
@@ -110,9 +213,11 @@ impl RustCodegen {
 
         // Generate message structs
         for msg in &schema.messages {
-            out.push_str(&Self::generate_message(msg, &named_types));
+            out.push_str(&Self::generate_message(msg, &named_types, &mut ctx));
             out.push('\n');
         }
+
+        out.push_str(&ctx.emit_helpers());
 
         while out.ends_with('\n') {
             out.pop();
@@ -121,7 +226,7 @@ impl RustCodegen {
         out
     }
 
-    fn generate_type_alias(td: &TypeDef) -> String {
+    fn generate_type_alias(td: &TypeDef, ctx: &GenCtx) -> String {
         let mut out = String::new();
 
         // Doc comment with constraints
@@ -147,15 +252,18 @@ impl RustCodegen {
             .unwrap_or_else(|| "String".to_string());
 
         if matches!(td.name.as_str(), "Price" | "Quantity") {
-            out.push_str("#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]\n");
-            out.push_str(&format!("pub struct {}(pub {});\n", td.name, rust_type));
+            out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+            out.push_str(&format!("pub struct {}(pub {});\n\n", td.name, rust_type));
+            if let Some(TypeKind::Decimal(spec)) = ctx.kinds.get(&td.name) {
+                out.push_str(&emit_decimal_newtype(&td.name, spec));
+            }
         } else {
             out.push_str(&format!("pub type {} = {};\n", td.name, rust_type));
         }
         out
     }
 
-    fn generate_struct_type(td: &TypeDef) -> String {
+    fn generate_struct_type(td: &TypeDef, ctx: &mut GenCtx) -> String {
         let mut out = String::new();
         let fields = td.fields.as_ref().unwrap();
 
@@ -164,16 +272,22 @@ impl RustCodegen {
         out.push_str(&format!("pub struct {} {{\n", td.name));
 
         for field in fields {
-            out.push_str(&Self::generate_field_decl(field, &td.name, "    "));
+            out.push_str(&Self::generate_field_decl(field, &td.name, "    ", ctx));
         }
 
-        out.push_str("}\n");
+        out.push_str("}\n\n");
+        out.push_str(&format!("impl {} {{\n", td.name));
+        out.push_str("    /// Reject fields that violate schema constraints.\n");
+        out.push_str("    pub fn validate(&self) -> Result<(), String> {\n");
+        out.push_str(&Self::validate_body(fields, &td.name, ctx));
+        out.push_str("    }\n}\n");
         out
     }
 
     fn generate_message(
         msg: &Message,
         enum_names: &std::collections::HashMap<String, EnumDef>,
+        ctx: &mut GenCtx,
     ) -> String {
         let mut out = String::new();
 
@@ -197,7 +311,7 @@ impl RustCodegen {
 
             for field in &msg.fields {
                 out.push_str(&Self::generate_message_field_decl(
-                    field, msg, enum_names, "    ",
+                    field, msg, enum_names, "    ", ctx,
                 ));
             }
 
@@ -224,12 +338,21 @@ impl RustCodegen {
             "    /// Whether this message is idempotent\n    pub const IDEMPOTENT: bool = {};\n",
             msg.idempotent
         ));
+        out.push_str("\n    /// Reject fields that violate schema constraints.\n");
+        out.push_str("    pub fn validate(&self) -> Result<(), String> {\n");
+        out.push_str(&Self::validate_body(&msg.fields, &msg.name, ctx));
+        out.push_str("    }\n");
         out.push_str("}\n");
 
         out
     }
 
-    fn generate_field_decl(field: &Field, parent_name: &str, indent: &str) -> String {
+    fn generate_field_decl(
+        field: &Field,
+        parent_name: &str,
+        indent: &str,
+        ctx: &mut GenCtx,
+    ) -> String {
         let mut out = String::new();
         let rust_type = match &field.field_type {
             FieldType::Enum(_) => Self::canonical_enum_name(&field.name, parent_name),
@@ -239,17 +362,18 @@ impl RustCodegen {
             _ => Self::field_type_to_rust(&field.field_type),
         };
 
+        if let Some(attr) = serde_attr(field, ctx) {
+            out.push_str(indent);
+            out.push_str(&attr);
+            out.push('\n');
+        }
         if field.optional {
             out.push_str(&format!(
-                "{}#[serde(skip_serializing_if = \"Option::is_none\")]\n",
-                indent
-            ));
-            out.push_str(&format!(
-                "{}pub {}: Option<{}>,\n",
-                indent, field.name, rust_type
+                "{indent}pub {}: Option<{rust_type}>,\n",
+                field.name
             ));
         } else {
-            out.push_str(&format!("{}pub {}: {},\n", indent, field.name, rust_type));
+            out.push_str(&format!("{indent}pub {}: {rust_type},\n", field.name));
         }
         out
     }
@@ -259,6 +383,7 @@ impl RustCodegen {
         msg: &Message,
         enum_names: &std::collections::HashMap<String, EnumDef>,
         indent: &str,
+        ctx: &mut GenCtx,
     ) -> String {
         let mut out = String::new();
 
@@ -273,23 +398,23 @@ impl RustCodegen {
                 }
             }
             FieldType::InlineStruct(_) => {
-                let struct_name = format!("{}{}", msg.name, pascal_case(&field.name));
-                struct_name
+                format!("{}{}", msg.name, pascal_case(&field.name))
             }
             _ => Self::field_type_to_rust(&field.field_type),
         };
 
+        if let Some(attr) = serde_attr(field, ctx) {
+            out.push_str(indent);
+            out.push_str(&attr);
+            out.push('\n');
+        }
         if field.optional {
             out.push_str(&format!(
-                "{}#[serde(skip_serializing_if = \"Option::is_none\")]\n",
-                indent
-            ));
-            out.push_str(&format!(
-                "{}pub {}: Option<{}>,\n",
-                indent, field.name, rust_type
+                "{indent}pub {}: Option<{rust_type}>,\n",
+                field.name
             ));
         } else {
-            out.push_str(&format!("{}pub {}: {},\n", indent, field.name, rust_type));
+            out.push_str(&format!("{indent}pub {}: {rust_type},\n", field.name));
         }
         out
     }
@@ -327,12 +452,17 @@ impl RustCodegen {
         out
     }
 
-    fn generate_inline_struct(name: &str, fields: &[Field]) -> String {
+    fn generate_inline_struct(name: &str, fields: &[Field], ctx: &mut GenCtx) -> String {
         let mut out = String::new();
         out.push_str("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n");
         out.push_str(&format!("pub struct {} {{\n", name));
         for field in fields {
             let rust_type = Self::field_type_to_rust(&field.field_type);
+            if let Some(attr) = serde_attr(field, ctx) {
+                out.push_str("    ");
+                out.push_str(&attr);
+                out.push('\n');
+            }
             if field.optional {
                 out.push_str(&format!("    pub {}: Option<{}>,\n", field.name, rust_type));
             } else {
@@ -356,8 +486,21 @@ impl RustCodegen {
             .map(|f| format!("{}", Self::field_encoded_size(&f.field_type)))
             .collect();
         out.push_str(&sizes.join(" + "));
-        out.push_str("\n}\n");
+        out.push_str("\n\n");
+        out.push_str("    /// Reject fields that violate schema constraints.\n");
+        out.push_str("    pub fn validate(&self) -> Result<(), String> {\n");
+        out.push_str(&Self::validate_body(fields, name, ctx));
+        out.push_str("    }\n}\n");
         out
+    }
+
+    fn validate_body(fields: &[Field], parent: &str, ctx: &GenCtx) -> String {
+        let mut body = String::new();
+        for field in fields {
+            body.push_str(&validate_field(field, parent, "self", 2, ctx));
+        }
+        body.push_str("        Ok(())\n");
+        body
     }
 
     // ── Type mapping helpers ──────────────────────────────────
@@ -484,6 +627,441 @@ impl RustCodegen {
             Priority::Low => "low",
         }
     }
+}
+
+fn dec_from(cs: &[Constraint]) -> DecSpec {
+    let mut spec = DecSpec {
+        precision: 0,
+        min: None,
+        max: None,
+    };
+    for c in cs {
+        match c {
+            Constraint::Precision(p) => spec.precision = *p,
+            Constraint::Min(v) => spec.min = json_f64(v),
+            Constraint::Max(v) => spec.max = json_f64(v),
+            _ => {}
+        }
+    }
+    spec
+}
+
+fn text_from(cs: &[Constraint]) -> TextSpec {
+    let mut spec = TextSpec {
+        max_len: None,
+        pattern: None,
+        uppercase: false,
+    };
+    for c in cs {
+        match c {
+            Constraint::MaxLen(n) => spec.max_len = Some(*n),
+            Constraint::Pattern(p) => spec.pattern = Some(p.clone()),
+            Constraint::Uppercase(b) => spec.uppercase = *b,
+            _ => {}
+        }
+    }
+    spec
+}
+
+fn json_f64(v: &serde_json::Value) -> Option<f64> {
+    v.as_f64()
+        .or_else(|| v.as_i64().map(|i| i as f64))
+        .or_else(|| v.as_u64().map(|u| u as f64))
+}
+
+fn opt_f64_lit(v: Option<f64>) -> String {
+    match v {
+        None => "None".to_string(),
+        Some(x) if x.is_finite() && x.fract() == 0.0 && x.abs() < 1e15 => format!("Some({x:.1})"),
+        Some(x) => format!("Some({x:?})"),
+    }
+}
+
+fn bound_tag(v: Option<f64>) -> String {
+    match v {
+        None => "n".to_string(),
+        Some(x) if x.is_finite() && x.fract() == 0.0 && (0.0..1e16).contains(&x) => {
+            format!("p{}", x as i64)
+        }
+        Some(x) if x.is_finite() && x.fract() == 0.0 && x < 0.0 => format!("m{}", (-x) as i64),
+        Some(x) => format!("b{}", x.to_bits()),
+    }
+}
+
+fn helper_stem(check: &WireCheck) -> String {
+    match check {
+        WireCheck::Dec(spec) => format!(
+            "dec_p{}_{}_{}",
+            spec.precision,
+            bound_tag(spec.min),
+            bound_tag(spec.max)
+        ),
+        WireCheck::Text(spec) => {
+            let mut stem = format!(
+                "text_l{}_u{}",
+                spec.max_len.unwrap_or(0),
+                u8::from(spec.uppercase)
+            );
+            if let Some(pattern) = &spec.pattern {
+                // Hex keeps the name snake_case and distinct for any pattern bytes.
+                stem.push('_');
+                for byte in pattern.as_bytes() {
+                    stem.push_str(&format!("{byte:02x}"));
+                }
+            }
+            stem
+        }
+    }
+}
+
+fn text_args(spec: &TextSpec) -> String {
+    let max_len = match spec.max_len {
+        Some(n) => format!("Some({n})"),
+        None => "None".to_string(),
+    };
+    let pattern = match &spec.pattern {
+        Some(p) => format!("Some({p:?})"),
+        None => "None".to_string(),
+    };
+    format!("{max_len}, {pattern}, {}", spec.uppercase)
+}
+
+fn dec_args(spec: &DecSpec) -> String {
+    format!(
+        "{}, {}, {}",
+        spec.precision,
+        opt_f64_lit(spec.min),
+        opt_f64_lit(spec.max)
+    )
+}
+
+fn direct_wire(ft: &FieldType, ctx: &GenCtx) -> Option<WireCheck> {
+    match ft {
+        FieldType::Named(name) => match ctx.kinds.get(name) {
+            Some(TypeKind::Text(spec)) => Some(WireCheck::Text(spec.clone())),
+            _ => None,
+        },
+        FieldType::InlineBase(BaseType::Decimal64, cs) => Some(WireCheck::Dec(dec_from(cs))),
+        FieldType::InlineBase(BaseType::String, cs) => {
+            let spec = text_from(cs);
+            if spec.any() {
+                Some(WireCheck::Text(spec))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn serde_target(ft: &FieldType, ctx: &GenCtx) -> Option<(WireCheck, bool)> {
+    match ft {
+        FieldType::List(inner) => direct_wire(inner, ctx).map(|c| (c, true)),
+        other => direct_wire(other, ctx).map(|c| (c, false)),
+    }
+}
+
+fn serde_attr(field: &Field, ctx: &mut GenCtx) -> Option<String> {
+    let target = serde_target(&field.field_type, ctx);
+    if target.is_none() && !field.optional {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if field.optional {
+        parts.push("skip_serializing_if = \"Option::is_none\"".to_string());
+        // `deserialize_with` disables serde's missing-Option-is-None rule.
+        // `default` restores it for constrained optional fields only.
+        if target.is_some() {
+            parts.push("default".to_string());
+        }
+    }
+    if let Some((check, is_vec)) = target {
+        let (de, se) = note_helper(ctx, check, field.optional, is_vec);
+        parts.push(format!("deserialize_with = \"{de}\""));
+        parts.push(format!("serialize_with = \"{se}\""));
+    }
+    Some(format!("#[serde({})]", parts.join(", ")))
+}
+
+fn note_helper(
+    ctx: &mut GenCtx,
+    check: WireCheck,
+    optional: bool,
+    is_vec: bool,
+) -> (String, String) {
+    let stem = helper_stem(&check);
+    let helper = ctx.helpers.entry(stem.clone()).or_insert_with(|| Helper {
+        check,
+        plain: false,
+        opt: false,
+        vec: false,
+        opt_vec: false,
+    });
+    let prefix = match (optional, is_vec) {
+        (true, true) => {
+            helper.opt_vec = true;
+            "opt_vec_"
+        }
+        (true, false) => {
+            helper.opt = true;
+            "opt_"
+        }
+        (false, true) => {
+            helper.vec = true;
+            "vec_"
+        }
+        (false, false) => {
+            helper.plain = true;
+            ""
+        }
+    };
+    (format!("de_{prefix}{stem}"), format!("se_{prefix}{stem}"))
+}
+
+fn validate_field(field: &Field, parent: &str, owner: &str, depth: usize, ctx: &GenCtx) -> String {
+    let expr = format!("{owner}.{}", field.name);
+    if field.optional {
+        let inner = validate_type(
+            &field.field_type,
+            parent,
+            &field.name,
+            "v",
+            true,
+            depth + 1,
+            ctx,
+        );
+        if inner.is_empty() {
+            return String::new();
+        }
+        let pad = "    ".repeat(depth);
+        format!("{pad}if let Some(ref v) = {expr} {{\n{inner}{pad}}}\n")
+    } else {
+        validate_type(
+            &field.field_type,
+            parent,
+            &field.name,
+            &expr,
+            false,
+            depth,
+            ctx,
+        )
+    }
+}
+
+fn validate_type(
+    ft: &FieldType,
+    parent: &str,
+    field_name: &str,
+    expr: &str,
+    by_ref: bool,
+    depth: usize,
+    ctx: &GenCtx,
+) -> String {
+    let _ = (parent, field_name);
+    let pad = "    ".repeat(depth);
+    match ft {
+        FieldType::Named(name) => match ctx.kinds.get(name) {
+            Some(TypeKind::Decimal(spec)) => {
+                format!(
+                    "{pad}crate::constraints::check_decimal({expr}.0, {})?;\n",
+                    dec_args(spec)
+                )
+            }
+            Some(TypeKind::Text(spec)) => {
+                let text_expr = if by_ref {
+                    expr.to_string()
+                } else {
+                    format!("&{expr}")
+                };
+                format!(
+                    "{pad}crate::constraints::check_text({text_expr}, {})?;\n",
+                    text_args(spec)
+                )
+            }
+            Some(TypeKind::Node) => format!("{pad}{expr}.validate()?;\n"),
+            None => String::new(),
+        },
+        FieldType::InlineBase(BaseType::Decimal64, cs) => {
+            let value = if by_ref {
+                format!("*{expr}")
+            } else {
+                expr.to_string()
+            };
+            format!(
+                "{pad}crate::constraints::check_decimal({value}, {})?;\n",
+                dec_args(&dec_from(cs))
+            )
+        }
+        FieldType::InlineBase(BaseType::String, cs) => {
+            let spec = text_from(cs);
+            if !spec.any() {
+                return String::new();
+            }
+            let text_expr = if by_ref {
+                expr.to_string()
+            } else {
+                format!("&{expr}")
+            };
+            format!(
+                "{pad}crate::constraints::check_text({text_expr}, {})?;\n",
+                text_args(&spec)
+            )
+        }
+        FieldType::List(inner) => {
+            let body = validate_type(inner, parent, field_name, "item", true, depth + 1, ctx);
+            if body.is_empty() {
+                return String::new();
+            }
+            format!("{pad}for item in &{expr} {{\n{body}{pad}}}\n")
+        }
+        FieldType::InlineStruct(_) => format!("{pad}{expr}.validate()?;\n"),
+        _ => String::new(),
+    }
+}
+
+fn emit_decimal_newtype(name: &str, spec: &DecSpec) -> String {
+    let args = dec_args(spec);
+    format!(
+        "impl serde::Serialize for {name} {{\n\
+             fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n\
+                 let value = crate::constraints::quantize_decimal(self.0, {args})\n\
+                     .map_err(<S::Error as serde::ser::Error>::custom)?;\n\
+                 serializer.serialize_f64(value)\n\
+             }}\n\
+         }}\n\n\
+         impl<'de> serde::Deserialize<'de> for {name} {{\n\
+             fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n\
+                 let value = <f64 as serde::Deserialize>::deserialize(deserializer)?;\n\
+                 let value = crate::constraints::check_decimal(value, {args})\n\
+                     .map_err(<D::Error as serde::de::Error>::custom)?;\n\
+                 Ok(Self(value))\n\
+             }}\n\
+         }}\n"
+    )
+}
+
+impl GenCtx {
+    fn emit_helpers(&self) -> String {
+        let mut out = String::new();
+        for (stem, helper) in &self.helpers {
+            if helper.plain {
+                out.push_str(&emit_plain(stem, &helper.check));
+            }
+            if helper.opt {
+                out.push_str(&emit_opt(stem, &helper.check));
+            }
+            if helper.vec {
+                out.push_str(&emit_vec(stem, &helper.check));
+            }
+            if helper.opt_vec {
+                out.push_str(&emit_opt_vec(stem, &helper.check));
+            }
+        }
+        out
+    }
+}
+
+fn rust_value_ty(check: &WireCheck) -> &'static str {
+    match check {
+        WireCheck::Dec(_) => "f64",
+        WireCheck::Text(_) => "String",
+    }
+}
+
+fn emit_plain(stem: &str, check: &WireCheck) -> String {
+    let ty = rust_value_ty(check);
+    let de_body = match check {
+        WireCheck::Text(spec) => format!(
+            "        crate::constraints::check_text(&value, {}).map_err(<D::Error as serde::de::Error>::custom)?;\n        Ok(value)\n",
+            text_args(spec)
+        ),
+        WireCheck::Dec(spec) => format!(
+            "        crate::constraints::check_decimal(value, {}).map_err(<D::Error as serde::de::Error>::custom)\n",
+            dec_args(spec)
+        ),
+    };
+    let se_body = match check {
+        WireCheck::Text(spec) => format!(
+            "        crate::constraints::check_text(value, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n        serializer.serialize_str(value)\n",
+            text_args(spec)
+        ),
+        WireCheck::Dec(spec) => format!(
+            "        let value = crate::constraints::quantize_decimal(*value, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n        serializer.serialize_f64(value)\n",
+            dec_args(spec)
+        ),
+    };
+    format!(
+        "fn de_{stem}<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<{ty}, D::Error> {{\n    let value = <{ty} as serde::Deserialize>::deserialize(deserializer)?;\n{de_body}}}\n\n#[allow(clippy::ptr_arg)]\nfn se_{stem}<S: serde::Serializer>(value: &{ty}, serializer: S) -> Result<S::Ok, S::Error> {{\n{se_body}}}\n\n"
+    )
+}
+
+fn emit_opt(stem: &str, check: &WireCheck) -> String {
+    let ty = rust_value_ty(check);
+    let check_de = match check {
+        WireCheck::Text(spec) => format!("crate::constraints::check_text(v, {})", text_args(spec)),
+        WireCheck::Dec(spec) => {
+            format!("crate::constraints::check_decimal(*v, {})", dec_args(spec))
+        }
+    };
+    let se_body = match check {
+        WireCheck::Text(spec) => format!(
+            "    if let Some(v) = value {{\n        crate::constraints::check_text(v, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n    }}\n    <Option<{ty}> as serde::Serialize>::serialize(value, serializer)\n",
+            text_args(spec)
+        ),
+        WireCheck::Dec(spec) => format!(
+            "    match value {{\n        Some(v) => {{\n            let q = crate::constraints::quantize_decimal(*v, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n            serializer.serialize_some(&q)\n        }}\n        None => serializer.serialize_none(),\n    }}\n",
+            dec_args(spec)
+        ),
+    };
+    format!(
+        "fn de_opt_{stem}<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<{ty}>, D::Error> {{\n    let value = <Option<{ty}> as serde::Deserialize>::deserialize(deserializer)?;\n    if let Some(ref v) = value {{\n        {check_de}.map_err(<D::Error as serde::de::Error>::custom)?;\n    }}\n    Ok(value)\n}}\n\n#[allow(clippy::ptr_arg)]\nfn se_opt_{stem}<S: serde::Serializer>(value: &Option<{ty}>, serializer: S) -> Result<S::Ok, S::Error> {{\n{se_body}}}\n\n"
+    )
+}
+
+fn emit_vec(stem: &str, check: &WireCheck) -> String {
+    let ty = rust_value_ty(check);
+    let check_one = match check {
+        WireCheck::Text(spec) => format!("crate::constraints::check_text(v, {})", text_args(spec)),
+        WireCheck::Dec(spec) => {
+            format!("crate::constraints::check_decimal(*v, {})", dec_args(spec))
+        }
+    };
+    let se_body = match check {
+        WireCheck::Text(spec) => format!(
+            "    for v in value {{\n        crate::constraints::check_text(v, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n    }}\n    <Vec<{ty}> as serde::Serialize>::serialize(value, serializer)\n",
+            text_args(spec)
+        ),
+        WireCheck::Dec(spec) => format!(
+            "    let mut quantized = Vec::with_capacity(value.len());\n    for v in value {{\n        quantized.push(crate::constraints::quantize_decimal(*v, {}).map_err(<S::Error as serde::ser::Error>::custom)?);\n    }}\n    <Vec<{ty}> as serde::Serialize>::serialize(&quantized, serializer)\n",
+            dec_args(spec)
+        ),
+    };
+    format!(
+        "fn de_vec_{stem}<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<{ty}>, D::Error> {{\n    let value = <Vec<{ty}> as serde::Deserialize>::deserialize(deserializer)?;\n    for v in &value {{\n        {check_one}.map_err(<D::Error as serde::de::Error>::custom)?;\n    }}\n    Ok(value)\n}}\n\n#[allow(clippy::ptr_arg)]\nfn se_vec_{stem}<S: serde::Serializer>(value: &Vec<{ty}>, serializer: S) -> Result<S::Ok, S::Error> {{\n{se_body}}}\n\n"
+    )
+}
+
+fn emit_opt_vec(stem: &str, check: &WireCheck) -> String {
+    let ty = rust_value_ty(check);
+    let check_one = match check {
+        WireCheck::Text(spec) => format!("crate::constraints::check_text(v, {})", text_args(spec)),
+        WireCheck::Dec(spec) => {
+            format!("crate::constraints::check_decimal(*v, {})", dec_args(spec))
+        }
+    };
+    let se_body = match check {
+        WireCheck::Text(spec) => format!(
+            "    if let Some(items) = value {{\n        for v in items {{\n            crate::constraints::check_text(v, {}).map_err(<S::Error as serde::ser::Error>::custom)?;\n        }}\n    }}\n    <Option<Vec<{ty}>> as serde::Serialize>::serialize(value, serializer)\n",
+            text_args(spec)
+        ),
+        WireCheck::Dec(spec) => format!(
+            "    match value {{\n        Some(items) => {{\n            let mut quantized = Vec::with_capacity(items.len());\n            for v in items {{\n                quantized.push(crate::constraints::quantize_decimal(*v, {}).map_err(<S::Error as serde::ser::Error>::custom)?);\n            }}\n            serializer.serialize_some(&quantized)\n        }}\n        None => serializer.serialize_none(),\n    }}\n",
+            dec_args(spec)
+        ),
+    };
+    format!(
+        "fn de_opt_vec_{stem}<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<{ty}>>, D::Error> {{\n    let value = <Option<Vec<{ty}>> as serde::Deserialize>::deserialize(deserializer)?;\n    if let Some(ref items) = value {{\n        for v in items {{\n            {check_one}.map_err(<D::Error as serde::de::Error>::custom)?;\n        }}\n    }}\n    Ok(value)\n}}\n\n#[allow(clippy::ptr_arg)]\nfn se_opt_vec_{stem}<S: serde::Serializer>(value: &Option<Vec<{ty}>>, serializer: S) -> Result<S::Ok, S::Error> {{\n{se_body}}}\n\n"
+    )
 }
 
 /// Convert a snake_case identifier to PascalCase

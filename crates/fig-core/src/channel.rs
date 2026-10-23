@@ -7,7 +7,13 @@
 //! Each channel has a mode (stateless, session, or affinity) and
 //! tracks per-channel sequence numbers for ordering and deduplication.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Credits granted on a channel that has not yet received FLOW_CONTROL.
+///
+/// Peers that never advertise a window keep this implicit budget, refilled
+/// when it hits zero. The first inbound FLOW_CONTROL replaces it.
+pub const DEFAULT_FLOW_WINDOW: u32 = 65_536;
 
 use crate::error::ChannelError;
 use crate::session::Session;
@@ -218,6 +224,8 @@ impl Channel {
 /// 3, 7, 11, 15, … (server uni).
 pub struct ChannelManager {
     channels: HashMap<u16, Channel>,
+    /// Channels whose peer has sent at least one FLOW_CONTROL frame.
+    peer_flow: HashSet<u16>,
     next_channel_id: u16,
     is_server: bool,
 }
@@ -232,8 +240,75 @@ impl ChannelManager {
     pub fn new(is_server: bool) -> Self {
         Self {
             channels: HashMap::new(),
+            peer_flow: HashSet::new(),
             next_channel_id: 1, // 0 reserved for control
             is_server,
+        }
+    }
+
+    /// Ensure `channel_id` exists and, unless the peer owns the window, has
+    /// [`DEFAULT_FLOW_WINDOW`] credits.
+    ///
+    /// [`Channel::new`] still starts at zero credits. The live send path calls
+    /// this before taking a credit so existing credit-primitive tests stay valid.
+    pub fn ensure_window(&mut self, channel_id: u16) {
+        let peer = self.peer_flow.contains(&channel_id);
+        match self.channels.entry(channel_id) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let ch = entry.get_mut();
+                if ch.initial_credits == 0 && !peer {
+                    ch.grant_credits(DEFAULT_FLOW_WINDOW);
+                }
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let mut ch = Channel::new(channel_id, ChannelMode::Session, None);
+                if !peer {
+                    ch.grant_credits(DEFAULT_FLOW_WINDOW);
+                }
+                entry.insert(ch);
+            }
+        }
+    }
+
+    /// Replace the implicit window with a peer FLOW_CONTROL grant.
+    ///
+    /// The first grant zeroes the implicit budget. Later grants add credits.
+    /// A zero grant stops the sender until a later non-zero grant arrives.
+    pub fn apply_flow_credit(&mut self, channel_id: u16, credits: u32) {
+        let first = self.peer_flow.insert(channel_id);
+        let ch = self
+            .channels
+            .entry(channel_id)
+            .or_insert_with(|| Channel::new(channel_id, ChannelMode::Session, None));
+        if first {
+            ch.credits_available = 0;
+            ch.credits_granted = 0;
+            ch.initial_credits = 0;
+        }
+        if credits > 0 {
+            ch.grant_credits(credits);
+        }
+    }
+
+    /// Take one send credit, refilling the implicit window until the peer
+    /// sends FLOW_CONTROL.
+    pub fn take_send_credit(&mut self, channel_id: u16) -> Result<(), ChannelError> {
+        self.ensure_window(channel_id);
+        let peer = self.peer_flow.contains(&channel_id);
+        let ch = self
+            .channels
+            .get_mut(&channel_id)
+            .ok_or(ChannelError::ChannelNotFound(channel_id))?;
+        if ch.credits_available == 0 && !peer {
+            ch.grant_credits(DEFAULT_FLOW_WINDOW);
+        }
+        ch.consume_credit()
+    }
+
+    /// Return a credit reserved by [`Self::take_send_credit`] after a failed write.
+    pub fn refund_send_credit(&mut self, channel_id: u16) {
+        if let Some(ch) = self.channels.get_mut(&channel_id) {
+            ch.credits_available = ch.credits_available.saturating_add(1);
         }
     }
 
@@ -390,6 +465,7 @@ impl ChannelManager {
         };
         Self {
             channels,
+            peer_flow: HashSet::new(),
             next_channel_id: if next_channel_id == 0 {
                 1
             } else {

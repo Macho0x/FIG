@@ -108,6 +108,14 @@ fn price_to_wire(px: f64) -> u64 {
     (px * PRICE_SCALE).round() as u64
 }
 
+/// OUCH buy/sell byte. Short sales are sells (`S`), not bids.
+fn side_byte(side: Side) -> u8 {
+    match side {
+        Side::Buy => b'B',
+        Side::Sell | Side::SellShort | Side::SellShortExempt => b'S',
+    }
+}
+
 /// Parse one FIG-OUCH inbound payload (SoupBin unsequenced body).
 pub fn parse_inbound(buf: &[u8]) -> Option<OuchInbound> {
     if buf.is_empty() {
@@ -178,10 +186,7 @@ pub fn encode_enter(
     let mut buf = Vec::new();
     buf.push(MSG_ENTER);
     buf.extend_from_slice(&pad(token, TOKEN_LEN));
-    buf.push(match side {
-        Side::Buy | Side::SellShortExempt => b'B',
-        Side::Sell | Side::SellShort => b'S',
-    });
+    buf.push(side_byte(side));
     buf.extend_from_slice(&shares.to_be_bytes());
     buf.extend_from_slice(&pad(stock, STOCK_LEN));
     buf.extend_from_slice(&price_to_wire(price).to_be_bytes());
@@ -206,10 +211,7 @@ pub fn encode_accepted(token: &str, side: Side, shares: u32, stock: &str, price:
     buf.push(MSG_ACCEPTED);
     buf.extend_from_slice(&now_ns().to_be_bytes());
     buf.extend_from_slice(&pad(token, TOKEN_LEN));
-    buf.push(match side {
-        Side::Buy | Side::SellShortExempt => b'B',
-        Side::Sell | Side::SellShort => b'S',
-    });
+    buf.push(side_byte(side));
     buf.extend_from_slice(&shares.to_be_bytes());
     buf.extend_from_slice(&pad(stock, STOCK_LEN));
     buf.extend_from_slice(&price_to_wire(price).to_be_bytes());

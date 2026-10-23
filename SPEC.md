@@ -334,6 +334,19 @@ Negotiated at STREAM_OPEN via the CHANNEL_MODE extension:
 | Pub/Sub (subscribe) | SUBSCRIBE → STREAM_ITEM × N | Market data |
 | Pub/Sub (publish) | STREAM_ITEM or ONE_WAY with ROUTING_KEY | Event dissemination |
 
+### 7.4 Message credits
+
+`FLOW_CONTROL` carries `FLOW_CONTROL_CREDIT` (`uint32`): how many further
+application messages the sender may transmit on that channel. `CONTROL` and
+`FLOW_CONTROL` do not consume a credit.
+
+The reference `FigConnection` opens an implicit window of 65,536 application
+messages on the first send to a channel whose peer has not sent
+`FLOW_CONTROL`. The first `FLOW_CONTROL` replaces that window, including a
+grant of 0, which stops the sender. Later grants add. A peer that never sends
+`FLOW_CONTROL` is refilled when the implicit window hits 0. This release does
+not advertise remaining credits back to the peer.
+
 ---
 
 ## 8. Session Model
@@ -752,6 +765,16 @@ numerics and enums are written value-first with a trailing presence byte when
 optional; lists are `u32 count`, then per item `u32 len + body` for variable-length
 items (strings, structs, messages) and raw big-endian bytes for fixed-width
 scalars.
+
+**`decimal64` and constrained strings.** A `decimal64` value is IEEE-754
+binary64 on the wire (SBE and CBOR). `precision`, `min`, and `max` do not
+change the 8-byte slot. The Rust reference decoder rejects non-finite values,
+values off the declared scale, and values outside `min`/`max`. Serialize
+quantizes to `precision`, then checks the bounds, and keeps the original bits
+when the value is already on scale. `string(max_len, pattern, uppercase)`
+stays UTF-8; the same decoder rejects over-length text, a pattern mismatch,
+and lowercase text when `uppercase` is set. This is a validation rule. SPEC
+stays `1.0.0`.
 
 Full multi-language serializer and native TREE client parity: [TODO.md §16](TODO.md).
 Schema change policy: [ADR 0004](docs/adr/0004-fsl-single-source-of-truth.md).

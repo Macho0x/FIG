@@ -1215,7 +1215,7 @@ Remaining SDK polish: [§0.3](#03-p2--reference-client-and-sdk-polish).
 | ✅ | Channel open/close/remove | — | 15 tests |
 | ✅ | Sequence numbers (increment, wraparound, duplicate detection) | — | Spec-compliant |
 | ✅ | TREE stream ID mapping (client/server parity) | — | `channel_id * 4 + offset` |
-| ✅ | Credit-based flow control | — | Per-channel credits, consume/grant, exhaustion error |
+| ✅ | Credit-based flow control | — | `FigConnection` charges application sends. Implicit window 65,536 until the peer sends `FLOW_CONTROL`; that first grant replaces the window |
 | ✅ | Channel reconstruction after reconnect | — | ChannelManager::reconstruct from stored session, reopen TREE streams |
 | ✅ | Channel ID leak prevention on stream reset | High | force_close_channel on StreamReset/StreamStopped in FigConnection |
 | ✅ | Unidirectional channels | Low | `ChannelDirection` + `open_unidirectional_channel` + direction checks |

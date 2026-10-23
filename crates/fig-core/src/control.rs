@@ -112,6 +112,33 @@ pub fn handle_control_frame(
     }
 }
 
+/// Turn a [`ControlAction`] into frames the caller should write.
+///
+/// RESEND is accepted and produces no frames: the reference stack does not
+/// keep a historical frame log, and a missing buffer is not a connection error.
+pub fn control_action_frames(action: &ControlAction) -> Vec<Frame> {
+    match action {
+        ControlAction::SendPong => vec![Frame::pong()],
+        ControlAction::SendSettings => {
+            vec![Frame::control(ControlSubtype::Settings).with_seq(0)]
+        }
+        ControlAction::CloseConnection { reason } => vec![Frame::goaway(reason.clone())],
+        ControlAction::ResendRange {
+            channel_id,
+            begin_seq,
+            end_seq,
+        } => {
+            tracing::warn!(
+                "RESEND {begin_seq}..{end_seq} on channel {channel_id} accepted with no retransmit buffer"
+            );
+            vec![]
+        }
+        ControlAction::RefreshAuth { .. }
+        | ControlAction::ResetSeq { .. }
+        | ControlAction::NoAction => vec![],
+    }
+}
+
 // ─── Payload Parsing ────────────────────────────────────────────
 
 /// Parse the data portion of a SEQ_RESET payload.
@@ -351,7 +378,8 @@ mod tests {
         let frame = Frame::auth_refresh(b"valid-token".to_vec());
         let mut mgr = ChannelManager::new(false);
 
-        let action = handle_control_frame(&frame, &auth, &mut mgr, &Uuid::nil()).unwrap();
+        let session = Uuid::new_v4();
+        let action = handle_control_frame(&frame, &auth, &mut mgr, &session).unwrap();
         assert_eq!(
             action,
             ControlAction::RefreshAuth {
@@ -381,7 +409,8 @@ mod tests {
         let frame = Frame::auth_refresh(b"wrong-token".to_vec());
         let mut mgr = ChannelManager::new(false);
 
-        let result = handle_control_frame(&frame, &auth, &mut mgr, &Uuid::nil());
+        let session = Uuid::new_v4();
+        let result = handle_control_frame(&frame, &auth, &mut mgr, &session);
         assert!(result.is_err());
         match result {
             Err(ControlError::Auth(AuthError::TokenMismatch)) => {}
@@ -395,7 +424,8 @@ mod tests {
         let frame = Frame::auth_refresh(b"any-token-works".to_vec());
         let mut mgr = ChannelManager::new(false);
 
-        let action = handle_control_frame(&frame, &auth, &mut mgr, &Uuid::nil()).unwrap();
+        let session = Uuid::new_v4();
+        let action = handle_control_frame(&frame, &auth, &mut mgr, &session).unwrap();
         assert_eq!(
             action,
             ControlAction::RefreshAuth {

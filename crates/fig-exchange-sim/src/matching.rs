@@ -100,6 +100,22 @@ fn cancel_reason(reason: CancelRejectReason) -> String {
     }
 }
 
+/// `exec_id` is `string(max_len: 20)`. Keep a short id as written. A longer id
+/// becomes a 17-character hash so two long client order ids do not collapse
+/// onto the same truncated suffix.
+fn fit_exec_id(preferred: String) -> String {
+    const MAX: usize = 20;
+    if preferred.len() <= MAX {
+        return preferred;
+    }
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in preferred.as_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("X{hash:016x}")
+}
+
 fn apply_one(
     engine: &mut MatchingEngine,
     action: &BatchAction,
@@ -121,7 +137,7 @@ fn apply_one(
                 reports.push(ExecutionReport {
                     cl_ord_id: order.cl_ord_id.clone(),
                     order_id: fill.fill_id.clone(),
-                    exec_id: format!("EX-{}", fill.fill_id),
+                    exec_id: fit_exec_id(format!("EX-{}", fill.fill_id)),
                     exec_type: fill.exec_type,
                     ord_status: fill.ord_status,
                     side: fill.side,
@@ -192,7 +208,7 @@ fn apply_one(
                 reports.push(ExecutionReport {
                     cl_ord_id: replace.cl_ord_id.clone(),
                     order_id: fill.fill_id.clone(),
-                    exec_id: format!("EX-{}", fill.fill_id),
+                    exec_id: fit_exec_id(format!("EX-{}", fill.fill_id)),
                     exec_type: fill.exec_type,
                     ord_status: fill.ord_status,
                     side: fill.side,
@@ -240,6 +256,11 @@ impl Default for MatchingEngine {
     }
 }
 
+/// Short sales take liquidity from the bid, the same way a long sell does.
+fn is_aggressor_buy(side: Side) -> bool {
+    matches!(side, Side::Buy)
+}
+
 impl MatchingEngine {
     pub fn new() -> Self {
         Self {
@@ -271,6 +292,37 @@ impl MatchingEngine {
             .as_nanos() as i64
     }
 
+    /// Direct struct construction bypasses the codec, so the matcher rejects
+    /// non-finite or negative price and quantity itself.
+    fn reject_bad_economics(
+        &self,
+        order: &NewOrderSingle,
+        allow_stop_rest: bool,
+    ) -> Option<String> {
+        let qty = order.order_qty.0;
+        let on_whole_share = (qty - qty.round()).abs() <= 1e-3;
+        if !qty.is_finite() || qty < 0.0 || qty > 999_999_999.0 || !on_whole_share {
+            return Some("INVALID_QUANTITY".to_string());
+        }
+        if let Some(px) = order.price.as_ref() {
+            if !px.0.is_finite() || px.0 < 0.0 {
+                return Some("INVALID_PRICE".to_string());
+            }
+        }
+        if let Some(px) = order.stop_price.as_ref() {
+            if !px.0.is_finite() || px.0 < 0.0 {
+                return Some("INVALID_PRICE".to_string());
+            }
+        }
+        // Triggered stops already own their index entry. A new order that
+        // reuses a live id is a duplicate. Replace cancels first, so the
+        // same id can be reused after the cancel removes it.
+        if allow_stop_rest && self.order_index.contains_key(&order.cl_ord_id) {
+            return Some("DUPLICATE_CL_ORD_ID".to_string());
+        }
+        None
+    }
+
     fn validate_order(&self, order: &NewOrderSingle) -> Option<String> {
         if let Some(expire) = order.expire_time {
             if order.time_in_force == TimeInForce::Gtd && expire <= Self::now_nanos() {
@@ -298,7 +350,7 @@ impl MatchingEngine {
         let Some(limit_px) = order.price.as_ref().map(|p| p.0) else {
             return false;
         };
-        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+        let is_buy = is_aggressor_buy(order.side);
         let book = self.book_for(&order.symbol);
         if is_buy {
             book.asks.best_price().is_some_and(|ask| ask.0 <= limit_px)
@@ -309,7 +361,7 @@ impl MatchingEngine {
 
     fn available_liquidity(&mut self, order: &NewOrderSingle) -> f64 {
         let order_type = Self::effective_match_type(&order.order_type);
-        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+        let is_buy = is_aggressor_buy(order.side);
         let book = self.book_for(&order.symbol);
         let opposite_side = if is_buy { &book.asks } else { &book.bids };
         let mut available = 0.0;
@@ -346,7 +398,7 @@ impl MatchingEngine {
 
         for stop in pending {
             let stop_px = stop.order.stop_price.as_ref().map(|p| p.0).unwrap_or(0.0);
-            let is_buy = matches!(stop.order.side, Side::Buy | Side::SellShortExempt);
+            let is_buy = is_aggressor_buy(stop.order.side);
             let triggered = if is_buy {
                 reference >= stop_px
             } else {
@@ -410,6 +462,13 @@ impl MatchingEngine {
         order: &NewOrderSingle,
         allow_stop_rest: bool,
     ) -> MatchResult {
+        if let Some(reason) = self.reject_bad_economics(order, allow_stop_rest) {
+            return MatchResult {
+                fills: vec![],
+                resting_order: None,
+                reject_reason: Some(reason),
+            };
+        }
         if let Some(reason) = self.validate_order(order) {
             return MatchResult {
                 fills: vec![],
@@ -460,8 +519,8 @@ impl MatchingEngine {
         let mut cum_qty = 0.0;
         let mut total_value = 0.0;
 
-        // Determine which side to match against
-        let is_buy = matches!(order.side, Side::Buy | Side::SellShortExempt);
+        // Determine which side to match against. Short sales are sells.
+        let is_buy = is_aggressor_buy(order.side);
 
         // Collect matching info first (immutable borrow)
         let matching_info: Vec<(Price, Vec<(ClientOrderId, f64)>)> = {
@@ -937,7 +996,7 @@ pub fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {
     ExecutionReport {
         cl_ord_id: resting.cl_ord_id.clone(),
         order_id: resting.order_id.clone(),
-        exec_id: format!("OPEN-{}", resting.cl_ord_id),
+        exec_id: fit_exec_id(format!("OPEN-{}", resting.cl_ord_id)),
         exec_type: ExecType::New,
         ord_status: OrdStatus::New,
         side: resting.side,
@@ -954,6 +1013,14 @@ pub fn resting_to_report(resting: &RestingOrder) -> ExecutionReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exec_id_stays_within_schema_max() {
+        assert_eq!(fit_exec_id("OPEN-1".into()), "OPEN-1");
+        let long = fit_exec_id(format!("OPEN-{}", "FIX-E2E-AAPL-001"));
+        assert!(long.len() <= 20, "{long}");
+        assert_ne!(long, fit_exec_id(format!("OPEN-{}", "FIX-E2E-AAPL-002")));
+    }
 
     fn make_limit_order(
         id: &str,

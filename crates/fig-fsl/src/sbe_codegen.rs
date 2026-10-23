@@ -463,11 +463,13 @@ pub(crate) fn generate_sbe_struct_decoder(
             SbeEnumStyle::MessagesShared,
         ));
     }
-    out.push_str(&format!("\n        Ok(({name} {{\n"));
+    out.push_str(&format!("\n        let decoded = {name} {{\n"));
     for field in fields {
         out.push_str(&format!("            {},\n", field.name));
     }
-    out.push_str("        }, pos))\n");
+    out.push_str("        };\n");
+    out.push_str("        decoded.validate()?;\n");
+    out.push_str("        Ok((decoded, pos))\n");
     out.push_str("    }\n");
     out.push_str("}\n");
     out
@@ -530,14 +532,16 @@ pub(crate) fn generate_sbe_message_body_decoder(
             SbeEnumStyle::MessagesShared,
         ));
     }
-    out.push_str(&format!("\n        Ok(({} {{\n", msg.name));
+    out.push_str(&format!("\n        let decoded = {} {{\n", msg.name));
     for field in &msg.fields {
         out.push_str(&format!(
             "            {}\n",
             generate_message_field_init(field, &msg.name)
         ));
     }
-    out.push_str("        }, pos))\n");
+    out.push_str("        };\n");
+    out.push_str("        decoded.validate()?;\n");
+    out.push_str("        Ok((decoded, pos))\n");
     out.push_str("    }\n");
     out.push_str("}\n");
     out

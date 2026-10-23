@@ -117,6 +117,8 @@ Inbound unsequenced payloads:
 | `X` Cancel | token 14, shares u32 BE (0 = remaining) |
 | `U` Replace | existing 14, replacement 14, shares u32 BE, price u64 BE |
 
+FIG `SellShort` and `SellShortExempt` encode as side `S`. Inbound `B` is buy and inbound `S` is sell.
+
 Outbound sequenced: `A` accepted, `E` executed, `C` canceled, `J` rejected.
 Login username (SoupBin 6-byte field) is the FIG account; `AUTH_TOKEN` is
 `fig-dev-{account}`. E2E: `cargo test -p fig-gateways --test gateway_ouch_itch_e2e`.
@@ -136,6 +138,8 @@ are not egressed.
 | `R` | Stock directory (8-byte stock) |
 | `L` | Price level: stock, side `B`/`S`, price u64, qty u32, level u8, action `S`/`U`/`D` |
 | `T` | Trade |
+
+`Sell`, `SellShort`, and `SellShortExempt` book updates and trades encode as side `S`.
 
 MoldUDP64: 10-byte session (`FIGITCH01`), u64 sequence, u16 count, then
 `u16 length + payload` per message. Same payload bytes as SoupBin `S`.

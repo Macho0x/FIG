@@ -56,7 +56,44 @@ mod tests {
 
     #[test]
     fn test_new_order_cbor_round_trip() {
-        let order = NewOrderSingle {
+        let order = sample_order();
+
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(&order, &mut buf).unwrap();
+        let decoded: NewOrderSingle = ciborium::de::from_reader(&buf[..]).unwrap();
+        assert_eq!(order, decoded);
+        decoded.validate().unwrap();
+    }
+
+    #[test]
+    fn test_constraints_reject_bad_cbor() {
+        let mut bad = sample_order();
+        bad.price = Some(Price(-1.0));
+        let mut buf = Vec::new();
+        // Serialize quantizes and then rejects a negative price.
+        assert!(ciborium::ser::into_writer(&bad, &mut buf).is_err());
+
+        bad.price = Some(Price(1.5));
+        bad.order_qty = Quantity(1.5);
+        // Quantity precision 0 quantizes 1.5 to 2.0 on the way out.
+        buf.clear();
+        ciborium::ser::into_writer(&bad, &mut buf).unwrap();
+        let decoded: NewOrderSingle = ciborium::de::from_reader(&buf[..]).unwrap();
+        assert_eq!(decoded.order_qty.0, 2.0);
+
+        bad = sample_order();
+        bad.symbol = "aapl".to_string();
+        buf.clear();
+        assert!(ciborium::ser::into_writer(&bad, &mut buf).is_err());
+
+        bad = sample_order();
+        bad.cl_ord_id = "bad_id".to_string();
+        buf.clear();
+        assert!(ciborium::ser::into_writer(&bad, &mut buf).is_err());
+    }
+
+    fn sample_order() -> NewOrderSingle {
+        NewOrderSingle {
             cl_ord_id: "ORD-001".to_string(),
             side: Side::Buy,
             order_qty: Quantity(100.0),
@@ -73,11 +110,6 @@ mod tests {
             security_exchange: None,
             post_only: None,
             reduce_only: None,
-        };
-
-        let mut buf = Vec::new();
-        ciborium::ser::into_writer(&order, &mut buf).unwrap();
-        let decoded: NewOrderSingle = ciborium::de::from_reader(&buf[..]).unwrap();
-        assert_eq!(order, decoded);
+        }
     }
 }

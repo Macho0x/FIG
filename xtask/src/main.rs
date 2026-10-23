@@ -41,7 +41,7 @@ fn run_codegen(check: bool) -> Result<()> {
     let out_dir = root.join("crates/fig-core/src/generated");
     fs::create_dir_all(&out_dir)?;
 
-    write_if_changed(
+    write_if_changed_rust(
         &out_dir.join("messages.rs"),
         &fig_fsl::RustCodegen::generate(&parsed),
         check,
@@ -158,7 +158,10 @@ fn rustfmt_string(path: &Path, content: &str) -> Result<String> {
             .unwrap_or("out.rs")
     ));
     fs::write(&tmp, content)?;
-    let status = Command::new("rustfmt").arg(&tmp).status()?;
+    let status = Command::new("rustfmt")
+        .args(["--edition", "2021"])
+        .arg(&tmp)
+        .status()?;
     if !status.success() {
         bail!("rustfmt failed for {}", path.display());
     }

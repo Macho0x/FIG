@@ -30,7 +30,7 @@ use crate::channel::{ChannelDirection, ChannelManager, ChannelMode};
 use crate::dos::{DoSGuard, DEFAULT_CHANNEL_MSG_PER_SEC};
 use crate::error::{ChannelError, FigError, FrameError, SessionError};
 use crate::ext::ExtensionTag;
-use crate::frame::{Frame, FrameDecoder, MIN_FRAME_SIZE};
+use crate::frame::{Frame, FrameDecoder, FrameType, MIN_FRAME_SIZE};
 use crate::migration::{
     apply_migration, prepare_migration, reconstruct_channels, validate_migration, MigrationToken,
 };
@@ -523,8 +523,11 @@ impl rustls::server::danger::ClientCertVerifier for NoClientVerification {
 ///
 /// # Production notes
 ///
-/// This is reference-quality. Production code should:
-/// - Implement proper flow control and backpressure.
+/// This is reference-quality. `send_frame` enforces per-channel credits:
+/// control and FLOW_CONTROL frames are free, peers that never send
+/// FLOW_CONTROL keep an implicit window, and the first FLOW_CONTROL grant
+/// replaces that window. Production code should still:
+/// - Advertise credits back to the peer from `credits_to_advertise`.
 /// - Handle bidirectional streams for server-initiated messages.
 pub struct FigConnection {
     conn: Connection,
@@ -816,32 +819,43 @@ impl FigConnection {
     /// Reuses the persistent `SendStream` for this channel. Opens a new
     /// bidirectional stream on first use and stores it in the stream map.
     ///
-    /// TODO: Enforce flow-control credits before sending. The ChannelManager
-    /// has `has_credits()` / `consume_credit()`, but they are not yet wired
-    /// here. Sending currently ignores credit exhaustion.
+    /// Control and FLOW_CONTROL frames do not consume credits. Every other
+    /// frame takes one credit. Until the peer sends FLOW_CONTROL the channel
+    /// uses an implicit window that refills when empty. A failed QUIC write
+    /// refunds the credit.
     pub async fn send_frame(&self, channel_id: u16, frame: &Frame) -> Result<(), FrameError> {
         let data = {
             let mut buf = self.encode_buf.lock().await;
             frame.encode_into(&mut buf)?;
             bytes::Bytes::copy_from_slice(&buf)
         };
+        let charged = self.reserve_send_credit(channel_id, frame).await?;
 
         if !self.send_streams.lock().await.contains_key(&channel_id) {
-            let (send, recv) = self
-                .conn
-                .open_bi()
-                .await
-                .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+            let opened = self.conn.open_bi().await;
+            let (send, recv) = match opened {
+                Ok(pair) => pair,
+                Err(e) => {
+                    if charged {
+                        self.refund_send_credit(channel_id).await;
+                    }
+                    return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
+                }
+            };
             self.insert_bi(channel_id, send, recv, FrameDecoder::new())
                 .await;
         }
-        let send = self
-            .send_streams
-            .lock()
-            .await
-            .get(&channel_id)
-            .cloned()
-            .ok_or_else(|| FrameError::IoError(std::io::Error::other("missing send stream")))?;
+        let send = match self.send_streams.lock().await.get(&channel_id).cloned() {
+            Some(send) => send,
+            None => {
+                if charged {
+                    self.refund_send_credit(channel_id).await;
+                }
+                return Err(FrameError::IoError(std::io::Error::other(
+                    "missing send stream",
+                )));
+            }
+        };
         let write = {
             let mut stream = send.lock().await;
             stream.write_all(&data).await
@@ -849,6 +863,9 @@ impl FigConnection {
         match write {
             Ok(()) => {}
             Err(quinn::WriteError::Stopped(error_code)) => {
+                if charged {
+                    self.refund_send_credit(channel_id).await;
+                }
                 let code: u64 = error_code.into();
                 return Err(FrameError::IoError(std::io::Error::new(
                     std::io::ErrorKind::ConnectionReset,
@@ -859,6 +876,9 @@ impl FigConnection {
                 )));
             }
             Err(e) => {
+                if charged {
+                    self.refund_send_credit(channel_id).await;
+                }
                 return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
             }
         }
@@ -910,6 +930,9 @@ impl FigConnection {
                 let frame = result?;
                 self.admit_frame(&frame)?;
                 self.observe_resumption_token(&frame).await;
+                if self.note_inbound_flow(&frame).await {
+                    continue;
+                }
                 return Ok(frame);
             }
             let n = {
@@ -931,6 +954,9 @@ impl FigConnection {
                         let frame = result?;
                         self.admit_frame(&frame)?;
                         self.observe_resumption_token(&frame).await;
+                        if self.note_inbound_flow(&frame).await {
+                            continue;
+                        }
                         return Ok(frame);
                     }
                     return Err(FrameError::BufferTooShort {
@@ -968,11 +994,19 @@ impl FigConnection {
             .await
             .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
         let data = frame.encode()?;
-        send.write_all(&data)
-            .await
-            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
-        send.finish()
-            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+        let charged = self.reserve_send_credit(frame.channel_id, &frame).await?;
+        if let Err(e) = send.write_all(&data).await {
+            if charged {
+                self.refund_send_credit(frame.channel_id).await;
+            }
+            return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
+        }
+        if let Err(e) = send.finish() {
+            if charged {
+                self.refund_send_credit(frame.channel_id).await;
+            }
+            return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
+        }
 
         let mut decoder = FrameDecoder::new();
         let mut buf = vec![0u8; STREAM_READ_BUF];
@@ -982,12 +1016,18 @@ impl FigConnection {
                 Ok(Some(n)) => {
                     decoder.feed(&buf[..n]);
                     while let Some(result) = decoder.decode_next() {
-                        frames.push(result?);
+                        let decoded = result?;
+                        if !self.note_inbound_flow(&decoded).await {
+                            frames.push(decoded);
+                        }
                     }
                 }
                 Ok(None) => {
                     while let Some(result) = decoder.decode_next() {
-                        frames.push(result?);
+                        let decoded = result?;
+                        if !self.note_inbound_flow(&decoded).await {
+                            frames.push(decoded);
+                        }
                     }
                     break;
                 }
@@ -1016,32 +1056,39 @@ impl FigConnection {
         let mut buf = vec![0u8; STREAM_READ_BUF];
 
         let frame = loop {
-            match recv.read(&mut buf).await {
-                Ok(Some(n)) => {
-                    decoder.feed(&buf[..n]);
-                    if let Some(result) = decoder.decode_next() {
-                        break result?;
+            let candidate = loop {
+                match recv.read(&mut buf).await {
+                    Ok(Some(n)) => {
+                        decoder.feed(&buf[..n]);
+                        if let Some(result) = decoder.decode_next() {
+                            break result?;
+                        }
+                    }
+                    Ok(None) => {
+                        if let Some(result) = decoder.decode_next() {
+                            break result?;
+                        }
+                        return Err(FrameError::BufferTooShort {
+                            expected: MIN_FRAME_SIZE,
+                            actual: decoder.buffered_len(),
+                        });
+                    }
+                    Err(quinn::ReadError::Reset(error_code)) => {
+                        let code: u64 = error_code.into();
+                        return Err(FrameError::IoError(std::io::Error::new(
+                            std::io::ErrorKind::ConnectionReset,
+                            format!("stream reset: error_code={}", code),
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
                     }
                 }
-                Ok(None) => {
-                    if let Some(result) = decoder.decode_next() {
-                        break result?;
-                    }
-                    return Err(FrameError::BufferTooShort {
-                        expected: MIN_FRAME_SIZE,
-                        actual: decoder.buffered_len(),
-                    });
-                }
-                Err(quinn::ReadError::Reset(error_code)) => {
-                    let code: u64 = error_code.into();
-                    return Err(FrameError::IoError(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionReset,
-                        format!("stream reset: error_code={}", code),
-                    )));
-                }
-                Err(e) => {
-                    return Err(FrameError::IoError(std::io::Error::other(e.to_string())));
-                }
+            };
+            self.admit_frame(&candidate)?;
+            self.observe_resumption_token(&candidate).await;
+            if !self.note_inbound_flow(&candidate).await {
+                break candidate;
             }
         };
 
@@ -1057,8 +1104,6 @@ impl FigConnection {
                 )))
             })?;
         }
-        self.admit_frame(&frame)?;
-        self.observe_resumption_token(&frame).await;
 
         self.insert_bi_buf(channel_id, send, recv, decoder, buf)
             .await;
@@ -1121,15 +1166,87 @@ impl FigConnection {
 
     /// Drain additional frames already buffered on a channel decoder.
     pub async fn recv_buffered_frames(&self, channel_id: u16) -> Vec<Frame> {
-        let mut out = Vec::new();
+        let mut raw = Vec::new();
         let ch = self.recv_streams.lock().await.get(&channel_id).cloned();
         if let Some(ch) = ch {
             let mut half = ch.lock().await;
             while let Some(Ok(frame)) = half.decoder.decode_next() {
+                raw.push(frame);
+            }
+        }
+        let mut out = Vec::new();
+        for frame in raw {
+            if !self.note_inbound_flow(&frame).await {
                 out.push(frame);
             }
         }
         out
+    }
+
+    /// Apply an inbound FLOW_CONTROL grant.
+    ///
+    /// Returns true when the frame is a credit update and must not be
+    /// delivered to the application.
+    async fn note_inbound_flow(&self, frame: &Frame) -> bool {
+        if frame.frame_type != FrameType::FlowControl {
+            return false;
+        }
+        let credits = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::FlowControlCredit)
+            .and_then(|e| e.value.as_u32())
+            .unwrap_or(0);
+        let mut mgr = self.channels.lock().await;
+        mgr.apply_flow_credit(frame.channel_id, credits);
+        true
+    }
+
+    /// Reserve one send credit for a data frame. Control and FLOW_CONTROL are free.
+    async fn reserve_send_credit(
+        &self,
+        channel_id: u16,
+        frame: &Frame,
+    ) -> Result<bool, FrameError> {
+        if matches!(
+            frame.frame_type,
+            FrameType::Control | FrameType::FlowControl
+        ) {
+            return Ok(false);
+        }
+        let mut mgr = self.channels.lock().await;
+        mgr.take_send_credit(channel_id)
+            .map_err(|e| FrameError::IoError(std::io::Error::other(e.to_string())))?;
+        Ok(true)
+    }
+
+    async fn refund_send_credit(&self, channel_id: u16) {
+        let mut mgr = self.channels.lock().await;
+        mgr.refund_send_credit(channel_id);
+    }
+
+    /// Dispatch a control frame against this connection's channel manager.
+    ///
+    /// Channel 0 and a SEQ_RESET target are created when missing so sequence
+    /// reset applies on the live path. PING and SETTINGS produce response
+    /// frames. RESEND is accepted and does not retransmit (there is no frame log).
+    pub async fn dispatch_control(
+        &self,
+        frame: &Frame,
+        auth: &crate::auth::AuthMethod,
+        session_id: &uuid::Uuid,
+    ) -> Result<Vec<Frame>, crate::control::ControlError> {
+        let mut mgr = self.channels.lock().await;
+        mgr.ensure_window(crate::frame::CONTROL_CHANNEL);
+        if let Some(crate::frame::ControlSubtype::SeqReset) = frame.control_subtype() {
+            if frame.payload.len() >= 3 {
+                let channel_id = u16::from_be_bytes([frame.payload[1], frame.payload[2]]);
+                mgr.ensure_window(channel_id);
+            }
+        }
+        let action = crate::control::handle_control_frame(frame, auth, &mut mgr, session_id)?;
+        drop(mgr);
+        Ok(crate::control::control_action_frames(&action))
     }
 
     /// Close the TREE stream for a channel and remove it from the stream map.

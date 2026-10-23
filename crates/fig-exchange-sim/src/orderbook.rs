@@ -48,8 +48,17 @@ pub struct PriceLevel {
 }
 
 /// Wrapper to allow f64 in BTreeMap (BTreeMap requires Ord, f64 doesn't impl Ord).
-#[derive(Debug, Clone, Copy, PartialEq)]
+///
+/// `total_cmp` orders every value, including NaN, so a non-finite price cannot
+/// compare equal to a real price and collapse two book levels.
+#[derive(Debug, Clone, Copy)]
 struct OrderedFloat(f64);
+
+impl PartialEq for OrderedFloat {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
 
 impl Eq for OrderedFloat {}
 
@@ -61,9 +70,7 @@ impl PartialOrd for OrderedFloat {
 
 impl Ord for OrderedFloat {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0
-            .partial_cmp(&other.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        self.0.total_cmp(&other.0)
     }
 }
 
@@ -218,8 +225,8 @@ impl OrderBook {
         order.seq = self.next_seq();
         let seq = order.seq;
         let side = match order.side {
-            Side::Buy | Side::SellShort | Side::SellShortExempt => &mut self.bids,
-            Side::Sell => &mut self.asks,
+            Side::Buy => &mut self.bids,
+            Side::Sell | Side::SellShort | Side::SellShortExempt => &mut self.asks,
         };
         side.add(order);
         self.bump_book_seq();
@@ -239,18 +246,18 @@ impl OrderBook {
         removed
     }
 
-    /// Get the best bid price and quantity.
-    pub fn best_bid(&self) -> Option<(&Price, &Quantity)> {
+    /// Get the best bid price and the aggregate quantity at that price.
+    pub fn best_bid(&self) -> Option<(Price, Quantity)> {
         self.bids
             .best_level()
-            .map(|l| (&l.price, &l.orders[0].leaves_qty))
+            .map(|l| (l.price.clone(), Quantity(l.total_qty)))
     }
 
-    /// Get the best ask price and quantity.
-    pub fn best_ask(&self) -> Option<(&Price, &Quantity)> {
+    /// Get the best ask price and the aggregate quantity at that price.
+    pub fn best_ask(&self) -> Option<(Price, Quantity)> {
         self.asks
             .best_level()
-            .map(|l| (&l.price, &l.orders[0].leaves_qty))
+            .map(|l| (l.price.clone(), Quantity(l.total_qty)))
     }
 
     /// Get the top N levels of the bid side.
@@ -345,9 +352,10 @@ mod tests {
         let bid3 = make_order("B3", Side::Buy, 99.00, 40.0);
         book.add_order(bid3);
 
-        // Best bid should be 100.00 (highest)
-        let (price, _) = book.best_bid().unwrap();
+        // Best bid should be 100.00 (highest) with both orders aggregated.
+        let (price, qty) = book.best_bid().unwrap();
         assert_eq!(price.0, 100.00);
+        assert_eq!(qty.0, 80.0);
 
         // Depth should show 100.00 first, then 99.00
         let depth = book.bid_depth(5);
