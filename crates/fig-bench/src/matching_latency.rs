@@ -55,7 +55,10 @@ fn prewarm_bids(engine: &mut MatchingEngine, n_levels: usize, base_price: f64) {
 
 /// Insert a non-crossing buy at the top of the bid book (rests, no match).
 pub fn matching_insert_top(n_levels: usize) -> LatencyReport {
-    let iters = latency_iters(50_000);
+    insert_top(n_levels, latency_iters(50_000))
+}
+
+fn insert_top(n_levels: usize, iters: u64) -> LatencyReport {
     let name = format!("matching_insert_top_n{n_levels}");
     let mut report = LatencyReport::new_ns(name);
 
@@ -79,7 +82,10 @@ pub fn matching_insert_top(n_levels: usize) -> LatencyReport {
 
 /// Cancel the best bid after pre-warming `n_levels` bids plus one target order.
 pub fn matching_cancel_top(n_levels: usize) -> LatencyReport {
-    let iters = latency_iters(50_000);
+    cancel_top(n_levels, latency_iters(50_000))
+}
+
+fn cancel_top(n_levels: usize, iters: u64) -> LatencyReport {
     let name = format!("matching_cancel_top_n{n_levels}");
     let mut report = LatencyReport::new_ns(name);
 
@@ -108,7 +114,11 @@ pub fn matching_cancel_top(n_levels: usize) -> LatencyReport {
 
 /// Cancel the deepest bid (worst price) on a pre-warmed book.
 pub fn matching_cancel_deep(n_levels: usize) -> LatencyReport {
-    let iters = latency_iters(if n_levels >= 1000 { 10_000 } else { 50_000 });
+    let default = if n_levels >= 1000 { 10_000 } else { 50_000 };
+    cancel_deep(n_levels, latency_iters(default))
+}
+
+fn cancel_deep(n_levels: usize, iters: u64) -> LatencyReport {
     let name = format!("matching_cancel_deep_n{n_levels}");
     let mut report = LatencyReport::new_ns(name);
 
@@ -140,7 +150,10 @@ pub fn matching_cancel_deep(n_levels: usize) -> LatencyReport {
 
 /// Replace quantity only (same price) on a resting top-of-book order.
 pub fn matching_replace_qty(n_levels: usize) -> LatencyReport {
-    let iters = latency_iters(50_000);
+    replace_qty(n_levels, latency_iters(50_000))
+}
+
+fn replace_qty(n_levels: usize, iters: u64) -> LatencyReport {
     let name = format!("matching_replace_qty_n{n_levels}");
     let mut report = LatencyReport::new_ns(name);
 
@@ -222,42 +235,29 @@ mod tests {
     use super::*;
     use fig_exchange_sim::matching::CancelOutcome;
 
-    fn with_low_iters(f: impl FnOnce()) {
-        std::env::set_var("FIG_LATENCY_ITERS", "50");
-        f();
-        std::env::remove_var("FIG_LATENCY_ITERS");
-    }
-
+    // Sample count is an argument so parallel tests do not race on FIG_LATENCY_ITERS.
     #[test]
     fn insert_top_produces_samples() {
-        with_low_iters(|| {
-            let r = matching_insert_top(100);
-            assert_eq!(r.len(), 50);
-        });
+        let r = insert_top(100, 50);
+        assert_eq!(r.len(), 50);
     }
 
     #[test]
     fn cancel_top_succeeds() {
-        with_low_iters(|| {
-            let r = matching_cancel_top(100);
-            assert_eq!(r.len(), 50);
-        });
+        let r = cancel_top(100, 50);
+        assert_eq!(r.len(), 50);
     }
 
     #[test]
     fn cancel_deep_succeeds() {
-        with_low_iters(|| {
-            let r = matching_cancel_deep(1000);
-            assert_eq!(r.len(), 50);
-        });
+        let r = cancel_deep(1000, 50);
+        assert_eq!(r.len(), 50);
     }
 
     #[test]
     fn replace_qty_succeeds() {
-        with_low_iters(|| {
-            let r = matching_replace_qty(100);
-            assert_eq!(r.len(), 50);
-        });
+        let r = replace_qty(100, 50);
+        assert_eq!(r.len(), 50);
     }
 
     #[test]
