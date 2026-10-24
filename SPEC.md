@@ -445,6 +445,7 @@ price-level messages. Byte layouts live in
 | `marketdata/{symbol}/limits` | pub/sub + GET | `PriceLimits` | Price collars / circuit-breaker bands |
 
 Intervals use FIG names (`1m`, `5m`, `1h`, `1d`) — not Binance “klines”.
+The reference broker builds that set and lists it on `CapabilitiesResponse`.
 
 #### Private account / trading (auth required)
 

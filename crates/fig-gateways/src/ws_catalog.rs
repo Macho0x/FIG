@@ -21,10 +21,10 @@ pub struct LegacySubscribe {
 /// Map a Binance-style stream name to native FIG subscribe paths.
 ///
 /// Examples:
-/// - `btcusdt@kline_5m` → `marketdata/btcusdt/candles/5m`
-/// - `ethusdt@trade` → `marketdata/ethusdt/trades`
-/// - `btcusdt@bookTicker` → `marketdata/btcusdt/bbo`
-/// - `btcusdt@depth` → `marketdata/btcusdt/book`
+/// - `btcusdt@kline_5m` → `marketdata/BTCUSDT/candles/5m`
+/// - `ethusdt@trade` → `marketdata/ETHUSDT/trades`
+/// - `btcusdt@bookTicker` → `marketdata/BTCUSDT/bbo`
+/// - `btcusdt@depth` → `marketdata/BTCUSDT/book`
 /// - `orderlists@DEMO` → `trading/accounts/DEMO/orderlists`
 pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
     if let Some((user, _)) = topic.split_once("@orderlists") {
@@ -57,7 +57,7 @@ pub fn binance_topic_to_subscribe(topic: &str) -> Option<LegacySubscribe> {
     }
 
     let (symbol, stream) = topic.split_once('@')?;
-    let symbol = symbol.to_lowercase();
+    let symbol = symbol.to_uppercase();
     let channel_path = if let Some(interval) = stream.strip_prefix("kline_") {
         format!("marketdata/{symbol}/candles/{interval}")
     } else if stream == "trade" {
@@ -230,11 +230,33 @@ pub fn hyperliquid_subscribe_to_fig(sub: &Value) -> Option<LegacySubscribe> {
     })
 }
 
-/// Parse legacy WebSocket subscribe JSON into a FIG `SUBSCRIBE` frame.
-pub fn legacy_ws_json_to_fig_subscribe(json: &str, channel_id: u16) -> WsResult<Frame> {
+/// Legacy WebSocket text is either a subscribe or an unsubscribe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LegacyWsCommand {
+    Subscribe(LegacySubscribe),
+    Unsubscribe(LegacySubscribe),
+}
+
+fn is_unsubscribe_method(value: &Value) -> bool {
+    value
+        .get("method")
+        .and_then(|m| m.as_str())
+        .is_some_and(|m| m.eq_ignore_ascii_case("unsubscribe"))
+}
+
+/// Parse legacy WebSocket JSON into a subscribe or unsubscribe intent.
+pub fn legacy_ws_command(json: &str) -> WsResult<LegacyWsCommand> {
     let value: Value =
         serde_json::from_str(json).map_err(|e| WsError::UnmappableFrameType(e.to_string()))?;
+    let sub = parse_legacy_subscribe(&value)?;
+    if is_unsubscribe_method(&value) {
+        Ok(LegacyWsCommand::Unsubscribe(sub))
+    } else {
+        Ok(LegacyWsCommand::Subscribe(sub))
+    }
+}
 
+fn parse_legacy_subscribe(value: &Value) -> WsResult<LegacySubscribe> {
     let sub = if value.get("params").is_some() {
         // Binance: {"method":"SUBSCRIBE","params":["btcusdt@kline_5m"]}
         let params = value
@@ -267,13 +289,38 @@ pub fn legacy_ws_json_to_fig_subscribe(json: &str, channel_id: u16) -> WsResult<
             "unsupported subscribe JSON".into(),
         ));
     };
+    Ok(sub)
+}
 
-    Ok(fig_subscribe_frame(channel_id, &sub))
+/// Parse legacy WebSocket JSON into a FIG subscribe or unsubscribe frame.
+///
+/// The caller chooses `channel_id`. The gateway process reuses the id from
+/// the matching subscribe when the method is `UNSUBSCRIBE`.
+pub fn legacy_ws_json_to_fig_subscribe(json: &str, channel_id: u16) -> WsResult<Frame> {
+    Ok(match legacy_ws_command(json)? {
+        LegacyWsCommand::Subscribe(sub) => fig_subscribe_frame(channel_id, &sub),
+        LegacyWsCommand::Unsubscribe(sub) => fig_unsubscribe_frame(channel_id, &sub),
+    })
 }
 
 /// Build a FIG `SUBSCRIBE` frame from native paths.
 pub fn fig_subscribe_frame(channel_id: u16, sub: &LegacySubscribe) -> Frame {
     Frame::new(FrameType::Subscribe, channel_id)
+        .with_schema_id(schema_id::TRADING_ORDERS)
+        .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
+        .with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            &sub.channel_path,
+        ))
+        .with_extension(Extension::text(
+            ExtensionTag::CorrelationId,
+            channel_id.to_string(),
+        ))
+}
+
+/// Build a FIG `UNSUBSCRIBE` frame for a legacy topic already subscribed.
+pub fn fig_unsubscribe_frame(channel_id: u16, sub: &LegacySubscribe) -> Frame {
+    Frame::new(FrameType::Unsubscribe, channel_id)
         .with_schema_id(schema_id::TRADING_ORDERS)
         .with_extension(Extension::text(ExtensionTag::RoutingKey, &sub.routing_key))
         .with_extension(Extension::text(
@@ -318,6 +365,12 @@ pub fn fig_stream_item_to_legacy_json(frame: &Frame) -> WsResult<String> {
     let is_snapshot = payload_json
         .get("is_snapshot")
         .and_then(|v| v.as_bool())
+        .or_else(|| {
+            payload_json
+                .get("bar")
+                .and_then(|bar| bar.get("is_snapshot"))
+                .and_then(|v| v.as_bool())
+        })
         .unwrap_or(false);
 
     let event = serde_json::json!({
@@ -407,7 +460,7 @@ mod tests {
     #[test]
     fn binance_kline_topic_maps_to_candles_path() {
         let sub = binance_topic_to_subscribe("btcusdt@kline_5m").unwrap();
-        assert_eq!(sub.channel_path, "marketdata/btcusdt/candles/5m");
+        assert_eq!(sub.channel_path, "marketdata/BTCUSDT/candles/5m");
         assert_eq!(sub.routing_key, "btcusdt@kline_5m");
     }
 
@@ -421,7 +474,7 @@ mod tests {
     #[test]
     fn binance_ticker_topic_maps() {
         let sub = binance_topic_to_subscribe("btcusdt@ticker").unwrap();
-        assert_eq!(sub.channel_path, "marketdata/btcusdt/ticker");
+        assert_eq!(sub.channel_path, "marketdata/BTCUSDT/ticker");
     }
 
     #[test]
@@ -489,7 +542,7 @@ mod tests {
             .with_extension(Extension::text(ExtensionTag::RoutingKey, "btcusdt@ticker"))
             .with_extension(Extension::text(
                 ExtensionTag::ChannelPath,
-                "marketdata/btcusdt/ticker",
+                "marketdata/BTCUSDT/ticker",
             ));
         let json = fig_stream_close_to_legacy_json(&frame).unwrap();
         assert!(json.contains("eventStreamTerminated"));
@@ -524,6 +577,57 @@ mod tests {
         let frame = legacy_ws_json_to_fig_subscribe(json, 2).unwrap();
         assert_eq!(frame.frame_type, FrameType::Subscribe);
         assert_eq!(frame.channel_id, 2);
+        let path = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::ChannelPath)
+            .and_then(|e| e.value.as_text());
+        assert_eq!(path, Some("marketdata/ETHUSDT/trades"));
+    }
+
+    #[test]
+    fn unsubscribe_frame_keeps_the_subscribe_channel() {
+        let json = r#"{"method":"UNSUBSCRIBE","params":["btcusdt@kline_5m"]}"#;
+        let frame = legacy_ws_json_to_fig_subscribe(json, 4).unwrap();
+        assert_eq!(frame.frame_type, FrameType::Unsubscribe);
+        assert_eq!(frame.channel_id, 4);
+        let path = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::ChannelPath)
+            .and_then(|e| e.value.as_text());
+        assert_eq!(path, Some("marketdata/BTCUSDT/candles/5m"));
+        let key = frame
+            .extensions
+            .iter()
+            .find(|e| e.tag == ExtensionTag::RoutingKey)
+            .and_then(|e| e.value.as_text());
+        assert_eq!(key, Some("btcusdt@kline_5m"));
+    }
+
+    #[test]
+    fn envelope_snapshot_flag_reads_nested_bar() {
+        let cbor =
+            fig_core::codec::json_to_cbor(r#"{"bar":{"symbol":"BTCUSDT","is_snapshot":true}}"#)
+                .unwrap();
+        let frame = Frame::new(FrameType::StreamItem, 1)
+            .with_extension(Extension::text(
+                ExtensionTag::ChannelPath,
+                "marketdata/BTCUSDT/candles/5m",
+            ))
+            .with_payload(cbor);
+        let json: serde_json::Value =
+            serde_json::from_str(&fig_stream_item_to_legacy_json(&frame).unwrap()).unwrap();
+        assert_eq!(json["is_snapshot"], true);
+        assert_eq!(json["channel_path"], "marketdata/BTCUSDT/candles/5m");
+
+        let top =
+            fig_core::codec::json_to_cbor(r#"{"is_snapshot":false,"bar":{"is_snapshot":true}}"#)
+                .unwrap();
+        let frame = Frame::new(FrameType::StreamItem, 1).with_payload(top);
+        let json: serde_json::Value =
+            serde_json::from_str(&fig_stream_item_to_legacy_json(&frame).unwrap()).unwrap();
+        assert_eq!(json["is_snapshot"], false);
     }
 
     /// Every `subscription.type` handled by [`hyperliquid_subscribe_to_fig`] must map.

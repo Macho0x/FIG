@@ -2,6 +2,11 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.11
+
+### Fixed
+- Candle aliases follow the native path. A Binance `btcusdt@kline_5m` subscribe is `marketdata/BTCUSDT/candles/5m`; the routing key stays the original topic. `UNSUBSCRIBE` reuses that channel. Live `STREAM_ITEM`s carry the concrete path, `is_snapshot: true` then `false`, and a closed bar ends on its own window. The reference broker builds `1m`, `5m`, `1h`, and `1d`. REST omits `limit` as 500, returns one JSON `CandleBarBatch`, and sends a single `application/json` content type. Native subscribe frames use schema id `0x01`.
+
 ## 1.4.10
 
 ### Fixed

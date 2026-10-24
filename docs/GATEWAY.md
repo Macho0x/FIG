@@ -229,6 +229,20 @@ FIG_TLS_CA=.fig/dev-ca.pem cargo run -p fig-gateways --bin fig-gateway -- \
 
 Full mapping: [`crates/fig-gateways/src/ws_catalog.rs`](../crates/fig-gateways/src/ws_catalog.rs).
 
+Binance topics are lower-case on the wire (`btcusdt@kline_5m`). The native
+`ChannelPath` uppercases the symbol (`marketdata/BTCUSDT/candles/5m`) so it
+matches FSL `Symbol` and the fill that updates the book. The `ROUTING_KEY`
+stays the original topic. Egress JSON echoes that topic as `stream`. The body
+is the FSL payload (`data.bar` for a `CandleBarEvent`), not a Binance kline
+object. Live `channel_path` is the concrete path. `UNSUBSCRIBE` is sent on the
+channel id of the matching subscribe. An unknown topic returns an error JSON
+object and does not open a new subscribe.
+
+REST `GET /api/v3/klines` is the same native path. The HTTP body is a
+`CandleBarBatch` object. A page longer than 50 bars is still one HTTP response.
+The FSL `gateway rest` rows that say `method: SSE` name the native path. The
+process serves live data on the WebSocket listener, not an SSE endpoint.
+
 ### Alias round-trip tests
 
 One integration test file exercises **reference fixture tables** (not separate protocol tracks):

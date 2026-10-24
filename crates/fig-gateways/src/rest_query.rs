@@ -131,7 +131,7 @@ fn build_query_payload(
             interval,
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -144,7 +144,7 @@ fn build_query_payload(
             symbol,
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -157,7 +157,7 @@ fn build_query_payload(
             symbol,
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -197,7 +197,7 @@ fn build_query_payload(
             symbol: query_param(query, &["symbol", "Symbol"]),
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -211,7 +211,7 @@ fn build_query_payload(
             account: account.to_string(),
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -225,7 +225,7 @@ fn build_query_payload(
             account: account.to_string(),
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -249,7 +249,7 @@ fn build_query_payload(
             symbol: query_param(query, &["symbol", "Symbol"]),
             start_time: parse_time_param(query, &["start", "startTime", "start_time"]),
             end_time: parse_time_param(query, &["end", "endTime", "end_time"]),
-            limit: parse_limit_param(query),
+            limit: limit_or_500(query),
             cursor: query_param(query, &["cursor", "next_cursor"]),
         };
         return Ok(Some(
@@ -381,6 +381,11 @@ fn parse_limit_param(query: &[(String, String)]) -> Option<u32> {
     query_param(query, &["limit", "Limit"]).and_then(|s| s.parse().ok())
 }
 
+/// Omitted `limit` is 500. An explicit `0` stays 0.
+fn limit_or_500(query: &[(String, String)]) -> Option<u32> {
+    Some(parse_limit_param(query).unwrap_or(500))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,6 +417,17 @@ mod tests {
     fn binance_klines_alias_maps_to_native_path() {
         let frame = get_frame("/api/v3/klines?symbol=BTCUSDT&interval=5m");
         assert_eq!(channel_path(&frame), "marketdata/BTCUSDT/candles/5m");
+    }
+
+    #[test]
+    fn omitted_candle_limit_encodes_500_and_zero_stays_zero() {
+        use fig_core::codec::decode_cbor;
+        let omitted = get_frame("/api/v3/klines?symbol=BTCUSDT&interval=5m");
+        let req: CandleBarRequest = decode_cbor(&omitted.payload).unwrap();
+        assert_eq!(req.limit, Some(500));
+        let zero = get_frame("/marketdata/BTC/candles/5m?limit=0");
+        let req: CandleBarRequest = decode_cbor(&zero.payload).unwrap();
+        assert_eq!(req.limit, Some(0));
     }
 
     #[test]

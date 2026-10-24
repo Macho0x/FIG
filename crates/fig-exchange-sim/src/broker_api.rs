@@ -226,7 +226,8 @@ pub async fn handle_query_request(frame: Frame, state: &Arc<ExchangeState>) -> V
                 cursor: None,
             },
         );
-        let md = state.market_data.lock().await;
+        let mut md = state.market_data.lock().await;
+        md.roll_elapsed(crate::market_data::now_ns());
         let batch = md.query_candles(
             &req.symbol,
             &req.interval,
@@ -444,17 +445,14 @@ pub async fn handle_market_subscribe(
             vec![ack_subscribe(frame)]
         }
         SubscriptionKind::Candles { symbol, interval } => {
-            let md = state.market_data.lock().await;
+            let mut md = state.market_data.lock().await;
+            md.roll_elapsed(crate::market_data::now_ns());
+            let path = format!("marketdata/{symbol}/candles/{interval}");
             let mut frames = Vec::new();
             if let Some(mut partial) = md.partial_candle(&symbol, &interval) {
                 partial.is_snapshot = Some(true);
                 if let Ok(payload) = codec::encode_cbor(&CandleBarEvent { bar: partial }) {
-                    frames.push(stream_item(
-                        frame.channel_id,
-                        &routing_key,
-                        payload,
-                        "marketdata/candles",
-                    ));
+                    frames.push(stream_item(frame.channel_id, &routing_key, payload, &path));
                 }
             }
             drop(md);
@@ -821,14 +819,23 @@ pub async fn post_fill_updates(
 ) -> Vec<Frame> {
     let mut frames = Vec::new();
     let mut public_liquidation: Option<LiquidationTrade> = None;
+    let mut closed_bars: Vec<CandleBar> = Vec::new();
+    let mut touched: Vec<String> = Vec::new();
     {
         let mut md = state.market_data.lock().await;
         for fill in fills {
-            if let Some(liq) = md.on_trade(symbol, fill.fill_price.0, fill.fill_qty.0, fill.side) {
-                public_liquidation = Some(liq);
+            if !touched.iter().any(|s| s == &fill.symbol) {
+                touched.push(fill.symbol.clone());
             }
+            let (liq, closed) =
+                md.on_trade(&fill.symbol, fill.fill_price.0, fill.fill_qty.0, fill.side);
+            if liq.is_some() {
+                public_liquidation = liq;
+            }
+            closed_bars.extend(closed);
         }
     }
+    let sees = |sym: &str| sym == symbol || touched.iter().any(|s| s == sym);
 
     {
         let mut accounts = state.accounts.lock().await;
@@ -975,18 +982,28 @@ pub async fn post_fill_updates(
             SubscriptionKind::Candles {
                 symbol: sym,
                 interval,
-            } if sym == symbol => {
+            } if sees(sym) => {
+                let path = format!("marketdata/{sym}/candles/{interval}");
+                for bar in closed_bars
+                    .iter()
+                    .filter(|b| &b.symbol == sym && &b.interval == interval)
+                {
+                    if let Ok(payload) = codec::encode_cbor(&CandleBarEvent { bar: bar.clone() }) {
+                        emit_push(
+                            &sub.conn,
+                            stream_item(sub.channel_id, &sub.routing_key, payload, &path),
+                            &mut frames,
+                        )
+                        .await;
+                    }
+                }
                 let md = state.market_data.lock().await;
-                if let Some(bar) = md.partial_candle(sym, interval) {
+                if let Some(mut bar) = md.partial_candle(sym, interval) {
+                    bar.is_snapshot = Some(false);
                     if let Ok(payload) = codec::encode_cbor(&CandleBarEvent { bar }) {
                         emit_push(
                             &sub.conn,
-                            stream_item(
-                                sub.channel_id,
-                                &sub.routing_key,
-                                payload,
-                                "marketdata/candles",
-                            ),
+                            stream_item(sub.channel_id, &sub.routing_key, payload, &path),
                             &mut frames,
                         )
                         .await;
@@ -1281,4 +1298,113 @@ fn extension_text(frame: &Frame, tag: ExtensionTag) -> String {
         .and_then(|e| e.value.as_text())
         .unwrap_or("")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::broker_session::handle_unsubscribe;
+    use crate::market_data::StreamSubscription;
+    use crate::server::ExchangeState;
+
+    fn fill(symbol: &str) -> Fill {
+        Fill {
+            fill_id: "F1".to_string(),
+            cl_ord_id: "C1".to_string(),
+            contra_cl_ord_id: "C2".to_string(),
+            side: Side::Buy,
+            symbol: symbol.to_string(),
+            fill_price: Price(10.0),
+            fill_qty: Quantity(1.0),
+            leaves_qty: Quantity(0.0),
+            cum_qty: Quantity(1.0),
+            avg_price: Price(10.0),
+            exec_type: ExecType::Fill,
+            ord_status: OrdStatus::Filled,
+        }
+    }
+
+    fn candle_sub(
+        channel_id: u16,
+        symbol: &str,
+        interval: &str,
+        routing_key: &str,
+    ) -> StreamSubscription {
+        StreamSubscription {
+            channel_id,
+            routing_key: routing_key.to_string(),
+            kind: SubscriptionKind::Candles {
+                symbol: symbol.to_string(),
+                interval: interval.to_string(),
+            },
+            conn: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn fill_fanout_uses_concrete_path_and_clears_snapshot() {
+        let state = ExchangeState::for_test();
+        state
+            .subscriptions
+            .lock()
+            .await
+            .push(candle_sub(3, "BTCUSDT", "5m", "btcusdt@kline_5m"));
+        let frames = post_fill_updates(&state, "BTCUSDT", "TEST", &[fill("BTCUSDT")], &[]).await;
+        let item = frames
+            .iter()
+            .find(|f| f.frame_type == FrameType::StreamItem)
+            .expect("candle push");
+        let path = extension_text(item, ExtensionTag::ChannelPath);
+        assert_eq!(path, "marketdata/BTCUSDT/candles/5m");
+        let event: CandleBarEvent = codec::decode_cbor(&item.payload).unwrap();
+        assert_eq!(event.bar.is_snapshot, Some(false));
+        assert!(!event.bar.is_final);
+    }
+
+    #[tokio::test]
+    async fn two_symbol_batch_updates_both_hubs() {
+        let state = ExchangeState::for_test();
+        post_fill_updates(
+            &state,
+            "BTCUSDT",
+            "TEST",
+            &[fill("BTCUSDT"), fill("ETH")],
+            &[],
+        )
+        .await;
+        let md = state.market_data.lock().await;
+        assert!(md.partial_candle("BTCUSDT", "1h").is_some());
+        assert!(md.partial_candle("ETH", "1h").is_some());
+    }
+
+    #[tokio::test]
+    async fn unsubscribe_matches_native_path_not_legacy_key() {
+        let state = ExchangeState::for_test();
+        state
+            .subscriptions
+            .lock()
+            .await
+            .push(candle_sub(1, "BTCUSDT", "5m", "btcusdt@kline_5m"));
+        state
+            .subscriptions
+            .lock()
+            .await
+            .push(candle_sub(2, "BTCUSDT", "1m", "btcusdt@kline_1m"));
+        let frame = Frame::new(FrameType::Unsubscribe, 9).with_extension(Extension::text(
+            ExtensionTag::ChannelPath,
+            "marketdata/BTCUSDT/candles/5m",
+        ));
+        let replies = handle_unsubscribe(frame, &state, None).await;
+        assert!(replies
+            .iter()
+            .any(|f| f.frame_type == FrameType::StreamClose));
+        let left: Vec<_> = state
+            .subscriptions
+            .lock()
+            .await
+            .iter()
+            .map(|s| s.kind.channel_path())
+            .collect();
+        assert_eq!(left, vec!["marketdata/BTCUSDT/candles/1m".to_string()]);
+    }
 }

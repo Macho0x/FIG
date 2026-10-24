@@ -4,6 +4,7 @@
 //! translates them to FIG frames. Intended as a migration bridge alongside
 //! native FIG clients.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,11 +30,14 @@ use fig_gateways::fix_seq_store::{build_seq_store, FixSeqStoreBackend};
 use fig_gateways::fix_session::{FixAction, FixSession};
 use fig_gateways::fix_tls::{accept_tls, build_tls_acceptor, FixGatewayStream, FixTlsAcceptor};
 use fig_gateways::rest::{
-    fig_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response,
+    frames_to_http_response, http_to_fig_frame, parse_http_request, serialize_http_response,
 };
 use fig_gateways::rest_query::http_get_to_fig_request;
 use fig_gateways::ws::{fig_to_ws_frame, serialize_ws_frame, WsOpcode};
-use fig_gateways::ws_catalog::{fig_frame_to_legacy_ws_json, legacy_ws_json_to_fig_subscribe};
+use fig_gateways::ws_catalog::{
+    fig_frame_to_legacy_ws_json, fig_subscribe_frame, fig_unsubscribe_frame, legacy_ws_command,
+    LegacyWsCommand,
+};
 use fig_gateways::ws_listener::{
     accept_websocket, is_websocket_upgrade, read_ws_text_or_binary, write_ws_json, write_ws_pong,
 };
@@ -301,6 +305,7 @@ async fn handle_ws_connection(
     };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Frame>();
     let mut next_channel: u16 = 1;
+    let mut topics: HashMap<String, u16> = HashMap::new();
 
     loop {
         tokio::select! {
@@ -313,20 +318,47 @@ async fn handle_ws_connection(
                     }
                     WsOpcode::Text | WsOpcode::Binary => {
                         let text = String::from_utf8(ws.payload)?;
-                        let fig = legacy_ws_json_to_fig_subscribe(&text, next_channel)?;
-                        next_channel = next_channel.saturating_add(1);
+                        let command = match legacy_ws_command(&text) {
+                            Ok(command) => command,
+                            Err(e) => {
+                                write_ws_json(
+                                    stream,
+                                    &serde_json::json!({"error": e.to_string()}).to_string(),
+                                )
+                                .await?;
+                                continue;
+                            }
+                        };
+                        let (fig, listen) = match command {
+                            LegacyWsCommand::Subscribe(sub) => {
+                                let ch = next_channel;
+                                next_channel = next_channel.saturating_add(1);
+                                topics.insert(sub.routing_key.clone(), ch);
+                                (fig_subscribe_frame(ch, &sub), true)
+                            }
+                            LegacyWsCommand::Unsubscribe(sub) => {
+                                let Some(ch) = topics.get(&sub.routing_key).copied() else {
+                                    write_ws_json(stream, r#"{"error":"unknown subscription"}"#)
+                                        .await?;
+                                    continue;
+                                };
+                                (fig_unsubscribe_frame(ch, &sub), false)
+                            }
+                        };
                         if let Some(session) = &backend {
                             session.send_frame(&fig).await?;
-                            let conn = session.connection();
-                            let ch = fig.channel_id;
-                            let tx = tx.clone();
-                            tokio::spawn(async move {
-                                while let Ok(frame) = conn.recv_frame(ch).await {
-                                    if tx.send(frame).is_err() {
-                                        break;
+                            if listen {
+                                let conn = session.connection();
+                                let ch = fig.channel_id;
+                                let tx = tx.clone();
+                                tokio::spawn(async move {
+                                    while let Ok(frame) = conn.recv_frame(ch).await {
+                                        if tx.send(frame).is_err() {
+                                            break;
+                                        }
                                     }
-                                }
-                            });
+                                });
+                            }
                         } else {
                             write_ws_json(
                                 stream,
@@ -356,15 +388,6 @@ async fn handle_ws_connection(
         }
     }
     Ok(())
-}
-
-fn frames_to_http_response(frames: &[Frame]) -> anyhow::Result<fig_gateways::rest::HttpResponse> {
-    let response = frames
-        .iter()
-        .find(|f| f.frame_type == FrameType::Response)
-        .or_else(|| frames.first())
-        .ok_or_else(|| anyhow::anyhow!("backend returned no frames"))?;
-    fig_to_http_response(response).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn demo_translate_response(frame: &Frame) -> anyhow::Result<fig_gateways::rest::HttpResponse> {

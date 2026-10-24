@@ -155,7 +155,11 @@ merge CBOR payloads into `FundingState` / `LedgerState` / … after you have fra
 2. Send `SUBSCRIBE` with:
    - `RoutingKey`: `marketdata/BTC/candles/5m` (or legacy `btcusdt@kline_5m` at gateway)
    - `ChannelPath`: `marketdata/BTC/candles/5m`
-3. Receive `STREAM_ITEM` frames with CBOR `CandleBarEvent` bodies.
+3. Receive `STREAM_ITEM` frames with CBOR `CandleBarEvent` bodies. The item's
+   `ChannelPath` is `marketdata/{symbol}/candles/{interval}`. The first item
+   has `is_snapshot: true`. Later items set `is_snapshot: false`. `is_final: true`
+   is the bar a trade just closed. A quiet symbol finalizes on the next trade,
+   query, or subscribe. There is no clock in the reference broker.
 
 For private streams, attach `AUTH_TOKEN` on the frame; the receiver verifies a
 credential your venue already issued and rejects path/account mismatches.
@@ -164,7 +168,7 @@ credential your venue already issued and rejects path/account mismatches.
 
 Use `fig_gateways::ws_catalog`:
 
-- `legacy_ws_json_to_fig_subscribe` — Binance/Hyperliquid JSON → FIG `SUBSCRIBE`
+- `legacy_ws_json_to_fig_subscribe` — Binance/Hyperliquid JSON → FIG `SUBSCRIBE` or `UNSUBSCRIBE`
 - `fig_stream_item_to_legacy_json` — FIG `STREAM_ITEM` → legacy JSON envelope
 - `binance_topic_to_subscribe` / `hyperliquid_subscribe_to_fig` — topic mapping
 - `backend::BackendSession` — persistent TREE connection for live WS follow-up frames

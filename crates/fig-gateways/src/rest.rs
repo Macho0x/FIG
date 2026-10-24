@@ -293,15 +293,15 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
     }
     .to_string();
 
-    // Convert FIG extensions to HTTP headers
+    let json_body = if frame.payload.is_empty() {
+        None
+    } else {
+        Some(cbor_to_json(&frame.payload)?)
+    };
+
     let mut headers = Vec::new();
     for ext in &frame.extensions {
         match ext.tag {
-            ExtensionTag::ContentType => {
-                if let Some(ct) = ext.value.as_text() {
-                    headers.push(("Content-Type".to_string(), ct.to_string()));
-                }
-            }
             ExtensionTag::UserAgent => {
                 if let Some(ua) = ext.value.as_text() {
                     headers.push(("User-Agent".to_string(), ua.to_string()));
@@ -316,21 +316,12 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
         }
     }
 
-    // Add Content-Length if not already present
-    let has_content_length = headers
-        .iter()
-        .any(|(n, _)| n.to_lowercase() == "content-length");
-    if !has_content_length && !frame.payload.is_empty() {
-        let json_body = cbor_to_json(&frame.payload)?;
-        headers.push(("Content-Length".to_string(), json_body.len().to_string()));
+    let body = if let Some(json_body) = json_body {
         headers.push(("Content-Type".to_string(), "application/json".to_string()));
-    }
-
-    // Convert CBOR payload to JSON body
-    let body = if frame.payload.is_empty() {
-        Vec::new()
+        headers.push(("Content-Length".to_string(), json_body.len().to_string()));
+        json_body.into_bytes()
     } else {
-        cbor_to_json(&frame.payload)?.into_bytes()
+        Vec::new()
     };
 
     Ok(HttpResponse {
@@ -338,6 +329,84 @@ pub fn fig_to_http_response(frame: &Frame) -> RestResult<HttpResponse> {
         reason,
         headers,
         body,
+    })
+}
+
+/// One HTTP body for a backend reply. A `RESPONSE` wins. A candle history
+/// longer than the broker's page threshold is `STREAM_ITEM` chunks with no
+/// status code; those chunks are merged into one JSON `CandleBarBatch`.
+pub fn frames_to_http_response(frames: &[Frame]) -> RestResult<HttpResponse> {
+    if let Some(response) = frames.iter().find(|f| f.frame_type == FrameType::Response) {
+        return fig_to_http_response(response);
+    }
+    let items: Vec<&Frame> = frames
+        .iter()
+        .filter(|f| f.frame_type == FrameType::StreamItem)
+        .collect();
+    if !items.is_empty() {
+        return merge_stream_batches(&items);
+    }
+    fig_to_http_response(
+        frames.first().ok_or_else(|| {
+            RestError::InvalidRequestLine("backend returned no frames".to_string())
+        })?,
+    )
+}
+
+fn merge_stream_batches(items: &[&Frame]) -> RestResult<HttpResponse> {
+    let mut bars = Vec::new();
+    let mut symbol = serde_json::Value::Null;
+    let mut interval = serde_json::Value::Null;
+    let mut has_more = false;
+    let mut next_cursor = serde_json::Value::Null;
+    let mut saw_bars = false;
+    for frame in items {
+        if frame.payload.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_str(&cbor_to_json(&frame.payload)?)?;
+        let Some(chunk) = value.get("bars").and_then(|b| b.as_array()) else {
+            continue;
+        };
+        saw_bars = true;
+        if symbol.is_null() {
+            symbol = value
+                .get("symbol")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            interval = value
+                .get("interval")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+        }
+        bars.extend(chunk.clone());
+        if let Some(flag) = value.get("has_more").and_then(|v| v.as_bool()) {
+            has_more = flag;
+        }
+        next_cursor = value
+            .get("next_cursor")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+    }
+    if !saw_bars {
+        return Err(RestError::MissingExtension("StatusCode".to_string()));
+    }
+    let body = serde_json::json!({
+        "symbol": symbol,
+        "interval": interval,
+        "bars": bars,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    })
+    .to_string();
+    Ok(HttpResponse {
+        status_code: 200,
+        reason: "OK".to_string(),
+        headers: vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("Content-Length".to_string(), body.len().to_string()),
+        ],
+        body: body.into_bytes(),
     })
 }
 
@@ -519,5 +588,61 @@ mod tests {
         let body_str = String::from_utf8(resp.body).unwrap();
         assert!(body_str.contains("EX-001"));
         assert!(body_str.contains("filled"));
+        let content_types: Vec<_> = resp
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .collect();
+        assert_eq!(content_types.len(), 1);
+        assert_eq!(content_types[0].1, "application/json");
+    }
+
+    #[test]
+    fn cbor_frame_becomes_one_json_content_type() {
+        let cbor = json_to_cbor(r#"{"ok":true}"#).unwrap();
+        let frame = Frame::new(FrameType::Response, 1)
+            .with_extension(Extension::u16(ExtensionTag::StatusCode, 200))
+            .with_extension(Extension::text(
+                ExtensionTag::ContentType,
+                "application/cbor",
+            ))
+            .with_payload(cbor);
+        let resp = fig_to_http_response(&frame).unwrap();
+        let types: Vec<_> = resp
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .map(|(_, value)| value.as_str())
+            .collect();
+        assert_eq!(types, vec!["application/json"]);
+    }
+
+    #[test]
+    fn stream_chunks_merge_into_one_candle_batch() {
+        let first = json_to_cbor(
+            r#"{"symbol":"BTCUSDT","interval":"5m","bars":[{"symbol":"BTCUSDT"}],"has_more":true,"next_cursor":"c1"}"#,
+        )
+        .unwrap();
+        let second = json_to_cbor(
+            r#"{"symbol":"BTCUSDT","interval":"5m","bars":[{"symbol":"ETH"}],"has_more":false}"#,
+        )
+        .unwrap();
+        let frames = vec![
+            Frame::new(FrameType::StreamItem, 1).with_payload(first),
+            Frame::new(FrameType::StreamItem, 1).with_payload(second),
+        ];
+        let resp = frames_to_http_response(&frames).unwrap();
+        assert_eq!(resp.status_code, 200);
+        let body = String::from_utf8(resp.body).unwrap();
+        assert!(body.contains("BTCUSDT"));
+        assert!(body.contains("ETH"));
+        assert!(body.contains("\"has_more\":false"));
+        let types: Vec<_> = resp
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            .map(|(_, value)| value.as_str())
+            .collect();
+        assert_eq!(types, vec!["application/json"]);
     }
 }

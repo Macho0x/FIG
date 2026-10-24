@@ -2,6 +2,7 @@
 
 use fig_core::ext::{Extension, ExtensionTag};
 use fig_core::frame::{Frame, FrameType};
+use fig_core::messages::schema_id;
 use fig_core::FrameResult;
 
 #[allow(clippy::too_many_arguments)]
@@ -14,6 +15,7 @@ pub fn subscribe_frame(
 ) -> FrameResult<Frame> {
     let mut frame = Frame::new(FrameType::Subscribe, channel_id)
         .with_seq(stream_seq)
+        .with_schema_id(schema_id::TRADING_ORDERS)
         .with_extension(Extension::text(ExtensionTag::ChannelPath, channel_path));
     if let Some(rk) = routing_key {
         frame = frame.with_extension(Extension::text(ExtensionTag::RoutingKey, rk));
@@ -51,4 +53,15 @@ pub fn request_frame(
         frame = frame.with_extension(Extension::text(ExtensionTag::AuthToken, token));
     }
     Ok(frame)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subscribe_frame_uses_wire_schema_id() {
+        let frame = subscribe_frame(1, 1, "marketdata/BTC/candles/5m", None, None).unwrap();
+        assert_eq!(frame.schema_id, schema_id::TRADING_ORDERS);
+    }
 }

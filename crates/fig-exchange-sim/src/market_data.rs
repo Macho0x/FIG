@@ -7,11 +7,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use fig_core::messages::*;
 use fig_core::transport::FigConnection;
 
-fn now_ns() -> i64 {
+pub fn now_ns() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos() as i64
+}
+
+/// FIG interval names from SPEC §9.1. The reference broker builds all four.
+pub const CANDLE_INTERVALS: [&str; 4] = ["1m", "5m", "1h", "1d"];
+
+fn interval_width(interval: &str) -> i64 {
+    interval_ns(interval).unwrap_or(300 * 1_000_000_000)
 }
 
 /// Parse interval strings like `5m`, `1h`, `1d` into nanoseconds.
@@ -32,8 +39,36 @@ pub fn interval_ns(interval: &str) -> Option<i64> {
 }
 
 pub fn bar_start(time_ns: i64, interval: &str) -> i64 {
-    let width = interval_ns(interval).unwrap_or(300 * 1_000_000_000);
+    let width = interval_width(interval);
     (time_ns / width) * width
+}
+
+impl SubscriptionKind {
+    /// Native `CHANNEL_PATH` for this subscription. Used to match UNSUBSCRIBE
+    /// by equality, so a prefix cannot drop both `1m` and `5m`.
+    pub fn channel_path(&self) -> String {
+        match self {
+            SubscriptionKind::Quotes { symbol } => format!("marketdata/{symbol}/quotes"),
+            SubscriptionKind::Candles { symbol, interval } => {
+                format!("marketdata/{symbol}/candles/{interval}")
+            }
+            SubscriptionKind::Trades { symbol } => format!("marketdata/{symbol}/trades"),
+            SubscriptionKind::AggTrades { symbol } => format!("marketdata/{symbol}/aggtrades"),
+            SubscriptionKind::Bbo { symbol } => format!("marketdata/{symbol}/bbo"),
+            SubscriptionKind::Ticker { symbol } => format!("marketdata/{symbol}/ticker"),
+            SubscriptionKind::MiniTicker { symbol: None } => "marketdata/ticker/all".to_string(),
+            SubscriptionKind::MiniTicker {
+                symbol: Some(symbol),
+            } => {
+                format!("marketdata/{symbol}/miniticker")
+            }
+            SubscriptionKind::MarkPrice { symbol } => format!("marketdata/{symbol}/mark"),
+            SubscriptionKind::Liquidations => "marketdata/liquidations".to_string(),
+            SubscriptionKind::Session => "marketdata/session".to_string(),
+            SubscriptionKind::SecurityStatus { symbol } => format!("marketdata/{symbol}/status"),
+            SubscriptionKind::PriceLimits { symbol } => format!("marketdata/{symbol}/limits"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,13 +113,14 @@ pub struct MarketDataHub {
 }
 
 impl MarketDataHub {
+    /// Record a fill. The `Vec` is every candle that rolled closed on this trade.
     pub fn on_trade(
         &mut self,
         symbol: &str,
         price: f64,
         qty: f64,
         side: Side,
-    ) -> Option<LiquidationTrade> {
+    ) -> (Option<LiquidationTrade>, Vec<CandleBar>) {
         let ts = now_ns();
         self.trade_seq += 1;
         let trade_id = format!("T-{}", self.trade_seq);
@@ -123,8 +159,11 @@ impl MarketDataHub {
             .or_default()
             .push(agg);
 
-        for interval in ["1m", "5m"] {
-            self.update_candle(symbol, interval, price, qty, ts);
+        let mut closed = Vec::new();
+        for interval in CANDLE_INTERVALS {
+            if let Some(bar) = self.update_candle(symbol, interval, price, qty, ts) {
+                closed.push(bar);
+            }
         }
         self.update_ticker(symbol, price, qty, ts);
         self.update_mini_ticker(symbol, price, qty, ts);
@@ -142,9 +181,30 @@ impl MarketDataHub {
                 timestamp: ts,
             };
             self.liquidations.push(liq.clone());
-            return Some(liq);
+            return (Some(liq), closed);
         }
-        None
+        (None, closed)
+    }
+
+    /// Move open bars whose window has ended into `closed_candles`. No new
+    /// partial is opened until the next trade. A quiet book therefore finalizes
+    /// on the next trade, query, or subscribe, not on a timer.
+    pub fn roll_elapsed(&mut self, now: i64) {
+        let keys: Vec<_> = self.partial_candles.keys().cloned().collect();
+        for key in keys {
+            let Some(partial) = self.partial_candles.get(&key).cloned() else {
+                continue;
+            };
+            let width = interval_width(&key.1);
+            if now < partial.bar_start.saturating_add(width) {
+                continue;
+            }
+            self.partial_candles.remove(&key);
+            self.closed_candles
+                .entry(key)
+                .or_default()
+                .push(finalize_bar(partial, width));
+        }
     }
 
     fn update_ticker(&mut self, symbol: &str, price: f64, qty: f64, ts: i64) {
@@ -312,10 +372,20 @@ impl MarketDataHub {
         })
     }
 
-    fn update_candle(&mut self, symbol: &str, interval: &str, price: f64, qty: f64, ts: i64) {
+    /// `Some` is the bar that just closed. Its `bar_end` is the old window's end.
+    fn update_candle(
+        &mut self,
+        symbol: &str,
+        interval: &str,
+        price: f64,
+        qty: f64,
+        ts: i64,
+    ) -> Option<CandleBar> {
         let key = (symbol.to_string(), interval.to_string());
+        let width = interval_width(interval);
         let start = bar_start(ts, interval);
-        let end = start + interval_ns(interval).unwrap_or(300 * 1_000_000_000);
+        let end = start + width;
+        let mut closed = None;
 
         if let Some(partial) = self.partial_candles.get(&key) {
             if partial.bar_start == start {
@@ -325,34 +395,36 @@ impl MarketDataHub {
                 bar.close = Price(price);
                 bar.volume = Quantity(bar.volume.0 + qty);
                 bar.is_final = false;
-                self.partial_candles.insert(key.clone(), bar);
-                return;
+                self.partial_candles.insert(key, bar);
+                return None;
             }
             if partial.bar_start < start {
-                let mut finalized = partial.clone();
-                finalized.is_final = true;
-                finalized.bar_end = end;
+                let finalized = finalize_bar(partial.clone(), width);
                 self.closed_candles
                     .entry(key.clone())
                     .or_default()
-                    .push(finalized);
+                    .push(finalized.clone());
+                closed = Some(finalized);
             }
         }
 
-        let bar = CandleBar {
-            symbol: symbol.to_string(),
-            interval: interval.to_string(),
-            open: Price(price),
-            high: Price(price),
-            low: Price(price),
-            close: Price(price),
-            volume: Quantity(qty),
-            bar_start: start,
-            bar_end: end,
-            is_final: false,
-            is_snapshot: None,
-        };
-        self.partial_candles.insert(key, bar);
+        self.partial_candles.insert(
+            key,
+            CandleBar {
+                symbol: symbol.to_string(),
+                interval: interval.to_string(),
+                open: Price(price),
+                high: Price(price),
+                low: Price(price),
+                close: Price(price),
+                volume: Quantity(qty),
+                bar_start: start,
+                bar_end: end,
+                is_final: false,
+                is_snapshot: None,
+            },
+        );
+        closed
     }
 
     pub fn query_candles(
@@ -466,6 +538,13 @@ impl MarketDataHub {
         snap.is_snapshot = Some(true);
         Some(snap)
     }
+}
+
+fn finalize_bar(mut bar: CandleBar, width: i64) -> CandleBar {
+    bar.is_final = true;
+    bar.is_snapshot = Some(false);
+    bar.bar_end = bar.bar_start.saturating_add(width);
+    bar
 }
 
 pub fn parse_md_subscription(routing_key: &str, channel_path: &str) -> Option<SubscriptionKind> {
@@ -594,5 +673,47 @@ mod tests {
     #[test]
     fn interval_parsing() {
         assert_eq!(interval_ns("5m"), Some(300 * 1_000_000_000));
+    }
+
+    #[test]
+    fn closed_bar_end_is_the_old_window() {
+        let mut hub = MarketDataHub::default();
+        let width = interval_ns("1m").unwrap();
+        let start = 1_700_000_000_000_000_000 / width * width;
+        assert!(hub
+            .update_candle("BTCUSDT", "1m", 10.0, 1.0, start + 1)
+            .is_none());
+        let closed = hub
+            .update_candle("BTCUSDT", "1m", 12.0, 1.0, start + width + 1)
+            .expect("roll");
+        assert!(closed.is_final);
+        assert_eq!(closed.is_snapshot, Some(false));
+        assert_eq!(closed.bar_start, start);
+        assert_eq!(closed.bar_end, start + width);
+        let partial = hub.partial_candle("BTCUSDT", "1m").unwrap();
+        assert!(!partial.is_final);
+        assert_eq!(partial.bar_start, start + width);
+    }
+
+    #[test]
+    fn fill_builds_hourly_and_daily_bars() {
+        let mut hub = MarketDataHub::default();
+        let (_liq, _closed) = hub.on_trade("BTCUSDT", 10.0, 1.0, Side::Buy);
+        assert!(hub.partial_candle("BTCUSDT", "1h").is_some());
+        assert!(hub.partial_candle("BTCUSDT", "1d").is_some());
+    }
+
+    #[test]
+    fn roll_elapsed_finalizes_without_a_new_trade() {
+        let mut hub = MarketDataHub::default();
+        let width = interval_ns("1m").unwrap();
+        let start = 1_700_000_000_000_000_000 / width * width;
+        hub.update_candle("BTCUSDT", "1m", 10.0, 1.0, start + 1);
+        hub.roll_elapsed(start + width);
+        assert!(hub.partial_candle("BTCUSDT", "1m").is_none());
+        let page = hub.query_candles("BTCUSDT", "1m", None, None, None, None);
+        assert_eq!(page.bars.len(), 1);
+        assert!(page.bars[0].is_final);
+        assert_eq!(page.bars[0].bar_end, start + width);
     }
 }

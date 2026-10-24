@@ -58,7 +58,7 @@ Common optional fields on batch requests:
 |---|---|---|
 | `start_time` | `start`, `startTime` | Inclusive start (nanoseconds since epoch) |
 | `end_time` | `end`, `endTime` | Inclusive end |
-| `limit` | `limit` | Max rows (default 500 in gateway) |
+| `limit` | `limit` | Max rows. The gateway writes 500 when the query omits `limit`. The broker uses 500 only when the field is absent. An explicit `0` stays 0. |
 | `cursor` | `cursor` | Pagination cursor from prior response |
 
 ## REST gateway mapping
@@ -73,6 +73,8 @@ Common optional fields on batch requests:
 - Fills: `GET /accounts/DEMO-ACCT/fills`
 
 All produce FIG `ChannelPath` and optional CBOR request bodies.
+
+A candle page of 50 bars or fewer is one `RESPONSE`. A longer page is `STREAM_ITEM` chunks on the TREE session. The REST gateway merges those chunks into one HTTP 200 JSON `CandleBarBatch`. The body is that object, not a Binance array of arrays. The response `Content-Type` is `application/json`.
 
 Run the gateway with backend proxy:
 

@@ -94,7 +94,10 @@ pub fn capabilities_response() -> CapabilitiesResponse {
             "ETH".to_string(),
             "BTCUSDT".to_string(),
         ],
-        intervals: vec!["1m".to_string(), "5m".to_string()],
+        intervals: crate::market_data::CANDLE_INTERVALS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
     }
 }
 
@@ -231,14 +234,18 @@ pub async fn handle_unsubscribe(
     };
 
     state.subscriptions.lock().await.retain(|s| {
-        !(s.channel_id == frame.channel_id
-            && (channel_path.is_empty() || s.routing_key.contains(&channel_path))
-            && same_conn(&s.conn))
+        let same = same_conn(&s.conn);
+        let hit = same
+            && (s.channel_id == frame.channel_id
+                || (!channel_path.is_empty() && s.kind.channel_path() == channel_path));
+        !hit
     });
     state.account_subscriptions.lock().await.retain(|s| {
-        !(s.channel_id == frame.channel_id
-            && (channel_path.is_empty() || s.routing_key.contains(&channel_path))
-            && same_conn(&s.conn))
+        let same = same_conn(&s.conn);
+        let hit = same
+            && (s.channel_id == frame.channel_id
+                || (!channel_path.is_empty() && s.routing_key == channel_path));
+        !hit
     });
 
     if let Some(session_id) = session_id_from_frame(&frame) {
@@ -569,5 +576,14 @@ mod tests {
                 "missing catalog row {path} {pattern:?} auth={auth}"
             );
         }
+        assert_eq!(
+            caps.intervals,
+            vec![
+                "1m".to_string(),
+                "5m".to_string(),
+                "1h".to_string(),
+                "1d".to_string()
+            ]
+        );
     }
 }

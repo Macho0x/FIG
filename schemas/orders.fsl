@@ -219,7 +219,8 @@ schema trading.orders v1.0.0 {
     }
 
     // gateway ws (declarative; parsed by ws_catalog.rs until FSL codegen supports ws block)
-    //   btcusdt@kline_{interval} -> SUBSCRIBE marketdata/{symbol}/candles/{interval}
+    //   btcusdt@kline_5m -> SUBSCRIBE marketdata/BTCUSDT/candles/5m
+    //   (symbol is uppercased on the native path; routing key stays the topic)
     //   {symbol}@trade -> SUBSCRIBE marketdata/{symbol}/trades
     //   {symbol}@bookTicker -> SUBSCRIBE marketdata/{symbol}/bbo
     //   hl subscribe trades -> SUBSCRIBE marketdata/{coin}/trades

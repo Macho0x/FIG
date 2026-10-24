@@ -116,9 +116,13 @@ Client (channel 3)                    Exchange (fig-exchange-sim)
 1. Open a session channel (`ChannelMode::Session`, schema `0x01`).
 2. Send `SUBSCRIBE` with both `ROUTING_KEY` and `CHANNEL_PATH` set to the native
    path (gateway WS clients use legacy keys like `btcusdt@kline_5m` — mapped by
-   `fig_gateways::ws_catalog::binance_topic_to_subscribe`).
-3. Decode each `STREAM_ITEM` payload as CBOR `CandleBarEvent` (contains
-   `CandleBar` + `is_final`).
+   `fig_gateways::ws_catalog::binance_topic_to_subscribe`, which uppercases the
+   symbol onto `marketdata/BTCUSDT/candles/5m` and keeps the topic as `ROUTING_KEY`).
+3. Decode each `STREAM_ITEM` payload as CBOR `CandleBarEvent`. `ChannelPath` on
+   the item is the concrete candle path. The first item has `is_snapshot: true`.
+   Later items set `is_snapshot: false`. `is_final: true` is only the bar a
+   trade just closed. A quiet symbol finalizes on the next trade, query, or
+   subscribe.
 4. On sequence gap, issue `CandleBarRequest` for the missing window (see below),
    then resume the subscription.
 
