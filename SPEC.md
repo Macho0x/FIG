@@ -746,7 +746,7 @@ schema trading.orders v1.0.0 {
 |---|---|---|
 | Rust | Structs + serde (`RustCodegen`); SBE encode/decode | ✅ CBOR + SBE in `fig-core` |
 | SBE | Per-language `sbe_generated.*` + Rust codec | ✅ Rust reference; all five targets compiled and hex-parity-checked in CI |
-| Python | PyO3 (`fig-python`) + `fig-client` merge helpers | ✅ CBOR via FFI / PyO3 |
+| Python | PyO3 (`fig-python`) + `fig-client` merge helpers | ✅ CBOR via PyO3 over `fig-client` |
 | Go / C++ / C# / TypeScript / Zig | Generated types + thin FFI wrapper | ✅ Wire via `fig-ffi` (CBOR + frames) |
 | OCaml | FSL types + C stubs | ✅ Wire via `fig-ffi` |
 | JSON Schema | `.schema.json` (REST docs) | N/A (documentation) |

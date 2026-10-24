@@ -2,6 +2,11 @@
 
 All notable changes to the FIG repository.
 
+## 1.4.12
+
+### Added
+- Language bindings now wrap the merge handles already in `fig.h`, plus a candle handle (`fig_candle_*`) and `fig_client_post_batch` (CBOR `BatchRequest` in, CBOR `BatchReport` out). JWT encode, decode, and verify are on every binding, including Python. Typed subscribe and request path builders stay on the Rust client.
+
 ## 1.4.11
 
 ### Fixed

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use fig_client::FigSdkClient;
 use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::messages::{
-    MassCancelReport, MassCancelRequest, SecurityStatus, Side, TradingSessionStatus,
+    BatchRequest, MassCancelReport, MassCancelRequest, SecurityStatus, Side, TradingSessionStatus,
 };
 use fig_core::transport::FigConnection;
 
@@ -363,6 +363,58 @@ pub unsafe extern "C" fn fig_client_mass_cancel(
     set_cstring(report.cl_ord_id, out_cl_ord_id)
 }
 
+/// POST `trading/accounts/{account}/batch` with the dev auth token.
+///
+/// `payload` is a CBOR `BatchRequest`. On success `out` holds a CBOR `BatchReport`.
+///
+/// # Safety
+/// `payload` must be valid for `payload_len` bytes. `out` must be writable.
+#[no_mangle]
+pub unsafe extern "C" fn fig_client_post_batch(
+    handle: *mut FigClientHandle,
+    account: *const c_char,
+    payload: *const u8,
+    payload_len: usize,
+    channel_id: u16,
+    out: *mut FigBuffer,
+) -> i32 {
+    if handle.is_null() || out.is_null() {
+        return -1;
+    }
+    let account = match required_text(account) {
+        Ok(account) => account,
+        Err(code) => return code,
+    };
+    let payload = match bytes(payload, payload_len) {
+        Ok(payload) => payload,
+        Err(code) => return code,
+    };
+    let req: BatchRequest = match decode_cbor(payload) {
+        Ok(req) => req,
+        Err(_) => return -2,
+    };
+    let handle = &*handle;
+    let conn = match connection(handle) {
+        Ok(conn) => conn,
+        Err(code) => return code,
+    };
+    let report = match handle.rt.block_on(async move {
+        FigSdkClient::new(conn.inner())
+            .post_batch(&account, &req, channel_id)
+            .await
+    }) {
+        Ok(report) => report,
+        Err(_) => return -6,
+    };
+    match encode_cbor(&report) {
+        Ok(bytes) => {
+            *out = into_buffer(bytes);
+            0
+        }
+        Err(_) => -2,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,6 +614,58 @@ mod tests {
             assert_eq!(CStr::from_ptr(out_cl).to_str().unwrap(), "MC-FFI");
             assert_eq!(status, MassCancelReportStatus::Completed.to_value());
             crate::fig_string_free(out_cl);
+
+            let batch = encode_cbor(&fig_core::messages::BatchRequest {
+                batch_id: "FFI-BAT-1".into(),
+                account: "TEST".into(),
+                actions: vec![fig_core::messages::BatchAction {
+                    kind: fig_core::messages::BatchActionKind::NewOrder,
+                    new_order: Some(fig_core::messages::NewOrderSingle {
+                        cl_ord_id: "FFI-BAT-A".into(),
+                        side: Side::Buy,
+                        order_qty: fig_core::messages::Quantity(1.0),
+                        price: Some(fig_core::messages::Price(10.0)),
+                        stop_price: None,
+                        symbol: "AAPL".into(),
+                        order_type: fig_core::messages::OrderType::Limit,
+                        time_in_force: fig_core::messages::TimeInForce::Day,
+                        expire_time: None,
+                        account: Some("TEST".into()),
+                        strategy_id: None,
+                        security_id: None,
+                        id_source: None,
+                        security_exchange: None,
+                        post_only: Some(true),
+                        reduce_only: None,
+                    }),
+                    cancel: None,
+                    replace: None,
+                }],
+            })
+            .unwrap();
+            let mut report = crate::FigBuffer {
+                data: ptr::null_mut(),
+                len: 0,
+            };
+            assert_eq!(
+                fig_client_post_batch(
+                    handle,
+                    account.as_ptr(),
+                    batch.as_ptr(),
+                    batch.len(),
+                    19,
+                    &mut report
+                ),
+                0
+            );
+            let report_bytes = std::slice::from_raw_parts(report.data, report.len);
+            let decoded: fig_core::messages::BatchReport = decode_cbor(report_bytes).unwrap();
+            assert_eq!(decoded.batch_id, "FFI-BAT-1");
+            assert_eq!(
+                decoded.outcome,
+                fig_core::messages::BatchReportOutcome::Applied
+            );
+            crate::fig_buffer_free(report);
             crate::fig_client_close(handle);
         }
     }

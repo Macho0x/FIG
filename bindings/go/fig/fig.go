@@ -579,3 +579,28 @@ func (c *Client) MassCancel(clOrdID, account, symbol string, side byte, channelI
 		Status:        byte(status),
 	}, nil
 }
+
+// PostBatch POSTs a CBOR BatchRequest to trading/accounts/{account}/batch.
+func (c *Client) PostBatch(account string, payload []byte, channelID uint16) (Buffer, error) {
+	if c == nil || c.handle == nil {
+		return Buffer{}, errors.New("client closed")
+	}
+	if len(payload) == 0 {
+		return Buffer{}, errors.New("empty batch payload")
+	}
+	cAccount := C.CString(account)
+	defer C.free(unsafe.Pointer(cAccount))
+	var out C.struct_FigBuffer
+	rc := C.fig_client_post_batch(
+		c.handle,
+		cAccount,
+		(*C.uint8_t)(unsafe.Pointer(&payload[0])),
+		C.uintptr_t(len(payload)),
+		C.uint16_t(channelID),
+		&out,
+	)
+	if rc != 0 {
+		return Buffer{}, errors.New("fig_client_post_batch failed")
+	}
+	return intoGoBuffer(out)
+}

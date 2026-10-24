@@ -635,7 +635,7 @@ Roll out incrementally per binding; do not expose all 20 `fig-core` modules at o
 | Status | Item | Priority | Notes |
 |---|---|---|---|
 | ✅ | Tier 1 — frames, REQUEST/RESPONSE, CBOR payloads | High | All FFI bindings + `fig-python` |
-| ✅ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + JWT encode/decode/verify in all bindings |
+| ✅ | Tier 2 — STREAM_OPEN/CLOSE, JWT auth, PING/PONG, seq nums | High | Connect/subscribe/request + JWT encode, decode, and verify, including Python |
 | ✅ | Tier 3 — SUBSCRIBE, market data + account streams, correlation | Medium | Live recv: `fig_client_subscribe` + Python `subscribe_live`; Go/C++/C#/Java/TS/OCaml/Zig wrappers |
 | ✅ | Tier 4 — 0-RTT resumption, migration, fragmentation, zstd | Low | `fig_client_connect_0rtt`, migration prepare/apply, compress/split/reassemble in `fig-ffi` |
 

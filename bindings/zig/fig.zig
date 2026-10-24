@@ -302,3 +302,246 @@ pub fn massCancel(
         .status = status,
     };
 }
+
+pub fn jwtDecodeSub(token: [:0]const u8, secret: [:0]const u8) ![]u8 {
+    var sub: [*c]u8 = null;
+    if (c.fig_jwt_decode_sub(token.ptr, secret.ptr, &sub) != 0) return error.JwtFailed;
+    return dupCString(sub);
+}
+
+pub fn postBatch(
+    handle: *c.FigClientHandle,
+    account: [:0]const u8,
+    payload: []const u8,
+    channel_id: u16,
+) ![]u8 {
+    var out = FigBuffer{ .data = null, .len = 0 };
+    const rc = c.fig_client_post_batch(handle, account.ptr, payload.ptr, payload.len, channel_id, &out);
+    if (rc != 0) return error.RequestFailed;
+    defer c.fig_buffer_free(out);
+    if (out.data == null or out.len == 0) return alloc.alloc(u8, 0);
+    return alloc.dupe(u8, out.data[0..out.len]);
+}
+
+fn mustApply(rc: i32) !void {
+    if (rc != 0) return error.ApplyFailed;
+}
+
+pub const OrderBookState = struct {
+    handle: *c.FigOrderBookHandle,
+    pub fn init() OrderBookState {
+        return .{ .handle = c.fig_order_book_new().? };
+    }
+    pub fn deinit(self: *OrderBookState) void {
+        c.fig_order_book_free(self.handle);
+    }
+    pub fn applySnapshot(self: *OrderBookState, payload: []const u8) !void {
+        try mustApply(c.fig_order_book_apply_snapshot(self.handle, payload.ptr, payload.len));
+    }
+    pub fn applyDelta(self: *OrderBookState, payload: []const u8) !void {
+        try mustApply(c.fig_order_book_apply_delta(self.handle, payload.ptr, payload.len));
+    }
+    pub fn bestBid(self: OrderBookState) f64 {
+        return c.fig_order_book_best_bid(self.handle);
+    }
+};
+
+pub const MidsState = struct {
+    handle: *c.FigMidsHandle,
+    pub fn init() MidsState {
+        return .{ .handle = c.fig_mids_new().? };
+    }
+    pub fn deinit(self: *MidsState) void {
+        c.fig_mids_free(self.handle);
+    }
+    pub fn applyTicker(self: *MidsState, payload: []const u8) !void {
+        try mustApply(c.fig_mids_apply_ticker(self.handle, payload.ptr, payload.len));
+    }
+    pub fn applyBatch(self: *MidsState, payload: []const u8) !void {
+        try mustApply(c.fig_mids_apply_batch(self.handle, payload.ptr, payload.len));
+    }
+    pub fn mid(self: MidsState, symbol: [:0]const u8) f64 {
+        return c.fig_mids_mid(self.handle, symbol.ptr);
+    }
+};
+
+pub const BboState = struct {
+    handle: *c.FigBboHandle,
+    pub fn init() BboState {
+        return .{ .handle = c.fig_bbo_new().? };
+    }
+    pub fn deinit(self: *BboState) void {
+        c.fig_bbo_free(self.handle);
+    }
+    pub fn apply(self: *BboState, payload: []const u8) !void {
+        try mustApply(c.fig_bbo_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn impliedMid(self: BboState) f64 {
+        return c.fig_bbo_implied_mid(self.handle);
+    }
+    pub fn bestBid(self: BboState) f64 {
+        return c.fig_bbo_best_bid(self.handle);
+    }
+    pub fn bestAsk(self: BboState) f64 {
+        return c.fig_bbo_best_ask(self.handle);
+    }
+};
+
+pub const TradeTape = struct {
+    handle: *c.FigTradeTapeHandle,
+    pub fn init(capacity: usize) TradeTape {
+        return .{ .handle = c.fig_trade_tape_new(capacity).? };
+    }
+    pub fn deinit(self: *TradeTape) void {
+        c.fig_trade_tape_free(self.handle);
+    }
+    pub fn push(self: *TradeTape, payload: []const u8) !void {
+        try mustApply(c.fig_trade_tape_push(self.handle, payload.ptr, payload.len));
+    }
+    pub fn len(self: TradeTape) usize {
+        return c.fig_trade_tape_len(self.handle);
+    }
+    pub fn latestPrice(self: TradeTape) f64 {
+        return c.fig_trade_tape_latest_price(self.handle);
+    }
+};
+
+pub const MarkPriceState = struct {
+    handle: *c.FigMarkPriceHandle,
+    pub fn init() MarkPriceState {
+        return .{ .handle = c.fig_mark_price_new().? };
+    }
+    pub fn deinit(self: *MarkPriceState) void {
+        c.fig_mark_price_free(self.handle);
+    }
+    pub fn apply(self: *MarkPriceState, payload: []const u8) !void {
+        try mustApply(c.fig_mark_price_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn get(self: MarkPriceState, symbol: [:0]const u8) f64 {
+        return c.fig_mark_price_get(self.handle, symbol.ptr);
+    }
+};
+
+pub const OrdersState = struct {
+    handle: *c.FigOrdersHandle,
+    pub fn init(exec_capacity: usize) OrdersState {
+        return .{ .handle = c.fig_orders_new(exec_capacity).? };
+    }
+    pub fn deinit(self: *OrdersState) void {
+        c.fig_orders_free(self.handle);
+    }
+    pub fn applySnapshot(self: *OrdersState, payload: []const u8) !void {
+        try mustApply(c.fig_orders_apply_snapshot(self.handle, payload.ptr, payload.len));
+    }
+    pub fn applyExecution(self: *OrdersState, payload: []const u8) !void {
+        try mustApply(c.fig_orders_apply_execution(self.handle, payload.ptr, payload.len));
+    }
+    pub fn openCount(self: OrdersState) usize {
+        return c.fig_orders_open_count(self.handle);
+    }
+    pub fn executionCount(self: OrdersState) usize {
+        return c.fig_orders_execution_count(self.handle);
+    }
+};
+
+pub const FundingState = struct {
+    handle: *c.FigFundingHandle,
+    pub fn init(capacity: usize) FundingState {
+        return .{ .handle = c.fig_funding_new(capacity).? };
+    }
+    pub fn deinit(self: *FundingState) void {
+        c.fig_funding_free(self.handle);
+    }
+    pub fn apply(self: *FundingState, payload: []const u8) !void {
+        try mustApply(c.fig_funding_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn len(self: FundingState) usize {
+        return c.fig_funding_len(self.handle);
+    }
+    pub fn latestAmount(self: FundingState) f64 {
+        return c.fig_funding_latest_amount(self.handle);
+    }
+};
+
+pub const AggTradesState = struct {
+    handle: *c.FigAggTradesHandle,
+    pub fn init(capacity: usize) AggTradesState {
+        return .{ .handle = c.fig_agg_trades_new(capacity).? };
+    }
+    pub fn deinit(self: *AggTradesState) void {
+        c.fig_agg_trades_free(self.handle);
+    }
+    pub fn apply(self: *AggTradesState, payload: []const u8) !void {
+        try mustApply(c.fig_agg_trades_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn len(self: AggTradesState) usize {
+        return c.fig_agg_trades_len(self.handle);
+    }
+    pub fn latestPrice(self: AggTradesState) f64 {
+        return c.fig_agg_trades_latest_price(self.handle);
+    }
+};
+
+pub const LedgerState = struct {
+    handle: *c.FigLedgerHandle,
+    pub fn init(capacity: usize) LedgerState {
+        return .{ .handle = c.fig_ledger_new(capacity).? };
+    }
+    pub fn deinit(self: *LedgerState) void {
+        c.fig_ledger_free(self.handle);
+    }
+    pub fn apply(self: *LedgerState, payload: []const u8) !void {
+        try mustApply(c.fig_ledger_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn len(self: LedgerState) usize {
+        return c.fig_ledger_len(self.handle);
+    }
+};
+
+pub const LiquidationState = struct {
+    handle: *c.FigLiquidationHandle,
+    pub fn init(capacity: usize) LiquidationState {
+        return .{ .handle = c.fig_liquidation_new(capacity).? };
+    }
+    pub fn deinit(self: *LiquidationState) void {
+        c.fig_liquidation_free(self.handle);
+    }
+    pub fn applyUser(self: *LiquidationState, payload: []const u8) !void {
+        try mustApply(c.fig_liquidation_apply_user(self.handle, payload.ptr, payload.len));
+    }
+    pub fn applyPublic(self: *LiquidationState, payload: []const u8) !void {
+        try mustApply(c.fig_liquidation_apply_public(self.handle, payload.ptr, payload.len));
+    }
+    pub fn userCount(self: LiquidationState) usize {
+        return c.fig_liquidation_user_count(self.handle);
+    }
+};
+
+pub const CandleState = struct {
+    handle: *c.FigCandleHandle,
+    pub fn init() CandleState {
+        return .{ .handle = c.fig_candle_new().? };
+    }
+    pub fn deinit(self: *CandleState) void {
+        c.fig_candle_free(self.handle);
+    }
+    pub fn apply(self: *CandleState, payload: []const u8) !void {
+        try mustApply(c.fig_candle_apply(self.handle, payload.ptr, payload.len));
+    }
+    pub fn closePrice(self: CandleState) f64 {
+        return c.fig_candle_close(self.handle);
+    }
+    pub fn isFinal(self: CandleState) i32 {
+        return c.fig_candle_is_final(self.handle);
+    }
+    pub fn symbol(self: CandleState) ![]u8 {
+        var out: [*c]u8 = null;
+        if (c.fig_candle_symbol(self.handle, &out) != 0) return alloc.dupe(u8, "");
+        return dupCString(out);
+    }
+    pub fn interval(self: CandleState) ![]u8 {
+        var out: [*c]u8 = null;
+        if (c.fig_candle_interval(self.handle, &out) != 0) return alloc.dupe(u8, "");
+        return dupCString(out);
+    }
+};

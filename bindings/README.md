@@ -40,10 +40,10 @@ All type targets emit typed enums, nested structs, type aliases, message metadat
 
 ## JWT (dev / conformance)
 
-All **FFI** bindings (Go, C++, C#, Java, OCaml, TypeScript, Zig) expose HS256 JWT
-helpers via the C ABI (`fig_jwt_encode`, `fig_jwt_verify_bearer`) for the dev
-`AUTH_TOKEN`. The Python binding does not wrap them yet — use the FFI library
-directly or the gateway.
+Every FFI binding (Go, C++, C#, Java, OCaml, TypeScript, Zig) and the Python
+module expose HS256 JWT helpers for the dev `AUTH_TOKEN`: encode
+(`fig_jwt_encode` / `jwt_encode`), decode the subject (`fig_jwt_decode_sub` /
+`jwt_decode_sub`), and verify (`fig_jwt_verify_bearer` / `jwt_verify_bearer`).
 
 Production venues verify RS256 tokens with `fig_core::jwt_keys`
 (`FIG_JWT_JWKS`); rotation is described in [JWT_KEY_ROTATION.md](../docs/JWT_KEY_ROTATION.md).
@@ -57,14 +57,15 @@ The same helpers the Rust `FigSdkClient` added in 1.4.0 are on every binding:
 | session status | `GET marketdata/session` | response `TradingSessionStatus` |
 | security status | `GET marketdata/{symbol}/status` | response `SecurityStatus` |
 | mass cancel | `POST trading/accounts/{account}/orders/masscancel` | CBOR `MassCancelRequest` → `MassCancelReport` |
+| batch | `POST trading/accounts/{account}/batch` | CBOR `BatchRequest` → `BatchReport` |
 
 FFI (`fig_client_request_session_status`, `fig_client_request_security_status`,
-`fig_client_mass_cancel`) is what Go, C++, C#, TypeScript, Java, OCaml, and Zig call.
+`fig_client_mass_cancel`, `fig_client_post_batch`) is what Go, C++, C#, TypeScript, Java, OCaml, and Zig call.
 Python calls the same Rust client directly (`request_session_status`,
-`request_security_status`, `mass_cancel`). Status fields come back as the 1-based
+`request_security_status`, `mass_cancel`, `post_batch`). Status fields come back as the 1-based
 wire values (session `2` = open, security `1` = trading, report `2` = completed).
 Mass-cancel `side` `0` and a null symbol omit those filters. The dev auth token is
-`fig-dev-{account}`, injected by the mass-cancel helper.
+`fig-dev-{account}`, injected by the mass-cancel and batch helpers.
 
 `fig_cbor_encode_mass_cancel_request` and the matching decoders are there when you
 already have payload bytes. Generated SBE encoders in Go, C++, C#, TypeScript, and
@@ -82,12 +83,14 @@ PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 cargo test -p fig-python binding_conforman
 cargo run -p xtask -- codegen --check
 ```
 
-**Stream merge (CBOR payload → local state):** `fig_order_book_*`, `fig_mids_*`,
-`fig_bbo_*`, `fig_trade_tape_*`, `fig_mark_price_*`, `fig_orders_*`,
-`fig_agg_trades_*`, `fig_funding_*`, `fig_ledger_*`, `fig_liquidation_*` — see
-`crates/fig-ffi/include/fig.h`. Python (module `fig`): `PyOrderBookState`,
-`PyMidsState`, `PyBboState`, `PyTradeTape`, `PyMarkPriceState`, `PyOrdersState`,
-`PyAggTradesState`, `PyFundingState`, `PyLedgerState`, `PyLiquidationState`.
+**Stream merge (CBOR payload → local state):** every FFI binding wraps the ten
+handles in `fig.h` — order book, mids, BBO, trade tape, mark price, orders,
+aggregate trades, funding, ledger, and liquidations — plus candles
+(`fig_candle_*`). Python (module `fig`) wraps the same states, including
+`PyCandleState`. `fig_client_post_batch` takes an account, a CBOR `BatchRequest`,
+and a channel id, and returns a CBOR `BatchReport`. Typed `subscribe_*` /
+`request_*` path builders stay on the Rust client. Other languages send a path
+and a body through `fig_client_subscribe` and `fig_client_request_and_recv`.
 
 **Compile smoke** (CI also runs Java / TypeScript / Zig / OCaml):
 

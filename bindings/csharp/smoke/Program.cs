@@ -7,6 +7,18 @@ if (bytes.Length == 0)
     throw new InvalidOperationException("empty SBE payload");
 }
 
+var token = FigNative.JwtEncode("alice", 4_000_000_000UL, "fig-smoke-secret");
+if (FigNative.JwtDecodeSub(token, "fig-smoke-secret") != "alice")
+{
+    throw new InvalidOperationException("jwt sub");
+}
+FigNative.JwtVerifyBearer(token, "fig-smoke-secret");
+using var candle = new CandleState();
+if (candle.IsFinal != -1)
+{
+    throw new InvalidOperationException("empty candle");
+}
+
 using var funding = new FundingState(4);
 
 var root = Environment.GetEnvironmentVariable("FIG_REPO_ROOT")

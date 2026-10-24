@@ -193,6 +193,20 @@ except RuntimeError as e:         # RuntimeError("timeout") when nothing arrived
     frame = None
 sub.close()
 c.ping()
+
+token = fig.jwt_encode("alice", 4_000_000_000, "fig-smoke-secret")
+fig.jwt_decode_sub(token, "fig-smoke-secret")   # "alice"
+fig.jwt_verify_bearer(token, "fig-smoke-secret")
+
+c.request_session_status()
+c.request_security_status("AAPL")
+c.mass_cancel("MC-001", "DEMO", symbol="AAPL", side="buy")
+c.post_batch("DEMO", batch_request_cbor)        # -> bytes, a CBOR BatchReport
+
+candle = fig.PyCandleState()
+candle.apply_bytes(candle_bar_event_cbor)
+candle.close_price()                            # None until a bar is applied
+candle.is_final()
 ```
 
 `request` and `subscribe` return **lists of encoded frames** (decode with

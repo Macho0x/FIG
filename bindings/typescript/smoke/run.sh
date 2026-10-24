@@ -14,9 +14,15 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 bun -e '
 import { readFileSync } from "fs";
-import { cborDecodeMassCancelRequest, cborEncodeMassCancelRequest, sbeEncodeNewOrderSingle, version } from "./bindings/typescript/fig.ts";
+import { CandleState, cborDecodeMassCancelRequest, cborEncodeMassCancelRequest, jwtDecodeSub, jwtEncode, jwtVerifyBearer, sbeEncodeNewOrderSingle, version } from "./bindings/typescript/fig.ts";
 const v = version();
 if (!v) throw new Error("empty fig_version");
+const token = jwtEncode("alice", 4000000000n, "fig-smoke-secret");
+if (jwtDecodeSub(token, "fig-smoke-secret") !== "alice") throw new Error("jwt sub");
+jwtVerifyBearer(token, "fig-smoke-secret");
+const candle = new CandleState();
+if (candle.isFinal() !== -1) throw new Error("empty candle");
+candle.close();
 const bytes = sbeEncodeNewOrderSingle("CONF-001", "AAPL", true, 100, 50.25);
 if (!bytes.length) throw new Error("empty SBE");
 const root = process.env.FIG_REPO_ROOT ?? process.cwd();

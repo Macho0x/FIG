@@ -11,9 +11,10 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
 use fig_client::{FigSdkClient, LiveSubscription};
+use fig_core::codec::{decode_cbor, encode_cbor};
 use fig_core::frame::Frame;
 use fig_core::messages::{
-    MassCancelReport, MassCancelReportStatus, MassCancelRequest, SecurityStatus,
+    BatchRequest, MassCancelReport, MassCancelReportStatus, MassCancelRequest, SecurityStatus,
     SecurityStatusHaltReason, SecurityStatusStatus, TradingSessionStatus,
     TradingSessionStatusHaltReason, TradingSessionStatusStatus,
 };
@@ -164,6 +165,24 @@ impl FigPyClient {
                 .await
                 .map_err(|e| e.to_string())
         })
+    }
+
+    pub(crate) fn post_batch_inner(
+        &self,
+        account: &str,
+        payload: &[u8],
+        channel_id: u16,
+    ) -> Result<Vec<u8>, String> {
+        let req: BatchRequest = decode_cbor(payload).map_err(|e| e.to_string())?;
+        let report = self.rt.block_on(async {
+            let guard = self.conn.lock().await;
+            let conn = guard.as_ref().ok_or_else(|| "not connected".to_string())?;
+            FigSdkClient::new(conn.inner())
+                .post_batch(account, &req, channel_id)
+                .await
+                .map_err(|e| e.to_string())
+        })?;
+        encode_cbor(&report).map_err(|e| e.to_string())
     }
 }
 
@@ -466,6 +485,22 @@ impl FigPyClient {
             .mass_cancel_inner(&req, channel_id)
             .map_err(PyRuntimeError::new_err)?;
         report_dict(py, &report)
+    }
+
+    /// POST a CBOR `BatchRequest` to `trading/accounts/{account}/batch`.
+    /// Returns the CBOR `BatchReport`.
+    #[pyo3(signature = (account, payload, channel_id=1))]
+    fn post_batch<'py>(
+        &self,
+        py: Python<'py>,
+        account: &str,
+        payload: &[u8],
+        channel_id: u16,
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let report = self
+            .post_batch_inner(account, payload, channel_id)
+            .map_err(PyRuntimeError::new_err)?;
+        Ok(PyBytes::new(py, &report))
     }
 
     /// Send a PING control frame on channel 0.

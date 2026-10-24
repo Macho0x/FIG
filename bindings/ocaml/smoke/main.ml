@@ -26,6 +26,16 @@ let expected_hex path =
 let () =
   let v = Fig.version () in
   if v = "" then failwith "empty fig_version";
+  let token = Fig.jwt_encode "alice" 4000000000L "fig-smoke-secret" in
+  let sub = Fig.jwt_decode_sub token "fig-smoke-secret" in
+  if sub <> "alice" then failwith "jwt sub";
+  Fig.jwt_verify_bearer token "fig-smoke-secret";
+  let check_candle () =
+    let candle = Fig.candle_new () in
+    if Fig.candle_is_final candle <> -1 then failwith "empty candle"
+  in
+  check_candle ();
+  Gc.full_major ();
   let bytes = Fig.sbe_encode_new_order_single "CONF-001" "AAPL" true 100.0 50.25 in
   if bytes = "" then failwith "empty SBE";
   let root = Sys.getenv "FIG_REPO_ROOT" in

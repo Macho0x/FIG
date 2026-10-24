@@ -514,3 +514,5 @@ JNIEXPORT jint JNICALL Java_fig_FigNative_figClientMassCancel(
     (*env)->SetIntArrayRegion(env, out_status, 0, 1, &status_j);
     return 0;
 }
+
+#include "fig_jni_merge.c"

@@ -73,7 +73,7 @@ jobs:
           cargo build -p fig-python
           mkdir -p "$RUNNER_TEMP/fig-py"
           cp target/debug/libfig_python.so "$RUNNER_TEMP/fig-py/fig.so"
-          PYTHONPATH="$RUNNER_TEMP/fig-py" python3 -c "import fig; v = fig.version(); print('fig-python', v); assert v"
+          PYTHONPATH="$RUNNER_TEMP/fig-py" python3 -c "import fig; v = fig.version(); assert v; token = fig.jwt_encode('alice', 4000000000, 'fig-smoke-secret'); assert fig.jwt_decode_sub(token, 'fig-smoke-secret') == 'alice'; fig.jwt_verify_bearer(token, 'fig-smoke-secret'); candle = fig.PyCandleState(); assert candle.close_price() is None and candle.is_final() is None; print('fig-python', v)"
       - name: Go binding (generated SBE parity + FFI conformance)
         run: |
           cargo build -p fig-ffi

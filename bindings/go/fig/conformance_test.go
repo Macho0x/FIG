@@ -34,6 +34,28 @@ func TestMassCancelCborRoundTrip(t *testing.T) {
 	}
 }
 
+func TestJwtDecodeAndCandle(t *testing.T) {
+	token, err := JwtEncode("alice", 4_000_000_000, "fig-smoke-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := JwtDecodeSub(token, "fig-smoke-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub != "alice" {
+		t.Fatalf("jwt sub %q", sub)
+	}
+	if err := JwtVerifyBearer(token, "fig-smoke-secret"); err != nil {
+		t.Fatal(err)
+	}
+	candle := NewCandleState()
+	if candle.IsFinal() != -1 || !math.IsNaN(candle.ClosePrice()) {
+		t.Fatal("expected empty candle")
+	}
+	candle.Close()
+}
+
 func TestMergeStateConstructors(t *testing.T) {
 	funding := NewFundingState(8)
 	defer funding.Close()

@@ -23,7 +23,7 @@ API; that is not this policy.
 
 Examples that are easy to mix up, and are not the same thing:
 
-- SPEC `1.0.0` + crate `1.4.11` + git tag `v1.0.25` can all describe one commit.
+- SPEC `1.0.0` + crate `1.4.12` + git tag `v1.0.25` can all describe one commit.
 - A docs-only crate bump still cuts the next `v1.0.x` tag unless the commit
   message contains `[skip release]`.
 
@@ -54,9 +54,11 @@ Non-Rust clients bind [`crates/fig-ffi/include/fig.h`](../crates/fig-ffi/include
 over `libfig_ffi`. That C ABI is the multi-language contract:
 
 - Connect, request (EOF), live subscribe (`fig_client_subscribe` /
-  `sub_next` / `sub_close`), JWT helpers, SBE helpers exposed on the ABI,
-  and the market-state helpers (`request_session_status`,
-  `request_security_status`, `mass_cancel`).
+  `sub_next` / `sub_close`), JWT encode / decode / verify, SBE helpers
+  exposed on the ABI, market-state helpers (`request_session_status`,
+  `request_security_status`, `mass_cancel`, `post_batch`), and the merge
+  handles (order book, mids, BBO, trade tape, mark price, orders, aggregate
+  trades, funding, ledger, liquidations, candles).
 - Language wrappers (Go, C++, C#, TypeScript/Bun, Java, OCaml, Zig, Python)
   must not invent a second wire. If `fig.h` does not expose a call, neither
   does that language's production path.

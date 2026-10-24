@@ -18,6 +18,22 @@ pub fn main() !void {
     const v = fig.version();
     if (v.len == 0) return error.EmptyVersion;
 
+    const raw = try fig.jwtEncode("alice", 4_000_000_000, "fig-smoke-secret");
+    defer std.heap.page_allocator.free(raw);
+    const token_buf = try std.heap.page_allocator.alloc(u8, raw.len + 1);
+    defer std.heap.page_allocator.free(token_buf);
+    @memcpy(token_buf[0..raw.len], raw);
+    token_buf[raw.len] = 0;
+    const token: [:0]const u8 = token_buf[0..raw.len :0];
+    try fig.jwtVerifyBearer(token, "fig-smoke-secret");
+    const sub = try fig.jwtDecodeSub(token, "fig-smoke-secret");
+    defer std.heap.page_allocator.free(sub);
+    if (!std.mem.eql(u8, sub, "alice")) return error.JwtSub;
+
+    var candle = fig.CandleState.init();
+    defer candle.deinit();
+    if (candle.isFinal() != -1) return error.EmptyCandle;
+
     const bytes = try fig.sbeEncodeNewOrderSingle("CONF-001", "AAPL", true, 100.0, 50.25);
     defer std.heap.page_allocator.free(bytes);
     if (bytes.len == 0) return error.EmptySbe;

@@ -7,7 +7,15 @@ public final class JwtSmoke {
         if (token == null || token.isEmpty()) {
             throw new IllegalStateException("empty JWT");
         }
+        if (!"alice".equals(FigNative.jwtDecodeSub(token, "fig-smoke-secret"))) {
+            throw new IllegalStateException("jwt sub");
+        }
         FigNative.jwtVerifyBearer(token, "fig-smoke-secret");
+        long candle = FigNative.figCandleNew();
+        if (candle == 0 || FigNative.figCandleIsFinal(candle) != -1) {
+            throw new IllegalStateException("empty candle");
+        }
+        FigNative.figCandleFree(candle);
         byte[] mass = FigNative.cborEncodeMassCancelRequest("MC-001", "DEMO", "AAPL", (byte) 1);
         FigNative.MassCancelRequest decoded = FigNative.cborDecodeMassCancelRequest(mass);
         if (!"MC-001".equals(decoded.clOrdId)

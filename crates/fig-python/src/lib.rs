@@ -1,5 +1,6 @@
 //! Python bindings for FIG — Tier 1–2 reference SDK (CBOR + frames + client).
 
+mod candles;
 mod client;
 mod codec;
 mod order_book;
@@ -9,12 +10,33 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use fig_conformance::{load_suite, run_vector};
+use fig_core::jwt::{decode_jwt, encode_jwt, verify_jwt_bearer, FigJwtClaims};
 
 pub use client::{FigPyClient, FigPySubscription};
 
 #[pyfunction]
 fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+#[pyfunction]
+fn jwt_encode(sub: String, exp: u64, secret: String) -> PyResult<String> {
+    let claims = FigJwtClaims::new(sub, exp, Vec::new());
+    encode_jwt(&claims, &secret).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn jwt_decode_sub(token: String, secret: String) -> PyResult<String> {
+    decode_jwt(&token, &secret)
+        .map(|claims| claims.sub)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn jwt_verify_bearer(token: String, secret: String) -> PyResult<()> {
+    verify_jwt_bearer(&token, &secret)
+        .map(|_| ())
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 #[pyfunction]
@@ -264,6 +286,9 @@ fn check_hex(expected_hex: &str, actual: &[u8]) -> Result<(), String> {
 #[pymodule]
 fn fig(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(version, m)?)?;
+    m.add_function(wrap_pyfunction!(jwt_encode, m)?)?;
+    m.add_function(wrap_pyfunction!(jwt_decode_sub, m)?)?;
+    m.add_function(wrap_pyfunction!(jwt_verify_bearer, m)?)?;
     m.add_function(wrap_pyfunction!(encode_cbor_order, m)?)?;
     m.add_function(wrap_pyfunction!(encode_cbor_mass_cancel, m)?)?;
     m.add_function(wrap_pyfunction!(decode_cbor_order_cl_ord_id, m)?)?;
@@ -289,5 +314,6 @@ fn fig(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stream_state::PyFundingState>()?;
     m.add_class::<stream_state::PyLedgerState>()?;
     m.add_class::<stream_state::PyLiquidationState>()?;
+    m.add_class::<candles::PyCandleState>()?;
     Ok(())
 }

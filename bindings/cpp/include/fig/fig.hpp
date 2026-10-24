@@ -250,6 +250,18 @@ public:
         return {take_c_string(out_cl), total, status};
     }
 
+    /// POST trading/accounts/{account}/batch. payload is a CBOR BatchRequest.
+    Buffer post_batch(const char* account,
+                      const uint8_t* payload,
+                      std::size_t payload_len,
+                      uint16_t channel_id = 1) {
+        FigBuffer out{};
+        if (fig_client_post_batch(handle_.get(), account, payload, payload_len, channel_id, &out) != 0) {
+            throw std::runtime_error("fig_client_post_batch failed");
+        }
+        return Buffer(out);
+    }
+
 private:
     struct Deleter {
         void operator()(FigClientHandle* h) const {
@@ -347,6 +359,8 @@ inline void jwt_verify_bearer(const char* token, const char* secret) {
         throw std::runtime_error("fig_jwt_verify_bearer failed");
     }
 }
+
+inline std::string version() { return fig_version(); }
 
 inline Buffer sbe_encode_new_order_single(const char* cl_ord_id,
                                           const char* symbol,

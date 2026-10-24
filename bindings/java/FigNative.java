@@ -43,6 +43,102 @@ public final class FigNative {
 
     public static native int figJwtVerifyBearer(String token, String secret);
 
+    public static native int figJwtDecodeSub(String token, String secret, String[] outSub);
+
+    public static native String figVersion();
+
+    public static native int figClientRequestAndRecv(long handle, byte[] frame, Object[] outFrames);
+
+    public static native int figFrameEncodeRequestEx(
+            short channelId,
+            int streamSeq,
+            byte schemaId,
+            String channelPath,
+            String method,
+            byte[] payload,
+            byte[][] out);
+
+    public static native int figFrameEncodeRequestAuth(
+            short channelId,
+            int streamSeq,
+            byte schemaId,
+            String channelPath,
+            String method,
+            String authToken,
+            byte[] payload,
+            byte[][] out);
+
+    public static native int figClientPostBatch(
+            long handle, String account, byte[] payload, short channelId, byte[][] out);
+
+    public static native long figOrderBookNew();
+    public static native void figOrderBookFree(long handle);
+    public static native int figOrderBookApplySnapshot(long handle, byte[] payload);
+    public static native int figOrderBookApplyDelta(long handle, byte[] payload);
+    public static native double figOrderBookBestBid(long handle);
+
+    public static native long figMidsNew();
+    public static native void figMidsFree(long handle);
+    public static native int figMidsApplyTicker(long handle, byte[] payload);
+    public static native int figMidsApplyBatch(long handle, byte[] payload);
+    public static native double figMidsMid(long handle, String symbol);
+
+    public static native long figBboNew();
+    public static native void figBboFree(long handle);
+    public static native int figBboApply(long handle, byte[] payload);
+    public static native double figBboImpliedMid(long handle);
+    public static native double figBboBestBid(long handle);
+    public static native double figBboBestAsk(long handle);
+
+    public static native long figTradeTapeNew(long capacity);
+    public static native void figTradeTapeFree(long handle);
+    public static native int figTradeTapePush(long handle, byte[] payload);
+    public static native long figTradeTapeLen(long handle);
+    public static native double figTradeTapeLatestPrice(long handle);
+
+    public static native long figMarkPriceNew();
+    public static native void figMarkPriceFree(long handle);
+    public static native int figMarkPriceApply(long handle, byte[] payload);
+    public static native double figMarkPriceGet(long handle, String symbol);
+
+    public static native long figOrdersNew(long execCapacity);
+    public static native void figOrdersFree(long handle);
+    public static native int figOrdersApplySnapshot(long handle, byte[] payload);
+    public static native int figOrdersApplyExecution(long handle, byte[] payload);
+    public static native long figOrdersOpenCount(long handle);
+    public static native long figOrdersExecutionCount(long handle);
+
+    public static native long figFundingNew(long capacity);
+    public static native void figFundingFree(long handle);
+    public static native int figFundingApply(long handle, byte[] payload);
+    public static native long figFundingLen(long handle);
+    public static native double figFundingLatestAmount(long handle);
+
+    public static native long figAggTradesNew(long capacity);
+    public static native void figAggTradesFree(long handle);
+    public static native int figAggTradesApply(long handle, byte[] payload);
+    public static native long figAggTradesLen(long handle);
+    public static native double figAggTradesLatestPrice(long handle);
+
+    public static native long figLedgerNew(long capacity);
+    public static native void figLedgerFree(long handle);
+    public static native int figLedgerApply(long handle, byte[] payload);
+    public static native long figLedgerLen(long handle);
+
+    public static native long figLiquidationNew(long capacity);
+    public static native void figLiquidationFree(long handle);
+    public static native int figLiquidationApplyUser(long handle, byte[] payload);
+    public static native int figLiquidationApplyPublic(long handle, byte[] payload);
+    public static native long figLiquidationUserCount(long handle);
+
+    public static native long figCandleNew();
+    public static native void figCandleFree(long handle);
+    public static native int figCandleApply(long handle, byte[] payload);
+    public static native double figCandleClose(long handle);
+    public static native int figCandleIsFinal(long handle);
+    public static native int figCandleSymbol(long handle, String[] out);
+    public static native int figCandleInterval(long handle, String[] out);
+
     public static native int figCborEncodeMassCancelRequest(
             String clOrdId, String account, String symbol, byte side, byte[][] out);
 
@@ -269,5 +365,89 @@ public final class FigNative {
             throw new IllegalStateException("fig_client_mass_cancel failed");
         }
         return new MassCancelReport(cl[0], total[0], status[0]);
+    }
+
+    public static String version() {
+        return figVersion();
+    }
+
+    public static String jwtDecodeSub(String token, String secret) {
+        String[] out = new String[1];
+        if (figJwtDecodeSub(token, secret, out) != 0) {
+            throw new IllegalStateException("fig_jwt_decode_sub failed");
+        }
+        return out[0];
+    }
+
+    public static byte[][] requestAndRecv(long handle, byte[] frame) {
+        Object[] out = new Object[1];
+        if (figClientRequestAndRecv(handle, frame, out) != 0) {
+            throw new IllegalStateException("fig_client_request_and_recv failed");
+        }
+        if (out[0] instanceof byte[][]) {
+            return (byte[][]) out[0];
+        }
+        return new byte[0][];
+    }
+
+    public static byte[] encodeRequest(
+            short channelId, int streamSeq, byte schemaId, String channelPath, String method, byte[] payload) {
+        byte[][] out = new byte[1][];
+        if (figFrameEncodeRequestEx(channelId, streamSeq, schemaId, channelPath, method, payload, out) != 0) {
+            throw new IllegalStateException("fig_frame_encode_request_ex failed");
+        }
+        return out[0];
+    }
+
+    public static byte[] encodeRequestAuth(
+            short channelId,
+            int streamSeq,
+            byte schemaId,
+            String channelPath,
+            String method,
+            String authToken,
+            byte[] payload) {
+        byte[][] out = new byte[1][];
+        if (figFrameEncodeRequestAuth(
+                channelId, streamSeq, schemaId, channelPath, method, authToken, payload, out) != 0) {
+            throw new IllegalStateException("fig_frame_encode_request_auth failed");
+        }
+        return out[0];
+    }
+
+    public static byte[] postBatch(long handle, String account, byte[] payload, short channelId) {
+        byte[][] out = new byte[1][];
+        if (figClientPostBatch(handle, account, payload, channelId, out) != 0) {
+            throw new IllegalStateException("fig_client_post_batch failed");
+        }
+        return out[0];
+    }
+
+    public static long orderBookNew() {
+        long handle = figOrderBookNew();
+        if (handle == 0) {
+            throw new IllegalStateException("fig_order_book_new failed");
+        }
+        return handle;
+    }
+
+    public static void orderBookFree(long handle) {
+        figOrderBookFree(handle);
+    }
+
+    public static String candleSymbol(long handle) {
+        String[] out = new String[1];
+        if (figCandleSymbol(handle, out) != 0) {
+            return "";
+        }
+        return out[0] == null ? "" : out[0];
+    }
+
+    public static String candleInterval(long handle) {
+        String[] out = new String[1];
+        if (figCandleInterval(handle, out) != 0) {
+            return "";
+        }
+        return out[0] == null ? "" : out[0];
     }
 }

@@ -17,6 +17,11 @@ typedef struct FigAggTradesHandle FigAggTradesHandle;
 typedef struct FigBboHandle FigBboHandle;
 
 /**
+ * Opaque candle merge state for C bindings.
+ */
+typedef struct FigCandleHandle FigCandleHandle;
+
+/**
  * Opaque connected FIG client (one TREE connection).
  */
 typedef struct FigClientHandle FigClientHandle;
@@ -254,6 +259,59 @@ int32_t fig_session_from_resumption_token(const uint8_t *token_bytes,
                                           uintptr_t token_len,
                                           struct FigBuffer *out);
 
+/**
+ * Create an empty candle state.
+ */
+struct FigCandleHandle *fig_candle_new(void);
+
+/**
+ * Free candle state.
+ *
+ * # Safety
+ * `handle` must be from `fig_candle_new` and not already freed.
+ */
+void fig_candle_free(struct FigCandleHandle *handle);
+
+/**
+ * Apply a CBOR `CandleBarEvent`. Returns 0 on success, -1 on error.
+ *
+ * # Safety
+ * `payload` must be valid for `len` bytes.
+ */
+int32_t fig_candle_apply(struct FigCandleHandle *handle, const uint8_t *payload, uintptr_t len);
+
+/**
+ * Close of the current bar, or NaN when empty.
+ *
+ * # Safety
+ * `handle` must be valid or null.
+ */
+double fig_candle_close(const struct FigCandleHandle *handle);
+
+/**
+ * `1` when the current bar is final, `0` when it is open, `-1` when empty.
+ *
+ * # Safety
+ * `handle` must be valid or null.
+ */
+int32_t fig_candle_is_final(const struct FigCandleHandle *handle);
+
+/**
+ * Symbol of the current bar. Free `out` with `fig_string_free`. Returns -1 when empty.
+ *
+ * # Safety
+ * `out` must be writable.
+ */
+int32_t fig_candle_symbol(const struct FigCandleHandle *handle, char **out);
+
+/**
+ * Interval of the current bar. Free `out` with `fig_string_free`. Returns -1 when empty.
+ *
+ * # Safety
+ * `out` must be writable.
+ */
+int32_t fig_candle_interval(const struct FigCandleHandle *handle, char **out);
+
 void fig_frame_list_free(struct FigFrameList list);
 
 /**
@@ -405,6 +463,21 @@ int32_t fig_client_mass_cancel(struct FigClientHandle *handle,
                                char **out_cl_ord_id,
                                uint32_t *out_total_affected,
                                uint8_t *out_status);
+
+/**
+ * POST `trading/accounts/{account}/batch` with the dev auth token.
+ *
+ * `payload` is a CBOR `BatchRequest`. On success `out` holds a CBOR `BatchReport`.
+ *
+ * # Safety
+ * `payload` must be valid for `payload_len` bytes. `out` must be writable.
+ */
+int32_t fig_client_post_batch(struct FigClientHandle *handle,
+                              const char *account,
+                              const uint8_t *payload,
+                              uintptr_t payload_len,
+                              uint16_t channel_id,
+                              struct FigBuffer *out);
 
 /**
  * Create an empty order book state.

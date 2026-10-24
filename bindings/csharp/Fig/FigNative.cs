@@ -270,6 +270,179 @@ public static class FigNative
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
     public static extern UIntPtr fig_liquidation_user_count(IntPtr handle);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_client_post_batch(
+        IntPtr handle,
+        string account,
+        byte[] payload,
+        UIntPtr payloadLen,
+        ushort channelId,
+        out FigBuffer outBuf);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_order_book_new();
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_order_book_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_order_book_apply_snapshot(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_order_book_apply_delta(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_order_book_best_bid(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_mids_new();
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_mids_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_mids_apply_ticker(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_mids_apply_batch(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_mids_mid(IntPtr handle, string symbol);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_bbo_new();
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_bbo_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_bbo_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_bbo_implied_mid(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_bbo_best_bid(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_bbo_best_ask(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_trade_tape_new(UIntPtr capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_trade_tape_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_trade_tape_push(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_trade_tape_len(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_trade_tape_latest_price(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_mark_price_new();
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_mark_price_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_mark_price_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_mark_price_get(IntPtr handle, string symbol);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_orders_new(UIntPtr execCapacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_orders_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_orders_apply_snapshot(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_orders_apply_execution(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_orders_open_count(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern UIntPtr fig_orders_execution_count(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr fig_candle_new();
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void fig_candle_free(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_candle_apply(IntPtr handle, IntPtr payload, UIntPtr len);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern double fig_candle_close(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_candle_is_final(IntPtr handle);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_candle_symbol(IntPtr handle, out IntPtr outText);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int fig_candle_interval(IntPtr handle, out IntPtr outText);
+
+    public static byte[] EncodeRequest(
+        ushort channelId, uint streamSeq, byte schemaId, string? channelPath, string? method, byte[]? payload)
+    {
+        if (fig_frame_encode_request_ex(
+                channelId, streamSeq, schemaId, channelPath, method, null, payload,
+                (UIntPtr)(payload?.Length ?? 0), out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_frame_encode_request_ex failed");
+        }
+        return CopyBuffer(buf);
+    }
+
+    public static byte[] EncodeRequestAuth(
+        ushort channelId, uint streamSeq, byte schemaId, string? channelPath, string? method,
+        string? authToken, byte[]? payload)
+    {
+        if (fig_frame_encode_request_auth(
+                channelId, streamSeq, schemaId, channelPath, method, null, authToken, payload,
+                (UIntPtr)(payload?.Length ?? 0), out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_frame_encode_request_auth failed");
+        }
+        return CopyBuffer(buf);
+    }
+
+    public static byte[] EncodeSubscribe(ushort channelId, uint streamSeq, string routingKey, string channelPath)
+    {
+        if (fig_frame_encode_subscribe(channelId, streamSeq, routingKey, channelPath, out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_frame_encode_subscribe failed");
+        }
+        return CopyBuffer(buf);
+    }
+
+    public static byte[] EncodeSubscribeAuth(
+        ushort channelId, uint streamSeq, string routingKey, string channelPath, string? authToken)
+    {
+        if (fig_frame_encode_subscribe_auth(
+                channelId, streamSeq, routingKey, channelPath, authToken, out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_frame_encode_subscribe_auth failed");
+        }
+        return CopyBuffer(buf);
+    }
+
+    public static ulong ChannelStreamId(ushort channelId, bool isServer)
+    {
+        return fig_client_channel_stream_id(channelId, (byte)(isServer ? 1 : 0));
+    }
+
     public static string JwtEncode(string sub, ulong exp, string secret)
     {
         if (fig_jwt_encode(sub, exp, secret, out var buf) != 0)
@@ -495,6 +668,16 @@ public sealed class FigClient : IDisposable
             throw new InvalidOperationException("fig_client_mass_cancel failed");
         }
         return (FigNative.TakeString(cl), total, status);
+    }
+
+    public byte[] PostBatch(string account, byte[] payload, ushort channelId = 1)
+    {
+        if (FigNative.fig_client_post_batch(
+                _handle, account, payload, (UIntPtr)payload.Length, channelId, out var buf) != 0)
+        {
+            throw new InvalidOperationException("fig_client_post_batch failed");
+        }
+        return FigNative.CopyBuffer(buf);
     }
 
     public void Dispose()

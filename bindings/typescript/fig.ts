@@ -218,6 +218,82 @@ const fig = dlopen(libPath, {
     returns: FFIType.i32,
   },
   fig_liquidation_user_count: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_jwt_decode_sub: {
+    args: [FFIType.cstring, FFIType.cstring, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_client_post_batch: {
+    args: [FFIType.pointer, FFIType.cstring, FFIType.pointer, FFIType.u64, FFIType.u16, FFIType.pointer],
+    returns: FFIType.i32,
+  },
+  fig_order_book_new: { args: [], returns: FFIType.pointer },
+  fig_order_book_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_order_book_apply_snapshot: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_order_book_apply_delta: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_order_book_best_bid: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_mids_new: { args: [], returns: FFIType.pointer },
+  fig_mids_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_mids_apply_ticker: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_mids_apply_batch: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_mids_mid: { args: [FFIType.pointer, FFIType.cstring], returns: FFIType.f64 },
+  fig_bbo_new: { args: [], returns: FFIType.pointer },
+  fig_bbo_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_bbo_apply: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_bbo_implied_mid: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_bbo_best_bid: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_bbo_best_ask: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_trade_tape_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_trade_tape_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_trade_tape_push: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_trade_tape_len: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_trade_tape_latest_price: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_mark_price_new: { args: [], returns: FFIType.pointer },
+  fig_mark_price_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_mark_price_apply: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_mark_price_get: { args: [FFIType.pointer, FFIType.cstring], returns: FFIType.f64 },
+  fig_orders_new: { args: [FFIType.u64], returns: FFIType.pointer },
+  fig_orders_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_orders_apply_snapshot: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_orders_apply_execution: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_orders_open_count: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_orders_execution_count: { args: [FFIType.pointer], returns: FFIType.u64 },
+  fig_candle_new: { args: [], returns: FFIType.pointer },
+  fig_candle_free: { args: [FFIType.pointer], returns: FFIType.void },
+  fig_candle_apply: {
+    args: [FFIType.pointer, FFIType.pointer, FFIType.u64],
+    returns: FFIType.i32,
+  },
+  fig_candle_close: { args: [FFIType.pointer], returns: FFIType.f64 },
+  fig_candle_is_final: { args: [FFIType.pointer], returns: FFIType.i32 },
+  fig_candle_symbol: { args: [FFIType.pointer, FFIType.pointer], returns: FFIType.i32 },
+  fig_candle_interval: { args: [FFIType.pointer, FFIType.pointer], returns: FFIType.i32 },
 });
 
 const libc = dlopen(
@@ -566,6 +642,23 @@ export class FigClient {
     };
   }
 
+  /** POST a CBOR BatchRequest to trading/accounts/{account}/batch. */
+  postBatch(account: string, payload: Buffer, channelId = 1): Buffer {
+    const out = outSlot();
+    const rc = fig.symbols.fig_client_post_batch(
+      this.handle,
+      account,
+      payload,
+      payload.length,
+      channelId,
+      ptr(out),
+    ) as number;
+    if (rc !== 0) {
+      throw new Error(`fig_client_post_batch failed: ${rc}`);
+    }
+    return takeOwnedBytes(out);
+  }
+
   close(): void {
     if (this.handle) {
       fig.symbols.fig_client_close(this.handle);
@@ -586,6 +679,15 @@ export function jwtEncode(sub: string, exp: bigint, secret: string): string {
     throw new Error(`fig_jwt_encode failed: ${rc}`);
   }
   return takeOwnedBytes(out).toString("utf8");
+}
+
+export function jwtDecodeSub(token: string, secret: string): string {
+  const sub = ptrSlot();
+  const rc = fig.symbols.fig_jwt_decode_sub(token, secret, ptr(sub)) as number;
+  if (rc !== 0) {
+    throw new Error(`fig_jwt_decode_sub failed: ${rc}`);
+  }
+  return takeCString(sub);
 }
 
 export function jwtVerifyBearer(token: string, secret: string): void {
@@ -794,6 +896,10 @@ export class AggTradesState {
     return fig.symbols.fig_agg_trades_latest_price(this.handle) as number;
   }
 
+  len(): number {
+    return Number(fig.symbols.fig_agg_trades_len(this.handle));
+  }
+
   close(): void {
     if (this.handle) {
       fig.symbols.fig_agg_trades_free(this.handle);
@@ -874,6 +980,263 @@ export class LiquidationState {
   close(): void {
     if (this.handle) {
       fig.symbols.fig_liquidation_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+function mustHandle(handle: Pointer, name: string): Pointer {
+  if (!handle) {
+    throw new Error(`${name} failed`);
+  }
+  return handle;
+}
+
+function mustApply(rc: number, name: string): void {
+  if (rc !== 0) {
+    throw new Error(`${name} failed: ${rc}`);
+  }
+}
+
+export class OrderBookState {
+  private handle: Pointer;
+
+  constructor() {
+    this.handle = mustHandle(fig.symbols.fig_order_book_new() as Pointer, "fig_order_book_new");
+  }
+
+  applySnapshot(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_order_book_apply_snapshot(this.handle, payload, payload.length) as number,
+      "fig_order_book_apply_snapshot",
+    );
+  }
+
+  applyDelta(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_order_book_apply_delta(this.handle, payload, payload.length) as number,
+      "fig_order_book_apply_delta",
+    );
+  }
+
+  bestBid(): number {
+    return fig.symbols.fig_order_book_best_bid(this.handle) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_order_book_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class MidsState {
+  private handle: Pointer;
+
+  constructor() {
+    this.handle = mustHandle(fig.symbols.fig_mids_new() as Pointer, "fig_mids_new");
+  }
+
+  applyTicker(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_mids_apply_ticker(this.handle, payload, payload.length) as number,
+      "fig_mids_apply_ticker",
+    );
+  }
+
+  applyBatch(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_mids_apply_batch(this.handle, payload, payload.length) as number,
+      "fig_mids_apply_batch",
+    );
+  }
+
+  mid(symbol: string): number {
+    return fig.symbols.fig_mids_mid(this.handle, symbol) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_mids_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class BboState {
+  private handle: Pointer;
+
+  constructor() {
+    this.handle = mustHandle(fig.symbols.fig_bbo_new() as Pointer, "fig_bbo_new");
+  }
+
+  apply(payload: Buffer): void {
+    mustApply(fig.symbols.fig_bbo_apply(this.handle, payload, payload.length) as number, "fig_bbo_apply");
+  }
+
+  impliedMid(): number {
+    return fig.symbols.fig_bbo_implied_mid(this.handle) as number;
+  }
+
+  bestBid(): number {
+    return fig.symbols.fig_bbo_best_bid(this.handle) as number;
+  }
+
+  bestAsk(): number {
+    return fig.symbols.fig_bbo_best_ask(this.handle) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_bbo_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class TradeTape {
+  private handle: Pointer;
+
+  constructor(capacity = 256) {
+    this.handle = mustHandle(
+      fig.symbols.fig_trade_tape_new(capacity) as Pointer,
+      "fig_trade_tape_new",
+    );
+  }
+
+  push(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_trade_tape_push(this.handle, payload, payload.length) as number,
+      "fig_trade_tape_push",
+    );
+  }
+
+  len(): number {
+    return Number(fig.symbols.fig_trade_tape_len(this.handle));
+  }
+
+  latestPrice(): number {
+    return fig.symbols.fig_trade_tape_latest_price(this.handle) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_trade_tape_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class MarkPriceState {
+  private handle: Pointer;
+
+  constructor() {
+    this.handle = mustHandle(fig.symbols.fig_mark_price_new() as Pointer, "fig_mark_price_new");
+  }
+
+  apply(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_mark_price_apply(this.handle, payload, payload.length) as number,
+      "fig_mark_price_apply",
+    );
+  }
+
+  get(symbol: string): number {
+    return fig.symbols.fig_mark_price_get(this.handle, symbol) as number;
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_mark_price_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class OrdersState {
+  private handle: Pointer;
+
+  constructor(execCapacity = 256) {
+    this.handle = mustHandle(
+      fig.symbols.fig_orders_new(execCapacity) as Pointer,
+      "fig_orders_new",
+    );
+  }
+
+  applySnapshot(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_orders_apply_snapshot(this.handle, payload, payload.length) as number,
+      "fig_orders_apply_snapshot",
+    );
+  }
+
+  applyExecution(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_orders_apply_execution(this.handle, payload, payload.length) as number,
+      "fig_orders_apply_execution",
+    );
+  }
+
+  openCount(): number {
+    return Number(fig.symbols.fig_orders_open_count(this.handle));
+  }
+
+  executionCount(): number {
+    return Number(fig.symbols.fig_orders_execution_count(this.handle));
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_orders_free(this.handle);
+      this.handle = ptr(null);
+    }
+  }
+}
+
+export class CandleState {
+  private handle: Pointer;
+
+  constructor() {
+    this.handle = mustHandle(fig.symbols.fig_candle_new() as Pointer, "fig_candle_new");
+  }
+
+  apply(payload: Buffer): void {
+    mustApply(
+      fig.symbols.fig_candle_apply(this.handle, payload, payload.length) as number,
+      "fig_candle_apply",
+    );
+  }
+
+  closePrice(): number {
+    return fig.symbols.fig_candle_close(this.handle) as number;
+  }
+
+  isFinal(): number {
+    return fig.symbols.fig_candle_is_final(this.handle) as number;
+  }
+
+  symbol(): string {
+    const out = ptrSlot();
+    const rc = fig.symbols.fig_candle_symbol(this.handle, ptr(out)) as number;
+    if (rc !== 0) {
+      return "";
+    }
+    return takeCString(out);
+  }
+
+  interval(): string {
+    const out = ptrSlot();
+    const rc = fig.symbols.fig_candle_interval(this.handle, ptr(out)) as number;
+    if (rc !== 0) {
+      return "";
+    }
+    return takeCString(out);
+  }
+
+  close(): void {
+    if (this.handle) {
+      fig.symbols.fig_candle_free(this.handle);
       this.handle = ptr(null);
     }
   }

@@ -55,3 +55,76 @@ external request_security_status : client -> string -> int -> string * int
 external mass_cancel :
   client -> string -> string -> string -> int -> int -> string * int * int
   = "caml_fig_client_mass_cancel_byte" "caml_fig_client_mass_cancel"
+
+external jwt_decode_sub : string -> string -> string = "caml_fig_jwt_decode_sub"
+
+external post_batch : client -> string -> string -> int -> string = "caml_fig_client_post_batch"
+
+type order_book
+type mids
+type bbo
+type trade_tape
+type mark_price
+type orders
+type funding
+type agg_trades
+type ledger
+type liquidation
+type candle
+
+external order_book_new : unit -> order_book = "caml_fig_order_book_new"
+external order_book_apply_snapshot : order_book -> string -> unit = "caml_fig_order_book_apply_snapshot"
+external order_book_apply_delta : order_book -> string -> unit = "caml_fig_order_book_apply_delta"
+external order_book_best_bid : order_book -> float = "caml_fig_order_book_best_bid"
+
+external mids_new : unit -> mids = "caml_fig_mids_new"
+external mids_apply_ticker : mids -> string -> unit = "caml_fig_mids_apply_ticker"
+external mids_apply_batch : mids -> string -> unit = "caml_fig_mids_apply_batch"
+external mids_mid : mids -> string -> float = "caml_fig_mids_mid"
+
+external bbo_new : unit -> bbo = "caml_fig_bbo_new"
+external bbo_apply : bbo -> string -> unit = "caml_fig_bbo_apply"
+external bbo_implied_mid : bbo -> float = "caml_fig_bbo_implied_mid"
+external bbo_best_bid : bbo -> float = "caml_fig_bbo_best_bid"
+external bbo_best_ask : bbo -> float = "caml_fig_bbo_best_ask"
+
+external trade_tape_new : int -> trade_tape = "caml_fig_trade_tape_new"
+external trade_tape_push : trade_tape -> string -> unit = "caml_fig_trade_tape_push"
+external trade_tape_len : trade_tape -> int = "caml_fig_trade_tape_len"
+external trade_tape_latest_price : trade_tape -> float = "caml_fig_trade_tape_latest_price"
+
+external mark_price_new : unit -> mark_price = "caml_fig_mark_price_new"
+external mark_price_apply : mark_price -> string -> unit = "caml_fig_mark_price_apply"
+external mark_price_get : mark_price -> string -> float = "caml_fig_mark_price_get"
+
+external orders_new : int -> orders = "caml_fig_orders_new"
+external orders_apply_snapshot : orders -> string -> unit = "caml_fig_orders_apply_snapshot"
+external orders_apply_execution : orders -> string -> unit = "caml_fig_orders_apply_execution"
+external orders_open_count : orders -> int = "caml_fig_orders_open_count"
+external orders_execution_count : orders -> int = "caml_fig_orders_execution_count"
+
+external funding_new : int -> funding = "caml_fig_funding_new"
+external funding_apply : funding -> string -> unit = "caml_fig_funding_apply"
+external funding_len : funding -> int = "caml_fig_funding_len"
+external funding_latest_amount : funding -> float = "caml_fig_funding_latest_amount"
+
+external agg_trades_new : int -> agg_trades = "caml_fig_agg_trades_new"
+external agg_trades_apply : agg_trades -> string -> unit = "caml_fig_agg_trades_apply"
+external agg_trades_len : agg_trades -> int = "caml_fig_agg_trades_len"
+external agg_trades_latest_price : agg_trades -> float = "caml_fig_agg_trades_latest_price"
+
+external ledger_new : int -> ledger = "caml_fig_ledger_new"
+external ledger_apply : ledger -> string -> unit = "caml_fig_ledger_apply"
+external ledger_len : ledger -> int = "caml_fig_ledger_len"
+
+external liquidation_new : int -> liquidation = "caml_fig_liquidation_new"
+external liquidation_apply_user : liquidation -> string -> unit = "caml_fig_liquidation_apply_user"
+external liquidation_apply_public : liquidation -> string -> unit = "caml_fig_liquidation_apply_public"
+external liquidation_user_count : liquidation -> int = "caml_fig_liquidation_user_count"
+
+external candle_new : unit -> candle = "caml_fig_candle_new"
+external candle_apply : candle -> string -> unit = "caml_fig_candle_apply"
+external candle_close : candle -> float = "caml_fig_candle_close"
+external candle_is_final : candle -> int = "caml_fig_candle_is_final"
+external candle_symbol : candle -> string = "caml_fig_candle_symbol"
+external candle_interval : candle -> string = "caml_fig_candle_interval"
